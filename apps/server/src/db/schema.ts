@@ -1,0 +1,66 @@
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
+
+export const repos = sqliteTable("repos", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  path: text("path").notNull(),
+  workspacesPath: text("workspaces_path").notNull(),
+  branchFrom: text("branch_from").notNull().default("origin/main"),
+  remote: text("remote").notNull().default("origin"),
+  previewUrl: text("preview_url"),
+  setupScript: text("setup_script"),
+  runScript: text("run_script"),
+  archiveScript: text("archive_script"),
+  createdAt: text("created_at").notNull(),
+})
+
+export const agents = sqliteTable("agents", {
+  id: text("id").primaryKey(),
+  repoId: text("repo_id").references(() => repos.id),
+  title: text("title").notNull(),
+  status: text("status").notNull().default("backlog"),
+  branch: text("branch").notNull(),
+  pr: text("pr"),
+  model: text("model").notNull().default("Sonnet 4.6"),
+  location: text("location").notNull(),
+  unread: integer("unread").default(0),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const messages = sqliteTable("messages", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // "user" | "assistant"
+  content: text("content").notNull().default(""),
+  thinking: text("thinking"),
+  timestamp: text("timestamp").notNull(),
+  createdAt: text("created_at").notNull(),
+})
+
+export const toolCalls = sqliteTable("tool_calls", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  parentId: text("parent_id"), // for sub-calls (Agent tool)
+  tool: text("tool").notNull(),
+  args: text("args"),
+  result: text("result"),
+  duration: text("duration"),
+  orderIdx: integer("order_idx").notNull().default(0),
+})
+
+export const fileChanges = sqliteTable("file_changes", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  additions: integer("additions").notNull().default(0),
+  deletions: integer("deletions").notNull().default(0),
+})
+
+export const terminalLines = sqliteTable("terminal_lines", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  line: text("line").notNull(),
+  createdAt: text("created_at").notNull(),
+})

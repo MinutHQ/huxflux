@@ -67,8 +67,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }> = []
   let toolCallOrderIdx = 0
 
-  // Resolve claude binary — prefer explicit path, fall back to PATH search
-  const claudeBin = process.env.CLAUDE_BIN ?? "/opt/homebrew/bin/claude"
+  // Resolve claude binary — prefer explicit path, fall back to plain "claude" (resolved via PATH)
+  const claudeBin = process.env.CLAUDE_BIN ?? "claude"
 
   // Ensure cwd exists — fall back to process.cwd() if worktree hasn't been created yet
   let cwd = worktreePath
@@ -114,7 +114,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ""}`,
+        // Ensure common install locations are in PATH on both macOS and Linux
+        PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
       },
     })
 

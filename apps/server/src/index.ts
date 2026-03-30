@@ -9,6 +9,7 @@ import { messagesRoutes } from "./routes/messages.js"
 import { filesRoutes } from "./routes/files.js"
 import { terminalRoutes } from "./routes/terminal.js"
 import { slashCommandsRoutes } from "./routes/slashCommands.js"
+import { fsRoutes } from "./routes/fs.js"
 import { registerSocket } from "./ws/handler.js"
 
 const app = Fastify({ logger: true })
@@ -34,6 +35,7 @@ await app.register(messagesRoutes)
 await app.register(filesRoutes)
 await app.register(terminalRoutes)
 await app.register(slashCommandsRoutes)
+await app.register(fsRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))

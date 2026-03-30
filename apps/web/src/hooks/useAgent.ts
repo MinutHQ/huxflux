@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
+import { toast } from "sonner"
 import { api } from "@/lib/api"
 import { useAgentEvents } from "@/lib/ws"
 import type { Agent, Message, ToolCall } from "@/data/mock"
@@ -114,6 +115,14 @@ export function useAgent(id: string | null) {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
         return { ...old, terminalOutput: [...old.terminalOutput, event.line] }
+      })
+    }
+
+    if (event.type === "error") {
+      setIsStreaming(false)
+      toast.error("Agent error", {
+        description: event.message,
+        duration: 6000,
       })
     }
 

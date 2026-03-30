@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Switch } from "@/components/ui/switch"
 import { SOUNDS, playSound } from "@/lib/sounds"
@@ -35,6 +35,8 @@ import {
   IconPencil,
   IconTrash,
   IconCheck,
+  IconSearch,
+  IconFolder,
 } from "@tabler/icons-react"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
@@ -863,20 +865,74 @@ const sectionTitles: Record<Section, string> = {
 
 function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
   const queryClient = useQueryClient()
-  const [name, setName] = useState("")
-  const [path, setPath] = useState("")
+  const [query, setQuery] = useState("")
+  const [results, setResults] = useState<{ name: string; path: string }[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState<{ name: string; path: string } | null>(null)
+  const [manualPath, setManualPath] = useState("")
+  const [manualName, setManualName] = useState("")
+  const [useManual, setUseManual] = useState(false)
   const [branchFrom, setBranchFrom] = useState("origin/main")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showResults, setShowResults] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Load all repos on mount
+  useEffect(() => {
+    setLoading(true)
+    api.findRepos().then((r) => { setResults(r); setLoading(false) }).catch(() => setLoading(false))
+  }, [])
+
+  // Auto-fill name from path
+  useEffect(() => {
+    if (manualPath.trim() && !manualName) {
+      const parts = manualPath.replace(/\/$/, "").split("/")
+      setManualName(parts[parts.length - 1] ?? "")
+    }
+  }, [manualPath])
+
+  function handleQueryChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const q = e.target.value
+    setQuery(q)
+    setSelected(null)
+    setShowResults(true)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setLoading(true)
+      api.findRepos(q).then((r) => { setResults(r); setLoading(false) }).catch(() => setLoading(false))
+    }, 300)
+  }
+
+  function handleSelect(r: { name: string; path: string }) {
+    setSelected(r)
+    setQuery(r.name)
+    setShowResults(false)
+  }
+
+  function handleSwitchToManual() {
+    setUseManual(true)
+    setSelected(null)
+    setQuery("")
+  }
+
+  function handleSwitchToSearch() {
+    setUseManual(false)
+    setManualPath("")
+    setManualName("")
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !path.trim() || isSubmitting) return
+    const repoPath = useManual ? manualPath.trim() : selected?.path
+    const repoName = useManual ? (manualName.trim() || manualPath.trim().split("/").pop() || "repo") : selected?.name
+    if (!repoPath || !repoName || isSubmitting) return
     setIsSubmitting(true)
     try {
       const repo = await api.createRepo({
-        name,
-        path,
-        workspacesPath: `${path.replace(/\/$/, "")}/../.hive/workspaces/${name}`,
+        name: repoName,
+        path: repoPath,
+        workspacesPath: `${repoPath.replace(/\/$/, "")}/../.hive/workspaces/${repoName}`,
         branchFrom,
         remote: "origin",
       })
@@ -886,6 +942,15 @@ function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id
       setIsSubmitting(false)
     }
   }
+
+  const canSubmit = useManual ? !!manualPath.trim() : !!selected
+
+  const filtered = query.trim()
+    ? results.filter((r) =>
+        r.name.toLowerCase().includes(query.toLowerCase()) ||
+        r.path.toLowerCase().includes(query.toLowerCase())
+      )
+    : results
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -902,27 +967,112 @@ function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Name</label>
-            <input
-              autoFocus
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my-project"
-              className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Local path</label>
-            <input
-              type="text"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="/Users/you/repos/my-project"
-              className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-            />
-          </div>
+          {!useManual ? (
+            /* ── Search mode ── */
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Repository</label>
+                <button
+                  type="button"
+                  onClick={handleSwitchToManual}
+                  className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                >
+                  Enter path manually
+                </button>
+              </div>
+              <div className="relative">
+                <div className="relative">
+                  <IconSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+                  <input
+                    ref={searchRef}
+                    autoFocus
+                    type="text"
+                    value={query}
+                    onChange={handleQueryChange}
+                    onFocus={() => setShowResults(true)}
+                    placeholder="Search for a git repository…"
+                    className="w-full text-sm bg-background border border-input rounded-md pl-8 pr-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+                  />
+                  {loading && (
+                    <IconLoader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 animate-spin" />
+                  )}
+                </div>
+
+                {showResults && filtered.length > 0 && !selected && (
+                  <div className="absolute z-10 w-full mt-1 bg-popover border border-border rounded-lg shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                    {filtered.slice(0, 20).map((r) => (
+                      <button
+                        key={r.path}
+                        type="button"
+                        onClick={() => handleSelect(r)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-accent/50 transition-colors text-left"
+                      >
+                        <IconFolder size={13} className="text-muted-foreground/50 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-sm text-foreground font-medium truncate">{r.name}</div>
+                          <div className="text-[11px] text-muted-foreground/60 font-mono truncate">{r.path}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {showResults && !loading && filtered.length === 0 && query.trim() && !selected && (
+                  <div className="absolute z-10 w-full mt-1 bg-popover border border-border rounded-lg shadow-xl px-3 py-4 text-center">
+                    <span className="text-[13px] text-muted-foreground">No repositories found</span>
+                  </div>
+                )}
+              </div>
+
+              {selected && (
+                <div className="flex items-center gap-2 mt-2 px-2 py-1.5 rounded-md bg-secondary">
+                  <IconFolder size={12} className="text-muted-foreground/50 shrink-0" />
+                  <code className="text-[11px] font-mono text-muted-foreground truncate flex-1">{selected.path}</code>
+                  <button
+                    type="button"
+                    onClick={() => { setSelected(null); setQuery(""); searchRef.current?.focus() }}
+                    className="text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+                  >
+                    <IconX size={11} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Manual mode ── */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Manual path</label>
+                <button
+                  type="button"
+                  onClick={handleSwitchToSearch}
+                  className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                >
+                  Search instead
+                </button>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                value={manualPath}
+                onChange={(e) => setManualPath(e.target.value)}
+                placeholder="/home/user/projects/my-repo"
+                className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+              />
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Name</label>
+                <input
+                  type="text"
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder={manualPath.trim().split("/").pop() || "my-repo"}
+                  className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Branch from */}
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Branch from</label>
             <input
@@ -937,7 +1087,7 @@ function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id
 
         <div className="flex justify-end gap-2 mt-5">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-          <Button type="submit" size="sm" disabled={!name.trim() || !path.trim() || isSubmitting}>
+          <Button type="submit" size="sm" disabled={!canSubmit || isSubmitting}>
             {isSubmitting ? "Adding…" : "Add repository"}
           </Button>
         </div>

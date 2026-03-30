@@ -56,6 +56,12 @@ export const api = {
   deleteRepo: (id: string) =>
     req<void>(`/api/repos/${id}`, { method: "DELETE" }),
 
+  // Filesystem
+  findRepos: (q?: string) => {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : ""
+    return req<{ name: string; path: string }[]>(`/api/fs/repos${qs}`)
+  },
+
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify"
 import * as fs from "node:fs/promises"
+import type { Dirent } from "node:fs"
 import * as path from "node:path"
 import * as os from "node:os"
 
@@ -19,9 +20,9 @@ async function isGitRepo(dirPath: string): Promise<boolean> {
 
 async function findGitRepos(rootPath: string, maxDepth: number, results: RepoResult[]): Promise<void> {
   if (maxDepth < 0) return
-  let entries: Awaited<ReturnType<typeof fs.readdir>>
+  let entries: Dirent[]
   try {
-    entries = await fs.readdir(rootPath, { withFileTypes: true })
+    entries = await fs.readdir(rootPath, { withFileTypes: true, encoding: "utf8" })
   } catch {
     return
   }
@@ -60,9 +61,9 @@ export async function fsRoutes(app: FastifyInstance) {
       ? req.query.path.replace(/^~/, os.homedir())
       : os.homedir()
 
-    let entries: Awaited<ReturnType<typeof fs.readdir>>
+    let entries: Dirent[]
     try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true })
+      entries = await fs.readdir(dirPath, { withFileTypes: true, encoding: "utf8" })
     } catch {
       return { path: dirPath, dirs: [] }
     }

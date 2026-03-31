@@ -6,8 +6,8 @@ export interface HiveServer {
   addedAt: string
 }
 
-const SERVERS_KEY = "hive:servers"
-const ACTIVE_KEY = "hive:active-server"
+const SERVERS_KEY = "huxflux:servers"
+const ACTIVE_KEY = "huxflux:active-server"
 
 export function getServers(): HiveServer[] {
   try {
@@ -60,4 +60,19 @@ export function getActiveServerId(): string | null {
 
 export function setActiveServerId(id: string): void {
   localStorage.setItem(ACTIVE_KEY, id)
+}
+
+// Parses a huxflux:// connection string into { url, token }.
+// Also accepts plain http(s):// URLs (token will be undefined).
+export function parseConnectionString(input: string): { url: string; token?: string } | null {
+  try {
+    const normalized = input.trim().replace(/^huxflux:\/\//, "http://")
+    const parsed = new URL(normalized)
+    const token = parsed.searchParams.get("token") ?? undefined
+    parsed.searchParams.delete("token")
+    const url = parsed.origin
+    return { url, token }
+  } catch {
+    return null
+  }
 }

@@ -38,9 +38,11 @@ import {
   IconSearch,
   IconFolder,
 } from "@tabler/icons-react"
+import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
 import type { HiveServer } from "@/lib/serverStore"
+import { parseConnectionString } from "@/lib/serverStore"
 
 type Section =
   | "general"
@@ -636,15 +638,20 @@ function ServerRow({
   status: "online" | "offline" | "checking"
   isActive: boolean
   onSetActive: () => void
-  onUpdate: (patch: Partial<Pick<HiveServer, "name" | "url">>) => void
+  onUpdate: (patch: Partial<Pick<HiveServer, "name" | "url" | "token">>) => void
   onRemove: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(server.name)
   const [url, setUrl] = useState(server.url)
+  const [token, setToken] = useState(server.token ?? "")
 
   function handleSave() {
-    onUpdate({ name: name.trim() || server.name, url: url.trim() || server.url })
+    onUpdate({
+      name: name.trim() || server.name,
+      url: url.trim() || server.url,
+      token: token.trim() || undefined,
+    })
     setEditing(false)
   }
 
@@ -672,8 +679,17 @@ function ServerRow({
             className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
           />
         </div>
+        <div>
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token</label>
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="Paste token from huxflux status"
+            className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+          />
+        </div>
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => { setName(server.name); setUrl(server.url); setEditing(false) }}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={() => { setName(server.name); setUrl(server.url); setToken(server.token ?? ""); setEditing(false) }}>Cancel</Button>
           <Button size="sm" onClick={handleSave}>
             <IconCheck size={13} />
             Save
@@ -720,8 +736,21 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
   const { add } = useServers()
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
+  const [token, setToken] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handleConnectionStringChange(value: string) {
+    setError(null)
+    const parsed = parseConnectionString(value)
+    if (parsed?.token) {
+      // It's a full connection string — split it out
+      setUrl(parsed.url)
+      setToken(parsed.token)
+    } else {
+      setUrl(value)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -740,7 +769,7 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
         clearTimeout(timer)
       }
       if (!ok) { setError("Server returned an error."); return }
-      add({ name: name.trim() || "My Server", url: normalizedUrl })
+      add({ name: name.trim() || "My Server", url: normalizedUrl, token: token.trim() || undefined })
       onDone()
     } catch (err) {
       setError(err instanceof Error && err.name === "AbortError" ? "Connection timed out." : "Could not reach server.")
@@ -763,14 +792,37 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
         />
       </div>
       <div>
-        <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">URL</label>
+        <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Connection string or URL</label>
         <input
           value={url}
-          onChange={(e) => { setUrl(e.target.value); setError(null) }}
-          placeholder="http://localhost:3001"
+          onChange={(e) => handleConnectionStringChange(e.target.value)}
+          placeholder="huxflux://100.64.0.5:3001?token=… or http://localhost:3001"
           className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
         />
+        <p className="text-[11px] text-muted-foreground/50 mt-1">
+          Paste the connection string from <code className="font-mono">huxflux status</code> to fill both fields automatically.
+        </p>
       </div>
+      {token && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-500/8 border border-emerald-500/20">
+          <IconCheck size={12} className="text-emerald-400 shrink-0" />
+          <span className="text-[11px] text-emerald-400">Token detected</span>
+          <button onClick={() => setToken("")} className="ml-auto text-emerald-400/50 hover:text-emerald-400">
+            <IconX size={11} />
+          </button>
+        </div>
+      )}
+      {!token && (
+        <div>
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token <span className="normal-case font-normal text-muted-foreground/40">(optional)</span></label>
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="Paste token from huxflux status"
+            className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+          />
+        </div>
+      )}
       {error && (
         <div className="flex items-center gap-1.5 text-[12px] text-red-400">
           <IconAlertCircle size={13} />
@@ -835,6 +887,29 @@ function PlaceholderSettings({ title }: { title: string }) {
   )
 }
 
+function ExperimentalSettings() {
+  const [prReview, setPrReview] = useState(() => getFlag("prReview"))
+
+  function toggle(value: boolean) {
+    setFlag("prReview", value)
+    setPrReview(value)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">PR Review</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Show a Review tab in the sidebar for reviewing GitHub pull requests. Reload required after toggling.
+          </div>
+        </div>
+        <Switch checked={prReview} onCheckedChange={toggle} />
+      </div>
+    </div>
+  )
+}
+
 const sectionContent: Record<Section, React.ReactNode> = {
   general: <GeneralSettings />,
   models: <ModelsSettings />,
@@ -843,7 +918,7 @@ const sectionContent: Record<Section, React.ReactNode> = {
   git: <GitSettings />,
   servers: <ServersSettings />,
   account: <AccountSettings />,
-  experimental: <PlaceholderSettings title="Experimental" />,
+  experimental: <ExperimentalSettings />,
   advanced: <PlaceholderSettings title="Advanced" />,
   updates: <PlaceholderSettings title="Updates" />,
 }
@@ -932,7 +1007,7 @@ function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id
       const repo = await api.createRepo({
         name: repoName,
         path: repoPath,
-        workspacesPath: `${repoPath.replace(/\/$/, "")}/../.hive/workspaces/${repoName}`,
+        workspacesPath: `${repoPath.replace(/\/$/, "")}/../.huxflux/workspaces/${repoName}`,
         branchFrom,
         remote: "origin",
       })

@@ -4,10 +4,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { statusOrder, statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
+import type { PullRequest } from "@/data/mockReviews"
 import { api } from "@/lib/api"
 import { useRepos } from "@/hooks/useRepos"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
+import { getFlag } from "@/lib/flags"
 import {
   IconChevronRight,
   IconPlus,
@@ -18,27 +20,13 @@ import {
   IconArrowUpRight,
   IconX,
   IconSparkles,
+  IconGitPullRequest,
 } from "@tabler/icons-react"
-
-// ── Status dot ────────────────────────────────────────────────────────────────
-
-const statusDot: Record<AgentStatus, string> = {
-  "in-progress": "bg-amber-400",
-  "in-review":   "bg-emerald-400",
-  "done":        "bg-emerald-400",
-  "backlog":     "bg-muted-foreground/40",
-  "cancelled":   "bg-red-400",
-}
 
 // ── Hover popover ─────────────────────────────────────────────────────────────
 
 function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
-  const statusLabel =
-    agent.status === "in-review" ? "In review"
-    : agent.status === "in-progress" ? "In progress"
-    : agent.status === "done" ? "Done"
-    : agent.status === "backlog" ? "Backlog"
-    : "Cancelled"
+  const cfg = statusConfig[agent.status]
 
   return createPortal(
     <div
@@ -53,8 +41,8 @@ function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
       </div>
 
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-2">
-        <span className={cn("w-2 h-2 rounded-full shrink-0", statusDot[agent.status])} />
-        <span>{statusLabel}</span>
+        <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dotColor)} />
+        <span className={cfg.color}>{cfg.label}</span>
         <span className="text-muted-foreground/40">·</span>
         <span className="font-mono">{agent.location}</span>
         {agent.daysAgo && (
@@ -93,16 +81,16 @@ function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
         </div>
       )}
 
-      {agent.status === "in-review" && (
-        <button className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[12px] font-medium pointer-events-auto">
-          Ready for review
-        </button>
-      )}
-      {agent.status === "in-progress" && (
-        <button className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[12px] font-medium pointer-events-auto">
-          In progress
-        </button>
-      )}
+      <div className={cn(
+        "w-full flex items-center justify-center px-3 py-1.5 rounded-lg text-[12px] font-medium border",
+        agent.status === "in-progress" && "bg-amber-500/10 border-amber-500/25 text-amber-400",
+        agent.status === "in-review"   && "bg-blue-500/10 border-blue-500/25 text-blue-400",
+        agent.status === "done"        && "bg-emerald-500/10 border-emerald-500/25 text-emerald-400",
+        agent.status === "backlog"     && "bg-zinc-500/10 border-zinc-500/25 text-zinc-400",
+        agent.status === "cancelled"   && "bg-red-500/10 border-red-500/25 text-red-400",
+      )}>
+        {cfg.label}
+      </div>
     </div>,
     document.body
   )
@@ -417,6 +405,51 @@ function StatusGroup({
   )
 }
 
+// ── PR row ────────────────────────────────────────────────────────────────────
+
+function PRRow({ pr, isSelected, onClick }: { pr: PullRequest; isSelected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full min-w-0 flex items-start gap-2 px-2.5 py-2 rounded-md text-left transition-all overflow-hidden",
+        isSelected
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
+      )}
+    >
+      <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0 mt-0.5 w-8 text-right">#{pr.number}</span>
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {pr.unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+          <span className={cn(
+            "text-xs leading-snug truncate block min-w-0",
+            isSelected && "font-semibold",
+            pr.unread && "text-foreground font-medium"
+          )}>
+            {pr.title}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 mt-0.5 min-w-0">
+          <span className="text-[10px] text-muted-foreground/50 shrink-0">{pr.author}</span>
+          <span className="text-[10px] text-muted-foreground/30 shrink-0">·</span>
+          <span className="text-[10px] text-muted-foreground/40 shrink-0">{pr.requestedAt}</span>
+          {pr.reviewStatus === "changes-requested" && (
+            <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 shrink-0 font-medium uppercase tracking-wide">
+              Changes
+            </span>
+          )}
+          {pr.reviewStatus === "approved" && (
+            <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium uppercase tracking-wide">
+              Approved
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
+
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -426,11 +459,18 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onOpenSettings: () => void
   onAgentCreated: (id: string) => void
+  prs: PullRequest[]
+  selectedPrId: string | null
+  onSelectPr: (id: string) => void
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated, prs, selectedPrId, onSelectPr }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
+  const [tab, setTab] = useState<"agents" | "review">("agents")
+
+  const prReviewEnabled = getFlag("prReview")
+  const unreadPrCount = prs.filter((p) => p.unread).length
 
   const grouped = statusOrder.reduce<Record<AgentStatus, AgentSummary[]>>(
     (acc, status) => {
@@ -462,55 +502,124 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
           <ServerSwitcher />
         </div>
 
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-sidebar-border shrink-0">
-          <div className="text-[13px] font-semibold text-sidebar-foreground mb-3">Activity</div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Workspaces</span>
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-xs">
-                <IconFilter size={13} />
-              </Button>
-              <Button variant="ghost" size="icon-xs">
-                <IconFolderPlus size={13} />
-              </Button>
-              <Button variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
-                <IconPlus size={13} />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Agent list */}
-        <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full">
-            <div className="p-2 pt-2.5 space-y-0.5">
-              {agents.length === 0 ? (
-                <button
-                  onClick={() => setShowNewAgent(true)}
-                  className="w-full flex flex-col items-center gap-2 py-8 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-                >
-                  <IconSparkles size={20} />
-                  <span className="text-[12px]">Create your first agent</span>
-                </button>
-              ) : (
-                statusOrder.map((status) => (
-                  <StatusGroup
-                    key={status}
-                    status={status}
-                    agents={grouped[status]}
-                    selectedId={selectedId}
-                    streamingAgentId={streamingAgentId}
-                    onSelect={onSelect}
-                    startIndex={groupStartIndices[status] ?? 0}
-                    onHover={(agent, y) => setHoveredAgent({ agent, y })}
-                    onLeave={() => setHoveredAgent(null)}
-                  />
-                ))
+        {/* Tabs */}
+        {prReviewEnabled && (
+          <div className="flex border-b border-sidebar-border shrink-0">
+            <button
+              onClick={() => setTab("agents")}
+              className={cn(
+                "flex-1 py-2 text-[12px] font-medium transition-colors",
+                tab === "agents"
+                  ? "text-foreground border-b-2 border-primary -mb-px"
+                  : "text-muted-foreground/60 hover:text-muted-foreground"
               )}
+            >
+              Agents
+            </button>
+            <button
+              onClick={() => setTab("review")}
+              className={cn(
+                "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
+                tab === "review"
+                  ? "text-foreground border-b-2 border-primary -mb-px"
+                  : "text-muted-foreground/60 hover:text-muted-foreground"
+              )}
+            >
+              Review
+              {unreadPrCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+                  {unreadPrCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {(!prReviewEnabled || tab === "agents") ? (
+          <>
+            {/* Agents header */}
+            <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Workspaces</span>
+                <div className="flex items-center gap-0.5">
+                  <Button variant="ghost" size="icon-xs">
+                    <IconFilter size={13} />
+                  </Button>
+                  <Button variant="ghost" size="icon-xs">
+                    <IconFolderPlus size={13} />
+                  </Button>
+                  <Button variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
+                    <IconPlus size={13} />
+                  </Button>
+                </div>
+              </div>
             </div>
-          </ScrollArea>
-        </div>
+
+            {/* Agent list */}
+            <div className="flex-1 min-h-0">
+              <ScrollArea className="h-full">
+                <div className="p-2 pt-2.5 space-y-0.5">
+                  {agents.length === 0 ? (
+                    <button
+                      onClick={() => setShowNewAgent(true)}
+                      className="w-full flex flex-col items-center gap-2 py-8 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                    >
+                      <IconSparkles size={20} />
+                      <span className="text-[12px]">Create your first agent</span>
+                    </button>
+                  ) : (
+                    statusOrder.map((status) => (
+                      <StatusGroup
+                        key={status}
+                        status={status}
+                        agents={grouped[status]}
+                        selectedId={selectedId}
+                        streamingAgentId={streamingAgentId}
+                        onSelect={onSelect}
+                        startIndex={groupStartIndices[status] ?? 0}
+                        onHover={(agent, y) => setHoveredAgent({ agent, y })}
+                        onLeave={() => setHoveredAgent(null)}
+                      />
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Review header */}
+            <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pull Requests</span>
+                <span className="text-[11px] font-mono text-muted-foreground/40">{prs.length}</span>
+              </div>
+            </div>
+
+            {/* PR list */}
+            <div className="flex-1 min-h-0">
+              <ScrollArea className="h-full">
+                <div className="p-2 space-y-0.5">
+                  {prs.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/40">
+                      <IconGitPullRequest size={20} />
+                      <span className="text-[12px]">No PRs to review</span>
+                    </div>
+                  ) : (
+                    prs.map((pr) => (
+                      <PRRow
+                        key={pr.id}
+                        pr={pr}
+                        isSelected={selectedPrId === pr.id}
+                        onClick={() => onSelectPr(pr.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </>
+        )}
 
         {/* Footer */}
         <div className="px-3 py-2.5 border-t border-sidebar-border flex items-center justify-between shrink-0">

@@ -1,7 +1,7 @@
 import type { SoundId } from "./sounds"
 
-const SOUND_KEY = "hive:notif:sound"
-const ENABLED_KEY = "hive:notif:enabled"
+const SOUND_KEY = "huxflux:notif:sound"
+const ENABLED_KEY = "huxflux:notif:enabled"
 
 export function getSoundPref(): SoundId {
   return (localStorage.getItem(SOUND_KEY) as SoundId) ?? "chime"

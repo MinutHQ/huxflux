@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId } from "@/lib/serverStore"
-import { IconServer, IconLoader2, IconAlertCircle } from "@tabler/icons-react"
+import { setActiveServerId, parseConnectionString } from "@/lib/serverStore"
+import { IconServer, IconLoader2, IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react"
 
 interface OnboardingProps {
   onComplete: () => void
@@ -12,8 +12,20 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const { add } = useServers()
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
+  const [token, setToken] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  function handleConnectionInput(value: string) {
+    setError(null)
+    const parsed = parseConnectionString(value)
+    if (parsed?.token) {
+      setUrl(parsed.url)
+      setToken(parsed.token)
+    } else {
+      setUrl(value)
+    }
+  }
 
   async function handleConnect(e: React.FormEvent) {
     e.preventDefault()
@@ -42,10 +54,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       const server = add({
         name: name.trim() || "My Server",
         url: normalizedUrl,
+        token: token.trim() || undefined,
       })
 
       setActiveServerId(server.id)
-
       onComplete()
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -69,10 +81,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
         <div className="text-center mb-8">
           <h1 className="text-xl font-semibold text-foreground mb-2">
-            Connect to your Hive server
+            Connect to your server
           </h1>
           <p className="text-[13px] text-muted-foreground leading-relaxed">
-            Enter the URL of your Hive server. It can be running on localhost or accessible via Tailscale.
+            Paste the connection string from <code className="font-mono text-foreground/80">huxflux status</code>, or enter a URL manually.
           </p>
         </div>
 
@@ -92,17 +104,38 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
-              Server URL
+              Connection string or URL
             </label>
             <input
               autoFocus
-              type="url"
               value={url}
-              onChange={(e) => { setUrl(e.target.value); setError(null) }}
-              placeholder="http://localhost:3001"
+              onChange={(e) => handleConnectionInput(e.target.value)}
+              placeholder="huxflux://100.64.0.5:3001?token=… or http://localhost:3001"
               className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
             />
           </div>
+
+          {token ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-500/8 border border-emerald-500/20">
+              <IconCheck size={12} className="text-emerald-400 shrink-0" />
+              <span className="text-[11px] text-emerald-400">Token detected</span>
+              <button type="button" onClick={() => setToken("")} className="ml-auto text-emerald-400/50 hover:text-emerald-400">
+                <IconX size={11} />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
+                Auth Token <span className="normal-case font-normal text-muted-foreground/40">(optional)</span>
+              </label>
+              <input
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="Paste token from huxflux status"
+                className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+              />
+            </div>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">

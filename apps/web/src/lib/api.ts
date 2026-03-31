@@ -1,16 +1,24 @@
 import type { Agent, AgentSummary, FileChange, Message, Repo, SlashCommand } from "@/data/mock"
 import { getServers, getActiveServerId } from "@/lib/serverStore"
 
-function getBase(): string {
+function getActiveServer() {
   const servers = getServers()
   const activeId = getActiveServerId()
-  const active = servers.find((s) => s.id === activeId) ?? servers[0]
-  return active?.url ?? import.meta.env.VITE_API_URL ?? "http://localhost:3001"
+  return servers.find((s) => s.id === activeId) ?? servers[0]
+}
+
+function getBase(): string {
+  return getActiveServer()?.url ?? import.meta.env.VITE_API_URL ?? "http://localhost:3001"
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getActiveServer()?.token
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${getBase()}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...init?.headers },
     ...init,
   })
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} → ${res.status}`)

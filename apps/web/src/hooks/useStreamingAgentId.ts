@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useAgentEvents } from "@/lib/ws"
 
-const SESSION_KEY = "hive:streaming-agent"
+const SESSION_KEY = "huxflux:streaming-agent"
 
 function readSession(): string | null {
   try { return sessionStorage.getItem(SESSION_KEY) } catch { return null }

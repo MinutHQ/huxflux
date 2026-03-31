@@ -6,6 +6,7 @@ import { FileChangesView } from "@/components/FileChangesView"
 import { TerminalView } from "@/components/TerminalView"
 import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
+import { PRView } from "@/components/PRView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
 import { useAgents } from "@/hooks/useAgents"
 import { useAgent } from "@/hooks/useAgent"
@@ -16,10 +17,13 @@ import { connectBackgroundServer } from "@/lib/ws"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
 import type { FileChange } from "@/data/mock"
+import { mockPRs } from "@/data/mockReviews"
+import { getFlag } from "@/lib/flags"
 
 export default function App() {
   const [view, setView] = useState<"app" | "settings">("app")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<FileChange | null>(null)
   const [terminalTab, setTerminalTab] = useState<"setup" | "run" | "terminal">("terminal")
   const [onboardingDone, setOnboardingDone] = useState(false)
@@ -30,7 +34,8 @@ export default function App() {
   useEffect(() => {
     const backgroundServers = servers.filter((s) => s.id !== activeId)
     const cleanups = backgroundServers.map((server) => {
-      const wsUrl = server.url.replace(/^http/, "ws") + "/ws"
+      const wsBase = server.url.replace(/^http/, "ws") + "/ws"
+      const wsUrl = server.token ? `${wsBase}?token=${server.token}` : wsBase
       return connectBackgroundServer(wsUrl, (event) => {
         if (event.type !== "message:done") return
         toast.success(`Agent finished on ${server.name}`, {
@@ -56,12 +61,22 @@ export default function App() {
     )
   }
 
-  const resolvedSelectedId = selectedId ?? agents[0]?.id ?? null
+  const prReviewEnabled = getFlag("prReview")
+  const resolvedSelectedId = selectedId ?? (selectedPrId ? null : agents[0]?.id ?? null)
   const { data: agent, isStreaming } = useAgent(resolvedSelectedId)
   const streamingAgentId = useStreamingAgentId()
 
+  const selectedPr = prReviewEnabled && selectedPrId ? mockPRs.find((p) => p.id === selectedPrId) ?? null : null
+
   function handleAgentSelect(id: string) {
     setSelectedId(id)
+    setSelectedPrId(null)
+    setOpenFileTab(null)
+  }
+
+  function handlePrSelect(id: string) {
+    setSelectedPrId(id)
+    setSelectedId(null)
     setOpenFileTab(null)
   }
 
@@ -74,18 +89,37 @@ export default function App() {
     )
   }
 
+  const sidebarProps = {
+    agents,
+    selectedId: resolvedSelectedId ?? "",
+    streamingAgentId,
+    onSelect: handleAgentSelect,
+    onOpenSettings: () => setView("settings"),
+    onAgentCreated: (id: string) => { setSelectedId(id); setSelectedPrId(null) },
+    prs: prReviewEnabled ? mockPRs : [],
+    selectedPrId,
+    onSelectPr: handlePrSelect,
+  }
+
+  // PR view
+  if (selectedPr) {
+    return (
+      <div className="flex h-screen bg-background text-foreground overflow-hidden">
+        <Toaster theme="dark" position="bottom-right" />
+        <Sidebar {...sidebarProps} />
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <PRView key={selectedPr.id} pr={selectedPr} />
+        </div>
+      </div>
+    )
+  }
+
+  // No agent selected
   if (!agent) {
     return (
       <div className="flex h-screen bg-background text-foreground overflow-hidden">
         <Toaster theme="dark" position="bottom-right" />
-        <Sidebar
-          agents={agents}
-          selectedId={resolvedSelectedId ?? ""}
-          streamingAgentId={streamingAgentId}
-          onSelect={handleAgentSelect}
-          onOpenSettings={() => setView("settings")}
-          onAgentCreated={(id) => setSelectedId(id)}
-        />
+        <Sidebar {...sidebarProps} />
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
         </div>
@@ -96,14 +130,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
       <Toaster theme="dark" position="bottom-right" />
-      <Sidebar
-        agents={agents}
-        selectedId={resolvedSelectedId ?? ""}
-        streamingAgentId={streamingAgentId}
-        onSelect={handleAgentSelect}
-        onOpenSettings={() => setView("settings")}
-        onAgentCreated={(id) => setSelectedId(id)}
-      />
+      <Sidebar {...sidebarProps} />
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
         <ResizablePanel defaultSize={60} minSize={30}>

@@ -27,7 +27,8 @@ function getActiveWsUrl(): string {
   const activeId = getActiveServerId()
   const active = servers.find((s) => s.id === activeId) ?? servers[0]
   const base = active?.url ?? import.meta.env.VITE_API_URL ?? "http://localhost:3001"
-  return base.replace(/^http/, "ws") + "/ws"
+  const wsUrl = base.replace(/^http/, "ws") + "/ws"
+  return active?.token ? `${wsUrl}?token=${active.token}` : wsUrl
 }
 
 function connect() {

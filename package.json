@@ -1,5 +1,5 @@
 {
-  "name": "hive",
+  "name": "huxflux",
   "private": true,
   "scripts": {
     "dev:web": "pnpm --filter web dev",

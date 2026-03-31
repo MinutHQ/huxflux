@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process"
+import { spawn, execFileSync } from "node:child_process"
+import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
-import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable } from "../db/schema.js"
+import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable } from "../db/schema.js"
 import { emit } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
 import { eq } from "drizzle-orm"
@@ -57,6 +58,9 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     .where(eq(agentsTable.id, agentId))
 
   const agentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  const repoRow = agentRow?.repoId
+    ? db.select().from(reposTable).where(eq(reposTable.id, agentRow.repoId)).get()
+    : null
   if (agentRow) emit(agentId, { type: "agent:updated", agent: agentRow as any })
 
   emit(agentId, { type: "message:start", agentId, messageId })
@@ -67,8 +71,15 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }> = []
   let toolCallOrderIdx = 0
 
-  // Resolve claude binary — prefer explicit path, fall back to plain "claude" (resolved via PATH)
-  const claudeBin = process.env.CLAUDE_BIN ?? "claude"
+  // Resolve claude binary — prefer explicit CLAUDE_BIN env, then which, then plain name
+  const claudeBin = (() => {
+    if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN
+    try {
+      return execFileSync("which", ["claude"], { encoding: "utf8" }).trim()
+    } catch {
+      return "claude"
+    }
+  })()
 
   // Ensure cwd exists — fall back to process.cwd() if worktree hasn't been created yet
   let cwd = worktreePath
@@ -84,7 +95,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     const agentTitle = agentRow?.title ?? agentId
     const apiBase = `http://localhost:${config.port}`
     const systemPrompt = [
-      `You are a Hive agent. Your agent ID is "${agentId}" and your current title is "${agentTitle}".`,
+      `You are a Huxflux agent. Your agent ID is "${agentId}" and your current title is "${agentTitle}".`,
       ``,
       `You can rename yourself at any time using Bash:`,
       `  curl -s -X PATCH ${apiBase}/api/agents/${agentId} -H "Content-Type: application/json" -d '{"title":"<new title>"}'`,
@@ -99,7 +110,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
     // Launch claude CLI: --print for non-interactive, --output-format stream-json for streaming JSON
     // Use --continue for follow-up messages so Claude reuses the existing session context
-    const args = [
+    const claudeArgs = [
       "--print",
       "--output-format", "stream-json",
       "--verbose",
@@ -109,7 +120,17 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       ...(isContinuation ? ["--continue"] : []),
       userContent,
     ]
-    const proc = spawn(claudeBin, args, {
+    const { bin, args } = config.sandbox
+      ? buildSandboxedCommand({
+          claudeBin,
+          claudeArgs,
+          worktreePath: cwd,
+          repoPath: repoRow?.path ?? null,
+          cfg: config.sandbox,
+        })
+      : { bin: claudeBin, args: claudeArgs }
+
+    const proc = spawn(bin, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: {

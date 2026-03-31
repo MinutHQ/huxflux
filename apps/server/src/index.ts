@@ -11,6 +11,8 @@ import { terminalRoutes } from "./routes/terminal.js"
 import { slashCommandsRoutes } from "./routes/slashCommands.js"
 import { fsRoutes } from "./routes/fs.js"
 import { registerSocket } from "./ws/handler.js"
+import { authHook } from "./auth.js"
+import { registerAuditLog } from "./audit.js"
 
 const app = Fastify({ logger: true })
 
@@ -20,6 +22,16 @@ await app.register(fastifyCors, {
 })
 
 await app.register(fastifyWebsocket)
+
+// Auth — enforced on all routes when AUTH_TOKEN is set
+app.addHook("preHandler", authHook)
+
+// Audit log — append one line per request to ~/.huxflux/audit.log
+registerAuditLog(app)
+
+if (!config.authToken) {
+  console.warn("\n⚠  AUTH_TOKEN not set — running without authentication (dev mode)\n")
+}
 
 // WebSocket endpoint — clients subscribe to agent events here
 app.register(async (instance) => {

@@ -11,72 +11,111 @@ sqlite.pragma("foreign_keys = ON")
 
 export const db = drizzle(sqlite, { schema })
 
-// Run inline migrations on startup (simple approach — no migration runner needed for a POC)
+// ── Schema migrations ─────────────────────────────────────────────────────────
+//
+// Each migration runs exactly once, tracked by a schema_version table.
+// To add columns or tables in a future version, append a new entry — never
+// edit existing ones (existing installs won't re-run them).
+
+interface Migration {
+  version: number
+  sql: string
+}
+
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    sql: `
+      CREATE TABLE IF NOT EXISTS repos (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        workspaces_path TEXT NOT NULL,
+        branch_from TEXT NOT NULL DEFAULT 'origin/main',
+        remote TEXT NOT NULL DEFAULT 'origin',
+        preview_url TEXT,
+        setup_script TEXT,
+        run_script TEXT,
+        archive_script TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        repo_id TEXT REFERENCES repos(id),
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'backlog',
+        branch TEXT NOT NULL,
+        pr TEXT,
+        model TEXT NOT NULL DEFAULT 'Sonnet 4.6',
+        location TEXT NOT NULL,
+        unread INTEGER DEFAULT 0,
+        description TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        thinking TEXT,
+        timestamp TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS tool_calls (
+        id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        parent_id TEXT,
+        tool TEXT NOT NULL,
+        args TEXT,
+        result TEXT,
+        duration TEXT,
+        order_idx INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS file_changes (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        additions INTEGER NOT NULL DEFAULT 0,
+        deletions INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS terminal_lines (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        line TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `,
+  },
+  // Add new migrations here, e.g.:
+  // { version: 2, sql: `ALTER TABLE agents ADD COLUMN foo TEXT;` },
+]
+
 export function runMigrations() {
+  // Bootstrap the version tracker
   sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS repos (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      path TEXT NOT NULL,
-      workspaces_path TEXT NOT NULL,
-      branch_from TEXT NOT NULL DEFAULT 'origin/main',
-      remote TEXT NOT NULL DEFAULT 'origin',
-      preview_url TEXT,
-      setup_script TEXT,
-      run_script TEXT,
-      archive_script TEXT,
-      created_at TEXT NOT NULL
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER NOT NULL
     );
-
-    CREATE TABLE IF NOT EXISTS agents (
-      id TEXT PRIMARY KEY,
-      repo_id TEXT REFERENCES repos(id),
-      title TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'backlog',
-      branch TEXT NOT NULL,
-      pr TEXT,
-      model TEXT NOT NULL DEFAULT 'Sonnet 4.6',
-      location TEXT NOT NULL,
-      unread INTEGER DEFAULT 0,
-      description TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL DEFAULT '',
-      thinking TEXT,
-      timestamp TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS tool_calls (
-      id TEXT PRIMARY KEY,
-      message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-      parent_id TEXT,
-      tool TEXT NOT NULL,
-      args TEXT,
-      result TEXT,
-      duration TEXT,
-      order_idx INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS file_changes (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-      path TEXT NOT NULL,
-      additions INTEGER NOT NULL DEFAULT 0,
-      deletions INTEGER NOT NULL DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS terminal_lines (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-      line TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
+    INSERT INTO schema_version (version)
+      SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
   `)
+
+  const currentVersion = (sqlite.prepare("SELECT version FROM schema_version").get() as { version: number }).version
+
+  const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
+  if (pending.length === 0) return
+
+  for (const migration of pending) {
+    sqlite.transaction(() => {
+      sqlite.exec(migration.sql)
+      sqlite.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+    })()
+    console.log(`[db] applied migration v${migration.version}`)
+  }
 }

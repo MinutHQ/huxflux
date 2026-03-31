@@ -119,8 +119,14 @@ export default function App() {
 
   function handleAgentSelect(id: string) {
     const a = agents.find(ag => ag.id === id)
-    setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
-    setActiveTabId(id)
+    // Only reset tabs if switching to a different root agent
+    const isAlreadyInTabs = tabs.some(t => t.agentId === id)
+    if (isAlreadyInTabs) {
+      setActiveTabId(id)
+    } else {
+      setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
+      setActiveTabId(id)
+    }
     setSelectedPrId(null)
     setOpenFileTab(null)
     setPendingComments([])
@@ -142,10 +148,13 @@ export default function App() {
   function handleTabClose(agentId: string) {
     setTabs(prev => {
       const next = prev.filter(t => t.agentId !== agentId)
-      if (agentId === activeTabId && next.length > 0) {
-        setActiveTabId(next[next.length - 1].agentId)
-      } else if (next.length === 0) {
-        setActiveTabId(null)
+      if (agentId === activeTabId) {
+        if (next.length > 0) {
+          setActiveTabId(next[next.length - 1].agentId)
+        } else {
+          // Closing last tab — fall back to first sidebar agent
+          setActiveTabId(agents[0]?.id ?? null)
+        }
       }
       return next
     })
@@ -165,7 +174,12 @@ export default function App() {
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       const newTab: ChatTab = { agentId: created.id, title: created.title, isChild: true }
-      setTabs(prev => [...prev, newTab])
+      setTabs(prev => {
+        // Ensure the current agent is in the tabs before adding the new one
+        const hasCurrentAgent = prev.some(t => t.agentId === agent.id)
+        const base = hasCurrentAgent ? prev : [{ agentId: agent.id, title: agent.title }, ...prev]
+        return [...base, newTab]
+      })
       setActiveTabId(created.id)
       setOpenFileTab(null)
       setPendingComments([])
@@ -198,6 +212,7 @@ export default function App() {
     onOpenSettings: () => setView("settings"),
     onAgentCreated: (id: string) => {
       const a = agents.find(ag => ag.id === id)
+      // New agent from sidebar — start a fresh single-tab view
       setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
       setActiveTabId(id)
       setSelectedPrId(null)

@@ -11,11 +11,9 @@ import { config } from "../config.js"
 import type { Message, ToolCall } from "../types.js"
 
 // Represents a streaming JSON line from `claude --output-format stream-json`
-type ClaudeStreamEvent =
-  | { type: "system"; subtype: "init" }
-  | { type: "assistant"; message: { content: Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }> } }
-  | { type: "tool_result"; tool_use_id: string; content: string }
-  | { type: "result"; subtype: "success" | "error"; result?: string; error?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } }
+// Using Record<string, unknown> as base to accommodate sub-agent events we haven't typed yet
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ClaudeStreamEvent = Record<string, any>
 
 interface RunnerOptions {
   agentId: string
@@ -75,8 +73,6 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     : null
   if (agentRow) emit(agentId, { type: "agent:updated", agent: agentRow as any })
 
-  emit(agentId, { type: "message:start", agentId, messageId })
-
   // Accumulate assistant message state
   let fullContent = ""
   let fullThinking = ""
@@ -87,6 +83,19 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   let outputTokens: number | null = null
   let cacheReadTokens: number | null = null
   let cacheWriteTokens: number | null = null
+
+  // Insert skeleton assistant message immediately so it survives page reloads
+  const skeletonCreatedAt = new Date().toISOString()
+  await db.insert(messagesTable).values({
+    id: messageId,
+    agentId,
+    role: "assistant",
+    content: "",
+    timestamp: skeletonCreatedAt,
+    createdAt: skeletonCreatedAt,
+  })
+
+  emit(agentId, { type: "message:start", agentId, messageId })
 
   // Resolve claude binary — prefer explicit CLAUDE_BIN env, then which, then plain name
   const claudeBin = (() => {
@@ -169,8 +178,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       for (const line of lines) {
         if (!line.trim()) continue
         try {
-          const event: ClaudeStreamEvent = JSON.parse(line)
-          handleEvent(event)
+          const parsed = JSON.parse(line)
+          handleEvent(parsed)
         } catch {
           // Non-JSON line — could be a warning, skip it
         }
@@ -211,15 +220,31 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       reject(err)
     })
 
+    // Flush content/thinking to DB periodically so it survives page reloads.
+    // We debounce to avoid hammering SQLite on every text chunk.
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    function scheduleFlush() {
+      if (flushTimer) return
+      flushTimer = setTimeout(() => {
+        flushTimer = null
+        db.update(messagesTable)
+          .set({ content: fullContent, thinking: fullThinking || null })
+          .where(eq(messagesTable.id, messageId))
+          .run()
+      }, 500)
+    }
+
     function handleEvent(event: ClaudeStreamEvent) {
       if (event.type === "assistant") {
         for (const block of event.message.content) {
           if (block.type === "text") {
             fullContent += block.text
             emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
+            scheduleFlush()
           } else if (block.type === "thinking") {
             fullThinking += block.thinking
             emit(agentId, { type: "message:thinking", agentId, messageId, delta: block.thinking })
+            scheduleFlush()
           } else if (block.type === "tool_use") {
             const tc: ToolCall = {
               id: block.id,
@@ -228,12 +253,25 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
             }
             collectedToolCalls.push({ id: block.id, tool: block.name, args: JSON.stringify(block.input) })
             toolCallOrderIdx++
+            // Persist tool call to DB immediately so it survives reloads
+            db.insert(toolCallsTable).values({
+              id: block.id,
+              messageId,
+              tool: block.name,
+              args: JSON.stringify(block.input),
+              orderIdx: toolCallOrderIdx - 1,
+            }).run()
             emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
           }
         }
       } else if (event.type === "tool_result") {
         const tc = collectedToolCalls.find((t) => t.id === event.tool_use_id)
         if (tc) tc.result = event.content
+        // Persist tool result to DB immediately
+        db.update(toolCallsTable)
+          .set({ result: event.content })
+          .where(eq(toolCallsTable.id, event.tool_use_id))
+          .run()
         emit(agentId, {
           type: "tool:result",
           agentId,
@@ -246,37 +284,47 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         outputTokens = event.usage.output_tokens ?? null
         cacheReadTokens = event.usage.cache_read_input_tokens ?? null
         cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
+      } else if (event.type !== "system") {
+        // Forward unrecognized events (likely sub-agent activity) to frontend.
+        // Try to associate with a parent Agent tool call via tool_use_id or parent_tool_use_id.
+        const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
+        emit(agentId, {
+          type: "subagent:event",
+          agentId,
+          toolUseId,
+          event: event as Record<string, unknown>,
+        })
+        // Also log for debugging
+        emit(agentId, {
+          type: "terminal:line",
+          agentId,
+          line: `[stream] ${JSON.stringify(event)}`,
+        })
       }
     }
 
     async function persistAssistantMessage() {
-      const createdAt = new Date().toISOString()
-      await db.insert(messagesTable).values({
-        id: messageId,
-        agentId,
-        role: "assistant",
-        content: fullContent,
-        thinking: fullThinking || null,
-        timestamp: createdAt,
-        createdAt,
-        durationMs: Date.now() - startedAt,
-        model,
-        inputTokens,
-        outputTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-      })
+      // Cancel any pending flush — we're about to write the final state
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
 
-      for (let i = 0; i < collectedToolCalls.length; i++) {
-        const tc = collectedToolCalls[i]
-        await db.insert(toolCallsTable).values({
-          id: tc.id,
-          messageId,
-          tool: tc.tool,
-          args: tc.args,
-          result: tc.result,
-          orderIdx: i,
+      await db.update(messagesTable)
+        .set({
+          content: fullContent,
+          thinking: fullThinking || null,
+          durationMs: Date.now() - startedAt,
+          model,
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
         })
+        .where(eq(messagesTable.id, messageId))
+
+      // Update tool call results (they're already inserted; just ensure final state)
+      for (const tc of collectedToolCalls) {
+        await db.update(toolCallsTable)
+          .set({ result: tc.result })
+          .where(eq(toolCallsTable.id, tc.id))
       }
 
       // Persist file changes before emitting message:done so that when the
@@ -288,7 +336,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         role: "assistant",
         content: fullContent,
         thinking: fullThinking || undefined,
-        timestamp: createdAt,
+        timestamp: skeletonCreatedAt,
         durationMs: Date.now() - startedAt,
         model,
         inputTokens: inputTokens ?? undefined,

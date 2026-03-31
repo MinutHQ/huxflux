@@ -25,7 +25,7 @@ export default defineConfig([
   {
     entry: { cli: "src/cli.ts" },
     format: ["esm"],
-    target: "node18",
+    target: "node20",
     outDir: "dist",
     bundle: true,
     external: sharedExternal,
@@ -36,7 +36,7 @@ export default defineConfig([
   {
     entry: { index: "src/index.ts" },
     format: ["esm"],
-    target: "node18",
+    target: "node20",
     outDir: "dist",
     bundle: true,
     external: sharedExternal,

@@ -33,8 +33,8 @@ fi
 
 NODE_VER=$(node --version 2>&1 | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  die "Node.js 18+ required (found v$NODE_VER). Upgrade at https://nodejs.org"
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  die "Node.js 20+ required (found v$NODE_VER). Upgrade at https://nodejs.org"
 fi
 ok "Node.js v$NODE_VER"
 
@@ -59,7 +59,8 @@ if [ -z "$GH_TOKEN" ] || [ "$GH_TOKEN" = "undefined" ] || [ "$GH_TOKEN" = "null"
   echo "  1. Create a token: https://github.com/settings/tokens/new"
   echo "     Scope required: read:packages"
   echo ""
-  echo "  2. Add it to ~/.npmrc:"
+  echo "  2. Add it to ~/.npmrc (replace YOUR_TOKEN):"
+  echo "     echo '@alexmartosp:registry=https://npm.pkg.github.com' >> ~/.npmrc"
   echo "     echo '//npm.pkg.github.com/:_authToken=YOUR_TOKEN' >> ~/.npmrc"
   echo ""
   echo "  3. Re-run this installer."
@@ -68,14 +69,21 @@ if [ -z "$GH_TOKEN" ] || [ "$GH_TOKEN" = "undefined" ] || [ "$GH_TOKEN" = "null"
 fi
 ok "GitHub token found"
 
+# Ensure the @alexmartosp scope is routed to GitHub Packages.
+# Only scoped routing is set — all other packages still resolve from npm.
+if ! grep -q "@alexmartosp:registry" "${HOME}/.npmrc" 2>/dev/null; then
+  echo "@alexmartosp:registry=https://npm.pkg.github.com" >> "${HOME}/.npmrc"
+  info "Added @alexmartosp scope routing to ~/.npmrc"
+fi
+
 # ── Install ───────────────────────────────────────────────────────────────────
 header "Installing huxflux"
 
-info "Running: npm install -g @alexmartosp/huxflux --registry=https://npm.pkg.github.com"
-if ! npm install -g @alexmartosp/huxflux --registry=https://npm.pkg.github.com 2>&1; then
+info "Running: npm install -g @alexmartosp/huxflux"
+if ! npm install -g @alexmartosp/huxflux 2>&1; then
   echo ""
   warn "Global install failed. Trying with sudo..."
-  if ! sudo npm install -g @alexmartosp/huxflux --registry=https://npm.pkg.github.com 2>&1; then
+  if ! sudo npm install -g @alexmartosp/huxflux 2>&1; then
     die "Installation failed. Check npm permissions or use nvm/fnm for a user-level Node.js install."
   fi
 fi

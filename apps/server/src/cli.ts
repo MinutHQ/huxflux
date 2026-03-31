@@ -380,7 +380,7 @@ function cmdToken(sub?: string) {
 
 function cmdUpdate() {
   console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
-  let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit", shell: true })
+  let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
   if (result.status !== 0) {
     console.log("\nRetrying with sudo...")
     result = spawnSync("sudo", ["npm", "install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })

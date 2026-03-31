@@ -380,15 +380,15 @@ function cmdToken(sub?: string) {
 
 function cmdUpdate() {
   console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
-  let result = spawnSync("npm", ["install", "-g", "@AlexMartosP/huxflux@latest"], { stdio: "inherit", shell: true })
+  let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit", shell: true })
   if (result.status !== 0) {
     console.log("\nRetrying with sudo...")
-    result = spawnSync("sudo", ["npm", "install", "-g", "@AlexMartosP/huxflux@latest"], { stdio: "inherit" })
+    result = spawnSync("sudo", ["npm", "install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
   }
   if (result.status !== 0) {
     console.error("\nUpdate failed. Run manually:")
-    console.error("  npm install -g @AlexMartosP/huxflux@latest")
-    console.error("  # or: sudo npm install -g @AlexMartosP/huxflux@latest\n")
+    console.error("  npm install -g @alexmartosp/huxflux@latest")
+    console.error("  # or: sudo npm install -g @alexmartosp/huxflux@latest\n")
     process.exit(result.status ?? 1)
   }
   console.log(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)

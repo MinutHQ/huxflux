@@ -40,11 +40,17 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "message:chunk") {
-      updateMessages((msgs) =>
-        msgs.map((m) =>
+      setIsStreaming(true)
+      updateMessages((msgs) => {
+        const exists = msgs.some((m) => m.id === event.messageId)
+        const withMessage = exists ? msgs : [
+          ...msgs,
+          { id: event.messageId, role: "assistant" as const, content: "", timestamp: new Date().toISOString(), toolCalls: [] },
+        ]
+        return withMessage.map((m) =>
           m.id === event.messageId ? { ...m, content: m.content + event.delta } : m
         )
-      )
+      })
     }
 
     if (event.type === "message:thinking") {
@@ -58,13 +64,19 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "tool:call") {
-      updateMessages((msgs) =>
-        msgs.map((m) =>
+      updateMessages((msgs) => {
+        const exists = msgs.some((m) => m.id === event.messageId)
+        const withMessage = exists ? msgs : [
+          ...msgs,
+          // message:start was missed (page loaded mid-run) — recreate the placeholder
+          { id: event.messageId, role: "assistant" as const, content: "", timestamp: new Date().toISOString(), toolCalls: [] },
+        ]
+        return withMessage.map((m) =>
           m.id === event.messageId
             ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall as unknown as ToolCall] }
             : m
         )
-      )
+      })
     }
 
     if (event.type === "tool:result") {

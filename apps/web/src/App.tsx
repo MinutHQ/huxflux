@@ -16,7 +16,7 @@ import { useServers } from "@/hooks/useServers"
 import { connectBackgroundServer } from "@/lib/ws"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
-import type { FileChange } from "@/data/mock"
+import type { FileChange, PRComment } from "@/data/mock"
 import { mockPRs } from "@/data/mockReviews"
 import { getFlag } from "@/lib/flags"
 
@@ -25,6 +25,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<FileChange | null>(null)
+  const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [terminalTab, setTerminalTab] = useState<"setup" | "run" | "terminal">("terminal")
   const [onboardingDone, setOnboardingDone] = useState(false)
 
@@ -72,6 +73,7 @@ export default function App() {
     setSelectedId(id)
     setSelectedPrId(null)
     setOpenFileTab(null)
+    setPendingComments([])
   }
 
   function handlePrSelect(id: string) {
@@ -139,6 +141,9 @@ export default function App() {
             isStreaming={isStreaming || streamingAgentId === resolvedSelectedId}
             openFileTab={openFileTab}
             onClearFileTab={() => setOpenFileTab(null)}
+            pendingComments={pendingComments}
+            onRemoveComment={(id: string) => setPendingComments((prev) => prev.filter((c) => c.id !== id))}
+            onClearComments={() => setPendingComments([])}
           />
         </ResizablePanel>
 
@@ -151,6 +156,9 @@ export default function App() {
                 agent={agent}
                 selectedFile={openFileTab?.path ?? null}
                 onFileSelect={setOpenFileTab}
+                onAddComment={(c) => setPendingComments((prev) =>
+                  prev.some((p) => p.id === c.id) ? prev : [...prev, c]
+                )}
               />
             </ResizablePanel>
 

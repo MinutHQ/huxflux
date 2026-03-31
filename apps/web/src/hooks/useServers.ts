@@ -46,7 +46,7 @@ export function useServers() {
   const setActive = useCallback(
     (id: string) => {
       setActiveServerId(id)
-      setActiveIdState(id)
+      window.location.reload()
     },
     []
   )

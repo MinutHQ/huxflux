@@ -6,6 +6,7 @@ export const repos = sqliteTable("repos", {
   path: text("path").notNull(),
   workspacesPath: text("workspaces_path").notNull(),
   branchFrom: text("branch_from").notNull().default("origin/main"),
+  branchPrefix: text("branch_prefix"),
   remote: text("remote").notNull().default("origin"),
   previewUrl: text("preview_url"),
   setupScript: text("setup_script"),
@@ -25,6 +26,9 @@ export const agents = sqliteTable("agents", {
   location: text("location").notNull(),
   unread: integer("unread").default(0),
   description: text("description"),
+  prNumber: integer("pr_number"),
+  prStatus: text("pr_status"), // JSON: PRStatus
+  baseBranch: text("base_branch"), // optional per-agent override of repo.branchFrom
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
@@ -37,6 +41,12 @@ export const messages = sqliteTable("messages", {
   thinking: text("thinking"),
   timestamp: text("timestamp").notNull(),
   createdAt: text("created_at").notNull(),
+  durationMs: integer("duration_ms"),
+  model: text("model"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  cacheReadTokens: integer("cache_read_tokens"),
+  cacheWriteTokens: integer("cache_write_tokens"),
 })
 
 export const toolCalls = sqliteTable("tool_calls", {

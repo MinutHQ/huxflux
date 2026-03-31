@@ -18,6 +18,21 @@ async function isGitRepo(dirPath: string): Promise<boolean> {
   }
 }
 
+const SKIP_DIRS = new Set([
+  // System / OS
+  "Library", "System", "Applications", "Volumes", "private", "proc", "sys", "dev", "etc", "usr", "var", "bin", "sbin", "opt",
+  // Package managers & caches
+  "node_modules", ".npm", ".yarn", ".pnpm-store", ".cache", ".gradle", ".m2", "vendor",
+  // Build output
+  "dist", "build", "out", ".next", ".nuxt", ".svelte-kit", "target", "__pycache__", ".pytest_cache",
+  // Virtual envs
+  ".venv", "venv", "env", ".env", "virtualenv",
+  // IDE / tooling internals
+  ".git", ".idea", ".vscode", ".vs",
+  // macOS specifics
+  "Trash", ".Trash",
+])
+
 async function findGitRepos(rootPath: string, maxDepth: number, results: RepoResult[]): Promise<void> {
   if (maxDepth < 0) return
   let entries: Dirent[]
@@ -29,8 +44,7 @@ async function findGitRepos(rootPath: string, maxDepth: number, results: RepoRes
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    // Skip hidden dirs and common non-repo dirs
-    if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === ".git") continue
+    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue
     const fullPath = path.join(rootPath, entry.name)
     if (await isGitRepo(fullPath)) {
       results.push({ name: entry.name, path: fullPath })

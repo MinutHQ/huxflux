@@ -9,6 +9,7 @@ import { api } from "@/lib/api"
 import { useRepos } from "@/hooks/useRepos"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
+import { AddRepoDialog } from "@/components/SettingsPage"
 import { getFlag } from "@/lib/flags"
 import {
   IconChevronRight,
@@ -69,13 +70,19 @@ function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
               <span className="text-muted-foreground/60">♟{agent.diffSummary.commits}</span>
             </>
           )}
-          {agent.pr && (
+          {agent.prStatus && (
             <>
               <span className="text-muted-foreground/40">·</span>
-              <span className="text-muted-foreground/60 flex items-center gap-0.5">
-                {agent.pr}
+              <a
+                href={agent.prStatus.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-muted-foreground/60 flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                #{agent.prStatus.number}
                 <IconArrowUpRight size={11} />
-              </span>
+              </a>
             </>
           )}
         </div>
@@ -124,7 +131,9 @@ function NewAgentDialog({ onClose, onCreated }: { onClose: () => void; onCreated
     setCreating(repoId)
     try {
       const name = randomBeeName()
-      const branch = `agent/${name}`
+      const repo = repos.find((r) => r.id === repoId)
+      const prefix = repo?.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
+      const branch = `${prefix}${name}`
       const agent = await api.createAgent({
         title: name,
         branch,
@@ -467,6 +476,7 @@ interface SidebarProps {
 export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated, prs, selectedPrId, onSelectPr }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
+  const [showAddRepo, setShowAddRepo] = useState(false)
   const [tab, setTab] = useState<"agents" | "review">("agents")
 
   const prReviewEnabled = getFlag("prReview")
@@ -545,7 +555,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                   <Button variant="ghost" size="icon-xs">
                     <IconFilter size={13} />
                   </Button>
-                  <Button variant="ghost" size="icon-xs">
+                  <Button variant="ghost" size="icon-xs" onClick={() => setShowAddRepo(true)}>
                     <IconFolderPlus size={13} />
                   </Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
@@ -641,6 +651,9 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
 
       {showNewAgent && (
         <NewAgentDialog onClose={() => setShowNewAgent(false)} onCreated={handleAgentCreated} />
+      )}
+      {showAddRepo && (
+        <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />
       )}
     </>
   )

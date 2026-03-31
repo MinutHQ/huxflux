@@ -2,6 +2,73 @@
 
 export type AgentStatus = "done" | "in-review" | "in-progress" | "backlog" | "cancelled"
 
+export interface PRStatus {
+  number: number
+  url: string
+  state: "open" | "closed"
+  merged: boolean
+  draft: boolean
+  mergeableState: string // "clean" | "blocked" | "dirty" | "unknown" | "unstable"
+  hasChangeRequests: boolean
+}
+
+export interface PRReview {
+  author: string
+  avatarUrl?: string
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING"
+  submittedAt?: string
+}
+
+export interface PRCheck {
+  name: string
+  status: "queued" | "in_progress" | "completed"
+  conclusion: "success" | "failure" | "cancelled" | "skipped" | "timed_out" | "action_required" | "neutral" | null
+  url?: string
+}
+
+export interface PRComment {
+  id: string
+  author: string
+  avatarUrl?: string
+  body: string
+  createdAt: string
+  url: string
+  isReply: boolean
+  path?: string
+  line?: number
+}
+
+export interface PRThread {
+  id: string
+  isResolved: boolean
+  isOutdated: boolean
+  path?: string
+  line?: number
+  comments: PRComment[]
+}
+
+// General PR discussion comments (not inline review threads)
+export interface PRIssueComment {
+  id: number
+  author: string
+  avatarUrl?: string
+  body: string
+  createdAt: string
+  url: string
+}
+
+export interface PRDetails extends PRStatus {
+  title: string
+  body?: string
+  author: string
+  avatarUrl?: string
+  createdAt: string
+  reviews: PRReview[]
+  checks: PRCheck[]
+  threads: PRThread[]
+  issueComments: PRIssueComment[]
+}
+
 export interface FileChange {
   path: string
   additions: number
@@ -24,6 +91,12 @@ export interface Message {
   thinking?: string
   timestamp: string
   toolCalls?: ToolCall[]
+  durationMs?: number
+  model?: string
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
 }
 
 export interface Agent {
@@ -32,7 +105,10 @@ export interface Agent {
   title: string
   status: AgentStatus
   branch: string
+  baseBranch?: string
   pr?: string
+  prNumber?: number
+  prStatus?: PRStatus
   model: string
   location: string
   unread?: number
@@ -54,6 +130,7 @@ export interface Repo {
   path: string
   workspacesPath: string
   branchFrom: string
+  branchPrefix?: string
   remote: string
   previewUrl?: string
   setupScript?: string

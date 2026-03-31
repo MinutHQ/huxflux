@@ -3,7 +3,7 @@ import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
-import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable } from "../db/schema.js"
+import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable } from "../db/schema.js"
 import { emit } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
 import { eq } from "drizzle-orm"
@@ -15,12 +15,22 @@ type ClaudeStreamEvent =
   | { type: "system"; subtype: "init" }
   | { type: "assistant"; message: { content: Array<{ type: "text"; text: string } | { type: "thinking"; thinking: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }> } }
   | { type: "tool_result"; tool_use_id: string; content: string }
-  | { type: "result"; subtype: "success" | "error"; result?: string; error?: string }
+  | { type: "result"; subtype: "success" | "error"; result?: string; error?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } }
 
 interface RunnerOptions {
   agentId: string
   worktreePath: string
   model?: string
+}
+
+// Registry of running agent processes
+const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
+
+export function stopAgent(agentId: string): boolean {
+  const proc = runningProcesses.get(agentId)
+  if (!proc) return false
+  proc.kill("SIGTERM")
+  return true
 }
 
 const MODEL_ALIASES: Record<string, string> = {
@@ -52,9 +62,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     createdAt: now,
   })
 
-  // Mark agent as in-progress and broadcast
+  // Mark agent as in-progress unless already in-review (don't downgrade)
+  const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  const newStatus = currentAgent?.status === "in-review" ? "in-review" : "in-progress"
   await db.update(agentsTable)
-    .set({ status: "in-progress", updatedAt: now })
+    .set({ status: newStatus, updatedAt: now })
     .where(eq(agentsTable.id, agentId))
 
   const agentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
@@ -70,6 +82,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   let fullThinking = ""
   const collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }> = []
   let toolCallOrderIdx = 0
+  const startedAt = Date.now()
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let cacheReadTokens: number | null = null
+  let cacheWriteTokens: number | null = null
 
   // Resolve claude binary — prefer explicit CLAUDE_BIN env, then which, then plain name
   const claudeBin = (() => {
@@ -140,6 +157,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       },
     })
 
+    runningProcesses.set(agentId, proc)
+
     let buffer = ""
 
     proc.stdout.on("data", (chunk: Buffer) => {
@@ -164,6 +183,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     })
 
     proc.on("close", async (code) => {
+      runningProcesses.delete(agentId)
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
         try { handleEvent(JSON.parse(buffer.trim())) } catch { /* non-JSON remainder */ }
@@ -221,6 +241,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           toolCallId: event.tool_use_id,
           result: event.content,
         })
+      } else if (event.type === "result" && event.usage) {
+        inputTokens = event.usage.input_tokens ?? null
+        outputTokens = event.usage.output_tokens ?? null
+        cacheReadTokens = event.usage.cache_read_input_tokens ?? null
+        cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
       }
     }
 
@@ -234,6 +259,12 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         thinking: fullThinking || null,
         timestamp: createdAt,
         createdAt,
+        durationMs: Date.now() - startedAt,
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
       })
 
       for (let i = 0; i < collectedToolCalls.length; i++) {
@@ -248,12 +279,22 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         })
       }
 
+      // Persist file changes before emitting message:done so that when the
+      // client invalidates its query cache the DB already has fresh data.
+      await refreshFileChanges()
+
       const builtMessage: Message = {
         id: messageId,
         role: "assistant",
         content: fullContent,
         thinking: fullThinking || undefined,
         timestamp: createdAt,
+        durationMs: Date.now() - startedAt,
+        model,
+        inputTokens: inputTokens ?? undefined,
+        outputTokens: outputTokens ?? undefined,
+        cacheReadTokens: cacheReadTokens ?? undefined,
+        cacheWriteTokens: cacheWriteTokens ?? undefined,
         toolCalls: collectedToolCalls.map((tc) => ({
           id: tc.id,
           tool: tc.tool,
@@ -267,7 +308,20 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
     async function refreshFileChanges() {
       try {
-        const files = await getFileChanges(worktreePath)
+        const files = await getFileChanges(worktreePath, repoRow?.branchFrom ?? "HEAD")
+
+        // Persist to DB so the file list survives page reloads
+        await db.delete(fileChangesTable).where(eq(fileChangesTable.agentId, agentId))
+        for (const f of files) {
+          await db.insert(fileChangesTable).values({
+            id: `${agentId}-${f.path.replace(/[/\\]/g, "-")}`,
+            agentId,
+            path: f.path,
+            additions: f.additions,
+            deletions: f.deletions,
+          })
+        }
+
         emit(agentId, { type: "file:changed", agentId, files })
       } catch { /* not fatal */ }
     }

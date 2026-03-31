@@ -1,9 +1,10 @@
 import { useRef, useEffect, useState, useCallback } from "react"
+import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { Agent, Message, FileChange, ToolCall } from "@/data/mock"
+import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
 import { api } from "@/lib/api"
 import { DiffView } from "@/components/DiffView"
 import ReactMarkdown from "react-markdown"
@@ -15,8 +16,6 @@ import {
   IconPlus,
   IconBrain,
   IconCopy,
-  IconThumbUp,
-  IconThumbDown,
   IconRefresh,
   IconGitBranch,
   IconPaperclip,
@@ -34,8 +33,11 @@ import {
   IconPlayerStop,
   IconHexagon,
   IconMap,
+  IconArrowUpRight,
+  IconMessageCircle,
 } from "@tabler/icons-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 const MODELS = [
   { id: "claude-opus-4-6",           label: "Opus 4.6" },
@@ -316,17 +318,70 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 mt-2.5">
-        <span className="text-[11px] text-muted-foreground/50">{msg.timestamp}</span>
-        <span className="text-muted-foreground/25">·</span>
-        <div className="flex items-center gap-0.5">
-          {[IconCopy, IconThumbUp, IconThumbDown, IconRefresh].map((Icon, i) => (
-            <Button key={i} variant="ghost" size="icon-xs" className="text-muted-foreground/40">
-              <Icon size={12} />
-            </Button>
-          ))}
-        </div>
+      {/* Footer */}
+      <div className="flex items-center gap-1.5 mt-2.5">
+        {msg.durationMs != null && (
+          <>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors cursor-pointer select-none">
+                  {msg.durationMs < 1000
+                    ? `${msg.durationMs}ms`
+                    : `${(msg.durationMs / 1000).toFixed(0)}s`}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 text-xs p-3 space-y-2">
+                {msg.model && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Model</span>
+                    <span className="font-medium">{msg.model}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Time</span>
+                  <span className="font-medium">{msg.timestamp}</span>
+                </div>
+                {(msg.inputTokens != null || msg.outputTokens != null) && (
+                  <div className="border-t pt-2 space-y-1.5">
+                    {msg.inputTokens != null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Input</span>
+                        <span className="font-medium">{msg.inputTokens.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {msg.outputTokens != null && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Output</span>
+                        <span className="font-medium">{msg.outputTokens.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {msg.cacheReadTokens != null && msg.cacheReadTokens > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Cache read</span>
+                        <span className="font-medium">{msg.cacheReadTokens.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {msg.cacheWriteTokens != null && msg.cacheWriteTokens > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Cache write</span>
+                        <span className="font-medium">{msg.cacheWriteTokens.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+            <span className="text-muted-foreground/25">·</span>
+          </>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground/40 hover:text-muted-foreground/80"
+          onClick={() => navigator.clipboard.writeText(msg.content)}
+        >
+          <IconCopy size={12} />
+        </Button>
       </div>
     </div>
   )
@@ -352,6 +407,87 @@ function useElapsedSeconds(running: boolean) {
   }, [running])
 
   return seconds
+}
+
+// ── PR status pill ────────────────────────────────────────────────────────────
+
+function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: string }) {
+  const [marking, setMarking] = useState(false)
+  const [rerequesting, setRerequesting] = useState(false)
+
+  async function handleMarkReady() {
+    setMarking(true)
+    try {
+      await api.markPRReady(agentId)
+    } finally {
+      setMarking(false)
+    }
+  }
+
+  async function handleRerequestReview() {
+    setRerequesting(true)
+    try {
+      await api.rerequestReview(agentId)
+      toast.success("Review re-requested")
+    } catch (err) {
+      toast.error(`Failed to re-request review: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setRerequesting(false)
+    }
+  }
+
+  const { label, pill } = (() => {
+    if (prStatus.merged)
+      return { label: "Merged", pill: "bg-purple-500/10 border-purple-500/25 text-purple-400" }
+    if (prStatus.draft)
+      return { label: "Draft PR open", pill: "bg-zinc-500/10 border-zinc-500/25 text-zinc-400" }
+    if (prStatus.hasChangeRequests)
+      return { label: "PR changes requested", pill: "bg-orange-500/10 border-orange-500/25 text-orange-400" }
+    if (prStatus.mergeableState === "blocked" || prStatus.mergeableState === "dirty")
+      return { label: prStatus.mergeableState === "dirty" ? "Merge conflict" : "Blocked", pill: "bg-red-500/10 border-red-500/25 text-red-400" }
+    if (prStatus.state === "open" && !prStatus.draft && !prStatus.hasChangeRequests && prStatus.mergeableState !== "behind")
+      return { label: "Ready to merge", pill: "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" }
+    return { label: "In review", pill: "bg-blue-500/10 border-blue-500/25 text-blue-400" }
+  })()
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <a
+        href={prStatus.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border text-[11px] text-muted-foreground font-mono hover:text-foreground transition-colors"
+      >
+        #{prStatus.number}
+        <IconArrowUpRight size={10} />
+      </a>
+      <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-medium", pill)}>
+        {label}
+      </div>
+      {prStatus.draft && !prStatus.merged && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+          onClick={handleMarkReady}
+          disabled={marking}
+        >
+          Mark ready
+        </Button>
+      )}
+      {prStatus.hasChangeRequests && !prStatus.merged && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+          onClick={handleRerequestReview}
+          disabled={rerequesting}
+        >
+          Re-request review
+        </Button>
+      )}
+    </div>
+  )
 }
 
 // ── Creation view ─────────────────────────────────────────────────────────────
@@ -400,20 +536,26 @@ interface ChatViewProps {
   isStreaming: boolean
   openFileTab: FileChange | null
   onClearFileTab: () => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
+  onClearComments?: () => void
 }
 
-export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pendingComments = [], onRemoveComment, onClearComments }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const [input, setInput] = useState("")
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
   const [thinking, setThinking] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const elapsed = useElapsedSeconds(isStreaming)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
   const [planMode, setPlanMode] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
+  const [editingBaseBranch, setEditingBaseBranch] = useState(false)
+  const [baseBranchDraft, setBaseBranchDraft] = useState("")
+  const baseBranchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (editingTitle) {
@@ -422,12 +564,27 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
     }
   }, [editingTitle])
 
+  useEffect(() => {
+    if (editingBaseBranch) {
+      baseBranchInputRef.current?.focus()
+      baseBranchInputRef.current?.select()
+    }
+  }, [editingBaseBranch])
+
   async function commitTitle() {
     const title = titleDraft.trim()
     setEditingTitle(false)
     if (!title || title === agent.title) return
     await api.updateAgent(agent.id, { title })
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, title } : old)
+  }
+
+  async function commitBaseBranch() {
+    const val = baseBranchDraft.trim()
+    setEditingBaseBranch(false)
+    if (!val || val === agent.baseBranch) return
+    await api.updateAgent(agent.id, { baseBranch: val })
+    queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, baseBranch: val } : old)
   }
   const [slashQuery, setSlashQuery] = useState<string | null>(null) // null = closed, "" = show all
   const [slashIndex, setSlashIndex] = useState(0)
@@ -467,13 +624,17 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
     setSlashQuery(null)
   }, [])
 
-  async function handleSend() {
-    const content = input.trim()
-    if (!content || isSending || isStreaming) return
-    setInput("")
-    setIsSending(true)
+  function buildContent(text: string) {
+    if (pendingComments.length === 0) return text
+    const commentContext = pendingComments.map((c) => {
+      const loc = c.path ? `${c.path.split("/").pop()}${c.line ? `:${c.line}` : ""}` : null
+      return `@${c.author}${loc ? ` on \`${loc}\`` : ""}:\n> ${c.body.trim().replace(/\n/g, "\n> ")}`
+    }).join("\n\n")
+    return `PR review comments:\n\n${commentContext}\n\n---\n\n${text}`
+  }
 
-    // Optimistically add user message to cache immediately
+  async function sendContent(content: string) {
+    setIsSending(true)
     const optimisticMsg: Message = {
       id: `optimistic-${Date.now()}`,
       role: "user",
@@ -484,11 +645,9 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
       if (!old) return old
       return { ...old, messages: [...old.messages, optimisticMsg] }
     })
-
     try {
       await api.sendMessage(agent.id, content)
     } catch {
-      // Roll back optimistic message on failure
       queryClient.setQueryData<Agent>(["agent", agent.id], (old) => {
         if (!old) return old
         return { ...old, messages: old.messages.filter((m) => m.id !== optimisticMsg.id) }
@@ -497,6 +656,32 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
       setIsSending(false)
     }
   }
+
+  function handleSend() {
+    const text = input.trim()
+    if ((!text && pendingComments.length === 0) || isSending) return
+
+    const content = buildContent(text)
+    setInput("")
+    onClearComments?.()
+
+    if (isStreaming) {
+      setQueuedMessage(content)
+      return
+    }
+
+    void sendContent(content)
+  }
+
+  // Auto-send queued message when streaming ends
+  useEffect(() => {
+    if (!isStreaming && queuedMessage !== null) {
+      const msg = queuedMessage
+      setQueuedMessage(null)
+      void sendContent(msg)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming])
 
   useEffect(() => {
     if (openFileTab) setActiveTab("file")
@@ -519,7 +704,8 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
     onClearFileTab()
   }
 
-  const canSend = input.trim().length > 0 && !isSending && !isStreaming
+  const hasInput = input.trim().length > 0 || pendingComments.length > 0
+  const canSend = hasInput && !isSending
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -528,20 +714,30 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
         <IconGitBranch size={13} className="text-muted-foreground/50 shrink-0" />
         <span className="text-[12px] text-muted-foreground font-mono truncate">{agent.branch}</span>
         <span className="text-muted-foreground/30 shrink-0">›</span>
-        <span className="text-[12px] text-muted-foreground/60 shrink-0">origin/develop</span>
+        {editingBaseBranch ? (
+          <input
+            ref={baseBranchInputRef}
+            value={baseBranchDraft}
+            onChange={(e) => setBaseBranchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void commitBaseBranch() }
+              if (e.key === "Escape") setEditingBaseBranch(false)
+            }}
+            onBlur={() => void commitBaseBranch()}
+            className="bg-background border border-ring rounded px-1.5 py-0.5 text-[12px] font-mono outline-none text-foreground w-36"
+          />
+        ) : (
+          <button
+            onClick={() => { setBaseBranchDraft(agent.baseBranch ?? "origin/main"); setEditingBaseBranch(true) }}
+            className="text-[12px] text-muted-foreground/60 font-mono hover:text-foreground transition-colors"
+            title="Click to change base branch"
+          >
+            {agent.baseBranch ?? "origin/main"}
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          {isStreaming && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-[11px] text-amber-400 font-mono tabular-nums">
-                Working… {elapsed}s
-              </span>
-            </div>
-          )}
-          {agent.pr && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border">
-              <span className="text-[11px] text-muted-foreground font-mono">{agent.pr}</span>
-            </div>
+          {agent.prStatus && (
+            <PRStatusPill prStatus={agent.prStatus} agentId={agent.id} />
           )}
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border">
             <span className="text-[11px] text-muted-foreground font-mono">/{agent.location}</span>
@@ -554,7 +750,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
         <div
           onClick={() => setActiveTab("chat")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer",
+            "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer",
             activeTab === "chat"
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -568,19 +764,22 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
               onChange={(e) => setTitleDraft(e.target.value)}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); commitTitle() }
+                if (e.key === "Enter") { e.preventDefault(); void commitTitle() }
                 if (e.key === "Escape") setEditingTitle(false)
               }}
-              onBlur={commitTitle}
+              onBlur={() => void commitTitle()}
               className="bg-background border border-ring rounded px-1.5 py-0.5 outline-none text-foreground w-48"
             />
           ) : (
-            <span
-              onDoubleClick={(e) => { e.stopPropagation(); setTitleDraft(agent.title); setEditingTitle(true) }}
-              title="Double-click to rename"
+            <span>{agent.title.length > 32 ? agent.title.slice(0, 32) + "…" : agent.title}</span>
+          )}
+          {!editingTitle && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setTitleDraft(agent.title); setEditingTitle(true) }}
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-muted-foreground transition-all ml-1"
             >
-              {agent.title.length > 32 ? agent.title.slice(0, 32) + "…" : agent.title}
-            </span>
+              <IconPencil size={11} />
+            </button>
           )}
         </div>
 
@@ -667,19 +866,50 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
                   </div>
                 </div>
               )}
+              {queuedMessage !== null && (
+                <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                  <span>Message queued — will send when agent finishes</span>
+                  <button
+                    onClick={() => setQueuedMessage(null)}
+                    className="ml-auto text-amber-400/60 hover:text-amber-400 transition-colors"
+                  >
+                    <IconX size={11} />
+                  </button>
+                </div>
+              )}
               <div className={cn(
                 "bg-card rounded-xl transition-colors",
                 planMode
                   ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
                   : "border border-border focus-within:border-ring"
               )}>
+                {pendingComments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 px-4 pt-3">
+                    {pendingComments.map((c) => {
+                      const loc = c.path ? c.path.split("/").pop() + (c.line ? `:${c.line}` : "") : null
+                      return (
+                        <div key={c.id} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
+                          <IconMessageCircle size={12} className="text-muted-foreground/60 shrink-0" />
+                          <span className="font-medium text-foreground/80">{loc ?? `@${c.author}`}</span>
+                          <span className="text-muted-foreground/50 uppercase tracking-wide font-medium text-[9px]">Comment</span>
+                          <button
+                            onClick={() => onRemoveComment?.(c.id)}
+                            className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"
+                          >
+                            <IconX size={11} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
                 <textarea
                   value={input}
                   onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
                   rows={2}
-                  disabled={isStreaming}
-                  className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none"
                   onKeyDown={(e) => {
                     if (slashQuery !== null && filteredCommands.length > 0) {
                       if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % filteredCommands.length); return }
@@ -740,20 +970,24 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab }: Ch
                     <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
                       <IconPlus size={13} />
                     </Button>
-                    {isStreaming ? (
-                      <Button size="icon-xs" variant="destructive" disabled>
-                        <IconPlayerStop size={13} />
-                      </Button>
-                    ) : (
+                    {isStreaming && (
                       <Button
                         size="icon-xs"
-                        variant={canSend ? "default" : "secondary"}
-                        disabled={!canSend}
-                        onClick={handleSend}
+                        variant="destructive"
+                        onClick={() => api.stopAgent(agent.id).catch(() => {})}
                       >
-                        <IconSend size={13} />
+                        <IconPlayerStop size={13} />
                       </Button>
                     )}
+                    <Button
+                      size="icon-xs"
+                      variant={canSend ? (isStreaming ? "outline" : "default") : "secondary"}
+                      disabled={!canSend}
+                      onClick={handleSend}
+                      title={isStreaming ? "Queue message" : "Send"}
+                    >
+                      <IconSend size={13} />
+                    </Button>
                   </div>
                 </div>
               </div>

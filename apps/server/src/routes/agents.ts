@@ -5,8 +5,23 @@ import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
+import { stopAgent } from "../claude/runner.js"
 import { config } from "../config.js"
 import * as path from "node:path"
+import { spawn } from "node:child_process"
+
+function parsePrStatus(raw: string | null | undefined) {
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+function runScript(script: string, cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("sh", ["-c", script], { cwd, stdio: "inherit" })
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Setup script exited with code ${code}`)))
+    proc.on("error", reject)
+  })
+}
 
 export async function agentsRoutes(app: FastifyInstance) {
   // GET /api/agents — list with diffSummary computed from file_changes
@@ -19,6 +34,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       return {
         ...a,
         diffSummary: files.length > 0 ? { additions, deletions } : undefined,
+        prStatus: parsePrStatus(a.prStatus),
       }
     }))
   })
@@ -65,6 +81,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       fileChanges: files,
       terminalOutput: terminal,
       diffSummary: files.length > 0 ? { additions, deletions } : undefined,
+      prStatus: parsePrStatus(agent.prStatus),
     }
   })
 
@@ -103,9 +120,16 @@ export async function agentsRoutes(app: FastifyInstance) {
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
         try {
-          await createWorktree(repo.path, branch, worktreePath)
+          await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
         } catch (err) {
           app.log.warn(`Worktree creation failed: ${err}`)
+        }
+        if (repo.setupScript) {
+          try {
+            await runScript(repo.setupScript, worktreePath)
+          } catch (err) {
+            app.log.warn(`Setup script failed: ${err}`)
+          }
         }
       }
     }
@@ -119,7 +143,7 @@ export async function agentsRoutes(app: FastifyInstance) {
   // PATCH /api/agents/:id — update status / metadata
   app.patch<{
     Params: { id: string }
-    Body: Partial<{ title: string; status: string; pr: string; description: string; unread: number }>
+    Body: Partial<{ title: string; status: string; pr: string; description: string; unread: number; baseBranch: string }>
   }>("/api/agents/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
@@ -131,6 +155,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       ...(body.pr !== undefined && { pr: body.pr }),
       ...(body.description !== undefined && { description: body.description }),
       ...(body.unread !== undefined && { unread: body.unread }),
+      ...(body.baseBranch !== undefined && { baseBranch: body.baseBranch }),
       updatedAt: now,
     }).where(eq(agents.id, id))
 
@@ -139,6 +164,13 @@ export async function agentsRoutes(app: FastifyInstance) {
 
     broadcast({ type: "agent:updated", agent: updated as any })
     return updated
+  })
+
+  // POST /api/agents/:id/stop — kill the running Claude process
+  app.post<{ Params: { id: string } }>("/api/agents/:id/stop", async (req, reply) => {
+    const killed = stopAgent(req.params.id)
+    if (!killed) return reply.code(404).send({ error: "No running process for this agent" })
+    return { stopped: true }
   })
 
   // DELETE /api/agents/:id — archive + remove worktree
@@ -171,7 +203,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
     const worktreePath = path.join(repo.workspacesPath, agent.location)
-    const summary = await getDiffSummary(worktreePath)
+    const summary = await getDiffSummary(worktreePath, repo.branchFrom)
 
     return { diffSummary: summary }
   })

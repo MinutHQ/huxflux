@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { FileChange } from "@/data/mock"
 import { api } from "@/lib/api"
-import { IconCopy, IconArrowBack, IconDots, IconEye } from "@tabler/icons-react"
+import { IconCopy, IconEye } from "@tabler/icons-react"
 
 // ── Diff parsing ──────────────────────────────────────────────────────────────
 
@@ -181,10 +181,6 @@ export function DiffView({ agentId, file }: { agentId: string; file: FileChange 
         <span className="text-muted-foreground font-mono truncate">
           {file.path.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
         </span>
-        <div className="flex items-center gap-0.5 ml-2 shrink-0">
-          <button className="px-2 py-0.5 rounded text-foreground bg-accent font-medium">Diff</button>
-          <button className="px-2 py-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Edit</button>
-        </div>
         <div className="ml-auto flex items-center gap-3 shrink-0">
           <button
             onClick={() => setViewed(!viewed)}
@@ -193,14 +189,12 @@ export function DiffView({ agentId, file }: { agentId: string; file: FileChange 
             <IconEye size={13} />
             <span>Viewed</span>
           </button>
-          <button className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+          <button
+            onClick={() => rawDiff && navigator.clipboard.writeText(rawDiff)}
+            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            title="Copy diff"
+          >
             <IconCopy size={13} />
-          </button>
-          <button className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
-            <IconArrowBack size={13} />
-          </button>
-          <button className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
-            <IconDots size={13} />
           </button>
         </div>
       </div>

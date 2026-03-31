@@ -1,4 +1,4 @@
-import type { Agent, AgentSummary, FileChange, Message, Repo, SlashCommand } from "@/data/mock"
+import type { Agent, AgentSummary, FileChange, Message, Repo, SlashCommand, PRStatus, PRDetails } from "@/data/mock"
 import { getServers, getActiveServerId } from "@/lib/serverStore"
 
 function getActiveServer() {
@@ -17,11 +17,19 @@ function authHeaders(): Record<string, string> {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body !== undefined
   const res = await fetch(`${getBase()}${path}`, {
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...init?.headers },
+    headers: {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...authHeaders(),
+      ...init?.headers,
+    },
     ...init,
   })
-  if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path} → ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error ?? `${init?.method ?? "GET"} ${path} → ${res.status}`)
+  }
   if (res.status === 204) return undefined as T
   return res.json()
 }
@@ -32,10 +40,12 @@ export const api = {
   getAgent: (id: string) => req<Agent>(`/api/agents/${id}`),
   createAgent: (body: { repoId?: string; title: string; branch: string; model?: string; location?: string; description?: string }) =>
     req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
-  updateAgent: (id: string, body: Partial<Pick<Agent, "title" | "status" | "pr" | "description" | "unread">>) =>
+  updateAgent: (id: string, body: Partial<Pick<Agent, "title" | "status" | "pr" | "description" | "unread" | "baseBranch">>) =>
     req<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteAgent: (id: string) =>
     req<void>(`/api/agents/${id}`, { method: "DELETE" }),
+  stopAgent: (id: string) =>
+    req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
 
   // Messages
   getMessages: (agentId: string) => req<Message[]>(`/api/agents/${agentId}/messages`),
@@ -69,6 +79,15 @@ export const api = {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""
     return req<{ name: string; path: string }[]>(`/api/fs/repos${qs}`)
   },
+
+  // GitHub / PR
+  getPRDetails: (agentId: string) => req<PRDetails>(`/api/agents/${agentId}/pr/details`),
+  createPR: (agentId: string, body: { title: string; body?: string; draft?: boolean }) =>
+    req<PRStatus>(`/api/agents/${agentId}/pr`, { method: "POST", body: JSON.stringify(body) }),
+  markPRReady: (agentId: string) =>
+    req<PRStatus>(`/api/agents/${agentId}/pr/ready`, { method: "PUT" }),
+  rerequestReview: (agentId: string) =>
+    req<PRStatus>(`/api/agents/${agentId}/pr/rerequest-review`, { method: "POST" }),
 
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {

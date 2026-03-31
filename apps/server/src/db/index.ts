@@ -92,8 +92,31 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
-  // Add new migrations here, e.g.:
-  // { version: 2, sql: `ALTER TABLE agents ADD COLUMN foo TEXT;` },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE messages ADD COLUMN duration_ms INTEGER;
+      ALTER TABLE messages ADD COLUMN model TEXT;
+      ALTER TABLE messages ADD COLUMN input_tokens INTEGER;
+      ALTER TABLE messages ADD COLUMN output_tokens INTEGER;
+      ALTER TABLE messages ADD COLUMN cache_read_tokens INTEGER;
+      ALTER TABLE messages ADD COLUMN cache_write_tokens INTEGER;
+    `,
+  },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE agents ADD COLUMN pr_number INTEGER;
+      ALTER TABLE agents ADD COLUMN pr_status TEXT;
+    `,
+  },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE repos ADD COLUMN branch_prefix TEXT;
+      ALTER TABLE agents ADD COLUMN base_branch TEXT;
+    `,
+  },
 ]
 
 export function runMigrations() {

@@ -385,6 +385,7 @@ const preferenceItems = [
 function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; onRemove: () => void }) {
   const queryClient = useQueryClient()
   const [branch, setBranch] = useState(repo.branchFrom)
+  const [branchPrefix, setBranchPrefix] = useState(repo.branchPrefix ?? "")
   const [remote, setRemote] = useState(repo.remote)
   const [previewUrl, setPreviewUrl] = useState(repo.previewUrl ?? "")
   const [setupScript, setSetupScript] = useState(repo.setupScript ?? "")
@@ -399,7 +400,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   async function handleSave() {
     setIsSaving(true)
     try {
-      await api.updateRepo(repo.id, { branchFrom: branch, remote, previewUrl, setupScript, runScript, archiveScript })
+      await api.updateRepo(repo.id, { branchFrom: branch, branchPrefix: branchPrefix || undefined, remote, previewUrl, setupScript, runScript, archiveScript })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
     } finally {
       setIsSaving(false)
@@ -484,6 +485,19 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      {/* Branch prefix */}
+      <div>
+        <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Branch prefix</label>
+        <input
+          type="text"
+          value={branchPrefix}
+          onChange={(e) => setBranchPrefix(e.target.value)}
+          placeholder="agent/"
+          className="w-full text-[13px] font-mono bg-card border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+        />
+        <p className="text-[11px] text-muted-foreground/50 mt-1">Prepended to agent branch names. Defaults to <code className="font-mono">agent/</code>.</p>
       </div>
 
       {/* Preview URL */}
@@ -938,7 +952,7 @@ const sectionTitles: Record<Section, string> = {
 
 // ── Add repo dialog ───────────────────────────────────────────────────────────
 
-function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
+export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<{ name: string; path: string }[]>([])

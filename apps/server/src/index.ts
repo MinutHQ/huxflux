@@ -10,9 +10,11 @@ import { filesRoutes } from "./routes/files.js"
 import { terminalRoutes } from "./routes/terminal.js"
 import { slashCommandsRoutes } from "./routes/slashCommands.js"
 import { fsRoutes } from "./routes/fs.js"
+import { githubRoutes } from "./routes/github.js"
 import { registerSocket } from "./ws/handler.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
+import { startPoller } from "./poller.js"
 
 const app = Fastify({ logger: true })
 
@@ -48,17 +50,39 @@ await app.register(filesRoutes)
 await app.register(terminalRoutes)
 await app.register(slashCommandsRoutes)
 await app.register(fsRoutes)
+await app.register(githubRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
 
-// Startup
-try {
-  runMigrations()
-  await app.listen({ port: config.port, host: "0.0.0.0" })
-  console.log(`\nHive server running on http://0.0.0.0:${config.port}`)
-  console.log(`WebSocket: ws://0.0.0.0:${config.port}/ws\n`)
-} catch (err) {
-  app.log.error(err)
+// Startup — try requested port, then increment up to 10 times on EADDRINUSE
+runMigrations()
+
+let boundPort: number | null = null
+for (let attempt = 0; attempt < 10; attempt++) {
+  const port = config.port + attempt
+  try {
+    await app.listen({ port, host: "0.0.0.0" })
+    boundPort = port
+    break
+  } catch (err: any) {
+    if (err?.code === "EADDRINUSE") {
+      console.warn(`[server] Port ${port} in use, trying ${port + 1}…`)
+    } else {
+      app.log.error(err)
+      process.exit(1)
+    }
+  }
+}
+
+if (!boundPort) {
+  console.error(`[server] Could not bind to any port in range ${config.port}–${config.port + 9}`)
   process.exit(1)
+}
+
+startPoller()
+console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
+console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws\n`)
+if (boundPort !== config.port) {
+  console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)
 }

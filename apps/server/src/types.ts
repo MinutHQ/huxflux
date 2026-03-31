@@ -106,6 +106,7 @@ export interface Agent {
   status: AgentStatus
   branch: string
   baseBranch?: string
+  parentAgentId?: string
   pr?: string
   prNumber?: number
   prStatus?: PRStatus

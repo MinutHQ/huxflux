@@ -24,9 +24,9 @@ function runScript(script: string, cwd: string): Promise<void> {
 }
 
 export async function agentsRoutes(app: FastifyInstance) {
-  // GET /api/agents — list with diffSummary computed from file_changes
+  // GET /api/agents — list with diffSummary computed from file_changes (excludes child tabs)
   app.get("/api/agents", async () => {
-    const rows = db.select().from(agents).all()
+    const rows = db.select().from(agents).all().filter((a) => !a.parentAgentId)
     return Promise.all(rows.map(async (a) => {
       const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, a.id)).all()
       const additions = files.reduce((s, f) => s + f.additions, 0)
@@ -94,29 +94,44 @@ export async function agentsRoutes(app: FastifyInstance) {
       model?: string
       location?: string
       description?: string
+      shareWorktreeWith?: string // agent ID to share worktree with
     }
   }>("/api/agents", async (req, reply) => {
-    const { repoId, title, branch, model = "Sonnet 4.6", location, description } = req.body
+    const { repoId, title, branch, model = "Sonnet 4.6", location, description, shareWorktreeWith } = req.body
     const now = new Date().toISOString()
     const id = uuid()
-    const agentLocation = location ?? `workspace-${id.slice(0, 8)}`
+
+    // If sharing a worktree, reuse the existing agent's location
+    let agentLocation = location ?? `workspace-${id.slice(0, 8)}`
+    let agentRepoId = repoId ?? null
+    let skipWorktreeCreation = false
+
+    if (shareWorktreeWith) {
+      const sourceAgent = db.select().from(agents).where(eq(agents.id, shareWorktreeWith)).get()
+      if (sourceAgent) {
+        agentLocation = sourceAgent.location
+        agentRepoId = sourceAgent.repoId ?? agentRepoId
+        skipWorktreeCreation = true
+      }
+    }
 
     await db.insert(agents).values({
       id,
-      repoId: repoId ?? null,
+      repoId: agentRepoId,
       title,
       status: "in-progress",
       branch,
       model,
       location: agentLocation,
       description: description ?? null,
+      parentAgentId: shareWorktreeWith ?? null,
       createdAt: now,
       updatedAt: now,
     })
 
-    // If a repo is linked, create a git worktree
-    if (repoId) {
-      const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
+    // If a repo is linked and not sharing an existing worktree, create a git worktree
+    if (agentRepoId && !skipWorktreeCreation) {
+      const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
         try {
@@ -188,6 +203,12 @@ export async function agentsRoutes(app: FastifyInstance) {
           app.log.warn(`Worktree removal failed: ${err}`)
         }
       }
+    }
+
+    // Delete child tabs first
+    const children = db.select().from(agents).where(eq(agents.parentAgentId, req.params.id)).all()
+    for (const child of children) {
+      await db.delete(agents).where(eq(agents.id, child.id))
     }
 
     await db.delete(agents).where(eq(agents.id, req.params.id))

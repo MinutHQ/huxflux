@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog } from "@/components/SettingsPage"
 import { getFlag } from "@/lib/flags"
+import { toast } from "sonner"
 import {
   IconChevronRight,
   IconPlus,
@@ -23,6 +24,7 @@ import {
   IconX,
   IconSparkles,
   IconGitPullRequest,
+  IconTrash,
 } from "@tabler/icons-react"
 
 // ── Hover popover ─────────────────────────────────────────────────────────────
@@ -251,6 +253,7 @@ function StatusContextMenu({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function handleSetStatus(status: AgentStatus) {
     onClose()
@@ -259,6 +262,20 @@ function StatusContextMenu({
     queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
       old ? old.map((a) => a.id === agent.id ? { ...a, status } : a) : old
     )
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    onClose()
+    try {
+      await api.deleteAgent(agent.id)
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
+    } catch (err) {
+      toast.error(`Delete failed: ${err instanceof Error ? err.message : "unknown"}`)
+    }
   }
 
   return createPortal(
@@ -285,6 +302,14 @@ function StatusContextMenu({
             </button>
           )
         })}
+        <div className="border-t border-border my-1" />
+        <button
+          onClick={handleDelete}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10 transition-colors"
+        >
+          <IconTrash size={13} className="shrink-0" />
+          <span className="flex-1 text-left">{confirmDelete ? "Confirm delete" : "Delete"}</span>
+        </button>
       </div>
     </>,
     document.body

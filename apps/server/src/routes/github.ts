@@ -5,14 +5,8 @@ import { agents, repos } from "../db/schema.js"
 import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
+import { prStatusToAgentStatus } from "../github/prStatus.js"
 import type { PRStatus, PRDetails } from "../types.js"
-
-function prStatusToAgentStatus(pr: PRStatus): string {
-  if (pr.merged) return "done"
-  if (pr.state === "closed") return "cancelled"
-  if (pr.draft) return "in-progress"
-  return "in-review"
-}
 
 export async function githubRoutes(app: FastifyInstance) {
   // GET /api/agents/:id/pr/details — full PR info with reviews + checks

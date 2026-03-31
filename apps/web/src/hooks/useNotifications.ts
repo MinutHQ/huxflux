@@ -1,5 +1,5 @@
 import { toast } from "sonner"
-import { useAgentEvents } from "@/lib/ws"
+import { useAgentEvents } from "@hive/shared"
 import { playSound } from "@/lib/sounds"
 import { getSoundPref, getSoundEnabled } from "@/lib/notificationPrefs"
 import type { AgentSummary } from "@/data/mock"

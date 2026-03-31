@@ -7,7 +7,7 @@ import {
   getActiveServerId,
   setActiveServerId,
   type HiveServer,
-} from "@/lib/serverStore"
+} from "@hive/shared"
 
 export function useServers() {
   const [servers, setServers] = useState<HiveServer[]>(getServers)

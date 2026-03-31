@@ -27,7 +27,10 @@ export function registerSocket(socket: WebSocket) {
 
   socket.on("close", () => {
     allSockets.delete(socket)
-    for (const subs of subscriptions.values()) subs.delete(socket)
+    for (const [agentId, subs] of subscriptions) {
+      subs.delete(socket)
+      if (subs.size === 0) subscriptions.delete(agentId)
+    }
   })
 }
 

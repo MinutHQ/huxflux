@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify"
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, repos } from "../db/schema.js"
-import { runClaude } from "../claude/runner.js"
+import { runClaude, isAgentRunning } from "../claude/runner.js"
 import * as path from "node:path"
 
 /** Derive a short human-readable title from the first user message. */
@@ -33,11 +33,20 @@ export async function messagesRoutes(app: FastifyInstance) {
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .slice(-limit)
 
+      // Bulk-fetch all tool calls for these messages (avoids N+1)
+      const msgIds = msgs.map((m) => m.id)
+      const allToolCalls = msgIds.length > 0
+        ? db.select().from(toolCalls).where(inArray(toolCalls.messageId, msgIds)).all()
+        : []
+      const toolCallsByMsg = new Map<string, typeof allToolCalls>()
+      for (const tc of allToolCalls) {
+        const list = toolCallsByMsg.get(tc.messageId) ?? []
+        list.push(tc)
+        toolCallsByMsg.set(tc.messageId, list)
+      }
+
       return msgs.map((m) => {
-        const tcs = db.select().from(toolCalls)
-          .where(eq(toolCalls.messageId, m.id))
-          .all()
-          .sort((a, b) => a.orderIdx - b.orderIdx)
+        const tcs = (toolCallsByMsg.get(m.id) ?? []).sort((a, b) => a.orderIdx - b.orderIdx)
         return {
           ...m,
           toolCalls: tcs.length > 0 ? tcs.map((tc) => ({
@@ -62,6 +71,7 @@ export async function messagesRoutes(app: FastifyInstance) {
 
     const agent = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (isAgentRunning(id)) return reply.code(409).send({ error: "Agent already has a running process" })
 
     // Determine worktree path
     let worktreePath: string | undefined

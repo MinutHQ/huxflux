@@ -16,7 +16,7 @@ export function useAgents() {
     if (event.type === "agent:updated") {
       queryClient.setQueryData<AgentSummary[]>(["agents"], (old) => {
         if (!old) return old
-        const updated = event.agent as AgentSummary & { parentAgentId?: string }
+        const updated = event.agent
         if (updated.parentAgentId) return old // child tabs don't appear in sidebar
         const idx = old.findIndex((a) => a.id === updated.id)
         if (idx === -1) return [...old, updated]

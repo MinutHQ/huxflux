@@ -4,18 +4,13 @@ import { agents, repos } from "./db/schema.js"
 import { getPRStatus, findPRForBranch } from "./github/client.js"
 import { getRemoteUrl } from "./git/worktrees.js"
 import { broadcast } from "./ws/handler.js"
+import { prStatusToAgentStatus } from "./github/prStatus.js"
 import type { PRStatus } from "./types.js"
-
-function prStatusToAgentStatus(pr: PRStatus): string {
-  if (pr.merged) return "done"
-  if (pr.state === "closed") return "cancelled"
-  if (pr.draft) return "in-progress"
-  return "in-review"
-}
 
 async function pollAgent(agent: typeof agents.$inferSelect) {
   // Need a repo with a remote URL to query GitHub
   if (!agent.repoId) return
+  if (!agent.branch) return // skip agents with empty branch
   const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
   if (!repo) return
 

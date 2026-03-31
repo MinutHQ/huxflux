@@ -25,9 +25,15 @@ export async function uploadRoutes(app: FastifyInstance) {
     const attachmentsDir = path.join(worktreePath, ".hive_attachments")
     await fs.mkdir(attachmentsDir, { recursive: true })
 
-    // Sanitise filename
+    // Sanitise filename — reject traversal attempts
     const safeName = req.body.name.replace(/[^a-zA-Z0-9._-]/g, "_")
-    const filePath = path.join(attachmentsDir, safeName)
+    if (!safeName || safeName === "." || safeName === ".." || safeName.includes("..")) {
+      return reply.code(400).send({ error: "Invalid filename" })
+    }
+    const filePath = path.resolve(attachmentsDir, safeName)
+    if (!filePath.startsWith(attachmentsDir + path.sep) && filePath !== attachmentsDir) {
+      return reply.code(400).send({ error: "Invalid filename" })
+    }
 
     const base64 = req.body.data.replace(/^data:[^;]+;base64,/, "")
     await fs.writeFile(filePath, Buffer.from(base64, "base64"))

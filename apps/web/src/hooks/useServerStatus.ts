@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import type { HiveServer } from "@/lib/serverStore"
+import type { HiveServer } from "@hive/shared"
 
 export type ServerStatus = "online" | "offline" | "checking"
 

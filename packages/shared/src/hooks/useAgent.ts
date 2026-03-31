@@ -96,7 +96,7 @@ export function useAgent(id: string | null) {
             ]
         return withMessage.map((m) =>
           m.id === event.messageId
-            ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall as unknown as ToolCall] }
+            ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall] }
             : m
         )
       })
@@ -123,7 +123,7 @@ export function useAgent(id: string | null) {
         if (exists) {
           return msgs.map((m) => {
             if (m.id !== event.messageId) return m
-            const incoming = event.message as unknown as Message
+            const incoming = event.message
             // Preserve accumulated subCalls from sub-agent events
             const existingSubCalls = new Map<string, ToolCall[]>()
             for (const tc of m.toolCalls ?? []) {
@@ -156,7 +156,7 @@ export function useAgent(id: string | null) {
     if (event.type === "file:changed") {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
-        return { ...old, fileChanges: event.files as Agent["fileChanges"] }
+        return { ...old, fileChanges: event.files }
       })
     }
 
@@ -216,7 +216,7 @@ export function useAgent(id: string | null) {
     if (event.type === "agent:updated") {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
-        return { ...old, ...(event.agent as Partial<Agent>) }
+        return { ...old, ...event.agent }
       })
     }
   })

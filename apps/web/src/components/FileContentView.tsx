@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { api } from "@/lib/api"
+import { api } from "@hive/shared"
 import { IconCopy, IconPencil, IconDeviceFloppy, IconX } from "@tabler/icons-react"
 
 // ── Syntax tokenizer (same as DiffView) ─────────────────────────────────────

@@ -31,15 +31,202 @@ export function stopAgent(agentId: string): boolean {
   return true
 }
 
+export function isAgentRunning(agentId: string): boolean {
+  return runningProcesses.has(agentId)
+}
+
 const MODEL_ALIASES: Record<string, string> = {
   "Opus 4.6": "claude-opus-4-6",
   "Sonnet 4.6": "claude-sonnet-4-6",
   "Haiku 4.5": "claude-haiku-4-5",
 }
 
+// ── File change persistence ─────────────────────────────────────────────────
+
+async function refreshFileChanges(
+  agentId: string,
+  worktreePath: string,
+  branchFrom: string,
+): Promise<void> {
+  try {
+    const files = await getFileChanges(worktreePath, branchFrom)
+
+    // Persist to DB so the file list survives page reloads
+    await db.delete(fileChangesTable).where(eq(fileChangesTable.agentId, agentId))
+    for (const f of files) {
+      await db.insert(fileChangesTable).values({
+        id: `${agentId}-${f.path.replace(/[/\\]/g, "-")}`,
+        agentId,
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+      })
+    }
+
+    emit(agentId, { type: "file:changed", agentId, files })
+  } catch { /* not fatal */ }
+}
+
+// ── Stream event handler ────────────────────────────────────────────────────
+
+interface StreamState {
+  fullContent: string
+  fullThinking: string
+  collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }>
+  toolCallOrderIdx: number
+  inputTokens: number | null
+  outputTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+}
+
+function handleStreamEvent(
+  event: ClaudeStreamEvent,
+  state: StreamState,
+  agentId: string,
+  messageId: string,
+  scheduleFlush: () => void,
+): void {
+  if (event.type === "assistant") {
+    for (const block of event.message.content) {
+      if (block.type === "text") {
+        state.fullContent += block.text
+        emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
+        scheduleFlush()
+      } else if (block.type === "thinking") {
+        state.fullThinking += block.thinking
+        emit(agentId, { type: "message:thinking", agentId, messageId, delta: block.thinking })
+        scheduleFlush()
+      } else if (block.type === "tool_use") {
+        const tc: ToolCall = {
+          id: block.id,
+          tool: block.name,
+          args: JSON.stringify(block.input),
+        }
+        state.collectedToolCalls.push({ id: block.id, tool: block.name, args: JSON.stringify(block.input) })
+        state.toolCallOrderIdx++
+        // Persist tool call to DB immediately so it survives reloads
+        db.insert(toolCallsTable).values({
+          id: block.id,
+          messageId,
+          tool: block.name,
+          args: JSON.stringify(block.input),
+          orderIdx: state.toolCallOrderIdx - 1,
+        }).run()
+        emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
+      }
+    }
+  } else if (event.type === "tool_result") {
+    const tc = state.collectedToolCalls.find((t) => t.id === event.tool_use_id)
+    if (tc) tc.result = event.content
+    // Persist tool result to DB immediately
+    db.update(toolCallsTable)
+      .set({ result: event.content })
+      .where(eq(toolCallsTable.id, event.tool_use_id))
+      .run()
+    emit(agentId, {
+      type: "tool:result",
+      agentId,
+      messageId,
+      toolCallId: event.tool_use_id,
+      result: event.content,
+    })
+  } else if (event.type === "result" && event.usage) {
+    state.inputTokens = event.usage.input_tokens ?? null
+    state.outputTokens = event.usage.output_tokens ?? null
+    state.cacheReadTokens = event.usage.cache_read_input_tokens ?? null
+    state.cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
+  } else if (event.type !== "system") {
+    // Forward unrecognized events (likely sub-agent activity) to frontend.
+    const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
+    emit(agentId, {
+      type: "subagent:event",
+      agentId,
+      toolUseId,
+      event: event as Record<string, unknown>,
+    })
+    emit(agentId, {
+      type: "terminal:line",
+      agentId,
+      line: `[stream] ${JSON.stringify(event)}`,
+    })
+  }
+}
+
+// ── Message persistence ─────────────────────────────────────────────────────
+
+async function persistAssistantMessage(
+  state: StreamState,
+  agentId: string,
+  messageId: string,
+  skeletonCreatedAt: string,
+  startedAt: number,
+  model: string,
+  worktreePath: string,
+  branchFrom: string,
+  flushTimer: { current: ReturnType<typeof setTimeout> | null },
+): Promise<void> {
+  // Cancel any pending flush — we're about to write the final state
+  if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
+
+  await db.update(messagesTable)
+    .set({
+      content: state.fullContent,
+      thinking: state.fullThinking || null,
+      durationMs: Date.now() - startedAt,
+      model,
+      inputTokens: state.inputTokens,
+      outputTokens: state.outputTokens,
+      cacheReadTokens: state.cacheReadTokens,
+      cacheWriteTokens: state.cacheWriteTokens,
+    })
+    .where(eq(messagesTable.id, messageId))
+
+  // Update tool call results (they're already inserted; just ensure final state)
+  for (const tc of state.collectedToolCalls) {
+    await db.update(toolCallsTable)
+      .set({ result: tc.result })
+      .where(eq(toolCallsTable.id, tc.id))
+  }
+
+  // Persist file changes before emitting message:done so that when the
+  // client invalidates its query cache the DB already has fresh data.
+  await refreshFileChanges(agentId, worktreePath, branchFrom)
+
+  const builtMessage: Message = {
+    id: messageId,
+    role: "assistant",
+    content: state.fullContent,
+    thinking: state.fullThinking || undefined,
+    timestamp: skeletonCreatedAt,
+    durationMs: Date.now() - startedAt,
+    model,
+    inputTokens: state.inputTokens ?? undefined,
+    outputTokens: state.outputTokens ?? undefined,
+    cacheReadTokens: state.cacheReadTokens ?? undefined,
+    cacheWriteTokens: state.cacheWriteTokens ?? undefined,
+    toolCalls: state.collectedToolCalls.map((tc) => ({
+      id: tc.id,
+      tool: tc.tool,
+      args: tc.args,
+      result: tc.result,
+    })),
+  }
+
+  emit(agentId, { type: "message:done", agentId, messageId, message: builtMessage })
+}
+
+// ── Main runner ─────────────────────────────────────────────────────────────
+
 export async function runClaude(userContent: string, opts: RunnerOptions): Promise<void> {
   const { agentId, worktreePath } = opts
   const model = MODEL_ALIASES[opts.model ?? ""] ?? opts.model ?? "claude-sonnet-4-6"
+
+  // B1: Reject if a process is already running for this agent
+  if (runningProcesses.has(agentId)) {
+    throw new Error(`Agent ${agentId} already has a running process`)
+  }
+
   const messageId = uuid()
   const now = new Date().toISOString()
 
@@ -62,7 +249,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
   // Mark agent as in-progress unless already in-review (don't downgrade)
   const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-  const newStatus = currentAgent?.status === "in-review" ? "in-review" : "in-progress"
+  const preRunStatus = currentAgent?.status ?? "in-progress"
+  const newStatus = preRunStatus === "in-review" ? "in-review" : "in-progress"
   await db.update(agentsTable)
     .set({ status: newStatus, updatedAt: now })
     .where(eq(agentsTable.id, agentId))
@@ -73,16 +261,18 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     : null
   if (agentRow) emit(agentId, { type: "agent:updated", agent: agentRow as any })
 
-  // Accumulate assistant message state
-  let fullContent = ""
-  let fullThinking = ""
-  const collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }> = []
-  let toolCallOrderIdx = 0
+  // Stream state — mutable accumulator for the assistant response
+  const state: StreamState = {
+    fullContent: "",
+    fullThinking: "",
+    collectedToolCalls: [],
+    toolCallOrderIdx: 0,
+    inputTokens: null,
+    outputTokens: null,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  }
   const startedAt = Date.now()
-  let inputTokens: number | null = null
-  let outputTokens: number | null = null
-  let cacheReadTokens: number | null = null
-  let cacheWriteTokens: number | null = null
 
   // Insert skeleton assistant message immediately so it survives page reloads
   const skeletonCreatedAt = new Date().toISOString()
@@ -115,6 +305,20 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     cwd = process.cwd()
   }
 
+  // B4: Check if Claude session file exists before using --continue.
+  // If the session file was deleted (e.g. server restart), --continue would fail
+  // even though the DB has messages — so fall back to a fresh session.
+  let useContinue = isContinuation
+  if (useContinue) {
+    try {
+      await fs.access(`${cwd}/.claude/settings.json`)
+    } catch {
+      useContinue = false
+    }
+  }
+
+  const branchFrom = repoRow?.branchFrom ?? "HEAD"
+
   return new Promise((resolve, reject) => {
     // System prompt injected on every turn so Claude always knows its identity
     // and can rename itself via the REST API.
@@ -143,7 +347,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       "--dangerously-skip-permissions",
       "--model", model,
       "--append-system-prompt", systemPrompt,
-      ...(isContinuation ? ["--continue"] : []),
+      ...(useContinue ? ["--continue"] : []),
       userContent,
     ]
     const { bin, args } = config.sandbox
@@ -170,6 +374,20 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
     let buffer = ""
 
+    // Flush content/thinking to DB periodically so it survives page reloads.
+    // We debounce to avoid hammering SQLite on every text chunk.
+    const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null }
+    function scheduleFlush() {
+      if (flushTimer.current) return
+      flushTimer.current = setTimeout(() => {
+        flushTimer.current = null
+        db.update(messagesTable)
+          .set({ content: state.fullContent, thinking: state.fullThinking || null })
+          .where(eq(messagesTable.id, messageId))
+          .run()
+      }, 500)
+    }
+
     proc.stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString()
       const lines = buffer.split("\n")
@@ -179,7 +397,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         if (!line.trim()) continue
         try {
           const parsed = JSON.parse(line)
-          handleEvent(parsed)
+          handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
         } catch {
           // Non-JSON line — could be a warning, skip it
         }
@@ -195,16 +413,17 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       runningProcesses.delete(agentId)
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
-        try { handleEvent(JSON.parse(buffer.trim())) } catch { /* non-JSON remainder */ }
+        try { handleStreamEvent(JSON.parse(buffer.trim()), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON remainder */ }
         buffer = ""
       }
       try {
-        await persistAssistantMessage()
-        await refreshFileChanges()
+        // B3: persistAssistantMessage already calls refreshFileChanges — don't call it again
+        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, worktreePath, branchFrom, flushTimer)
         const doneAt = new Date().toISOString()
-        // Stay in-progress — status is managed externally (e.g. user marks as in-review)
+        // B2: Restore the pre-run status instead of forcing "in-progress".
+        // This preserves "in-review" if it was set before the run.
         await db.update(agentsTable)
-          .set({ status: "in-progress", updatedAt: doneAt })
+          .set({ status: preRunStatus === "in-review" ? "in-review" : "in-progress", updatedAt: doneAt })
           .where(eq(agentsTable.id, agentId))
         // Broadcast updated agent so all clients (sidebar, etc.) stay in sync
         const finalAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
@@ -216,162 +435,9 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     })
 
     proc.on("error", (err) => {
+      runningProcesses.delete(agentId)
       emit(agentId, { type: "error", agentId, message: `Failed to spawn claude: ${err.message}` })
       reject(err)
     })
-
-    // Flush content/thinking to DB periodically so it survives page reloads.
-    // We debounce to avoid hammering SQLite on every text chunk.
-    let flushTimer: ReturnType<typeof setTimeout> | null = null
-    function scheduleFlush() {
-      if (flushTimer) return
-      flushTimer = setTimeout(() => {
-        flushTimer = null
-        db.update(messagesTable)
-          .set({ content: fullContent, thinking: fullThinking || null })
-          .where(eq(messagesTable.id, messageId))
-          .run()
-      }, 500)
-    }
-
-    function handleEvent(event: ClaudeStreamEvent) {
-      if (event.type === "assistant") {
-        for (const block of event.message.content) {
-          if (block.type === "text") {
-            fullContent += block.text
-            emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
-            scheduleFlush()
-          } else if (block.type === "thinking") {
-            fullThinking += block.thinking
-            emit(agentId, { type: "message:thinking", agentId, messageId, delta: block.thinking })
-            scheduleFlush()
-          } else if (block.type === "tool_use") {
-            const tc: ToolCall = {
-              id: block.id,
-              tool: block.name,
-              args: JSON.stringify(block.input),
-            }
-            collectedToolCalls.push({ id: block.id, tool: block.name, args: JSON.stringify(block.input) })
-            toolCallOrderIdx++
-            // Persist tool call to DB immediately so it survives reloads
-            db.insert(toolCallsTable).values({
-              id: block.id,
-              messageId,
-              tool: block.name,
-              args: JSON.stringify(block.input),
-              orderIdx: toolCallOrderIdx - 1,
-            }).run()
-            emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
-          }
-        }
-      } else if (event.type === "tool_result") {
-        const tc = collectedToolCalls.find((t) => t.id === event.tool_use_id)
-        if (tc) tc.result = event.content
-        // Persist tool result to DB immediately
-        db.update(toolCallsTable)
-          .set({ result: event.content })
-          .where(eq(toolCallsTable.id, event.tool_use_id))
-          .run()
-        emit(agentId, {
-          type: "tool:result",
-          agentId,
-          messageId,
-          toolCallId: event.tool_use_id,
-          result: event.content,
-        })
-      } else if (event.type === "result" && event.usage) {
-        inputTokens = event.usage.input_tokens ?? null
-        outputTokens = event.usage.output_tokens ?? null
-        cacheReadTokens = event.usage.cache_read_input_tokens ?? null
-        cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
-      } else if (event.type !== "system") {
-        // Forward unrecognized events (likely sub-agent activity) to frontend.
-        // Try to associate with a parent Agent tool call via tool_use_id or parent_tool_use_id.
-        const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
-        emit(agentId, {
-          type: "subagent:event",
-          agentId,
-          toolUseId,
-          event: event as Record<string, unknown>,
-        })
-        // Also log for debugging
-        emit(agentId, {
-          type: "terminal:line",
-          agentId,
-          line: `[stream] ${JSON.stringify(event)}`,
-        })
-      }
-    }
-
-    async function persistAssistantMessage() {
-      // Cancel any pending flush — we're about to write the final state
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
-
-      await db.update(messagesTable)
-        .set({
-          content: fullContent,
-          thinking: fullThinking || null,
-          durationMs: Date.now() - startedAt,
-          model,
-          inputTokens,
-          outputTokens,
-          cacheReadTokens,
-          cacheWriteTokens,
-        })
-        .where(eq(messagesTable.id, messageId))
-
-      // Update tool call results (they're already inserted; just ensure final state)
-      for (const tc of collectedToolCalls) {
-        await db.update(toolCallsTable)
-          .set({ result: tc.result })
-          .where(eq(toolCallsTable.id, tc.id))
-      }
-
-      // Persist file changes before emitting message:done so that when the
-      // client invalidates its query cache the DB already has fresh data.
-      await refreshFileChanges()
-
-      const builtMessage: Message = {
-        id: messageId,
-        role: "assistant",
-        content: fullContent,
-        thinking: fullThinking || undefined,
-        timestamp: skeletonCreatedAt,
-        durationMs: Date.now() - startedAt,
-        model,
-        inputTokens: inputTokens ?? undefined,
-        outputTokens: outputTokens ?? undefined,
-        cacheReadTokens: cacheReadTokens ?? undefined,
-        cacheWriteTokens: cacheWriteTokens ?? undefined,
-        toolCalls: collectedToolCalls.map((tc) => ({
-          id: tc.id,
-          tool: tc.tool,
-          args: tc.args,
-          result: tc.result,
-        })),
-      }
-
-      emit(agentId, { type: "message:done", agentId, messageId, message: builtMessage })
-    }
-
-    async function refreshFileChanges() {
-      try {
-        const files = await getFileChanges(worktreePath, repoRow?.branchFrom ?? "HEAD")
-
-        // Persist to DB so the file list survives page reloads
-        await db.delete(fileChangesTable).where(eq(fileChangesTable.agentId, agentId))
-        for (const f of files) {
-          await db.insert(fileChangesTable).values({
-            id: `${agentId}-${f.path.replace(/[/\\]/g, "-")}`,
-            agentId,
-            path: f.path,
-            additions: f.additions,
-            deletions: f.deletions,
-          })
-        }
-
-        emit(agentId, { type: "file:changed", agentId, files })
-      } catch { /* not fatal */ }
-    }
   })
 }

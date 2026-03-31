@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useAgentEvents } from "@/lib/ws"
+import { useAgentEvents } from "@hive/shared"
 
 const SESSION_KEY = "huxflux:streaming-agent"
 

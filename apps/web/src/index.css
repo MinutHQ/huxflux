@@ -2,7 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
-@import "@hive/tokens/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -120,8 +119,10 @@ textarea:focus {
   --sidebar-ring: oklch(0.714 0.014 41.2);
 }
 
-/* Core dark mode tokens come from @hive/tokens/tokens.css (imported above).
-   Only web-specific vars that aren't cross-platform live here. */
+/* Dark mode tokens — imported after :root so .dark wins the cascade */
+@import "@hive/tokens/tokens.css";
+
+/* Web-specific dark vars not in tokens */
 .dark {
   --chart-1: oklch(0.785 0.115 274.713);
   --chart-2: oklch(0.585 0.233 277.117);

@@ -1,19 +1,15 @@
 import type { FastifyInstance } from "fastify"
 import { v4 as uuid } from "uuid"
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
+import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
 import * as path from "node:path"
 import { spawn } from "node:child_process"
-
-function parsePrStatus(raw: string | null | undefined) {
-  if (!raw) return undefined
-  try { return JSON.parse(raw) } catch { return undefined }
-}
 
 function runScript(script: string, cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -49,11 +45,20 @@ export async function agentsRoutes(app: FastifyInstance) {
       .all()
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 
+    // Bulk-fetch all tool calls for these messages (avoids N+1)
+    const msgIds = msgs.map((m) => m.id)
+    const allToolCalls = msgIds.length > 0
+      ? db.select().from(toolCalls).where(inArray(toolCalls.messageId, msgIds)).all()
+      : []
+    const toolCallsByMsg = new Map<string, typeof allToolCalls>()
+    for (const tc of allToolCalls) {
+      const list = toolCallsByMsg.get(tc.messageId) ?? []
+      list.push(tc)
+      toolCallsByMsg.set(tc.messageId, list)
+    }
+
     const messagesWithTools = msgs.map((m) => {
-      const tcs = db.select().from(toolCalls)
-        .where(eq(toolCalls.messageId, m.id))
-        .all()
-        .sort((a, b) => a.orderIdx - b.orderIdx)
+      const tcs = (toolCallsByMsg.get(m.id) ?? []).sort((a, b) => a.orderIdx - b.orderIdx)
       return {
         ...m,
         toolCalls: tcs.length > 0 ? tcs.map((tc) => ({
@@ -149,7 +154,8 @@ export async function agentsRoutes(app: FastifyInstance) {
       }
     }
 
-    const created = db.select().from(agents).where(eq(agents.id, id)).get()!
+    const created = db.select().from(agents).where(eq(agents.id, id)).get()
+    if (!created) return reply.code(500).send({ error: "Failed to create agent" })
     broadcast({ type: "agent:updated", agent: created as any })
     reply.code(201)
     return created
@@ -194,6 +200,12 @@ export async function agentsRoutes(app: FastifyInstance) {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
+    // Delete child tabs first (before worktree removal, since children share the worktree)
+    const children = db.select().from(agents).where(eq(agents.parentAgentId, req.params.id)).all()
+    for (const child of children) {
+      await db.delete(agents).where(eq(agents.id, child.id))
+    }
+
     if (agent.repoId) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (repo) {
@@ -204,12 +216,6 @@ export async function agentsRoutes(app: FastifyInstance) {
           app.log.warn(`Worktree removal failed: ${err}`)
         }
       }
-    }
-
-    // Delete child tabs first
-    const children = db.select().from(agents).where(eq(agents.parentAgentId, req.params.id)).all()
-    for (const child of children) {
-      await db.delete(agents).where(eq(agents.id, child.id))
     }
 
     await db.delete(agents).where(eq(agents.id, req.params.id))

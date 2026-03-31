@@ -1,12 +1,12 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
-import { useAgents } from "@/hooks/useAgents"
+import { useAgents } from "@hive/shared"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
-import { api, getApiBase } from "@/lib/api"
+import { api, getApiBase } from "@hive/shared"
 import { DiffView } from "@/components/DiffView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
@@ -39,6 +39,9 @@ import {
   IconMessageCircle,
   IconPhoto,
   IconFolderSymlink,
+  IconUsers,
+  IconLoader2,
+  IconCheck,
 } from "@tabler/icons-react"
 import type { AgentSummary } from "@/data/mock"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -209,6 +212,199 @@ function StatsBar({ messages }: { messages: Message[] }) {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ── Team agent helpers ───────────────────────────────────────────────────────
+
+interface TeamAgent {
+  id: string
+  description: string
+  prompt?: string
+  name?: string
+  status: "running" | "done"
+  subCalls?: ToolCall[]
+  result?: string
+}
+
+function extractTeamAgents(messages: Message[]): TeamAgent[] {
+  // Only show agents from the latest message that has Agent tool calls
+  // so a new team supersedes the old one
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== "assistant" || !msg.toolCalls) continue
+    const agentCalls = msg.toolCalls.filter((tc) => tc.tool === "Agent")
+    if (agentCalls.length === 0) continue
+
+    // Collect SendMessage calls directed at specific agents to show per-agent activity
+    const sendMessages = msg.toolCalls.filter((tc) => tc.tool === "SendMessage")
+    const sendMessagesByAgent = new Map<string, ToolCall[]>()
+    for (const sm of sendMessages) {
+      if (!sm.args) continue
+      try {
+        const parsed = JSON.parse(sm.args)
+        const to = parsed.to as string | undefined
+        if (to) {
+          const existing = sendMessagesByAgent.get(to) ?? []
+          existing.push(sm)
+          sendMessagesByAgent.set(to, existing)
+        }
+      } catch { /* ignore */ }
+    }
+
+    return agentCalls.map((tc) => {
+      let description = "Agent"
+      let prompt: string | undefined
+      let name: string | undefined
+      if (tc.args) {
+        try {
+          const parsed = JSON.parse(tc.args)
+          description = parsed.description || parsed.prompt?.slice(0, 40) || "Agent"
+          prompt = parsed.prompt
+          name = parsed.name
+        } catch {
+          description = tc.args.length > 40 ? tc.args.slice(0, 40) + "…" : tc.args
+        }
+      }
+
+      // Build sub-calls: actual subCalls + any SendMessage calls targeting this agent by name
+      let combinedSubCalls = tc.subCalls ? [...tc.subCalls] : []
+      if (name) {
+        const directed = sendMessagesByAgent.get(name)
+        if (directed) combinedSubCalls = [...combinedSubCalls, ...directed]
+      }
+
+      return {
+        id: tc.id,
+        description,
+        prompt,
+        name,
+        status: (tc.result != null && tc.result !== "") ? "done" as const : "running" as const,
+        subCalls: combinedSubCalls.length > 0 ? combinedSubCalls : undefined,
+        result: tc.result,
+      }
+    })
+  }
+  return []
+}
+
+function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const hasSubCalls = selected.subCalls && selected.subCalls.length > 0
+
+  // Auto-scroll when content changes
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [selected.subCalls?.length, selected.result])
+
+  return (
+    <div ref={scrollRef} className="max-h-48 overflow-y-auto px-4 py-3">
+      {/* Task description */}
+      {selected.prompt && (
+        <p className="text-[11px] text-muted-foreground/60 leading-relaxed mb-2 line-clamp-3">{selected.prompt}</p>
+      )}
+
+      {/* Activity: sub-calls + SendMessage interactions */}
+      {hasSubCalls && (
+        <div className="space-y-0.5 mb-2">
+          {selected.subCalls!.map((sub) => (
+            <ToolCallRow key={sub.id} call={sub} />
+          ))}
+        </div>
+      )}
+
+      {/* Result */}
+      {selected.result && selected.result.trim() ? (
+        <pre className="text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre-wrap">{selected.result}</pre>
+      ) : selected.status === "running" && !hasSubCalls ? (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50">
+          <IconLoader2 size={12} className="animate-spin" />
+          <span>Running in background…</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function TeamAgentBar({ agents }: { agents: TeamAgent[] }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const knownIdsRef = useRef<Set<string>>(new Set())
+
+  // Re-show when new agent IDs appear (handles dismiss → new team)
+  useEffect(() => {
+    const newIds = agents.filter((a) => !knownIdsRef.current.has(a.id))
+    if (newIds.length > 0) {
+      for (const a of newIds) knownIdsRef.current.add(a.id)
+      setDismissed(false)
+      if (!selectedId || !agents.some((a) => a.id === selectedId)) {
+        setSelectedId(newIds[0].id)
+      }
+    }
+  }, [agents]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (dismissed || agents.length === 0) return null
+
+  const selected = agents.find((a) => a.id === selectedId) ?? agents[0]
+  const runningCount = agents.filter((a) => a.status === "running").length
+  const doneCount = agents.filter((a) => a.status === "done").length
+
+  return (
+    <div className="border-t border-border bg-card/50 shrink-0">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 overflow-x-auto">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
+        >
+          <IconUsers size={13} className="text-muted-foreground/50" />
+          <span>Team</span>
+          <span className="text-muted-foreground/40 font-mono">
+            {runningCount > 0 && `${runningCount} running`}
+            {runningCount > 0 && doneCount > 0 && ", "}
+            {doneCount > 0 && `${doneCount} done`}
+          </span>
+          <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
+        </button>
+        <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
+        {agents.map((agent) => {
+          const isActive = agent.id === selected.id
+          return (
+            <button
+              key={agent.id}
+              onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
+                isActive
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              {agent.status === "running" ? (
+                <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
+              ) : (
+                <IconCheck size={11} className="text-emerald-400 shrink-0" />
+              )}
+              <span className="max-w-[140px] truncate">{agent.description}</span>
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setDismissed(true)}
+          className="ml-auto p-1 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+          title="Close team panel"
+        >
+          <IconX size={12} />
+        </button>
+      </div>
+
+      {/* Output panel */}
+      {!collapsed && selected && (
+        <TeamAgentOutput selected={selected} />
+      )}
     </div>
   )
 }
@@ -1023,6 +1219,9 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
               </ScrollArea>
             )}
           </div>
+
+          {/* Team agent bar */}
+          <TeamAgentBar agents={extractTeamAgents(agent.messages)} />
 
           {/* Input */}
           <div className="px-5 py-4 border-t border-border shrink-0">

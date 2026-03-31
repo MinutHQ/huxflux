@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { createPortal } from "react-dom"
 import { Switch } from "@/components/ui/switch"
@@ -8,9 +8,8 @@ import type { SoundId } from "@/lib/sounds"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useRepos } from "@/hooks/useRepos"
+import { useRepos, api } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
 import type { Repo } from "@/data/mock"
 import {
   IconArrowLeft,
@@ -42,8 +41,7 @@ import {
 import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
-import type { HiveServer } from "@/lib/serverStore"
-import { parseConnectionString } from "@/lib/serverStore"
+import { parseConnectionString, type HiveServer } from "@hive/shared"
 
 type Section =
   | "general"

@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Agent, FileChange, PRDetails, PRReview, PRCheck, PRComment, PRThread } from "@/data/mock"
-import { api } from "@/lib/api"
+import { api } from "@hive/shared"
 import {
   IconFileText,
   IconChevronDown,

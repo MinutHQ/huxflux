@@ -18,7 +18,10 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
   await mkdir(path.dirname(worktreePath), { recursive: true })
 
   const branches = await git.branch(["-a"])
-  const branchExists = branches.all.some((b) => b.replace(/^remotes\//, "").replace(/^\* /, "") === branch)
+  const branchExists = branches.all.some((b) => {
+    const normalized = b.replace(/^\* /, "").replace(/^remotes\/[^/]+\//, "")
+    return normalized === branch
+  })
 
   if (branchExists) {
     await git.raw(["worktree", "add", worktreePath, branch])

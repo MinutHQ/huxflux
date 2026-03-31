@@ -96,7 +96,7 @@ export function useAgent(id: string | null) {
             ]
         return withMessage.map((m) =>
           m.id === event.messageId
-            ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall as unknown as ToolCall] }
+            ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall] }
             : m
         )
       })
@@ -121,9 +121,22 @@ export function useAgent(id: string | null) {
       updateMessages((msgs) => {
         const exists = msgs.some((m) => m.id === event.messageId)
         if (exists) {
-          return msgs.map((m) =>
-            m.id === event.messageId ? (event.message as unknown as Message) : m
-          )
+          return msgs.map((m) => {
+            if (m.id !== event.messageId) return m
+            const incoming = event.message
+            // Preserve accumulated subCalls from sub-agent events
+            const existingSubCalls = new Map<string, ToolCall[]>()
+            for (const tc of m.toolCalls ?? []) {
+              if (tc.subCalls && tc.subCalls.length > 0) existingSubCalls.set(tc.id, tc.subCalls)
+            }
+            if (existingSubCalls.size > 0 && incoming.toolCalls) {
+              incoming.toolCalls = incoming.toolCalls.map((tc) => {
+                const subs = existingSubCalls.get(tc.id)
+                return subs ? { ...tc, subCalls: subs } : tc
+              })
+            }
+            return incoming
+          })
         }
         const incoming = event.message as unknown as Message
         const optimisticIdx = msgs.findLastIndex(
@@ -143,7 +156,7 @@ export function useAgent(id: string | null) {
     if (event.type === "file:changed") {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
-        return { ...old, fileChanges: event.files as Agent["fileChanges"] }
+        return { ...old, fileChanges: event.files }
       })
     }
 
@@ -154,6 +167,47 @@ export function useAgent(id: string | null) {
       })
     }
 
+    if (event.type === "subagent:event") {
+      const subEvent = event.event as Record<string, unknown>
+      // Convert sub-agent events into subCalls on the matching Agent tool call
+      if (subEvent.type === "assistant" && subEvent.message) {
+        const msg = subEvent.message as { content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }> }
+        for (const block of msg.content) {
+          if (block.type === "tool_use" && block.id && block.name) {
+            const subCall: ToolCall = { id: block.id, tool: block.name, args: block.input ? JSON.stringify(block.input) : undefined }
+            updateMessages((msgs) =>
+              msgs.map((m) => ({
+                ...m,
+                toolCalls: (m.toolCalls ?? []).map((tc) =>
+                  (tc.id === event.toolUseId || tc.tool === "Agent")
+                    ? { ...tc, subCalls: [...(tc.subCalls ?? []), subCall] }
+                    : tc
+                ),
+              }))
+            )
+          }
+        }
+      } else if (subEvent.type === "tool_result" && subEvent.tool_use_id) {
+        const subToolId = subEvent.tool_use_id as string
+        const result = (subEvent.content ?? "") as string
+        updateMessages((msgs) =>
+          msgs.map((m) => ({
+            ...m,
+            toolCalls: (m.toolCalls ?? []).map((tc) =>
+              tc.tool === "Agent"
+                ? {
+                    ...tc,
+                    subCalls: (tc.subCalls ?? []).map((sub) =>
+                      sub.id === subToolId ? { ...sub, result } : sub
+                    ),
+                  }
+                : tc
+            ),
+          }))
+        )
+      }
+    }
+
     if (event.type === "error") {
       setIsStreaming(false)
       _onError(event.message)
@@ -162,7 +216,7 @@ export function useAgent(id: string | null) {
     if (event.type === "agent:updated") {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
-        return { ...old, ...(event.agent as Partial<Agent>) }
+        return { ...old, ...event.agent }
       })
     }
   })

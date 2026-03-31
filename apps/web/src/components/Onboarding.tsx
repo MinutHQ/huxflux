@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId, parseConnectionString } from "@/lib/serverStore"
+import { setActiveServerId, parseConnectionString } from "@hive/shared"
 import { IconServer, IconLoader2, IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react"
 
 interface OnboardingProps {

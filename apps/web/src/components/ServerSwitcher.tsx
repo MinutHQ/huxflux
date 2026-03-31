@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
-import { setActiveServerId } from "@/lib/serverStore"
+import { setActiveServerId } from "@hive/shared"
 import {
   IconChevronDown,
   IconServer,

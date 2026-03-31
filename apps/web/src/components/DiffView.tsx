@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { FileChange } from "@/data/mock"
-import { api } from "@/lib/api"
+import { api } from "@hive/shared"
 import { IconCopy, IconEye } from "@tabler/icons-react"
 
 // ── Diff parsing ──────────────────────────────────────────────────────────────

@@ -10,9 +10,10 @@ import {
   getActiveServerId, parseConnectionString, type HiveServer,
 } from "@hive/shared"
 import { useServerStatus } from "@hive/shared"
+import { c } from "../theme"
 
 function StatusDot({ status }: { status: "online" | "offline" | "checking" }) {
-  const color = status === "online" ? "#10b981" : status === "offline" ? "#f87171" : "#71717a"
+  const color = status === "online" ? c.success : status === "offline" ? c.error : c.fgSub
   return <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
 }
 
@@ -41,7 +42,6 @@ export default function ServersScreen() {
     }
     const serverName = name.trim() || new URL(parsed.url).hostname
     const server = addServer({ name: serverName, url: parsed.url, token: parsed.token })
-    // Auto-activate the first server added
     if (servers.length === 0) setActiveServerId(server.id)
     setInput("")
     setName("")
@@ -68,7 +68,7 @@ export default function ServersScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#0a0a0a" }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Stack.Screen
@@ -76,19 +76,19 @@ export default function ServersScreen() {
           title: "Servers",
           headerRight: () => (
             <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
-              <Text style={{ color: "#60a5fa", fontSize: 16, fontWeight: "600" }}>Done</Text>
+              <Text style={{ color: c.link, fontSize: 16, fontWeight: "600" }}>Done</Text>
             </TouchableOpacity>
           ),
         }}
       />
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+        <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
           Connected Servers
         </Text>
 
         {servers.length === 0 && (
-          <Text style={{ color: "#71717a", fontSize: 14, marginBottom: 16 }}>No servers added yet</Text>
+          <Text style={{ color: c.fgSub, fontSize: 14, marginBottom: 16 }}>No servers added yet</Text>
         )}
 
         {servers.map((server) => (
@@ -96,9 +96,9 @@ export default function ServersScreen() {
             key={server.id}
             onPress={() => handleSetActive(server.id)}
             style={{
-              backgroundColor: "#111111",
+              backgroundColor: c.card,
               borderWidth: 1,
-              borderColor: server.id === activeId ? "#3b82f6" : "#1f1f1f",
+              borderColor: server.id === activeId ? c.primary : c.border,
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
@@ -109,59 +109,59 @@ export default function ServersScreen() {
           >
             <StatusDot status={statuses[server.id] ?? "checking"} />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: "#fafafa", fontSize: 14, fontWeight: "500" }}>{server.name}</Text>
-              <Text style={{ color: "#71717a", fontSize: 12, marginTop: 2 }}>{server.url}</Text>
+              <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>{server.name}</Text>
+              <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>{server.url}</Text>
             </View>
             {server.id === activeId && (
-              <Text style={{ color: "#3b82f6", fontSize: 12, fontWeight: "600" }}>Active</Text>
+              <Text style={{ color: c.primary, fontSize: 12, fontWeight: "600" }}>Active</Text>
             )}
             <TouchableOpacity onPress={() => handleRemove(server.id)} hitSlop={8}>
-              <Text style={{ color: "#71717a", fontSize: 18 }}>×</Text>
+              <Text style={{ color: c.fgSub, fontSize: 18 }}>×</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         ))}
 
         {adding ? (
-          <View style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 12, padding: 14, marginTop: 8 }}>
-            <Text style={{ color: "#fafafa", fontSize: 14, fontWeight: "600", marginBottom: 12 }}>Add Server</Text>
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14, marginTop: 8 }}>
+            <Text style={{ color: c.fg, fontSize: 14, fontWeight: "600", marginBottom: 12 }}>Add Server</Text>
             <TextInput
               value={name}
               onChangeText={setName}
               placeholder="Name (optional)"
-              placeholderTextColor="#3f3f46"
-              style={{ backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: "#fafafa", fontSize: 14, marginBottom: 8 }}
+              placeholderTextColor={c.placeholder}
+              style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 14, marginBottom: 8 }}
             />
             <TextInput
               value={input}
               onChangeText={setInput}
               placeholder="http://192.168.1.x:3001 or huxflux://..."
-              placeholderTextColor="#3f3f46"
+              placeholderTextColor={c.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
-              style={{ backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: "#fafafa", fontSize: 13, fontFamily: "monospace", marginBottom: 12 }}
+              style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 13, fontFamily: "monospace", marginBottom: 12 }}
             />
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
                 onPress={() => setAdding(false)}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#1f1f1f", alignItems: "center" }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.secondary, alignItems: "center" }}
               >
-                <Text style={{ color: "#a1a1aa", fontWeight: "500" }}>Cancel</Text>
+                <Text style={{ color: c.fgSub, fontWeight: "500" }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAdd}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: "#3b82f6", alignItems: "center" }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.primary, alignItems: "center" }}
               >
-                <Text style={{ color: "#fff", fontWeight: "600" }}>Add</Text>
+                <Text style={{ color: c.white, fontWeight: "600" }}>Add</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <TouchableOpacity
             onPress={() => setAdding(true)}
-            style={{ borderWidth: 1, borderColor: "#1f1f1f", borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center", marginTop: 4 }}
+            style={{ borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center", marginTop: 4 }}
           >
-            <Text style={{ color: "#71717a", fontSize: 14 }}>+ Add Server</Text>
+            <Text style={{ color: c.fgSub, fontSize: 14 }}>+ Add Server</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

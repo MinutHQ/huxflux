@@ -7,6 +7,7 @@ import { useRouter } from "expo-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRepos, api, type Repo } from "@hive/shared"
 import { FlashList } from "@shopify/flash-list"
+import { c } from "../theme"
 
 type Step = "repo" | "details"
 
@@ -55,34 +56,39 @@ export default function NewAgentScreen() {
     }
   }
 
+  const canCreate = !!title.trim() && !!branch.trim()
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#0a0a0a" }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       {/* Step indicator */}
-      <View style={{ flexDirection: "row", paddingHorizontal: 20, paddingVertical: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: "#1f1f1f" }}>
-        {(["repo", "details"] as Step[]).map((s, i) => (
-          <View key={s} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            {i > 0 && <View style={{ width: 24, height: 1, backgroundColor: "#1f1f1f" }} />}
-            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: step === s || (s === "repo" && step === "details") ? "#3b82f6" : "#1f1f1f", alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: step === s || (s === "repo" && step === "details") ? "#fff" : "#71717a", fontSize: 11, fontWeight: "700" }}>{i + 1}</Text>
+      <View style={{ flexDirection: "row", paddingHorizontal: 20, paddingVertical: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
+        {(["repo", "details"] as Step[]).map((s, i) => {
+          const active = step === s || (s === "repo" && step === "details")
+          return (
+            <View key={s} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              {i > 0 && <View style={{ width: 24, height: 1, backgroundColor: c.border }} />}
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: active ? c.primary : c.secondary, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: active ? c.white : c.fgSub, fontSize: 11, fontWeight: "700" }}>{i + 1}</Text>
+              </View>
+              <Text style={{ color: step === s ? c.fg : c.fgSub, fontSize: 12 }}>
+                {s === "repo" ? "Repository" : "Details"}
+              </Text>
             </View>
-            <Text style={{ color: step === s ? "#fafafa" : "#71717a", fontSize: 12 }}>
-              {s === "repo" ? "Repository" : "Details"}
-            </Text>
-          </View>
-        ))}
+          )
+        })}
       </View>
 
       {step === "repo" ? (
         <View style={{ flex: 1 }}>
-          <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+          <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
             Select Repository
           </Text>
           {isLoading ? (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <ActivityIndicator color="#60a5fa" />
+              <ActivityIndicator color={c.link} />
             </View>
           ) : (
             <FlashList
@@ -92,18 +98,18 @@ export default function NewAgentScreen() {
               renderItem={({ item: repo }) => (
                 <TouchableOpacity
                   onPress={() => handleSelectRepo(repo)}
-                  style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#1f1f1f", flexDirection: "row", alignItems: "center", gap: 12 }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#fafafa", fontSize: 15, fontWeight: "500" }}>{repo.name}</Text>
-                    <Text style={{ color: "#71717a", fontSize: 12, fontFamily: "monospace", marginTop: 2 }} numberOfLines={1}>{repo.path}</Text>
+                    <Text style={{ color: c.fg, fontSize: 15, fontWeight: "500" }}>{repo.name}</Text>
+                    <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace", marginTop: 2 }} numberOfLines={1}>{repo.path}</Text>
                   </View>
-                  <Text style={{ color: "#71717a", fontSize: 16 }}>›</Text>
+                  <Text style={{ color: c.fgSub, fontSize: 16 }}>›</Text>
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
                 <View style={{ padding: 32, alignItems: "center" }}>
-                  <Text style={{ color: "#71717a", fontSize: 14, textAlign: "center" }}>No repositories configured.{"\n"}Add one via the desktop app.</Text>
+                  <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center" }}>No repositories configured.{"\n"}Add one via the desktop app.</Text>
                 </View>
               }
             />
@@ -111,37 +117,36 @@ export default function NewAgentScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-          {/* Back + repo name */}
           <TouchableOpacity onPress={() => setStep("repo")} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <Text style={{ color: "#60a5fa", fontSize: 13 }}>‹ {selectedRepo?.name}</Text>
+            <Text style={{ color: c.link, fontSize: 13 }}>‹ {selectedRepo?.name}</Text>
           </TouchableOpacity>
 
           <View>
-            <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Title</Text>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Title</Text>
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="What will this agent work on?"
-              placeholderTextColor="#3f3f46"
-              style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: "#fafafa", fontSize: 14 }}
+              placeholderTextColor={c.placeholder}
+              style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: c.fg, fontSize: 14 }}
             />
           </View>
 
           <View>
-            <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Branch</Text>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Branch</Text>
             <TextInput
               value={branch}
               onChangeText={setBranch}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="agent/my-feature"
-              placeholderTextColor="#3f3f46"
-              style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: "#fafafa", fontSize: 13, fontFamily: "monospace" }}
+              placeholderTextColor={c.placeholder}
+              style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: c.fg, fontSize: 13, fontFamily: "monospace" }}
             />
           </View>
 
           <View>
-            <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Model</Text>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Model</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               {MODELS.map((m) => (
                 <TouchableOpacity
@@ -151,36 +156,36 @@ export default function NewAgentScreen() {
                     flex: 1,
                     paddingVertical: 10,
                     borderRadius: 10,
-                    backgroundColor: model === m.id ? "#1d4ed8" : "#111111",
+                    backgroundColor: model === m.id ? c.primaryDark : c.card,
                     borderWidth: 1,
-                    borderColor: model === m.id ? "#3b82f6" : "#1f1f1f",
+                    borderColor: model === m.id ? c.primary : c.border,
                     alignItems: "center",
                   }}
                 >
-                  <Text style={{ color: model === m.id ? "#fff" : "#71717a", fontSize: 11, fontWeight: "600" }}>{m.label}</Text>
+                  <Text style={{ color: model === m.id ? c.white : c.fgSub, fontSize: 11, fontWeight: "600" }}>{m.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
           <View>
-            <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Description (optional)</Text>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Description (optional)</Text>
             <TextInput
               value={description}
               onChangeText={setDescription}
               placeholder="Brief description of the task"
-              placeholderTextColor="#3f3f46"
+              placeholderTextColor={c.placeholder}
               multiline
               numberOfLines={3}
-              style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: "#fafafa", fontSize: 14, minHeight: 80, textAlignVertical: "top" }}
+              style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, color: c.fg, fontSize: 14, minHeight: 80, textAlignVertical: "top" }}
             />
           </View>
 
           <TouchableOpacity
             onPress={handleCreate}
-            disabled={!title.trim() || !branch.trim() || creating}
+            disabled={!canCreate || creating}
             style={{
-              backgroundColor: title.trim() && branch.trim() ? "#3b82f6" : "#1f1f1f",
+              backgroundColor: canCreate ? c.primary : c.secondary,
               borderRadius: 12,
               paddingVertical: 14,
               alignItems: "center",
@@ -188,9 +193,9 @@ export default function NewAgentScreen() {
             }}
           >
             {creating ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={c.white} />
             ) : (
-              <Text style={{ color: title.trim() && branch.trim() ? "#fff" : "#71717a", fontWeight: "600", fontSize: 15 }}>
+              <Text style={{ color: canCreate ? c.white : c.fgSub, fontWeight: "600", fontSize: 15 }}>
                 Create Agent
               </Text>
             )}

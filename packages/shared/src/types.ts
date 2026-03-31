@@ -145,12 +145,19 @@ export interface SlashCommand {
   source: "builtin" | "skill"
 }
 
-export const statusConfig: Record<AgentStatus, { label: string; color: string; dotColor: string }> = {
-  done: { label: "Done", color: "text-emerald-500", dotColor: "bg-emerald-500" },
-  "in-review": { label: "In review", color: "text-blue-400", dotColor: "bg-blue-400" },
-  "in-progress": { label: "In progress", color: "text-amber-400", dotColor: "bg-amber-400" },
-  backlog: { label: "Backlog", color: "text-zinc-400", dotColor: "bg-zinc-500" },
-  cancelled: { label: "Canceled", color: "text-red-400", dotColor: "bg-red-400" },
+import { statusColors } from "@hive/tokens"
+
+function sc(key: keyof typeof statusColors, label: string) {
+  const t = statusColors[key]
+  return { label, color: t.tw.color, dotColor: t.tw.dot, hex: t.color }
+}
+
+export const statusConfig: Record<AgentStatus, { label: string; color: string; dotColor: string; hex: string }> = {
+  done:          sc("done",         "Done"),
+  "in-review":   sc("in-review",    "In review"),
+  "in-progress": sc("in-progress",  "In progress"),
+  backlog:       sc("backlog",      "Backlog"),
+  cancelled:     sc("cancelled",    "Canceled"),
 }
 
 export const statusOrder: AgentStatus[] = ["in-progress", "in-review", "backlog", "done", "cancelled"]

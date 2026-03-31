@@ -18,6 +18,9 @@ importers:
       '@hive/shared':
         specifier: ../../packages/shared
         version: link:../../packages/shared
+      '@hive/tokens':
+        specifier: ../../packages/tokens
+        version: link:../../packages/tokens
       '@react-native-async-storage/async-storage':
         specifier: ^1.24.0
         version: 1.24.0(react-native@0.81.5(@babel/core@7.29.0)(@react-native/metro-config@0.84.1(@babel/core@7.29.0))(@types/react@19.1.17)(react@19.1.0))
@@ -134,6 +137,9 @@ importers:
       '@hive/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@hive/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       '@radix-ui/react-popover':
         specifier: ^1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -242,6 +248,10 @@ importers:
         version: 8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@24.12.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
 
   packages/shared:
+    dependencies:
+      '@hive/tokens':
+        specifier: workspace:*
+        version: link:../tokens
     devDependencies:
       '@tanstack/react-query':
         specifier: ^5.95.2
@@ -254,6 +264,18 @@ importers:
         version: 19.2.4
       typescript:
         specifier: ~5.9.3
+        version: 5.9.3
+
+  packages/tokens:
+    devDependencies:
+      tsup:
+        specifier: ^8.3.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.6.0
         version: 5.9.3
 
 packages:

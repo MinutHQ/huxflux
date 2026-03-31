@@ -18,6 +18,7 @@ config.resolver.nodeModulesPaths = [
 // Resolve @hive/shared source directly
 config.resolver.extraNodeModules = {
   "@hive/shared": path.resolve(workspaceRoot, "packages/shared/src"),
+  "@hive/tokens": path.resolve(workspaceRoot, "packages/tokens/src"),
 }
 
 // Force singleton packages to always resolve from the app's own node_modules,

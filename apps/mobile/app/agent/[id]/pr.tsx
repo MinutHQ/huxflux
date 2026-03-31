@@ -3,42 +3,43 @@ import { useLocalSearchParams } from "expo-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, useAgent, type PRDetails, type PRCheck } from "@hive/shared"
 import { useState } from "react"
+import { c, prColors } from "../../../theme"
 
 function CheckRow({ check }: { check: PRCheck }) {
-  const isPass = check.conclusion === "success" || check.conclusion === "skipped"
-  const isFail = check.conclusion === "failure" || check.conclusion === "timed_out" || check.conclusion === "action_required"
+  const isPass    = check.conclusion === "success" || check.conclusion === "skipped"
+  const isFail    = check.conclusion === "failure" || check.conclusion === "timed_out" || check.conclusion === "action_required"
   const isPending = check.status !== "completed"
 
-  const color = isPending ? "#fbbf24" : isPass ? "#10b981" : isFail ? "#f87171" : "#71717a"
-  const icon = isPending ? "○" : isPass ? "✓" : isFail ? "✗" : "–"
+  const color = isPending ? c.warning : isPass ? c.success : isFail ? c.error : c.fgSub
+  const icon  = isPending ? "○" : isPass ? "✓" : isFail ? "✗" : "–"
 
   return (
     <TouchableOpacity
       onPress={() => check.url && Linking.openURL(check.url)}
-      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1f1f1f" }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}
     >
       <Text style={{ color, fontSize: 14, width: 18 }}>{icon}</Text>
-      <Text style={{ color: "#e4e4e7", fontSize: 13, flex: 1 }} numberOfLines={1}>{check.name}</Text>
-      {check.url && <Text style={{ color: "#71717a", fontSize: 12 }}>›</Text>}
+      <Text style={{ color: c.fgBright, fontSize: 13, flex: 1 }} numberOfLines={1}>{check.name}</Text>
+      {check.url && <Text style={{ color: c.fgSub, fontSize: 12 }}>›</Text>}
     </TouchableOpacity>
   )
 }
 
-function ReviewRow({ author, state, avatarUrl }: { author: string; state: string; avatarUrl?: string }) {
+function ReviewRow({ author, state }: { author: string; state: string }) {
   const stateConfig = {
-    APPROVED: { label: "Approved", color: "#10b981" },
-    CHANGES_REQUESTED: { label: "Changes requested", color: "#f87171" },
-    DISMISSED: { label: "Dismissed", color: "#fbbf24" },
-    COMMENTED: { label: "Commented", color: "#71717a" },
-    PENDING: { label: "Pending", color: "#71717a" },
-  }[state] ?? { label: state, color: "#71717a" }
+    APPROVED:          { label: "Approved",          color: c.success },
+    CHANGES_REQUESTED: { label: "Changes requested", color: c.error },
+    DISMISSED:         { label: "Dismissed",         color: c.warning },
+    COMMENTED:         { label: "Commented",         color: c.fgSub },
+    PENDING:           { label: "Pending",           color: c.fgSub },
+  }[state] ?? { label: state, color: c.fgSub }
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#1f1f1f" }}>
-      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#1f1f1f", alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "700" }}>{author[0]?.toUpperCase()}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
+      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "700" }}>{author[0]?.toUpperCase()}</Text>
       </View>
-      <Text style={{ color: "#e4e4e7", fontSize: 13, flex: 1 }}>{author}</Text>
+      <Text style={{ color: c.fgBright, fontSize: 13, flex: 1 }}>{author}</Text>
       <Text style={{ color: stateConfig.color, fontSize: 12 }}>{stateConfig.label}</Text>
     </View>
   )
@@ -85,55 +86,70 @@ export default function PRScreen() {
 
   if (!agent?.prNumber) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center", padding: 32 }}>
-        <Text style={{ color: "#71717a", fontSize: 14, textAlign: "center" }}>No pull request for this agent yet.</Text>
+      <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center", padding: 32 }}>
+        <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center" }}>No pull request for this agent yet.</Text>
       </View>
     )
   }
 
   if (isLoading || !pr) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color="#60a5fa" />
+      <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={c.link} />
       </View>
     )
   }
 
-  const statusColor = pr.merged ? "#a78bfa" : pr.draft ? "#71717a" : pr.hasChangeRequests ? "#f87171" : pr.mergeableState === "clean" ? "#10b981" : "#60a5fa"
-  const statusLabel = pr.merged ? "Merged" : pr.draft ? "Draft" : pr.hasChangeRequests ? "Changes requested" : pr.mergeableState === "clean" ? "Ready to merge" : "In review"
+  const statusColor = pr.merged
+    ? prColors.merged
+    : pr.draft
+    ? prColors.draft
+    : pr.hasChangeRequests
+    ? prColors.changesRequested
+    : pr.mergeableState === "clean"
+    ? prColors.readyToMerge
+    : prColors.inReview
 
-  const passCount = pr.checks.filter((c) => c.conclusion === "success").length
-  const failCount = pr.checks.filter((c) => c.conclusion === "failure" || c.conclusion === "timed_out").length
-  const pendingCount = pr.checks.filter((c) => c.status !== "completed").length
+  const statusLabel = pr.merged
+    ? "Merged"
+    : pr.draft
+    ? "Draft"
+    : pr.hasChangeRequests
+    ? "Changes requested"
+    : pr.mergeableState === "clean"
+    ? "Ready to merge"
+    : "In review"
+
+  const passCount    = pr.checks.filter((ch) => ch.conclusion === "success").length
+  const failCount    = pr.checks.filter((ch) => ch.conclusion === "failure" || ch.conclusion === "timed_out").length
+  const pendingCount = pr.checks.filter((ch) => ch.status !== "completed").length
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#0a0a0a" }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       {/* PR header */}
-      <View style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+      <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 16, marginBottom: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fafafa", fontSize: 16, fontWeight: "600", lineHeight: 22 }}>{pr.title}</Text>
-            <Text style={{ color: "#71717a", fontSize: 12, marginTop: 4 }}>
+            <Text style={{ color: c.fg, fontSize: 16, fontWeight: "600", lineHeight: 22 }}>{pr.title}</Text>
+            <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 4 }}>
               #{pr.number} · opened by {pr.author}
             </Text>
           </View>
           <TouchableOpacity onPress={() => Linking.openURL(pr.url)}>
-            <Text style={{ color: "#60a5fa", fontSize: 13 }}>Open ↗</Text>
+            <Text style={{ color: c.link, fontSize: 13 }}>Open ↗</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Status badge */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor }} />
           <Text style={{ color: statusColor, fontSize: 13, fontWeight: "600" }}>{statusLabel}</Text>
         </View>
 
-        {/* Check summary */}
         {pr.checks.length > 0 && (
           <View style={{ flexDirection: "row", gap: 12, marginTop: 10 }}>
-            {passCount > 0 && <Text style={{ color: "#10b981", fontSize: 12 }}>✓ {passCount} passing</Text>}
-            {failCount > 0 && <Text style={{ color: "#f87171", fontSize: 12 }}>✗ {failCount} failing</Text>}
-            {pendingCount > 0 && <Text style={{ color: "#fbbf24", fontSize: 12 }}>○ {pendingCount} pending</Text>}
+            {passCount > 0    && <Text style={{ color: c.success, fontSize: 12 }}>✓ {passCount} passing</Text>}
+            {failCount > 0    && <Text style={{ color: c.error,   fontSize: 12 }}>✗ {failCount} failing</Text>}
+            {pendingCount > 0 && <Text style={{ color: c.warning, fontSize: 12 }}>○ {pendingCount} pending</Text>}
           </View>
         )}
       </View>
@@ -144,9 +160,9 @@ export default function PRScreen() {
           <TouchableOpacity
             onPress={handleMarkReady}
             disabled={markingReady}
-            style={{ backgroundColor: "#3b82f6", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+            style={{ backgroundColor: c.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
           >
-            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+            <Text style={{ color: c.white, fontWeight: "600", fontSize: 14 }}>
               {markingReady ? "Marking ready…" : "Mark ready for review"}
             </Text>
           </TouchableOpacity>
@@ -155,9 +171,9 @@ export default function PRScreen() {
           <TouchableOpacity
             onPress={handleRerequest}
             disabled={rerequesting}
-            style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+            style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
           >
-            <Text style={{ color: "#e4e4e7", fontWeight: "500", fontSize: 14 }}>
+            <Text style={{ color: c.fgBright, fontWeight: "500", fontSize: 14 }}>
               {rerequesting ? "Re-requesting…" : "Re-request review"}
             </Text>
           </TouchableOpacity>
@@ -167,12 +183,12 @@ export default function PRScreen() {
       {/* Reviews */}
       {pr.reviews.length > 0 && (
         <View style={{ marginBottom: 20 }}>
-          <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+          <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
             Reviews
           </Text>
-          <View style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 12, paddingHorizontal: 14 }}>
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14 }}>
             {pr.reviews.map((r, i) => (
-              <ReviewRow key={i} author={r.author} state={r.state} avatarUrl={r.avatarUrl} />
+              <ReviewRow key={i} author={r.author} state={r.state} />
             ))}
           </View>
         </View>
@@ -181,12 +197,12 @@ export default function PRScreen() {
       {/* Checks */}
       {pr.checks.length > 0 && (
         <View>
-          <Text style={{ color: "#71717a", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+          <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
             Checks
           </Text>
-          <View style={{ backgroundColor: "#111111", borderWidth: 1, borderColor: "#1f1f1f", borderRadius: 12, paddingHorizontal: 14 }}>
-            {pr.checks.map((c, i) => (
-              <CheckRow key={i} check={c} />
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14 }}>
+            {pr.checks.map((ch, i) => (
+              <CheckRow key={i} check={ch} />
             ))}
           </View>
         </View>

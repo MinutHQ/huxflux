@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@hive/tokens": "workspace:*"
+  },
   "peerDependencies": {
     "react": ">=18",
     "@tanstack/react-query": ">=5"

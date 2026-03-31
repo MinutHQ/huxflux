@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router"
 import { FlashList } from "@shopify/flash-list"
 import { useAgent, api, type FileChange } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
+import { c } from "../../../theme"
 
 function FileRow({ file, agentId }: { file: FileChange; agentId: string }) {
   const router = useRouter()
@@ -12,22 +13,22 @@ function FileRow({ file, agentId }: { file: FileChange; agentId: string }) {
   return (
     <TouchableOpacity
       onPress={() => router.push({ pathname: "/agent/[id]/diff", params: { id: agentId, path: file.path } })}
-      style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#1f1f1f", flexDirection: "row", alignItems: "center", gap: 12 }}
+      style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
         {dir ? (
-          <Text style={{ color: "#71717a", fontSize: 11, fontFamily: "monospace", marginBottom: 1 }}>{dir}/</Text>
+          <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", marginBottom: 1 }}>{dir}/</Text>
         ) : null}
-        <Text style={{ color: "#fafafa", fontSize: 13, fontFamily: "monospace" }} numberOfLines={1}>{name}</Text>
+        <Text style={{ color: c.fg, fontSize: 13, fontFamily: "monospace" }} numberOfLines={1}>{name}</Text>
       </View>
       <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
         {file.additions > 0 && (
-          <Text style={{ color: "#10b981", fontSize: 12, fontWeight: "600" }}>+{file.additions}</Text>
+          <Text style={{ color: c.success, fontSize: 12, fontWeight: "600" }}>+{file.additions}</Text>
         )}
         {file.deletions > 0 && (
-          <Text style={{ color: "#f87171", fontSize: 12, fontWeight: "600" }}>-{file.deletions}</Text>
+          <Text style={{ color: c.error, fontSize: 12, fontWeight: "600" }}>-{file.deletions}</Text>
         )}
-        <Text style={{ color: "#71717a", fontSize: 14 }}>›</Text>
+        <Text style={{ color: c.fgSub, fontSize: 14 }}>›</Text>
       </View>
     </TouchableOpacity>
   )
@@ -40,8 +41,8 @@ export default function FilesScreen() {
 
   if (isLoading || !agent) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0a0a0a", alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color="#60a5fa" />
+      <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={c.link} />
       </View>
     )
   }
@@ -51,12 +52,11 @@ export default function FilesScreen() {
   const totalDel = files.reduce((s, f) => s + f.deletions, 0)
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
-      {/* Summary bar */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#1f1f1f", flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <Text style={{ color: "#71717a", fontSize: 12 }}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
-        <Text style={{ color: "#10b981", fontSize: 12, fontWeight: "600" }}>+{totalAdd}</Text>
-        <Text style={{ color: "#f87171", fontSize: 12, fontWeight: "600" }}>-{totalDel}</Text>
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Text style={{ color: c.fgSub, fontSize: 12 }}>{files.length} file{files.length !== 1 ? "s" : ""}</Text>
+        <Text style={{ color: c.success, fontSize: 12, fontWeight: "600" }}>+{totalAdd}</Text>
+        <Text style={{ color: c.error, fontSize: 12, fontWeight: "600" }}>-{totalDel}</Text>
         <TouchableOpacity
           onPress={async () => {
             await api.refreshFiles(id!)
@@ -64,7 +64,7 @@ export default function FilesScreen() {
           }}
           style={{ marginLeft: "auto" }}
         >
-          <Text style={{ color: "#60a5fa", fontSize: 12 }}>Refresh</Text>
+          <Text style={{ color: c.link, fontSize: 12 }}>Refresh</Text>
         </TouchableOpacity>
       </View>
 
@@ -75,7 +75,7 @@ export default function FilesScreen() {
         renderItem={({ item }) => <FileRow file={item} agentId={id!} />}
         ListEmptyComponent={
           <View style={{ padding: 32, alignItems: "center" }}>
-            <Text style={{ color: "#71717a", fontSize: 14 }}>No file changes yet</Text>
+            <Text style={{ color: c.fgSub, fontSize: 14 }}>No file changes yet</Text>
           </View>
         }
       />

@@ -158,7 +158,7 @@ export async function agentsRoutes(app: FastifyInstance) {
   // PATCH /api/agents/:id — update status / metadata
   app.patch<{
     Params: { id: string }
-    Body: Partial<{ title: string; status: string; pr: string; description: string; unread: number; baseBranch: string }>
+    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string }>
   }>("/api/agents/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
@@ -167,6 +167,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     await db.update(agents).set({
       ...(body.title !== undefined && { title: body.title }),
       ...(body.status !== undefined && { status: body.status }),
+      ...(body.branch !== undefined && { branch: body.branch }),
       ...(body.pr !== undefined && { pr: body.pr }),
       ...(body.description !== undefined && { description: body.description }),
       ...(body.unread !== undefined && { unread: body.unread }),

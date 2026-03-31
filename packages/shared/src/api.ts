@@ -52,6 +52,7 @@ export const api = {
     model?: string
     location?: string
     description?: string
+    shareWorktreeWith?: string
   }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (
     id: string,
@@ -74,6 +75,12 @@ export const api = {
     fetch(`${getBase()}/api/agents/${agentId}/files/diff?path=${encodeURIComponent(path)}`, {
       headers: authHeaders(),
     }).then((r) => r.text()),
+  getFileTree: (agentId: string) =>
+    req<{ name: string; path: string; type: "file" | "directory"; children?: any[] }[]>(`/api/agents/${agentId}/files/tree`),
+  getFileContent: (agentId: string, path: string) =>
+    fetch(`${getBase()}/api/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
+  saveFileContent: (agentId: string, path: string, content: string) =>
+    req<{ ok: boolean }>(`/api/agents/${agentId}/files/content`, { method: "PUT", body: JSON.stringify({ path, content }) }),
   refreshFiles: (agentId: string) =>
     req<FileChange[]>(`/api/agents/${agentId}/files/refresh`, { method: "POST" }),
 

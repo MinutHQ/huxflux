@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
 import { api, getApiBase } from "@/lib/api"
 import { DiffView } from "@/components/DiffView"
+import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
@@ -355,12 +356,10 @@ function MessageBubble({ msg }: { msg: Message }) {
         {msg.durationMs != null && (
           <>
             <Popover>
-              <PopoverTrigger asChild>
-                <button className="text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors cursor-pointer select-none">
+              <PopoverTrigger className="text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors cursor-pointer select-none">
                   {msg.durationMs < 1000
                     ? `${msg.durationMs}ms`
                     : `${(msg.durationMs / 1000).toFixed(0)}s`}
-                </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-56 text-xs p-3 space-y-2">
                 {msg.model && (
@@ -563,17 +562,30 @@ function CreationView({ agent }: { agent: Agent }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string }
+
+interface ChatTab {
+  agentId: string
+  title: string
+}
+
 interface ChatViewProps {
   agent: Agent
   isStreaming: boolean
-  openFileTab: FileChange | null
+  openFileTab: OpenFile | null
   onClearFileTab: () => void
+  tabs?: ChatTab[]
+  activeTabId?: string | null
+  onTabSelect?: (agentId: string) => void
+  onTabClose?: (agentId: string) => void
+  onNewTab?: () => void
+  onTabTitleChange?: (agentId: string, title: string) => void
   pendingComments?: PRComment[]
   onRemoveComment?: (id: string) => void
   onClearComments?: () => void
 }
 
-export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pendingComments = [], onRemoveComment, onClearComments }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const [input, setInput] = useState("")
@@ -615,6 +627,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
     if (!title || title === agent.title) return
     await api.updateAgent(agent.id, { title })
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, title } : old)
+    onTabTitleChange?.(agent.id, title)
   }
 
   async function selectBaseBranch(val: string) {
@@ -854,55 +867,116 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
       </div>
 
       {/* Tab bar */}
-      <div className="flex items-center border-b border-border shrink-0 px-2">
-        <div
-          onClick={() => setActiveTab("chat")}
-          className={cn(
-            "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer",
-            activeTab === "chat"
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <IconSparkles size={12} className="shrink-0" />
-          {editingTitle ? (
-            <input
-              ref={titleInputRef}
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); void commitTitle() }
-                if (e.key === "Escape") setEditingTitle(false)
-              }}
-              onBlur={() => void commitTitle()}
-              className="bg-background border border-ring rounded px-1.5 py-0.5 outline-none text-foreground w-48"
-            />
-          ) : (
-            <span>{agent.title.length > 32 ? agent.title.slice(0, 32) + "…" : agent.title}</span>
-          )}
-          {!editingTitle && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setTitleDraft(agent.title); setEditingTitle(true) }}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-muted-foreground transition-all ml-1"
-            >
-              <IconPencil size={11} />
-            </button>
-          )}
-        </div>
+      <div className="flex items-center border-b border-border shrink-0 px-2 overflow-x-auto">
+        {tabs.length > 1 ? (
+          // Multi-tab mode: show each agent as a tab
+          tabs.map((tab) => {
+            const isActive = tab.agentId === activeTabId && activeTab === "chat"
+            const isEditingThis = editingTitle && tab.agentId === activeTabId
+            return (
+              <div
+                key={tab.agentId}
+                onClick={() => { onTabSelect?.(tab.agentId); setActiveTab("chat") }}
+                className={cn(
+                  "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer shrink-0",
+                  isActive
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <IconSparkles size={12} className="shrink-0" />
+                {isEditingThis ? (
+                  <input
+                    ref={titleInputRef}
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void commitTitle() }
+                      if (e.key === "Escape") setEditingTitle(false)
+                    }}
+                    onBlur={() => void commitTitle()}
+                    className="bg-background border border-ring rounded px-1.5 py-0.5 outline-none text-foreground w-40"
+                  />
+                ) : (
+                  <span>{tab.title.length > 24 ? tab.title.slice(0, 24) + "…" : tab.title}</span>
+                )}
+                {isActive && !isEditingThis && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setTitleDraft(tab.title)
+                      setEditingTitle(true)
+                      onTabTitleChange?.(tab.agentId, tab.title)
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-muted-foreground transition-all"
+                  >
+                    <IconPencil size={11} />
+                  </button>
+                )}
+                {tabs.length > 1 && (
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); onTabClose?.(tab.agentId) }}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-foreground transition-all"
+                  >
+                    <IconX size={11} />
+                  </span>
+                )}
+              </div>
+            )
+          })
+        ) : (
+          // Single tab mode: show agent title with edit
+          <div
+            onClick={() => setActiveTab("chat")}
+            className={cn(
+              "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer",
+              activeTab === "chat"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <IconSparkles size={12} className="shrink-0" />
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); void commitTitle() }
+                  if (e.key === "Escape") setEditingTitle(false)
+                }}
+                onBlur={() => void commitTitle()}
+                className="bg-background border border-ring rounded px-1.5 py-0.5 outline-none text-foreground w-48"
+              />
+            ) : (
+              <span>{agent.title.length > 32 ? agent.title.slice(0, 32) + "…" : agent.title}</span>
+            )}
+            {!editingTitle && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setTitleDraft(agent.title); setEditingTitle(true) }}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-muted-foreground transition-all ml-1"
+              >
+                <IconPencil size={11} />
+              </button>
+            )}
+          </div>
+        )}
 
         {openFileTab && (
           <button
             onClick={() => setActiveTab("file")}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px",
+              "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px shrink-0",
               activeTab === "file"
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             <IconFileCode size={12} />
-            <span>{openFileTab.path.split("/").pop()}</span>
+            <span>{(openFileTab.type === "diff" ? openFileTab.file.path : openFileTab.path).split("/").pop()}</span>
             <span
               role="button"
               onClick={(e) => { e.stopPropagation(); closeFileTab() }}
@@ -913,7 +987,11 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
           </button>
         )}
 
-        <button className="ml-1 p-2 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+        <button
+          onClick={onNewTab}
+          className="ml-1 p-2 text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0"
+          title="New agent in same worktree"
+        >
           <IconPlus size={13} />
         </button>
       </div>
@@ -921,7 +999,11 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
       {/* Content */}
       {activeTab === "file" && openFileTab ? (
         <div className="flex-1 min-h-0">
-          <DiffView agentId={agent.id} file={openFileTab} />
+          {openFileTab.type === "diff" ? (
+            <DiffView agentId={agent.id} file={openFileTab.file} />
+          ) : (
+            <FileContentView agentId={agent.id} filePath={openFileTab.path} />
+          )}
         </div>
       ) : (
         <>

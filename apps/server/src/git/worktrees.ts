@@ -1,5 +1,5 @@
 import { simpleGit } from "simple-git"
-import { readFile, mkdir } from "node:fs/promises"
+import { readFile, writeFile, mkdir } from "node:fs/promises"
 import * as path from "node:path"
 import type { FileChange } from "../types.js"
 
@@ -111,6 +111,73 @@ export async function commitAndPush(
   await git.commit(message)
   const branch = (await git.branch()).current
   await git.push(remote, branch, ["--set-upstream"])
+}
+
+export interface FileTreeEntry {
+  name: string
+  path: string
+  type: "file" | "directory"
+  children?: FileTreeEntry[]
+}
+
+export async function getFileTree(worktreePath: string): Promise<FileTreeEntry[]> {
+  const git = simpleGit(worktreePath)
+  try {
+    // List all tracked files + untracked (but not ignored)
+    const tracked = await git.raw(["ls-files"])
+    const untracked = await git.raw(["ls-files", "--others", "--exclude-standard"])
+    const allPaths = [...new Set([
+      ...tracked.trim().split("\n").filter(Boolean),
+      ...untracked.trim().split("\n").filter(Boolean),
+    ])].sort()
+
+    // Build tree structure
+    const root: FileTreeEntry[] = []
+    const dirMap = new Map<string, FileTreeEntry>()
+
+    for (const filePath of allPaths) {
+      const parts = filePath.split("/")
+      let currentChildren = root
+      let currentPath = ""
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]
+        currentPath = currentPath ? `${currentPath}/${part}` : part
+
+        if (i === parts.length - 1) {
+          // File
+          currentChildren.push({ name: part, path: currentPath, type: "file" })
+        } else {
+          // Directory
+          let dir = dirMap.get(currentPath)
+          if (!dir) {
+            dir = { name: part, path: currentPath, type: "directory", children: [] }
+            dirMap.set(currentPath, dir)
+            currentChildren.push(dir)
+          }
+          currentChildren = dir.children!
+        }
+      }
+    }
+
+    return root
+  } catch {
+    return []
+  }
+}
+
+export async function getFileContent(worktreePath: string, filePath: string): Promise<string> {
+  try {
+    return await readFile(path.join(worktreePath, filePath), "utf8")
+  } catch {
+    return ""
+  }
+}
+
+export async function saveFileContent(worktreePath: string, filePath: string, content: string): Promise<void> {
+  const fullPath = path.join(worktreePath, filePath)
+  await mkdir(path.dirname(fullPath), { recursive: true })
+  await writeFile(fullPath, content, "utf8")
 }
 
 export async function getDiffSummary(worktreePath: string, branchFrom: string) {

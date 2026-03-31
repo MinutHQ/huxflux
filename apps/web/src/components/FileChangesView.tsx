@@ -9,6 +9,7 @@ import { api } from "@/lib/api"
 import {
   IconFileText,
   IconChevronDown,
+  IconChevronRight,
   IconCheck,
   IconSearch,
   IconGitPullRequest,
@@ -17,6 +18,8 @@ import {
   IconClock,
   IconCircleDashed,
   IconArrowUpRight,
+  IconFolder,
+  IconFiles,
 } from "@tabler/icons-react"
 
 // ── Changes list ──────────────────────────────────────────────────────────────
@@ -432,23 +435,173 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
   )
 }
 
+// ── All files tree ───────────────────────────────────────────────────────────
+
+interface FileTreeEntry {
+  name: string
+  path: string
+  type: "file" | "directory"
+  children?: FileTreeEntry[]
+}
+
+function fileColor(name: string): string {
+  // Exact filename matches first
+  const lower = name.toLowerCase()
+  const nameMap: Record<string, string> = {
+    ".gitignore": "text-red-500",
+    ".git": "text-zinc-500",
+    ".env": "text-yellow-500",
+    "dockerfile": "text-sky-400",
+    "license": "text-zinc-400",
+    "readme.md": "text-zinc-400",
+  }
+  if (nameMap[lower]) return nameMap[lower]
+
+  const ext = name.split(".").pop()?.toLowerCase()
+  const colorMap: Record<string, string> = {
+    ts: "text-blue-400", tsx: "text-blue-400",
+    js: "text-yellow-400", jsx: "text-yellow-400",
+    json: "text-amber-400",
+    md: "text-sky-400",
+    css: "text-pink-400", scss: "text-pink-400",
+    html: "text-orange-400",
+    yaml: "text-green-400", yml: "text-green-400",
+    sh: "text-emerald-500",
+    lock: "text-zinc-600",
+    toml: "text-zinc-400",
+    svg: "text-amber-300",
+    png: "text-purple-400", jpg: "text-purple-400", gif: "text-purple-400",
+    env: "text-yellow-500",
+    sql: "text-orange-300",
+    graphql: "text-pink-500",
+    py: "text-yellow-300",
+    go: "text-cyan-400",
+    rs: "text-orange-400",
+    rb: "text-red-400",
+  }
+  return colorMap[ext ?? ""] ?? "text-zinc-500"
+}
+
+function TreeNode({
+  entry,
+  depth,
+  onSelect,
+}: {
+  entry: FileTreeEntry
+  depth: number
+  onSelect: (path: string) => void
+}) {
+  const [open, setOpen] = useState(depth < 1)
+
+  if (entry.type === "directory") {
+    return (
+      <div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors"
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
+        >
+          <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", open && "rotate-90")} />
+          <IconFolder size={14} className="text-muted-foreground/50 shrink-0" />
+          <span className="text-[12px] text-muted-foreground truncate">{entry.name}</span>
+        </button>
+        {open && entry.children?.map((child) => (
+          <TreeNode key={child.path} entry={child} depth={depth + 1} onSelect={onSelect} />
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => onSelect(entry.path)}
+      className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors"
+      style={{ paddingLeft: `${26 + depth * 16}px` }}
+    >
+      <span className={cn("text-[10px] shrink-0 leading-none", fileColor(entry.name))}>◆</span>
+      <span className="text-[12px] text-muted-foreground truncate">{entry.name}</span>
+    </button>
+  )
+}
+
+function AllFilesView({
+  agentId,
+  onFileContentSelect,
+}: {
+  agentId: string
+  onFileContentSelect: (path: string) => void
+}) {
+  const { data: tree, isLoading } = useQuery({
+    queryKey: ["file-tree", agentId],
+    queryFn: () => api.getFileTree(agentId),
+    staleTime: 30_000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-xs text-muted-foreground/40">Loading…</p>
+      </div>
+    )
+  }
+
+  if (!tree || tree.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-2">
+        <IconFiles size={22} className="text-muted-foreground/30" />
+        <p className="text-xs text-muted-foreground/40">No files</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-h-0">
+      <ScrollArea className="h-full">
+        <div className="py-1">
+          {tree.map((entry) => (
+            <TreeNode
+              key={entry.path}
+              entry={entry as FileTreeEntry}
+              depth={0}
+              onSelect={onFileContentSelect}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface FileChangesViewProps {
   agent: Agent
   selectedFile: string | null
   onFileSelect: (file: FileChange | null) => void
+  onFileContentSelect: (path: string) => void
   onAddComment: (c: PRComment) => void
 }
 
-export function FileChangesView({ agent, selectedFile, onFileSelect, onAddComment }: FileChangesViewProps) {
-  const [tab, setTab] = useState<"changes" | "pr">("changes")
+export function FileChangesView({ agent, selectedFile, onFileSelect, onFileContentSelect, onAddComment }: FileChangesViewProps) {
+  const [tab, setTab] = useState<"files" | "changes" | "pr">("files")
   const hasPR = !!agent.prNumber
 
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
       <div className="flex items-center px-4 py-2.5 border-b border-border shrink-0 gap-4">
+        <button
+          onClick={() => setTab("files")}
+          className={cn(
+            "flex items-center gap-1.5 text-[12px] font-medium transition-colors pb-0.5",
+            tab === "files"
+              ? "text-foreground border-b-2 border-foreground -mb-px"
+              : "text-muted-foreground hover:text-foreground border-b-2 border-transparent -mb-px"
+          )}
+        >
+          All files
+        </button>
+
         <button
           onClick={() => setTab("changes")}
           className={cn(
@@ -487,7 +640,9 @@ export function FileChangesView({ agent, selectedFile, onFileSelect, onAddCommen
       </div>
 
       <div className="flex flex-col flex-1 min-h-0">
-        {tab === "changes" ? (
+        {tab === "files" ? (
+          <AllFilesView agentId={agent.id} onFileContentSelect={onFileContentSelect} />
+        ) : tab === "changes" ? (
           <ChangesView
             files={agent.fileChanges}
             selectedFile={selectedFile}

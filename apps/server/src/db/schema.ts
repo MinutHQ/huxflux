@@ -29,6 +29,7 @@ export const agents = sqliteTable("agents", {
   prNumber: integer("pr_number"),
   prStatus: text("pr_status"), // JSON: PRStatus
   baseBranch: text("base_branch"), // optional per-agent override of repo.branchFrom
+  parentAgentId: text("parent_agent_id"), // if set, this is a child tab — hidden from sidebar
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

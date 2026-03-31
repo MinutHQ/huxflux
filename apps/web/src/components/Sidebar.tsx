@@ -15,6 +15,7 @@ import {
   IconChevronRight,
   IconPlus,
   IconFilter,
+  IconCheck,
   IconSettings,
   IconGitBranch,
   IconFolderPlus,
@@ -236,6 +237,60 @@ function StreamingDots() {
   )
 }
 
+const visibleStatuses: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
+
+function StatusContextMenu({
+  x,
+  y,
+  agent,
+  onClose,
+}: {
+  x: number
+  y: number
+  agent: AgentSummary
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+
+  async function handleSetStatus(status: AgentStatus) {
+    onClose()
+    if (status === agent.status) return
+    await api.updateAgent(agent.id, { status })
+    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+      old ? old.map((a) => a.id === agent.id ? { ...a, status } : a) : old
+    )
+  }
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
+      <div
+        className="fixed z-50 w-44 bg-card border border-border rounded-lg shadow-xl overflow-hidden py-1"
+        style={{ top: y, left: x }}
+      >
+        <div className="px-3 py-1.5 text-[10px] text-muted-foreground/50 uppercase tracking-wider font-medium">
+          Set status
+        </div>
+        {visibleStatuses.map((status) => {
+          const cfg = statusConfig[status]
+          return (
+            <button
+              key={status}
+              onClick={() => handleSetStatus(status)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
+            >
+              <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dotColor)} />
+              <span className={cn("flex-1 text-left", cfg.color)}>{cfg.label}</span>
+              {agent.status === status && <IconCheck size={12} className="text-muted-foreground/60" />}
+            </button>
+          )
+        })}
+      </div>
+    </>,
+    document.body
+  )
+}
+
 function AgentRow({
   agent,
   isSelected,
@@ -262,12 +317,19 @@ function AgentRow({
   const shortcutNum = index < 9 ? index + 1 : null
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState("")
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
   function handleMouseEnter() {
     if (ref.current) {
       const rect = ref.current.getBoundingClientRect()
       onHover(agent, rect.top)
     }
+  }
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY })
   }
 
   function startEdit(e: React.MouseEvent) {
@@ -298,58 +360,69 @@ function AgentRow({
   }
 
   return (
-    <button
-      ref={ref}
-      onClick={onClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={onLeave}
-      className={cn(
-        "w-full min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all",
-        isSelected
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground",
-        isCancelled && "opacity-50"
-      )}
-    >
-      <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", modelColor)}>
-        {initials}
-      </div>
-      {isStreaming ? (
-        <StreamingDots />
-      ) : (
-        <IconGitBranch size={11} className="text-muted-foreground/40 shrink-0" />
-      )}
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commitEdit() }
-            if (e.key === "Escape") cancelEdit()
-          }}
-          onBlur={commitEdit}
-          className="text-xs flex-1 min-w-0 bg-background border border-ring rounded px-1.5 py-0.5 leading-tight outline-none"
+    <>
+      <button
+        ref={ref}
+        onClick={onClick}
+        onContextMenu={handleContextMenu}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={onLeave}
+        className={cn(
+          "w-full min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all",
+          isSelected
+            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+            : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground",
+          isCancelled && "opacity-50"
+        )}
+      >
+        <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", modelColor)}>
+          {initials}
+        </div>
+        {isStreaming ? (
+          <StreamingDots />
+        ) : (
+          <IconGitBranch size={11} className="text-muted-foreground/40 shrink-0" />
+        )}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitEdit() }
+              if (e.key === "Escape") cancelEdit()
+            }}
+            onBlur={commitEdit}
+            className="text-xs flex-1 min-w-0 bg-background border border-ring rounded px-1.5 py-0.5 leading-tight outline-none"
+          />
+        ) : (
+          <span
+            onDoubleClick={startEdit}
+            className={cn(
+              "text-xs flex-1 min-w-0 truncate leading-tight",
+              isSelected && "font-semibold",
+              isCancelled && "line-through"
+            )}
+          >
+            {agent.title}
+          </span>
+        )}
+        {shortcutNum !== null && !isStreaming && !editing && (
+          <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 tabular-nums">
+            {shortcutNum}
+          </span>
+        )}
+      </button>
+      {contextMenu && (
+        <StatusContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          agent={agent}
+          onClose={() => setContextMenu(null)}
         />
-      ) : (
-        <span
-          onDoubleClick={startEdit}
-          className={cn(
-            "text-xs flex-1 min-w-0 truncate leading-tight",
-            isSelected && "font-semibold",
-            isCancelled && "line-through"
-          )}
-        >
-          {agent.title}
-        </span>
       )}
-      {shortcutNum !== null && !isStreaming && !editing && (
-        <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 tabular-nums">
-          {shortcutNum}
-        </span>
-      )}
-    </button>
+    </>
   )
 }
 
@@ -374,10 +447,8 @@ function StatusGroup({
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
 }) {
-  const [collapsed, setCollapsed] = useState(status === "done" || status === "cancelled")
+  const [collapsed, setCollapsed] = useState(status === "done")
   const config = statusConfig[status]
-
-  if (agents.length === 0) return null
 
   return (
     <div className="mb-0.5">
@@ -411,6 +482,176 @@ function StatusGroup({
         </div>
       )}
     </div>
+  )
+}
+
+// ── Repo group ───────────────────────────────────────────────────────────────
+
+function RepoGroup({
+  repoName,
+  agents,
+  selectedId,
+  streamingAgentId,
+  onSelect,
+  startIndex,
+  onHover,
+  onLeave,
+}: {
+  repoName: string
+  agents: AgentSummary[]
+  selectedId: string
+  streamingAgentId: string | null
+  onSelect: (id: string) => void
+  startIndex: number
+  onHover: (agent: AgentSummary, y: number) => void
+  onLeave: () => void
+}) {
+  const [collapsed, setCollapsed] = useState(false)
+  const initials = repoName[0].toUpperCase()
+
+  if (agents.length === 0) return null
+
+  return (
+    <div className="mb-0.5">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+      >
+        <span className="w-4 h-4 rounded-sm bg-muted border border-border text-[9px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
+          {initials}
+        </span>
+        <span className="text-[11px] font-semibold text-muted-foreground truncate">
+          {repoName}
+        </span>
+        {agents.length > 0 && (
+          <span className="ml-auto text-[11px] text-muted-foreground/40 font-mono">{agents.length}</span>
+        )}
+      </button>
+      {!collapsed && (
+        <div className="mt-0.5 space-y-0.5 px-1">
+          {agents.map((agent, i) => (
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              isSelected={selectedId === agent.id}
+              isStreaming={streamingAgentId === agent.id}
+              onClick={() => onSelect(agent.id)}
+              index={startIndex + i}
+              onHover={onHover}
+              onLeave={onLeave}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Filter popover ───────────────────────────────────────────────────────────
+
+type GroupByMode = "status" | "repo"
+
+function FilterPopover({
+  groupBy,
+  onGroupByChange,
+  repoFilter,
+  onRepoFilterChange,
+  repos,
+  onClose,
+  anchorRef,
+}: {
+  groupBy: GroupByMode
+  onGroupByChange: (mode: GroupByMode) => void
+  repoFilter: string
+  onRepoFilterChange: (repoId: string) => void
+  repos: { id: string; name: string }[]
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const [groupByOpen, setGroupByOpen] = useState(false)
+  const [repoOpen, setRepoOpen] = useState(false)
+  const popoverRef = useRef<HTMLDivElement>(null)
+
+  const pos = anchorRef.current?.getBoundingClientRect()
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        ref={popoverRef}
+        className="fixed z-50 w-64 bg-card border border-border rounded-xl shadow-xl p-3 space-y-3"
+        style={{
+          top: pos ? pos.bottom + 6 : 100,
+          left: pos ? Math.max(8, pos.left - 100) : 100,
+        }}
+      >
+        {/* Group by */}
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-muted-foreground">Group by</span>
+          <div className="relative">
+            <button
+              onClick={() => { setGroupByOpen(!groupByOpen); setRepoOpen(false) }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-background border border-border text-[12px] font-medium text-foreground hover:bg-accent/60 transition-colors min-w-[90px] justify-between"
+            >
+              {groupBy === "status" ? "Status" : "Repo"}
+              <IconChevronRight size={10} className={cn("text-muted-foreground/60 transition-transform", groupByOpen && "rotate-90")} />
+            </button>
+            {groupByOpen && (
+              <div className="absolute right-0 top-full mt-1 w-32 bg-card border border-border rounded-lg shadow-lg overflow-hidden z-50">
+                {(["status", "repo"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => { onGroupByChange(mode); setGroupByOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-foreground hover:bg-accent/60 transition-colors"
+                  >
+                    {groupBy === mode ? <IconCheck size={12} /> : <span className="w-3" />}
+                    {mode === "status" ? "Status" : "Repo"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Repo filter */}
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-muted-foreground">Repo</span>
+          <div className="relative">
+            <button
+              onClick={() => { setRepoOpen(!repoOpen); setGroupByOpen(false) }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-background border border-border text-[12px] font-medium text-foreground hover:bg-accent/60 transition-colors min-w-[90px] justify-between"
+            >
+              <span className="truncate">
+                {repoFilter === "all" ? "All repos" : repos.find((r) => r.id === repoFilter)?.name ?? "All repos"}
+              </span>
+              <IconChevronRight size={10} className={cn("text-muted-foreground/60 transition-transform", repoOpen && "rotate-90")} />
+            </button>
+            {repoOpen && (
+              <div className="absolute right-0 top-full mt-1 w-40 bg-card border border-border rounded-lg shadow-lg overflow-hidden z-50 max-h-48 overflow-y-auto">
+                <button
+                  onClick={() => { onRepoFilterChange("all"); setRepoOpen(false) }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-foreground hover:bg-accent/60 transition-colors"
+                >
+                  {repoFilter === "all" ? <IconCheck size={12} /> : <span className="w-3" />}
+                  All repos
+                </button>
+                {repos.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => { onRepoFilterChange(r.id); setRepoOpen(false) }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-foreground hover:bg-accent/60 transition-colors"
+                  >
+                    {repoFilter === r.id ? <IconCheck size={12} /> : <span className="w-3" />}
+                    <span className="truncate">{r.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body
   )
 }
 
@@ -477,26 +718,58 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
+  const [showFilter, setShowFilter] = useState(false)
+  const [groupBy, setGroupBy] = useState<GroupByMode>("status")
+  const [repoFilter, setRepoFilter] = useState("all")
   const [tab, setTab] = useState<"agents" | "review">("agents")
+  const filterBtnRef = useRef<HTMLButtonElement>(null)
+  const { data: repos = [] } = useRepos()
 
   const prReviewEnabled = getFlag("prReview")
   const unreadPrCount = prs.filter((p) => p.unread).length
 
-  const grouped = statusOrder.reduce<Record<AgentStatus, AgentSummary[]>>(
+  // Filter agents by repo
+  const filteredAgents = repoFilter === "all"
+    ? agents
+    : agents.filter((a) => a.repoId === repoFilter)
+
+  // Group by status
+  const grouped = visibleStatuses.reduce<Record<string, AgentSummary[]>>(
     (acc, status) => {
-      acc[status] = agents.filter((a) => a.status === status)
+      acc[status] = filteredAgents.filter((a) => a.status === status)
       return acc
     },
-    { done: [], "in-review": [], "in-progress": [], backlog: [], cancelled: [] }
-  )
+    {}
+  ) as Record<AgentStatus, AgentSummary[]>
 
   let globalIndex = 0
   const groupStartIndices: Partial<Record<AgentStatus, number>> = {}
-  for (const status of statusOrder) {
+  for (const status of visibleStatuses) {
     groupStartIndices[status] = globalIndex
-    if (status !== "done" && status !== "cancelled") {
-      globalIndex += grouped[status].length
+    if (status !== "done") {
+      globalIndex += (grouped[status] ?? []).length
     }
+  }
+
+  // Group by repo
+  const repoGrouped = (() => {
+    const map = new Map<string, { name: string; agents: AgentSummary[] }>()
+    for (const agent of filteredAgents) {
+      const repoId = agent.repoId ?? "unknown"
+      const repoName = repos.find((r) => r.id === repoId)?.name ?? agent.location ?? "Unknown"
+      if (!map.has(repoId)) {
+        map.set(repoId, { name: repoName, agents: [] })
+      }
+      map.get(repoId)!.agents.push(agent)
+    }
+    return Array.from(map.entries()).map(([id, { name, agents: a }]) => ({ id, name, agents: a }))
+  })()
+
+  let repoGlobalIndex = 0
+  const repoGroupStartIndices = new Map<string, number>()
+  for (const group of repoGrouped) {
+    repoGroupStartIndices.set(group.id, repoGlobalIndex)
+    repoGlobalIndex += group.agents.length
   }
 
   function handleAgentCreated(id: string) {
@@ -552,7 +825,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Workspaces</span>
                 <div className="flex items-center gap-0.5">
-                  <Button variant="ghost" size="icon-xs">
+                  <Button ref={filterBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowFilter(!showFilter)}>
                     <IconFilter size={13} />
                   </Button>
                   <Button variant="ghost" size="icon-xs" onClick={() => setShowAddRepo(true)}>
@@ -569,7 +842,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="flex-1 min-h-0">
               <ScrollArea className="h-full">
                 <div className="p-2 pt-2.5 space-y-0.5">
-                  {agents.length === 0 ? (
+                  {filteredAgents.length === 0 ? (
                     <button
                       onClick={() => setShowNewAgent(true)}
                       className="w-full flex flex-col items-center gap-2 py-8 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
@@ -577,8 +850,8 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                       <IconSparkles size={20} />
                       <span className="text-[12px]">Create your first agent</span>
                     </button>
-                  ) : (
-                    statusOrder.map((status) => (
+                  ) : groupBy === "status" ? (
+                    visibleStatuses.map((status) => (
                       <StatusGroup
                         key={status}
                         status={status}
@@ -587,6 +860,20 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         streamingAgentId={streamingAgentId}
                         onSelect={onSelect}
                         startIndex={groupStartIndices[status] ?? 0}
+                        onHover={(agent, y) => setHoveredAgent({ agent, y })}
+                        onLeave={() => setHoveredAgent(null)}
+                      />
+                    ))
+                  ) : (
+                    repoGrouped.map((group) => (
+                      <RepoGroup
+                        key={group.id}
+                        repoName={group.name}
+                        agents={group.agents}
+                        selectedId={selectedId}
+                        streamingAgentId={streamingAgentId}
+                        onSelect={onSelect}
+                        startIndex={repoGroupStartIndices.get(group.id) ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
                       />
@@ -654,6 +941,17 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />
+      )}
+      {showFilter && (
+        <FilterPopover
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          repoFilter={repoFilter}
+          onRepoFilterChange={setRepoFilter}
+          repos={repos}
+          onClose={() => setShowFilter(false)}
+          anchorRef={filterBtnRef}
+        />
       )}
     </>
   )

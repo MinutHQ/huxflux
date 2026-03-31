@@ -324,7 +324,7 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
         </div>
 
         {/* Re-request review */}
-        {pr.hasChangeRequests && !pr.merged && (
+        {(pr.hasChangeRequests || pr.hasDismissedReviews) && !pr.merged && (
           <Button
             variant="outline"
             size="sm"

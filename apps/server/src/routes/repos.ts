@@ -4,6 +4,8 @@ import { db } from "../db/index.js"
 import { repos } from "../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { Repo } from "../types.js"
+import { listBranches } from "../github/client.js"
+import { getRemoteUrl } from "../git/worktrees.js"
 
 export async function reposRoutes(app: FastifyInstance) {
   app.get("/api/repos", async () => {
@@ -55,5 +57,14 @@ export async function reposRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>("/api/repos/:id", async (req, reply) => {
     await db.delete(repos).where(eq(repos.id, req.params.id))
     reply.code(204).send()
+  })
+
+  app.get<{ Params: { id: string } }>("/api/repos/:id/branches", async (req, reply) => {
+    const repo = db.select().from(repos).where(eq(repos.id, req.params.id)).get()
+    if (!repo) return reply.code(404).send({ error: "Not found" })
+    const repoUrl = await getRemoteUrl(repo.path, repo.remote).catch(() => null)
+    if (!repoUrl) return reply.code(400).send({ error: "Cannot resolve remote URL" })
+    const branches = await listBranches(repoUrl).catch(() => [] as string[])
+    return branches
   })
 }

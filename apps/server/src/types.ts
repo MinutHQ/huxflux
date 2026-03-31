@@ -10,6 +10,7 @@ export interface PRStatus {
   draft: boolean
   mergeableState: string // "clean" | "blocked" | "dirty" | "unknown" | "unstable"
   hasChangeRequests: boolean
+  hasDismissedReviews?: boolean
 }
 
 export interface PRReview {

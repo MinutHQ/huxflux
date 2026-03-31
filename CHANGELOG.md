@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-04-01
+
+### Mobile App (Expo)
+- New `apps/mobile` — Expo app for iOS and Android using Expo Router and React Query
+- Connect to any running Hive server by entering its URL (supports `huxflux://` connection strings with embedded tokens)
+- Agent list screen: agents grouped by status with live WebSocket updates and unread badges
+- Chat screen: full message thread with streaming, tool call indicators, and optimistic sends
+- File changes list with additions/deletions per file
+- Diff viewer: unified diff with syntax highlighting, powered by shared parsing logic
+- PR status screen: reviews, CI checks, "Mark ready" and "Re-request review" actions
+- Create agent wizard: two-step flow — pick repo, set title/branch/model
+- Persistent storage via AsyncStorage with synchronous in-memory cache for instant reads
+
+### Shared Package (`@hive/shared`)
+- New `packages/shared` workspace package extracted from web app
+- Contains all shared types, API client, WebSocket client, React Query hooks, diff parser, and server store
+- Platform-agnostic storage via injectable `StorageAdapter` interface — web uses `localStorage`, mobile uses AsyncStorage
+- `configureAgentErrorHandler` lets each platform handle errors natively (toast on web, `Alert` on mobile)
+- Diff logic (`parseUnifiedDiff`, `tokenize`) extracted as pure functions — no React dependency
+
+### Web
+- Web imports (`data/mock.ts`, `lib/api.ts`, `lib/ws.ts`, `lib/serverStore.ts`, all hooks) now re-export from `@hive/shared`
+
+### PR Review
+- "Re-request review" button now appears for dismissed approvals in addition to change requests
+
+### Base Branch
+- Base branch selector in ChatView replaced with a searchable dropdown populated from the repo's GitHub branches
+
 ## 2026-03-31
 
 ### GitHub PR Integration

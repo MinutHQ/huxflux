@@ -11,6 +11,7 @@ import { terminalRoutes } from "./routes/terminal.js"
 import { slashCommandsRoutes } from "./routes/slashCommands.js"
 import { fsRoutes } from "./routes/fs.js"
 import { githubRoutes } from "./routes/github.js"
+import { uploadRoutes } from "./routes/upload.js"
 import { registerSocket } from "./ws/handler.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
@@ -51,6 +52,7 @@ await app.register(terminalRoutes)
 await app.register(slashCommandsRoutes)
 await app.register(fsRoutes)
 await app.register(githubRoutes)
+await app.register(uploadRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))

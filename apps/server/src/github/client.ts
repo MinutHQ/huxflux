@@ -63,6 +63,7 @@ export async function getPRStatus(repoUrl: string, prNumber: number): Promise<PR
     }
   }
   const hasChangeRequests = [...latestByReviewer.values()].some((s) => s === "CHANGES_REQUESTED")
+  const hasDismissedReviews = [...latestByReviewer.values()].some((s) => s === "DISMISSED")
 
   return {
     number: pr.number,
@@ -72,6 +73,7 @@ export async function getPRStatus(repoUrl: string, prNumber: number): Promise<PR
     draft: pr.draft ?? false,
     mergeableState: pr.mergeable_state ?? "unknown",
     hasChangeRequests,
+    hasDismissedReviews,
   }
 }
 
@@ -141,6 +143,7 @@ export async function getPRDetails(repoUrl: string, prNumber: number): Promise<P
     }
   }
   const hasChangeRequests = [...latestByReviewer.values()].some((r) => r.state === "CHANGES_REQUESTED")
+  const hasDismissedReviews = [...latestByReviewer.values()].some((r) => r.state === "DISMISSED")
 
   const reviews: PRReview[] = [...latestByReviewer.values()].map((r) => ({
     author: r.login,
@@ -197,6 +200,7 @@ export async function getPRDetails(repoUrl: string, prNumber: number): Promise<P
     draft: pr.draft ?? false,
     mergeableState: pr.mergeable_state ?? "unknown",
     hasChangeRequests,
+    hasDismissedReviews,
     reviews,
     checks,
     threads,

@@ -1,11 +1,12 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
+import { useAgents } from "@/hooks/useAgents"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
-import { api } from "@/lib/api"
+import { api, getApiBase } from "@/lib/api"
 import { DiffView } from "@/components/DiffView"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -35,7 +36,10 @@ import {
   IconMap,
   IconArrowUpRight,
   IconMessageCircle,
+  IconPhoto,
+  IconFolderSymlink,
 } from "@tabler/icons-react"
+import type { AgentSummary } from "@/data/mock"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
@@ -283,10 +287,38 @@ function MessageBubble({ msg }: { msg: Message }) {
   const isEmpty = !msg.content && !msg.thinking && (!msg.toolCalls || msg.toolCalls.length === 0)
 
   if (isUser) {
+    // Parse out "Attached files:\n- name: /path\n...\n\n---\n\n" prefix
+    const attachmentMatch = msg.content.match(/^Attached files:\n([\s\S]*?)\n\n---\n\n([\s\S]*)$/)
+    const linkedAgentMatch = (attachmentMatch ? attachmentMatch[2] : msg.content)
+      .match(/^([\s\S]*?)\n\n---\n\nLinked agents for cross-repo collaboration:\n[\s\S]*$/)
+
+    const files: { name: string; mimeType?: string }[] = attachmentMatch
+      ? attachmentMatch[1].split("\n").filter(Boolean).map((line) => {
+          const m = line.match(/^- (.+?): /)
+          return m ? { name: m[1] } : null
+        }).filter(Boolean) as { name: string }[]
+      : []
+
+    const displayText = linkedAgentMatch
+      ? linkedAgentMatch[1].trim()
+      : (attachmentMatch ? attachmentMatch[2] : msg.content).replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
+
     return (
       <div className="mb-5">
-        <div className="bg-card border border-border rounded-xl px-5 py-4">
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {files.map((f) => (
+                <div key={f.name} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[11px]">
+                  <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
+                  <span className="font-medium text-foreground/80 max-w-[160px] truncate">{f.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {displayText && (
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{displayText}</p>
+          )}
         </div>
       </div>
     )
@@ -475,7 +507,7 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
           Mark ready
         </Button>
       )}
-      {prStatus.hasChangeRequests && !prStatus.merged && (
+      {(prStatus.hasChangeRequests || prStatus.hasDismissedReviews) && !prStatus.merged && (
         <Button
           variant="ghost"
           size="sm"
@@ -553,9 +585,21 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const [editingBaseBranch, setEditingBaseBranch] = useState(false)
-  const [baseBranchDraft, setBaseBranchDraft] = useState("")
-  const baseBranchInputRef = useRef<HTMLInputElement>(null)
+  const [baseBranchOpen, setBaseBranchOpen] = useState(false)
+  const [baseBranchSearch, setBaseBranchSearch] = useState("")
+  const baseBranchSearchRef = useRef<HTMLInputElement>(null)
+  const [attachments, setAttachments] = useState<{ name: string; path: string; mimeType: string }[]>([])
+  const [linkedAgents, setLinkedAgents] = useState<AgentSummary[]>([])
+  const [plusOpen, setPlusOpen] = useState(false)
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { data: allAgents = [] } = useAgents()
+  const { data: repoBranches = [] } = useQuery({
+    queryKey: ["repo-branches", agent.repoId],
+    queryFn: () => api.getRepoBranches(agent.repoId!),
+    enabled: !!agent.repoId && baseBranchOpen,
+    staleTime: 60_000,
+  })
 
   useEffect(() => {
     if (editingTitle) {
@@ -564,12 +608,6 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
     }
   }, [editingTitle])
 
-  useEffect(() => {
-    if (editingBaseBranch) {
-      baseBranchInputRef.current?.focus()
-      baseBranchInputRef.current?.select()
-    }
-  }, [editingBaseBranch])
 
   async function commitTitle() {
     const title = titleDraft.trim()
@@ -579,9 +617,9 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, title } : old)
   }
 
-  async function commitBaseBranch() {
-    const val = baseBranchDraft.trim()
-    setEditingBaseBranch(false)
+  async function selectBaseBranch(val: string) {
+    setBaseBranchOpen(false)
+    setBaseBranchSearch("")
     if (!val || val === agent.baseBranch) return
     await api.updateAgent(agent.id, { baseBranch: val })
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, baseBranch: val } : old)
@@ -624,13 +662,54 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
     setSlashQuery(null)
   }, [])
 
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ""
+    for (const file of files) {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const result = await api.uploadFile(agent.id, file.name, reader.result as string, file.type)
+          setAttachments((prev) => [...prev, result])
+        } catch {
+          toast.error(`Failed to upload ${file.name}`)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+    setPlusOpen(false)
+  }
+
+  function toggleLinkedAgent(a: AgentSummary) {
+    setLinkedAgents((prev) =>
+      prev.some((x) => x.id === a.id) ? prev.filter((x) => x.id !== a.id) : [...prev, a]
+    )
+  }
+
   function buildContent(text: string) {
-    if (pendingComments.length === 0) return text
-    const commentContext = pendingComments.map((c) => {
-      const loc = c.path ? `${c.path.split("/").pop()}${c.line ? `:${c.line}` : ""}` : null
-      return `@${c.author}${loc ? ` on \`${loc}\`` : ""}:\n> ${c.body.trim().replace(/\n/g, "\n> ")}`
-    }).join("\n\n")
-    return `PR review comments:\n\n${commentContext}\n\n---\n\n${text}`
+    let content = text
+
+    if (pendingComments.length > 0) {
+      const commentContext = pendingComments.map((c) => {
+        const loc = c.path ? `${c.path.split("/").pop()}${c.line ? `:${c.line}` : ""}` : null
+        return `@${c.author}${loc ? ` on \`${loc}\`` : ""}:\n> ${c.body.trim().replace(/\n/g, "\n> ")}`
+      }).join("\n\n")
+      content = `PR review comments:\n\n${commentContext}\n\n---\n\n${content}`
+    }
+
+    if (attachments.length > 0) {
+      const fileBlock = attachments.map((f) => `- ${f.name}: ${f.path}`).join("\n")
+      content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
+    }
+
+    if (linkedAgents.length > 0) {
+      const agentBlock = linkedAgents.map((a) =>
+        `- "${a.title}" (${a.branch}) — ID: ${a.id}`
+      ).join("\n")
+      content = `${content}\n\n---\n\nLinked agents for cross-repo collaboration:\n${agentBlock}\n\nTo delegate work to a linked agent use:\n  curl -s -X POST ${getApiBase()}/api/agents/<ID>/messages -H "Content-Type: application/json" -d '{"content":"<task>"}'`
+    }
+
+    return content
   }
 
   async function sendContent(content: string) {
@@ -659,11 +738,13 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
 
   function handleSend() {
     const text = input.trim()
-    if ((!text && pendingComments.length === 0) || isSending) return
+    if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
     const content = buildContent(text)
     setInput("")
     onClearComments?.()
+    setAttachments([])
+    setLinkedAgents([])
 
     if (isStreaming) {
       setQueuedMessage(content)
@@ -704,7 +785,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
     onClearFileTab()
   }
 
-  const hasInput = input.trim().length > 0 || pendingComments.length > 0
+  const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
 
   return (
@@ -714,27 +795,54 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
         <IconGitBranch size={13} className="text-muted-foreground/50 shrink-0" />
         <span className="text-[12px] text-muted-foreground font-mono truncate">{agent.branch}</span>
         <span className="text-muted-foreground/30 shrink-0">›</span>
-        {editingBaseBranch ? (
-          <input
-            ref={baseBranchInputRef}
-            value={baseBranchDraft}
-            onChange={(e) => setBaseBranchDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); void commitBaseBranch() }
-              if (e.key === "Escape") setEditingBaseBranch(false)
-            }}
-            onBlur={() => void commitBaseBranch()}
-            className="bg-background border border-ring rounded px-1.5 py-0.5 text-[12px] font-mono outline-none text-foreground w-36"
-          />
-        ) : (
-          <button
-            onClick={() => { setBaseBranchDraft(agent.baseBranch ?? "origin/main"); setEditingBaseBranch(true) }}
-            className="text-[12px] text-muted-foreground/60 font-mono hover:text-foreground transition-colors"
-            title="Click to change base branch"
-          >
-            {agent.baseBranch ?? "origin/main"}
-          </button>
-        )}
+        <Popover open={baseBranchOpen} onOpenChange={(o) => { setBaseBranchOpen(o); if (o) setBaseBranchSearch("") }}>
+          <PopoverTrigger asChild>
+            <button
+              className="text-[12px] text-muted-foreground/60 font-mono hover:text-foreground transition-colors flex items-center gap-1"
+              title="Click to change base branch"
+            >
+              {agent.baseBranch ?? "origin/main"}
+              <IconChevronDown size={11} className="opacity-50" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-1" align="start">
+            <input
+              ref={baseBranchSearchRef}
+              value={baseBranchSearch}
+              onChange={(e) => setBaseBranchSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setBaseBranchOpen(false)
+                if (e.key === "Enter") {
+                  const filtered = repoBranches.filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
+                  if (filtered.length === 1) void selectBaseBranch(filtered[0])
+                  else if (baseBranchSearch.trim()) void selectBaseBranch(baseBranchSearch.trim())
+                }
+              }}
+              placeholder="Search branches…"
+              autoFocus
+              className="w-full bg-transparent border-b border-border px-2 py-1.5 text-[12px] font-mono outline-none placeholder:text-muted-foreground/50 mb-1"
+            />
+            <div className="max-h-48 overflow-y-auto">
+              {repoBranches
+                .filter((b) => b.toLowerCase().includes(baseBranchSearch.toLowerCase()))
+                .map((branch) => (
+                  <button
+                    key={branch}
+                    onClick={() => void selectBaseBranch(branch)}
+                    className={cn(
+                      "w-full text-left px-2 py-1 text-[12px] font-mono rounded hover:bg-accent transition-colors",
+                      branch === (agent.baseBranch ?? "origin/main") && "text-foreground font-medium"
+                    )}
+                  >
+                    {branch}
+                  </button>
+                ))}
+              {repoBranches.length === 0 && (
+                <p className="px-2 py-1.5 text-[11px] text-muted-foreground">Loading branches…</p>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {agent.prStatus && (
             <PRStatusPill prStatus={agent.prStatus} agentId={agent.id} />
@@ -884,7 +992,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
                   ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
                   : "border border-border focus-within:border-ring"
               )}>
-                {pendingComments.length > 0 && (
+                {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
                     {pendingComments.map((c) => {
                       const loc = c.path ? c.path.split("/").pop() + (c.line ? `:${c.line}` : "") : null
@@ -893,15 +1001,33 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
                           <IconMessageCircle size={12} className="text-muted-foreground/60 shrink-0" />
                           <span className="font-medium text-foreground/80">{loc ?? `@${c.author}`}</span>
                           <span className="text-muted-foreground/50 uppercase tracking-wide font-medium text-[9px]">Comment</span>
-                          <button
-                            onClick={() => onRemoveComment?.(c.id)}
-                            className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"
-                          >
+                          <button onClick={() => onRemoveComment?.(c.id)} className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5">
                             <IconX size={11} />
                           </button>
                         </div>
                       )
                     })}
+                    {attachments.map((f) => (
+                      <div key={f.path} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
+                        {f.mimeType.startsWith("image/")
+                          ? <IconPhoto size={12} className="text-muted-foreground/60 shrink-0" />
+                          : <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
+                        }
+                        <span className="font-medium text-foreground/80 max-w-[120px] truncate">{f.name}</span>
+                        <button onClick={() => setAttachments((p) => p.filter((x) => x.path !== f.path))} className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5">
+                          <IconX size={11} />
+                        </button>
+                      </div>
+                    ))}
+                    {linkedAgents.map((a) => (
+                      <div key={a.id} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px]">
+                        <IconFolderSymlink size={12} className="text-blue-400 shrink-0" />
+                        <span className="font-medium text-blue-300 max-w-[120px] truncate">{a.title}</span>
+                        <button onClick={() => setLinkedAgents((p) => p.filter((x) => x.id !== a.id))} className="text-blue-400/50 hover:text-blue-300 transition-colors ml-0.5">
+                          <IconX size={11} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <textarea
@@ -916,6 +1042,11 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
                       if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length); return }
                       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); applySlashCommand(filteredCommands[slashIndex].name); return }
                       if (e.key === "Escape") { setSlashQuery(null); return }
+                    }
+                    if (e.key === "u" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault()
+                      fileInputRef.current?.click()
+                      return
                     }
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault()
@@ -964,12 +1095,61 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, pend
                     </Button>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                      <IconPaperclip size={13} />
-                    </Button>
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                      <IconPlus size={13} />
-                    </Button>
+                    <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={handleFileSelect} />
+                    <Popover open={plusOpen} onOpenChange={setPlusOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
+                          <IconPlus size={13} />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="end" className="w-52 p-1">
+                        <button
+                          onClick={() => { fileInputRef.current?.click() }}
+                          className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors"
+                        >
+                          <IconPaperclip size={15} className="text-muted-foreground shrink-0" />
+                          <span>Add attachment</span>
+                          <span className="ml-auto text-[11px] text-muted-foreground/50 font-mono">⌘U</span>
+                        </button>
+                        <Popover open={agentPickerOpen} onOpenChange={setAgentPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors">
+                              <IconFolderSymlink size={15} className="text-muted-foreground shrink-0" />
+                              <span>Link workspaces</span>
+                              {linkedAgents.length > 0 && (
+                                <span className="ml-auto text-[11px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">{linkedAgents.length}</span>
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent side="left" align="start" className="w-60 p-1">
+                            {allAgents.filter((a) => a.id !== agent.id).length === 0 ? (
+                              <p className="text-[12px] text-muted-foreground/50 px-3 py-2">No other agents</p>
+                            ) : (
+                              allAgents.filter((a) => a.id !== agent.id).map((a) => {
+                                const linked = linkedAgents.some((x) => x.id === a.id)
+                                return (
+                                  <button
+                                    key={a.id}
+                                    onClick={() => toggleLinkedAgent(a)}
+                                    className={cn(
+                                      "flex items-center gap-2.5 w-full px-3 py-2 text-[12px] rounded-md transition-colors text-left",
+                                      linked ? "bg-blue-500/10 text-blue-300" : "text-foreground hover:bg-accent"
+                                    )}
+                                  >
+                                    <IconFolderSymlink size={13} className={linked ? "text-blue-400" : "text-muted-foreground"} />
+                                    <div className="min-w-0">
+                                      <div className="font-medium truncate">{a.title}</div>
+                                      <div className="text-[10px] text-muted-foreground/50 font-mono truncate">{a.branch}</div>
+                                    </div>
+                                    {linked && <span className="ml-auto text-blue-400 shrink-0">✓</span>}
+                                  </button>
+                                )
+                              })
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      </PopoverContent>
+                    </Popover>
                     {isStreaming && (
                       <Button
                         size="icon-xs"

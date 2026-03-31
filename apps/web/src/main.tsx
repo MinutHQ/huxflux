@@ -1,8 +1,16 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
 import "./index.css"
 import App from "./App.tsx"
+
+// Initialize shared library with web-specific platform adapters
+configureStorage(localStorage)
+configureAgentErrorHandler((message) => {
+  toast.error("Agent error", { description: message, duration: 6000 })
+})
 
 const queryClient = new QueryClient({
   defaultOptions: {

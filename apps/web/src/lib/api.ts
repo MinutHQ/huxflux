@@ -38,7 +38,7 @@ export const api = {
   // Agents
   getAgents: () => req<AgentSummary[]>("/api/agents"),
   getAgent: (id: string) => req<Agent>(`/api/agents/${id}`),
-  createAgent: (body: { repoId?: string; title: string; branch: string; model?: string; location?: string; description?: string }) =>
+  createAgent: (body: { repoId?: string; title: string; branch: string; model?: string; location?: string; description?: string; shareWorktreeWith?: string }) =>
     req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (id: string, body: Partial<Pick<Agent, "title" | "status" | "pr" | "description" | "unread" | "baseBranch">>) =>
     req<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
@@ -59,6 +59,12 @@ export const api = {
   getFiles: (agentId: string) => req<FileChange[]>(`/api/agents/${agentId}/files`),
   getDiff: (agentId: string, path: string) =>
     fetch(`${getBase()}/api/agents/${agentId}/files/diff?path=${encodeURIComponent(path)}`).then((r) => r.text()),
+  getFileTree: (agentId: string) =>
+    req<{ name: string; path: string; type: "file" | "directory"; children?: any[] }[]>(`/api/agents/${agentId}/files/tree`),
+  getFileContent: (agentId: string, path: string) =>
+    fetch(`${getBase()}/api/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
+  saveFileContent: (agentId: string, path: string, content: string) =>
+    req<{ ok: boolean }>(`/api/agents/${agentId}/files/content`, { method: "PUT", body: JSON.stringify({ path, content }) }),
   refreshFiles: (agentId: string) =>
     req<FileChange[]>(`/api/agents/${agentId}/files/refresh`, { method: "POST" }),
 

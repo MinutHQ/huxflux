@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify"
 import { eq } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, fileChanges, repos } from "../db/schema.js"
-import { getFileChanges, getDiff } from "../git/worktrees.js"
+import { getFileChanges, getDiff, getFileTree, getFileContent, saveFileContent } from "../git/worktrees.js"
 import * as path from "node:path"
 
 export async function filesRoutes(app: FastifyInstance) {
@@ -30,6 +30,63 @@ export async function filesRoutes(app: FastifyInstance) {
       const diff = await getDiff(worktreePath, filePath, repo.branchFrom)
       reply.header("Content-Type", "text/plain")
       return diff
+    }
+  )
+
+  // GET /api/agents/:id/files/tree — list all files in worktree as a tree
+  app.get<{ Params: { id: string } }>(
+    "/api/agents/:id/files/tree",
+    async (req, reply) => {
+      const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+      if (!agent) return reply.code(404).send({ error: "Not found" })
+      if (!agent.repoId) return reply.code(400).send({ error: "Agent has no linked repo" })
+
+      const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+      if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      return getFileTree(worktreePath)
+    }
+  )
+
+  // GET /api/agents/:id/files/content?path=src/foo.ts — raw file content
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>(
+    "/api/agents/:id/files/content",
+    async (req, reply) => {
+      const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+      if (!agent) return reply.code(404).send({ error: "Not found" })
+      if (!agent.repoId) return reply.code(400).send({ error: "Agent has no linked repo" })
+
+      const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+      if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+      const filePath = req.query.path ?? ""
+      if (!filePath) return reply.code(400).send({ error: "path query parameter required" })
+
+      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const content = await getFileContent(worktreePath, filePath)
+      reply.header("Content-Type", "text/plain")
+      return content
+    }
+  )
+
+  // PUT /api/agents/:id/files/content — save file content
+  app.put<{ Params: { id: string }; Body: { path: string; content: string } }>(
+    "/api/agents/:id/files/content",
+    async (req, reply) => {
+      const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+      if (!agent) return reply.code(404).send({ error: "Not found" })
+      if (!agent.repoId) return reply.code(400).send({ error: "Agent has no linked repo" })
+
+      const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+      if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+      const { path: filePath, content } = req.body
+      if (!filePath) return reply.code(400).send({ error: "path is required" })
+
+      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      await saveFileContent(worktreePath, filePath, content)
+      return { ok: true }
     }
   )
 

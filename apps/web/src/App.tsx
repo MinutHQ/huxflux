@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react"
+import { getTheme, type Theme } from "@/lib/theme"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast, Toaster } from "sonner"
 import { Sidebar } from "@/components/Sidebar"
@@ -29,7 +30,16 @@ interface ChatTab {
   isChild?: boolean // child tabs aren't in the sidebar agents list
 }
 
+function useCurrentTheme(): Theme {
+  return useSyncExternalStore(
+    (cb) => { window.addEventListener("hive:theme-change", cb); return () => window.removeEventListener("hive:theme-change", cb) },
+    getTheme,
+    () => "dark"
+  )
+}
+
 export default function App() {
+  const theme = useCurrentTheme()
   const [view, setView] = useState<"app" | "settings">("app")
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
@@ -68,7 +78,7 @@ export default function App() {
   if (servers.length === 0 && !onboardingDone) {
     return (
       <>
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
         <Onboarding onComplete={() => { refreshServers(); setOnboardingDone(true) }} />
       </>
     )
@@ -171,7 +181,7 @@ export default function App() {
   if (view === "settings") {
     return (
       <>
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
         <SettingsPage onBack={() => setView("app")} />
       </>
     )
@@ -201,7 +211,7 @@ export default function App() {
   if (selectedPr) {
     return (
       <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
         <Sidebar {...sidebarProps} />
         <div className="flex-1 min-w-0 overflow-hidden">
           <PRView key={selectedPr.id} pr={selectedPr} />
@@ -214,7 +224,7 @@ export default function App() {
   if (!agent) {
     return (
       <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
         <Sidebar {...sidebarProps} />
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
@@ -225,7 +235,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
       <Sidebar {...sidebarProps} />
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { createPortal } from "react-dom"
 import { Switch } from "@/components/ui/switch"
 import { SOUNDS, playSound } from "@/lib/sounds"
@@ -258,13 +259,18 @@ function ProvidersSettings() {
 }
 
 function AppearanceSettings() {
-  const [theme, setTheme] = useState("dark")
+  const [theme, setTheme] = useState<Theme>(getTheme)
+
+  function handleThemeChange(value: Theme) {
+    setTheme(value)
+    applyThemeSetting(value)
+  }
   const [fontSize, setFontSize] = useState("14")
   return (
     <div>
       <SettingRow>
         <SettingInfo label="Theme" description="Choose your preferred color scheme" />
-        <Select value={theme} onValueChange={setTheme}>
+        <Select value={theme} onValueChange={handleThemeChange}>
           <SelectTrigger className="w-36">
             <SelectValue />
           </SelectTrigger>

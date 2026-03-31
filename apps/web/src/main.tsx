@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
+import { applyTheme, getTheme } from "./lib/theme"
 import "./index.css"
+
+// Apply theme before first render to avoid flash
+applyTheme(getTheme())
 import App from "./App.tsx"
 
 // Initialize shared library with web-specific platform adapters

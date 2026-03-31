@@ -3,11 +3,12 @@ import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
-import { applyTheme, getTheme } from "./lib/theme"
+import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
 import "./index.css"
 
-// Apply theme before first render to avoid flash
+// Apply theme before first render to avoid flash, then watch for OS changes
 applyTheme(getTheme())
+watchSystemTheme()
 import App from "./App.tsx"
 
 // Initialize shared library with web-specific platform adapters

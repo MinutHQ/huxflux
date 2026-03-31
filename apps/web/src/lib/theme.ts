@@ -18,3 +18,10 @@ export function applyTheme(theme: Theme) {
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
   document.documentElement.classList.toggle("dark", dark)
 }
+
+/** Call once at app startup. Re-applies theme when the OS preference changes. */
+export function watchSystemTheme() {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (getTheme() === "system") applyTheme("system")
+  })
+}

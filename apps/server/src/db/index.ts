@@ -1,8 +1,11 @@
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
+import { mkdirSync } from "node:fs"
+import { dirname } from "node:path"
 import { config } from "../config.js"
 import * as schema from "./schema.js"
 
+mkdirSync(dirname(config.dbPath), { recursive: true })
 const sqlite = new Database(config.dbPath)
 
 // Enable WAL mode for better concurrent read performance
@@ -115,6 +118,12 @@ const MIGRATIONS: Migration[] = [
     sql: `
       ALTER TABLE repos ADD COLUMN branch_prefix TEXT;
       ALTER TABLE agents ADD COLUMN base_branch TEXT;
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE agents ADD COLUMN parent_agent_id TEXT;
     `,
   },
 ]

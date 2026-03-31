@@ -114,66 +114,16 @@ function buzz(ac: AudioContext) {
 }
 
 function chooChoo(ac: AudioContext) {
-  const t = ac.currentTime
-  const dur = 1.1
-
-  // Steam whistle = fundamental + harmonics (sawtooth-ish stack)
-  // Classic locomotive whistle chord: root, ~major 3rd up, ~5th up
-  const harmonics = [
-    { freq: 370,   gain: 0.22 },  // fundamental
-    { freq: 555,   gain: 0.18 },  // ~P5 up
-    { freq: 740,   gain: 0.12 },  // octave
-    { freq: 925,   gain: 0.07 },  // 5th of octave
-    { freq: 1110,  gain: 0.04 },  // 3rd harmonic cluster
-  ]
-
-  const masterGain = ac.createGain()
-  masterGain.connect(ac.destination)
-  // Envelope: sharp attack, sustained wail, trailing off
-  masterGain.gain.setValueAtTime(0, t)
-  masterGain.gain.linearRampToValueAtTime(1, t + 0.04)
-  masterGain.gain.setValueAtTime(1, t + dur - 0.18)
-  masterGain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
-
-  for (const h of harmonics) {
-    const osc = ac.createOscillator()
-    const g = ac.createGain()
-    // Slight vibrato on each harmonic for that wailing character
-    const vib = ac.createOscillator()
-    const vibGain = ac.createGain()
-    vib.frequency.value = 7
-    vibGain.gain.value = h.freq * 0.012
-    vib.connect(vibGain)
-    vibGain.connect(osc.frequency)
-    osc.type = "sawtooth"
-    osc.frequency.value = h.freq
-    g.gain.value = h.gain
-    osc.connect(g)
-    g.connect(masterGain)
-    vib.start(t)
-    osc.start(t)
-    vib.stop(t + dur + 0.01)
-    osc.stop(t + dur + 0.01)
-  }
-
-  // Breathiness: filtered noise underneath
-  const noiseSize = Math.ceil(ac.sampleRate * (dur + 0.1))
-  const noiseBuf = ac.createBuffer(1, noiseSize, ac.sampleRate)
-  const nd = noiseBuf.getChannelData(0)
-  for (let i = 0; i < noiseSize; i++) nd[i] = Math.random() * 2 - 1
-  const noiseSrc = ac.createBufferSource()
-  noiseSrc.buffer = noiseBuf
-  const bp = ac.createBiquadFilter()
-  bp.type = "bandpass"
-  bp.frequency.value = 600
-  bp.Q.value = 0.5
-  const noiseGain = ac.createGain()
-  noiseGain.gain.value = 0.04
-  noiseSrc.connect(bp)
-  bp.connect(noiseGain)
-  noiseGain.connect(masterGain)
-  noiseSrc.start(t)
-  noiseSrc.stop(t + dur + 0.1)
+  fetch("/choo-choo.mp3")
+    .then((res) => res.arrayBuffer())
+    .then((buf) => ac.decodeAudioData(buf))
+    .then((decoded) => {
+      const src = ac.createBufferSource()
+      src.buffer = decoded
+      src.connect(ac.destination)
+      src.start(ac.currentTime)
+    })
+    .catch(() => {})
 }
 
 const players: Record<SoundId, (ac: AudioContext) => void> = {

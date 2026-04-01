@@ -18,6 +18,10 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:start": "node scripts/dev-daemon.mjs start",
+    "dev:stop": "node scripts/dev-daemon.mjs stop",
+    "dev:logs": "node scripts/dev-daemon.mjs logs",
+    "dev:status": "node scripts/dev-daemon.mjs status",
     "build": "tsup && node -e \"const fs=require('fs');['dist/index.js','dist/cli.js'].forEach(f=>{try{fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/from\\\"sqlite\\\"/g,'from\\\"node:sqlite\\\"'))}catch{}})\"",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",

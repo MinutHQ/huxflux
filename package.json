@@ -4,6 +4,10 @@
   "scripts": {
     "dev:web": "pnpm --filter huxflux-web dev",
     "dev:server": "pnpm --filter @alexmartosp/huxflux dev",
+    "dev:start": "pnpm --filter @alexmartosp/huxflux dev:start",
+    "dev:stop": "pnpm --filter @alexmartosp/huxflux dev:stop",
+    "dev:logs": "pnpm --filter @alexmartosp/huxflux dev:logs",
+    "dev:status": "pnpm --filter @alexmartosp/huxflux dev:status",
     "build": "pnpm --filter huxflux-web build && pnpm --filter @alexmartosp/huxflux build"
   },
   "pnpm": {

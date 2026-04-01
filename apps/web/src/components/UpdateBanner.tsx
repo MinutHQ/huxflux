@@ -41,6 +41,7 @@ export function UpdateBanner({ update, isInstalling, progress, onInstall }: Upda
             Install &amp; Restart
           </button>
           <button
+            aria-label="Dismiss update banner"
             onClick={() => setDismissed(true)}
             className="shrink-0 text-primary-foreground/60 hover:text-primary-foreground transition-colors"
           >

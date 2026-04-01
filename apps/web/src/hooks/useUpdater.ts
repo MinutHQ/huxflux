@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { isTauri } from "@/lib/platform"
 import type { Update } from "@tauri-apps/plugin-updater"
 
 interface UpdaterState {
@@ -14,7 +15,7 @@ export function useUpdater(): UpdaterState {
   const [progress, setProgress] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!("__TAURI__" in window)) return
+    if (!isTauri) return
 
     let cancelled = false
     import("@tauri-apps/plugin-updater").then(({ check }) => {

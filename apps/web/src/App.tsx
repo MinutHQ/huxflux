@@ -19,6 +19,9 @@ import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
 import { mockPRs } from "@/data/mockReviews"
 import { getFlag } from "@/lib/flags"
+import { isTauri } from "@/lib/platform"
+import { useUpdater } from "@/hooks/useUpdater"
+import { UpdateBanner } from "@/components/UpdateBanner"
 
 function useCurrentTheme(): Theme {
   return useSyncExternalStore(
@@ -62,6 +65,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey)
   }, [toggleSidebar])
 
+  const { update, isInstalling, progress, downloadAndInstall } = useUpdater()
   const { servers, activeId, refresh: refreshServers } = useServers()
   const { data: agents = [] } = useAgents()
 
@@ -128,7 +132,7 @@ export default function App() {
       <>
         <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
         <Onboarding onComplete={() => { refreshServers(); setOnboardingDone(true) }} />
-      </>
+</>
     )
   }
 
@@ -224,10 +228,18 @@ export default function App() {
   )
 
   return (
-    <div className="h-screen bg-background text-foreground overflow-hidden">
+    <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
+      {isTauri && update && (
+        <UpdateBanner
+          update={update}
+          isInstalling={isInstalling}
+          progress={progress}
+          onInstall={downloadAndInstall}
+        />
+      )}
 
-      <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full">
         <ResizablePanel
           panelRef={sidebarRef}
           defaultSize="18"

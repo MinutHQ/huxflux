@@ -11,6 +11,7 @@ import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog } from "@/components/SettingsPage"
 import { getFlag } from "@/lib/flags"
 import { toast } from "sonner"
+import { TitleBar } from "@/components/TitleBar"
 import {
   IconChevronRight,
   IconPlus,
@@ -888,6 +889,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
+        <TitleBar />
         {/* Server switcher */}
         <div className="border-b border-sidebar-border shrink-0">
           <ServerSwitcher />

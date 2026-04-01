@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite"
-import { drizzle } from "drizzle-orm/better-sqlite3"
+import { drizzle } from "drizzle-orm/sqlite-proxy"
 import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
@@ -50,8 +50,19 @@ const sqlite = {
 sqlite.pragma("journal_mode = WAL")
 sqlite.pragma("foreign_keys = ON")
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const db = drizzle(sqlite as any, { schema })
+export const db = drizzle((sql, params, method) => {
+  const stmt = raw.prepare(sql)
+  if (method === "run") {
+    stmt.run(...(params as unknown[]))
+    return { rows: [] }
+  }
+  if (method === "get") {
+    const row = stmt.get(...(params as unknown[]))
+    return { rows: row ? Object.values(row as object) : [] }
+  }
+  const rows = stmt.all(...(params as unknown[])) as object[]
+  return { rows: rows.map((r) => Object.values(r)) }
+}, { schema })
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //

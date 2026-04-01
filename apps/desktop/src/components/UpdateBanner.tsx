@@ -1,0 +1,53 @@
+import { useState } from "react"
+import { IconX, IconDownload } from "@tabler/icons-react"
+import type { Update } from "@tauri-apps/plugin-updater"
+
+interface UpdateBannerProps {
+  update: Update
+  isInstalling: boolean
+  progress: number | null
+  onInstall: () => void
+}
+
+export function UpdateBanner({ update, isInstalling, progress, onInstall }: UpdateBannerProps) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 bg-primary text-primary-foreground text-[12px] shrink-0">
+      <IconDownload size={13} className="shrink-0" />
+
+      {isInstalling ? (
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className="shrink-0">
+            {progress === 100 ? "Restarting…" : `Downloading update… ${progress ?? 0}%`}
+          </span>
+          <div className="flex-1 h-1 rounded-full bg-primary-foreground/20 overflow-hidden">
+            <div
+              className="h-full bg-primary-foreground rounded-full transition-all duration-300"
+              style={{ width: `${progress ?? 0}%` }}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          <span className="flex-1 min-w-0">
+            Update available: <strong>{update.version}</strong>
+          </span>
+          <button
+            onClick={onInstall}
+            className="shrink-0 px-2.5 py-0.5 rounded-md bg-primary-foreground/15 hover:bg-primary-foreground/25 transition-colors font-medium"
+          >
+            Install &amp; Restart
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="shrink-0 text-primary-foreground/60 hover:text-primary-foreground transition-colors"
+          >
+            <IconX size={13} />
+          </button>
+        </>
+      )}
+    </div>
+  )
+}

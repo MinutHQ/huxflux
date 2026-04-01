@@ -42,7 +42,7 @@ export function useUpdater(): UpdaterState {
           setProgress(100)
         }
       })
-      const { relaunch } = await import("@tauri-apps/api/process")
+      const { relaunch } = await import("@tauri-apps/plugin-process")
       await relaunch()
     } catch {
       setIsInstalling(false)

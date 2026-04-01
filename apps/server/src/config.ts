@@ -21,7 +21,7 @@ export const DATA_DIR = path.join(os.homedir(), "huxflux")
 const isDev = !process.env.AUTH_TOKEN
 
 export const config = {
-  port: parseInt(process.env.PORT ?? "3001", 10),
+  port: parseInt(process.env.PORT ?? (isDev ? "3002" : "3001"), 10),
   dbPath: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
   githubToken: process.env.GITHUB_TOKEN ?? "",
   workspacesBase: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, isDev ? "workspaces-dev" : "workspaces"),

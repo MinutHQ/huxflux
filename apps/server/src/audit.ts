@@ -10,11 +10,11 @@
  */
 
 import * as fs from "node:fs"
-import * as os from "node:os"
 import * as path from "node:path"
 import type { FastifyInstance } from "fastify"
+import { DATA_DIR } from "./config.js"
 
-const AUDIT_LOG = path.join(os.homedir(), "huxflux", "audit.log")
+const AUDIT_LOG = path.join(DATA_DIR, "audit.log")
 const SKIP_PATHS = new Set(["/health"])
 
 export function registerAuditLog(app: FastifyInstance) {

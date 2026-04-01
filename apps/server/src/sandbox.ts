@@ -31,7 +31,7 @@ export interface SandboxConfig {
 
 const ALWAYS_ALLOWED_BINS = ["git", "node", "claude", "sh", "bash", "env", "curl"]
 
-const DATA_DIR = path.join(os.homedir(), "huxflux")
+import { DATA_DIR } from "./config.js"
 
 // ── Dev tool cache detection ──────────────────────────────────────────────────
 // These directories are needed for common package managers to function.

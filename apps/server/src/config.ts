@@ -12,7 +12,7 @@ function parseSandbox(): SandboxConfig | undefined {
   }
 }
 
-const DATA_DIR = path.join(os.homedir(), "huxflux")
+export const DATA_DIR = path.join(os.homedir(), "huxflux")
 
 // AUTH_TOKEN is always injected by the CLI (huxflux start / huxflux run).
 // Its absence means we're running in dev mode (pnpm dev / tsx watch).

@@ -15,7 +15,7 @@ import type { SandboxConfig } from "./sandbox.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
-const DATA_DIR     = path.join(os.homedir(), "huxflux")
+const DATA_DIR     = path.join(os.homedir(), "huxflux") // keep in sync with config.ts DATA_DIR
 const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
 const LOG_FILE     = path.join(DATA_DIR, "server.log")

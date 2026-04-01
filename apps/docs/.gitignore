@@ -1,3 +1,5 @@
-.astro/
+.next/
+.source/
 dist/
 node_modules/
+next-env.d.ts

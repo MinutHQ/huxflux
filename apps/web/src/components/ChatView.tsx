@@ -1752,7 +1752,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           </PopoverContent>
         </Popover>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          {agent.prStatus && (
+          {githubEnabled && agent.prStatus && (
             <PRStatusPill prStatus={agent.prStatus} agentId={agent.id} />
           )}
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border">

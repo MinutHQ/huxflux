@@ -1,4 +1,4 @@
-import { eq, notInArray } from "drizzle-orm"
+import { eq, notInArray, isNull, and } from "drizzle-orm"
 import { db } from "./db/index.js"
 import { agents, repos } from "./db/schema.js"
 import { getPRStatus, findPRForBranch } from "./github/client.js"
@@ -69,7 +69,7 @@ export function startPoller(intervalMs = 60_000) {
 
   async function run() {
     const rows = db.select().from(agents)
-      .where(notInArray(agents.status, SKIP_STATUSES))
+      .where(and(notInArray(agents.status, SKIP_STATUSES), isNull(agents.deletedAt)))
       .all()
 
     console.log(`[poller] checking ${rows.length} agent(s)`)

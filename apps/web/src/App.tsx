@@ -10,7 +10,7 @@ import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer } from "@hive/shared"
+import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
@@ -114,6 +114,7 @@ export default function App() {
   useNotifications(agents)
 
   const prReviewEnabled = getFlag("prReview")
+  const { githubEnabled, feedbackEnabled } = useServerConfig()
 
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming } = useAgent(workspace.resolvedActiveId)
@@ -162,6 +163,7 @@ export default function App() {
     onSelectPr: workspace.selectPr,
     agentPorts,
     onToggle: toggleSidebar,
+    feedbackEnabled,
   }
 
   const terminalPanel = activeAgent && (
@@ -211,6 +213,7 @@ export default function App() {
           pendingComments={workspace.pendingComments}
           onRemoveComment={(id: string) => workspace.setPendingComments((prev) => prev.filter((c) => c.id !== id))}
           onClearComments={() => workspace.setPendingComments([])}
+          githubEnabled={githubEnabled}
         />
       </ResizablePanel>
 

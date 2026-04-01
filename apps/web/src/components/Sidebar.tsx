@@ -5,6 +5,7 @@ import { Button } from "@hive/ui"
 import { cn } from "@hive/ui"
 import { statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
 import type { PullRequest } from "@/data/mockReviews"
+import type { PendingAgent } from "@/hooks/useWorkspace"
 import { api, useRepos } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
@@ -839,10 +840,10 @@ interface SidebarProps {
   streamingAgentId: string | null
   onSelect: (id: string) => void
   onOpenSettings: () => void
-  onAgentCreating: (info: { title: string; branch: string; repoName: string }) => void
+  onAgentCreating: (info: PendingAgent) => void
   onAgentCreated: (id: string) => void
   clearPendingAgent: () => void
-  pendingAgent: { title: string; branch: string; repoName: string } | null
+  pendingAgent: PendingAgent | null
   onAgentDeleting: (agentId: string, info: { title: string; branch: string; repoName: string }) => void
   clearDeletingAgent: () => void
   prs: PullRequest[]

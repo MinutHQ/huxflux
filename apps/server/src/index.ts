@@ -63,6 +63,12 @@ await app.register(feedbackRoutes)
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
 
+// Server capabilities — exposes feature flags to the client (no secrets)
+app.get("/api/config", async () => ({
+  githubEnabled: !!config.githubToken,
+  feedbackEnabled: !!config.feedbackRepo && !!config.githubToken,
+}))
+
 // Startup — try requested port, then increment up to 10 times on EADDRINUSE
 runMigrations()
 

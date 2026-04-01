@@ -11,14 +11,29 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html, body {
   height: 100%;
   margin: 0;
   padding: 0;
+}
+
+html.tauri,
+html.tauri body {
+  background: transparent;
+}
+
+#root {
+  height: 100%;
   background-color: var(--background, #1c1917);
+  overflow: hidden;
+  isolation: isolate;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
+}
+
+html.tauri #root {
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar {

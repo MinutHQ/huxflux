@@ -9,6 +9,11 @@ import "./index.css"
 // Apply theme before first render to avoid flash, then watch for OS changes
 applyTheme(getTheme())
 watchSystemTheme()
+
+// Mark Tauri context so CSS can scope desktop-only styles
+if (!!import.meta.env.TAURI_PLATFORM || '__TAURI_INTERNALS__' in window) {
+  document.documentElement.classList.add("tauri")
+}
 import App from "./App.tsx"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
 

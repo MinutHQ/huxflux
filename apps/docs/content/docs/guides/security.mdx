@@ -3,12 +3,10 @@ title: Security
 description: Recommendations for running Huxflux safely.
 ---
 
-import { Aside } from '@astrojs/starlight/components'
-
-<Aside type="danger">
+<Callout type="error">
   The auth token grants full shell access to the machine running Huxflux.
   Treat it like an SSH private key — keep it secret and rotate it if it leaks.
-</Aside>
+</Callout>
 
 ## Use a dedicated user
 

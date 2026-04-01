@@ -42,6 +42,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Server config / feature flags
+  getServerConfig: () => req<{ githubEnabled: boolean; feedbackEnabled: boolean }>("/api/config"),
+
   // Agents
   getAgents: () => req<AgentSummary[]>("/api/agents"),
   getAgent: (id: string) => req<Agent>(`/api/agents/${id}`),

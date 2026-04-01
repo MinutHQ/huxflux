@@ -1,11 +1,7 @@
 ---
 title: Configuration
 description: Configure Huxflux after installation.
-sidebar:
-  order: 2
 ---
-
-import { Aside } from '@astrojs/starlight/components'
 
 ## Adding a server
 
@@ -25,11 +21,11 @@ Huxflux uses Claude models via the Anthropic API. Add your API key under **Setti
 
 Point Huxflux at a local directory containing your Git repositories. Set the path under **Settings → Repositories**. Agents run inside that directory and can read and write any files your OS user can access.
 
-<Aside type="caution">
+<Callout type="warn">
   Only point Huxflux at repositories you trust. Malicious content in a
   repository (README, comments, test fixtures) can instruct Claude to run
   arbitrary commands.
-</Aside>
+</Callout>
 
 ## Network
 

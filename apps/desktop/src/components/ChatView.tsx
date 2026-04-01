@@ -881,6 +881,8 @@ interface ChatViewProps {
 
 export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
   const queryClient = useQueryClient()
   const [input, setInput] = useState("")
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
@@ -1079,15 +1081,28 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
 
   useEffect(() => {
     setActiveTab("chat")
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    setIsAtBottom(true)
+    bottomRef.current?.scrollIntoView({ behavior: "instant" })
   }, [agent.id])
 
-  // Auto-scroll when streaming
+  // Track whether the user is near the bottom of the scroll container
   useEffect(() => {
-    if (isStreaming) {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setIsAtBottom(distFromBottom < 80)
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [])
+
+  // Auto-scroll to bottom when streaming, but only if the user is already at the bottom
+  useEffect(() => {
+    if (isStreaming && isAtBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-  }, [isStreaming, agent.messages.length])
+  }, [isStreaming, isAtBottom, agent.messages.length])
 
   const closeFileTab = () => {
     setActiveTab("chat")
@@ -1318,7 +1333,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           {agent.messages.length === 0 && !uiIsStreaming ? (
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto relative">
               <div className="px-10 py-8">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (
@@ -1334,6 +1349,20 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                 )}
                 <div ref={bottomRef} />
               </div>
+
+              {/* Scroll to bottom button — shown when user has scrolled up */}
+              {!isAtBottom && (
+                <button
+                  onClick={() => {
+                    setIsAtBottom(true)
+                    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+                  }}
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
+                >
+                  <IconChevronDown size={13} />
+                  <span>Scroll to bottom</span>
+                </button>
+              )}
             </div>
           )}
 

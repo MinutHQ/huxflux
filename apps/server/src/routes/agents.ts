@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify"
 import { v4 as uuid } from "uuid"
-import { eq, inArray } from "drizzle-orm"
+import { eq, inArray, isNull, and } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
@@ -28,9 +28,9 @@ function runScript(script: string, cwd: string, agentId: string): Promise<void> 
 }
 
 export async function agentsRoutes(app: FastifyInstance) {
-  // GET /api/agents — list with diffSummary computed from file_changes (excludes child tabs)
+  // GET /api/agents — list with diffSummary computed from file_changes (excludes child tabs and soft-deleted)
   app.get("/api/agents", async () => {
-    const rows = db.select().from(agents).all().filter((a) => !a.parentAgentId)
+    const rows = db.select().from(agents).where(and(isNull(agents.parentAgentId), isNull(agents.deletedAt))).all()
     return Promise.all(rows.map(async (a) => {
       const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, a.id)).all()
       const additions = files.reduce((s, f) => s + f.additions, 0)
@@ -45,7 +45,7 @@ export async function agentsRoutes(app: FastifyInstance) {
 
   // GET /api/agents/:id — full agent with messages + files + terminal
   app.get<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
-    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    const agent = db.select().from(agents).where(and(eq(agents.id, req.params.id), isNull(agents.deletedAt))).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
     const msgs = db.select().from(messages)
@@ -205,17 +205,19 @@ export async function agentsRoutes(app: FastifyInstance) {
     return { stopped: true }
   })
 
-  // DELETE /api/agents/:id — archive + remove worktree
+  // DELETE /api/agents/:id — soft delete: marks deleted_at, removes worktree, never hard-deletes DB rows
   app.delete<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
-    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    const agent = db.select().from(agents).where(and(eq(agents.id, req.params.id), isNull(agents.deletedAt))).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
-    // Delete child tabs first (before worktree removal, since children share the worktree)
-    const children = db.select().from(agents).where(eq(agents.parentAgentId, req.params.id)).all()
-    for (const child of children) {
-      await db.delete(agents).where(eq(agents.id, child.id))
-    }
+    const now = new Date().toISOString()
 
+    // Soft-delete child tabs too
+    await db.update(agents)
+      .set({ deletedAt: now })
+      .where(eq(agents.parentAgentId, req.params.id))
+
+    // Remove worktree from disk (frees space) but keep DB record
     if (agent.repoId && !agent.noWorktree) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (repo) {
@@ -228,7 +230,8 @@ export async function agentsRoutes(app: FastifyInstance) {
       }
     }
 
-    await db.delete(agents).where(eq(agents.id, req.params.id))
+    await db.update(agents).set({ deletedAt: now }).where(eq(agents.id, req.params.id))
+    broadcast({ type: "agent:deleted", agentId: req.params.id })
     reply.code(204).send()
   })
 

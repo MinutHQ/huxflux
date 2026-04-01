@@ -33,6 +33,7 @@ export const agents = sqliteTable("agents", {
   parentAgentId: text("parent_agent_id"), // if set, this is a child tab — hidden from sidebar
   sessionId: text("session_id"), // Claude Code session ID — used for --resume on follow-up messages
   noWorktree: integer("no_worktree"), // 1 = run directly in repo.path, no git worktree
+  deletedAt: text("deleted_at"), // soft delete — set instead of hard DELETE
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

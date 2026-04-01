@@ -23,6 +23,11 @@ export function useAgents() {
         return old.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
       })
     }
+    if (event.type === "agent:deleted") {
+      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+        old ? old.filter((a) => a.id !== event.agentId) : old
+      )
+    }
   })
 
   return query

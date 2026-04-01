@@ -1,11 +1,20 @@
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
-import { mkdirSync } from "node:fs"
+import { mkdirSync, copyFileSync, existsSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
 import * as schema from "./schema.js"
 
 mkdirSync(dirname(config.dbPath), { recursive: true })
+
+// Keep a rolling backup so a single bad migration or accidental bulk-delete
+// can be recovered by copying huxflux.db.bak back to huxflux.db.
+if (existsSync(config.dbPath)) {
+  try {
+    copyFileSync(config.dbPath, config.dbPath + ".bak")
+  } catch { /* non-fatal */ }
+}
+
 const sqlite = new Database(config.dbPath)
 
 // Enable WAL mode for better concurrent read performance
@@ -142,6 +151,12 @@ const MIGRATIONS: Migration[] = [
     version: 8,
     sql: `
       ALTER TABLE agents ADD COLUMN no_worktree INTEGER;
+    `,
+  },
+  {
+    version: 9,
+    sql: `
+      ALTER TABLE agents ADD COLUMN deleted_at TEXT;
     `,
   },
 ]

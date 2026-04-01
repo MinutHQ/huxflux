@@ -1287,7 +1287,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="px-5 py-6">
+              <div className="px-5 py-6 max-w-3xl mx-auto">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />

@@ -164,6 +164,8 @@ function NewAgentPopover({
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       onCreated(agent.id)
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to create agent")
     } finally {
       setCreating(null)
     }
@@ -940,11 +942,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                   <Button ref={newAgentBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
                     <IconPlus size={13} />
                   </Button>
-                  {onToggle && (
-                    <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
-                      <IconLayoutSidebarLeftCollapse size={13} />
-                    </Button>
-                  )}
                 </div>
               </div>
             </div>
@@ -1040,9 +1037,16 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             </div>
             <span className="text-xs text-muted-foreground">alexmartosp</span>
           </div>
-          <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
-            <IconSettings size={13} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
+              <IconSettings size={13} />
+            </Button>
+            {onToggle && (
+              <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
+                <IconLayoutSidebarLeftCollapse size={13} />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

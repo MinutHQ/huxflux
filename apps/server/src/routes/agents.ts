@@ -157,6 +157,7 @@ export async function agentsRoutes(app: FastifyInstance) {
         try {
           await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
         } catch (err) {
+          app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
           // Roll back the agent row so we don't leave an orphaned record
           await db.delete(agents).where(eq(agents.id, id))
           return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })

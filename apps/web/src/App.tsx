@@ -160,7 +160,7 @@ export default function App() {
     </div>
   ) : (
     <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
-      <ResizablePanel defaultSize="60" minSize="30">
+      <ResizablePanel defaultSize="72" minSize="30">
         <ChatView
           agent={activeAgent}
           isStreaming={activeIsStreaming}
@@ -180,9 +180,9 @@ export default function App() {
 
       <ResizableHandle />
 
-      <ResizablePanel defaultSize="40" minSize="20">
+      <ResizablePanel defaultSize="28" minSize="15">
         <ResizablePanelGroup orientation="vertical">
-          <ResizablePanel defaultSize="65" minSize="20">
+          <ResizablePanel defaultSize="70" minSize="20">
             <FileChangesView
               agent={activeAgent}
               selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
@@ -196,7 +196,7 @@ export default function App() {
 
           <ResizableHandle />
 
-          <ResizablePanel defaultSize="35" minSize="15">
+          <ResizablePanel defaultSize="30" minSize="15">
             <TerminalView
               agent={activeAgent}
               activeTab={terminalTab}
@@ -217,7 +217,7 @@ export default function App() {
       <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
         <ResizablePanel
           panelRef={sidebarRef}
-          defaultSize="16"
+          defaultSize="18"
           minSize="12"
           maxSize="28"
           collapsible
@@ -230,7 +230,7 @@ export default function App() {
 
         <ResizableHandle />
 
-        <ResizablePanel defaultSize="84" minSize="50" className="flex min-w-0 relative">
+        <ResizablePanel defaultSize="82" minSize="50" className="flex min-w-0 relative">
           {/* Expand button shown when sidebar is collapsed */}
           {sidebarCollapsed && (
             <button

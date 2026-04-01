@@ -1035,7 +1035,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground">
               A
             </div>
-            <span className="text-xs text-muted-foreground">alexmartosp</span>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>

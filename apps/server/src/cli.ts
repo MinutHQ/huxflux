@@ -19,6 +19,9 @@ const DATA_DIR     = path.join(os.homedir(), "huxflux") // keep in sync with con
 const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
 const LOG_FILE     = path.join(DATA_DIR, "server.log")
+const DB_FILE      = path.join(DATA_DIR, "huxflux.db")
+const DB_BAK       = DB_FILE + ".bak"
+const DB_BAK2      = DB_FILE + ".bak2"
 const SERVER_ENTRY = path.join(fileURLToPath(import.meta.url), "../index.js")
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -378,6 +381,55 @@ function cmdToken(sub?: string) {
   console.log(cfg.token)
 }
 
+function cmdRestore(slot?: string) {
+  const pid = getRunningPid()
+  if (pid) {
+    console.error("huxflux is running — stop it first: huxflux stop")
+    process.exit(1)
+  }
+
+  // Pick backup slot
+  const src = slot === "2" ? DB_BAK2 : DB_BAK
+  const slotLabel = slot === "2" ? ".bak2 (older)" : ".bak (latest)"
+
+  if (!fs.existsSync(src)) {
+    console.error(`No backup found at ${src}`)
+    process.exit(1)
+  }
+
+  const backupStat = fs.statSync(src)
+  const age = Math.round((Date.now() - backupStat.mtimeMs) / 1000 / 60)
+  const ageLabel = age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`
+
+  console.log(`\nRestore from ${slotLabel}`)
+  console.log(`  Source:  ${src}`)
+  console.log(`  Created: ${backupStat.mtime.toISOString()}  (${ageLabel})`)
+  if (fs.existsSync(DB_FILE)) {
+    const dbStat = fs.statSync(DB_FILE)
+    console.log(`  Current: ${DB_FILE}  (${Math.round((Date.now() - dbStat.mtimeMs) / 1000 / 60)}m old)`)
+  }
+  console.log("")
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  rl.question("Replace current database with this backup? [y/N] ", (answer) => {
+    rl.close()
+    if (answer.toLowerCase() !== "y") {
+      console.log("Aborted.")
+      process.exit(0)
+    }
+
+    // Save the current DB as a pre-restore snapshot before overwriting
+    if (fs.existsSync(DB_FILE)) {
+      fs.copyFileSync(DB_FILE, DB_FILE + ".pre-restore")
+      console.log(`  Saved current DB → ${DB_FILE}.pre-restore`)
+    }
+
+    fs.copyFileSync(src, DB_FILE)
+    console.log(`  Restored ${src} → ${DB_FILE}`)
+    console.log("\nDone. Run 'huxflux start' to restart.\n")
+  })
+}
+
 function cmdUpdate() {
   console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
   let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
@@ -418,6 +470,8 @@ Usage:
   huxflux token          Print the auth token
   huxflux token rotate   Rotate to a new auth token
   huxflux audit          Tail the request audit log
+  huxflux restore        Restore DB from latest backup (server must be stopped)
+  huxflux restore 2      Restore DB from older backup (.bak2)
   huxflux update         Update huxflux to the latest version
   huxflux help           Show this message
 `.trimStart())
@@ -435,6 +489,7 @@ switch (cmd) {
   case "run":      cmdRun(); break
   case "token":    cmdToken(cmdArgs[0]); break
   case "audit":    cmdAudit(); break
+  case "restore":  cmdRestore(cmdArgs[0]); break
   case "update":   cmdUpdate(); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
   case "security": printDisclaimer(); break

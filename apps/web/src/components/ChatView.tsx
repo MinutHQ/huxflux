@@ -1336,11 +1336,11 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           )}
         </div>
       ) : (
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
           {agent.messages.length === 0 && !uiIsStreaming ? (
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
-            <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto relative">
+            <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
               <div className="px-10 py-8">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (
@@ -1356,21 +1356,21 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                 )}
                 <div ref={bottomRef} />
               </div>
-
-              {/* Scroll to bottom button — shown when user has scrolled up */}
-              {!isAtBottom && (
-                <button
-                  onClick={() => {
-                    setIsAtBottom(true)
-                    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-                  }}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
-                >
-                  <IconChevronDown size={13} />
-                  <span>Scroll to bottom</span>
-                </button>
-              )}
             </div>
+          )}
+
+          {/* Scroll to bottom button — outside scroll container so it doesn't scroll away */}
+          {!isAtBottom && agent.messages.length > 0 && (
+            <button
+              onClick={() => {
+                setIsAtBottom(true)
+                bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+              }}
+              className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
+            >
+              <IconChevronDown size={13} />
+              <span>Scroll to bottom</span>
+            </button>
           )}
 
           {/* Team agent bar */}

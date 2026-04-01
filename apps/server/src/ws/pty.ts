@@ -36,7 +36,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string) {
     : null
 
   const cwd = repo
-    ? path.join(repo.workspacesPath, agent.location)
+    ? (agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location))
     : process.cwd()
 
   // Verify the directory exists before spawning

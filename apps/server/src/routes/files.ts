@@ -26,7 +26,7 @@ export async function filesRoutes(app: FastifyInstance) {
       if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
       const filePath = req.query.path ?? ""
-      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       const diff = await getDiff(worktreePath, filePath, repo.branchFrom)
       reply.header("Content-Type", "text/plain")
       return diff
@@ -44,7 +44,7 @@ export async function filesRoutes(app: FastifyInstance) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
-      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       return getFileTree(worktreePath)
     }
   )
@@ -63,7 +63,7 @@ export async function filesRoutes(app: FastifyInstance) {
       const filePath = req.query.path ?? ""
       if (!filePath) return reply.code(400).send({ error: "path query parameter required" })
 
-      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       const content = await getFileContent(worktreePath, filePath)
       reply.header("Content-Type", "text/plain")
       return content
@@ -84,7 +84,7 @@ export async function filesRoutes(app: FastifyInstance) {
       const { path: filePath, content } = req.body
       if (!filePath) return reply.code(400).send({ error: "path is required" })
 
-      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       await saveFileContent(worktreePath, filePath, content)
       return { ok: true }
     }
@@ -98,7 +98,7 @@ export async function filesRoutes(app: FastifyInstance) {
     const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
-    const worktreePath = path.join(repo.workspacesPath, agent.location)
+    const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
     const files = await getFileChanges(worktreePath, repo.branchFrom)
 
     // Replace file changes in DB

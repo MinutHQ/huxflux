@@ -163,7 +163,7 @@ export default function App() {
       <ResizablePanel defaultSize="60" minSize="30">
         <ChatView
           agent={activeAgent}
-          isStreaming={activeIsStreaming || streamingAgentId === workspace.resolvedActiveId}
+          isStreaming={activeIsStreaming}
           openFileTab={workspace.openFileTab}
           onClearFileTab={() => workspace.setOpenFileTab(null)}
           tabs={workspace.tabs}

@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+patchedDependencies:
+  '@radix-ui/react-compose-refs@1.1.2': patches/@radix-ui__react-compose-refs@1.1.2.patch

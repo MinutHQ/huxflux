@@ -1,3 +1,5 @@
+import { applyColorTheme, getColorTheme } from "./colorThemes"
+
 export type Theme = "dark" | "light" | "system"
 
 const KEY = "hive:theme"
@@ -17,6 +19,10 @@ export function applyTheme(theme: Theme) {
     theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
   document.documentElement.classList.toggle("dark", dark)
+  // Re-apply color theme vars after toggling dark class
+  if (dark) {
+    applyColorTheme(getColorTheme())
+  }
 }
 
 /** Call once at app startup. Re-applies theme when the OS preference changes. */

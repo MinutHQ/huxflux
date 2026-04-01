@@ -33,6 +33,7 @@ export default function App() {
   const [view, setView] = useState<"app" | "settings">("app")
   const [terminalTab, setTerminalTab] = useState<"setup" | "run" | "terminal">("terminal")
   const [agentPorts, setAgentPorts] = useState<Record<string, number | null>>({})
+  const [terminalMaximized, setTerminalMaximized] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(false)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
@@ -51,6 +52,10 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
         e.preventDefault()
         toggleSidebar()
+      }
+      if (e.key === "F1") {
+        e.preventDefault()
+        setTerminalMaximized((v) => !v)
       }
     }
     window.addEventListener("keydown", onKey)
@@ -150,6 +155,16 @@ export default function App() {
     onToggle: toggleSidebar,
   }
 
+  const terminalPanel = activeAgent && (
+    <TerminalView
+      agent={activeAgent}
+      activeTab={terminalTab}
+      onTabChange={setTerminalTab}
+      onOpenSettings={() => setView("settings")}
+      onPortChange={(agentId, port) => setAgentPorts((prev) => ({ ...prev, [agentId]: port }))}
+    />
+  )
+
   const mainContent = selectedPr ? (
     <div className="flex-1 min-w-0 overflow-hidden">
       <PRView key={selectedPr.id} pr={selectedPr} />
@@ -157,6 +172,10 @@ export default function App() {
   ) : !activeAgent ? (
     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
       {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
+    </div>
+  ) : terminalMaximized ? (
+    <div className="flex-1 min-w-0 h-full">
+      {terminalPanel}
     </div>
   ) : (
     <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
@@ -182,7 +201,7 @@ export default function App() {
 
       <ResizablePanel defaultSize="28" minSize="15">
         <ResizablePanelGroup orientation="vertical">
-          <ResizablePanel defaultSize="70" minSize="20">
+          <ResizablePanel defaultSize="50" minSize="20">
             <FileChangesView
               agent={activeAgent}
               selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
@@ -196,14 +215,8 @@ export default function App() {
 
           <ResizableHandle />
 
-          <ResizablePanel defaultSize="30" minSize="15">
-            <TerminalView
-              agent={activeAgent}
-              activeTab={terminalTab}
-              onTabChange={setTerminalTab}
-              onOpenSettings={() => setView("settings")}
-              onPortChange={(agentId, port) => setAgentPorts((prev) => ({ ...prev, [agentId]: port }))}
-            />
+          <ResizablePanel defaultSize="50" minSize="15">
+            {terminalPanel}
           </ResizablePanel>
         </ResizablePanelGroup>
       </ResizablePanel>

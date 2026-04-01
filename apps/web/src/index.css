@@ -15,7 +15,7 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #1c1917;
+  background-color: var(--background, #1c1917);
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   color-scheme: dark;
@@ -31,12 +31,12 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #44403c;
+  background: var(--muted, #44403c);
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #57534e;
+  background: var(--muted-foreground, #57534e);
 }
 
 textarea:focus {

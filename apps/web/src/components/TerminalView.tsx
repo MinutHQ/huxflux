@@ -5,6 +5,7 @@ import { cn } from "@hive/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
 import { getActiveServer, useRepos } from "@hive/shared"
+import { colorThemes, getColorTheme } from "@/lib/colorThemes"
 import "@xterm/xterm/css/xterm.css"
 
 interface TerminalViewProps {
@@ -61,16 +62,10 @@ function scanForPort(buf: string): number | null {
   return null
 }
 
-const TERMINAL_THEME = {
-  background: "#1c1917",
-  foreground: "#e7e5e4",
-  cursor: "#e7e5e4",
-  selectionBackground: "#44403c",
-  black: "#1c1917", red: "#f87171", green: "#4ade80", yellow: "#facc15",
-  blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e7e5e4",
-  brightBlack: "#78716c", brightRed: "#fca5a5", brightGreen: "#86efac",
-  brightYellow: "#fde047", brightBlue: "#93c5fd", brightMagenta: "#d8b4fe",
-  brightCyan: "#67e8f9", brightWhite: "#fafaf9",
+function getTerminalTheme() {
+  const id = getColorTheme()
+  const theme = colorThemes.find((t) => t.id === id)
+  return theme?.terminal ?? colorThemes[0].terminal
 }
 
 export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, onPortChange }: TerminalViewProps) {
@@ -106,7 +101,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       cursorBlink: true,
       fontSize: 12,
       fontFamily: '"Geist Mono", "JetBrains Mono", "Fira Code", monospace',
-      theme: TERMINAL_THEME,
+      theme: getTerminalTheme(),
     })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
@@ -196,6 +191,18 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, agent.id, activeTerminalId])
 
+  // Update all terminal themes when color theme changes
+  useEffect(() => {
+    function handleThemeChange() {
+      const theme = getTerminalTheme()
+      for (const session of globalSessions.values()) {
+        session.term.options.theme = theme
+      }
+    }
+    window.addEventListener("hive:color-theme-change", handleThemeChange)
+    return () => window.removeEventListener("hive:color-theme-change", handleThemeChange)
+  }, [])
+
   useEffect(() => {
     if (!wrapperRef.current) return
     resizeObsRef.current = new ResizeObserver(() => {
@@ -281,7 +288,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#1c1917] border-t border-border">
+    <div className="flex flex-col h-full bg-background border-t border-border">
       {/* Top tab bar: Setup / Run / terminal tabs / + */}
       <div className="flex items-center px-3 border-b border-border shrink-0 bg-background">
         <div className="flex items-center flex-1 min-w-0">
@@ -391,7 +398,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         />
 
         {activeTab === "run" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 bg-[#1c1917] z-10">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 bg-background z-10">
             {repo?.runScript ? (
               <>
                 <div className="text-center space-y-1">
@@ -427,7 +434,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         )}
 
         {activeTab === "setup" && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 text-sm bg-[#1c1917] z-10">
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40 text-sm bg-background z-10">
             Setup output appears here during agent creation
           </div>
         )}

@@ -28,29 +28,7 @@ function getServersRaw(): HiveServer[] {
   }
 }
 
-// When served directly from the huxflux server, window.__HUXFLUX__ is injected
-// into the page. Auto-register that server so the user skips onboarding.
-function maybeAutoRegister() {
-  try {
-    const injected = (globalThis as any).__HUXFLUX__ as { url: string; token?: string } | undefined
-    if (!injected?.url) return
-    const existing = getServersRaw()
-    const already = existing.find((s) => s.url === injected.url)
-    if (already) {
-      if (already.token !== injected.token) {
-        saveServers(existing.map((s) => s.id === already.id ? { ...s, token: injected.token } : s))
-      }
-      if (!getActiveServerId()) setActiveServerId(already.id)
-      return
-    }
-    const server: HiveServer = { id: uuid(), name: "Local", url: injected.url, token: injected.token, addedAt: new Date().toISOString() }
-    saveServers([...existing, server])
-    setActiveServerId(server.id)
-  } catch { /* non-fatal */ }
-}
-
 export function getServers(): HiveServer[] {
-  maybeAutoRegister()
   return getServersRaw()
 }
 
@@ -59,12 +37,24 @@ function saveServers(servers: HiveServer[]): void {
 }
 
 export function addServer(s: Omit<HiveServer, "id" | "addedAt">): HiveServer {
+  const existing = getServers()
+  const normalizedUrl = s.url.replace(/\/$/, "")
+  const duplicate = existing.find((srv) => srv.url.replace(/\/$/, "") === normalizedUrl)
+  if (duplicate) {
+    // Update token if changed and return existing entry
+    if (s.token && duplicate.token !== s.token) {
+      updateServer(duplicate.id, { token: s.token })
+      return { ...duplicate, token: s.token }
+    }
+    return duplicate
+  }
   const server: HiveServer = {
     ...s,
+    url: normalizedUrl,
     id: uuid(),
     addedAt: new Date().toISOString(),
   }
-  saveServers([...getServers(), server])
+  saveServers([...existing, server])
   return server
 }
 

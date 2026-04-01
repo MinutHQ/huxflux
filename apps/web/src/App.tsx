@@ -10,7 +10,7 @@ import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
-import { useAgents, useAgent, connectBackgroundServer } from "@hive/shared"
+import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer } from "@hive/shared"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
@@ -59,6 +59,30 @@ export default function App() {
 
   const { servers, activeId, refresh: refreshServers } = useServers()
   const { data: agents = [] } = useAgents()
+
+  // Auto-register server from ?connect= URL param (e.g. opened via `huxflux open`)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connectParam = params.get("connect")
+    if (!connectParam) return
+    const parsed = parseConnectionString(connectParam)
+    if (!parsed) return
+    // Clean the URL without reloading
+    params.delete("connect")
+    const newSearch = params.toString()
+    window.history.replaceState({}, "", newSearch ? `?${newSearch}` : window.location.pathname)
+    // Register if not already known
+    const existing = getServers()
+    const already = existing.find((s) => s.url === parsed.url)
+    if (already) {
+      setActiveServerId(already.id)
+    } else {
+      const server = addServer({ name: "My Server", url: parsed.url, token: parsed.token })
+      setActiveServerId(server.id)
+    }
+    refreshServers()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Background WS connections for non-active servers
   useEffect(() => {

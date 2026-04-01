@@ -430,15 +430,18 @@ function cmdRestore(slot?: string) {
   })
 }
 
-function cmdOpen() {
+const WEB_APP_URL = "https://app.huxflux.dev"
+
+function cmdOpen(host?: string) {
   const cfg = loadConfig()
   const pid = getRunningPid()
   if (!pid) {
     console.log("huxflux is not running — start it first: huxflux start")
     process.exit(1)
   }
-  const url = `http://localhost:${cfg.port}`
-  console.log(`Opening ${url}`)
+  const conn = connectionString(cfg, host ?? "localhost")
+  const url = `${WEB_APP_URL}/?connect=${encodeURIComponent(conn)}`
+  console.log(`Opening ${WEB_APP_URL}`)
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
   spawnSync(opener, [url], { stdio: "inherit" })
 }
@@ -474,7 +477,7 @@ huxflux — Huxflux server
 
 Usage:
   huxflux [start]   Start the server in the background
-  huxflux open      Open the web UI in your browser
+  huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
   huxflux logs      Tail the server log (Ctrl+C to exit)
@@ -497,7 +500,7 @@ const [,, cmd = "start", ...cmdArgs] = process.argv
 
 switch (cmd) {
   case "start":    cmdStart(); break
-  case "open":     cmdOpen(); break
+  case "open":     cmdOpen(cmdArgs[0]); break
   case "stop":     cmdStop(); break
   case "status":   cmdStatus(); break
   case "logs":     cmdLogs(); break

@@ -26,15 +26,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build web
-        working-directory: apps/web
-        run: pnpm build
-
-      - name: Embed web into server package
-        run: |
-          mkdir -p apps/server/public
-          cp -r apps/web/dist/. apps/server/public/
-
       - name: Build server
         working-directory: apps/server
         run: pnpm build

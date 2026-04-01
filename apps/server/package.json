@@ -10,8 +10,7 @@
     "huxflux": "dist/cli.js"
   },
   "files": [
-    "dist",
-    "public"
+    "dist"
   ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -26,7 +25,6 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
-    "@fastify/static": "^9.0.0",
     "@fastify/websocket": "^11.0.2",
     "@octokit/rest": "^21.1.1",
     "better-sqlite3": "^11.10.0",

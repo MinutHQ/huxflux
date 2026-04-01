@@ -25,6 +25,7 @@ let socket: WebSocket | null = null
 const handlers = new Set<Handler>()
 const subscriptions = new Set<string>()
 let connectedWsUrl: string | null = null
+let socketEverOpened = false  // true after the first successful open for the current URL
 
 function getActiveWsUrl(): string {
   const server = getActiveServer()
@@ -42,21 +43,21 @@ function connect() {
     socket.onclose = null
     socket.close()
     socket = null
+    socketEverOpened = false  // reset for the new URL
   }
 
   connectedWsUrl = wsUrl
   socket = new WebSocket(wsUrl)
 
-  let isFirstOpen = true
   socket.onopen = () => {
     for (const agentId of subscriptions) {
       socket!.send(JSON.stringify({ type: "subscribe", agentId }))
     }
-    if (!isFirstOpen) {
-      // Notify handlers so they can refetch stale data after reconnect
+    if (socketEverOpened) {
+      // This is a reconnect — events may have been missed while disconnected
       for (const handler of handlers) handler({ type: "ws:reconnected" } as any)
     }
-    isFirstOpen = false
+    socketEverOpened = true
   }
 
   socket.onmessage = (e) => {

@@ -69,6 +69,26 @@ export function useAgent(id: string | null) {
     }
   }, [query.data])
 
+  // Poll while streaming: directly fetch and check without touching the RQ cache
+  // unless the run is confirmed done. This avoids the flicker that invalidateQueries
+  // causes (no loading state, no partial-data refetch mid-stream).
+  useEffect(() => {
+    if (!isStreaming || !id) return
+    const interval = setInterval(() => {
+      api.getAgent(id).then((fresh) => {
+        const last = fresh.messages[fresh.messages.length - 1]
+        if (last?.role === "assistant" && last.durationMs != null) {
+          setIsStreaming(false)
+          queryClient.setQueryData<Agent>(["agent", id], (old) => {
+            const merged = mergeSubAgentData(fresh.messages, subAgentDataRef.current)
+            return old ? { ...old, messages: merged } : { ...fresh, messages: merged }
+          })
+        }
+      }).catch(() => {})
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [isStreaming, id, queryClient])
+
   const updateMessages = useCallback(
     (updater: (msgs: Message[]) => Message[]) => {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {

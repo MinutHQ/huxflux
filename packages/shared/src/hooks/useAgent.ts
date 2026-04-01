@@ -105,6 +105,14 @@ export function useAgent(id: string | null) {
   )
 
   useAgentEvents(id, (event) => {
+    if (event.type === "message:user") {
+      updateMessages((msgs) => {
+        // Avoid duplicate if the sender already optimistically added it
+        if (msgs.some((m) => m.id === event.message.id)) return msgs
+        return [...msgs, { ...event.message, toolCalls: [] }]
+      })
+    }
+
     if (event.type === "message:start") {
       setIsStreaming(true)
       updateMessages((msgs) => [

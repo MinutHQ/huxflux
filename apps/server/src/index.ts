@@ -1,7 +1,12 @@
 import Fastify from "fastify"
 import fastifyCors from "@fastify/cors"
 import fastifyWebsocket from "@fastify/websocket"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as path from "node:path"
 import { config } from "./config.js"
+
+const PORT_FILE = path.join(os.homedir(), "huxflux", "server.port")
 import { runMigrations } from "./db/index.js"
 import { reposRoutes } from "./routes/repos.js"
 import { agentsRoutes } from "./routes/agents.js"
@@ -93,6 +98,13 @@ if (!boundPort) {
   console.error(`[server] Could not bind to any port in range ${config.port}–${config.port + 9}`)
   process.exit(1)
 }
+
+// Persist actual port so CLI commands can read it
+try { fs.writeFileSync(PORT_FILE, String(boundPort)) } catch { /* non-fatal */ }
+const cleanupPortFile = () => { try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ } }
+process.on("exit", cleanupPortFile)
+process.on("SIGTERM", () => { cleanupPortFile(); process.exit(0) })
+process.on("SIGINT", () => { cleanupPortFile(); process.exit(0) })
 
 startPoller()
 console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)

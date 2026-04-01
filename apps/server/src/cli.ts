@@ -18,6 +18,7 @@ import type { SandboxConfig } from "./sandbox.js"
 const DATA_DIR     = path.join(os.homedir(), "huxflux") // keep in sync with config.ts DATA_DIR
 const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
+const PORT_FILE    = path.join(DATA_DIR, "server.port")
 const LOG_FILE     = path.join(DATA_DIR, "server.log")
 const DB_FILE      = path.join(DATA_DIR, "huxflux.db")
 const DB_BAK       = DB_FILE + ".bak"
@@ -85,8 +86,18 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
 
 // ── Connection string ─────────────────────────────────────────────────────────
 
+function getActualPort(configPort: number): number {
+  try {
+    if (fs.existsSync(PORT_FILE)) {
+      const p = parseInt(fs.readFileSync(PORT_FILE, "utf8").trim(), 10)
+      if (!isNaN(p)) return p
+    }
+  } catch { /* fall through */ }
+  return configPort
+}
+
 function connectionString(cfg: Config, host = "localhost"): string {
-  return `huxflux://${host}:${cfg.port}?token=${cfg.token}`
+  return `huxflux://${host}:${getActualPort(cfg.port)}?token=${cfg.token}`
 }
 
 function printConnectInfo(cfg: Config, pid?: number) {
@@ -115,7 +126,7 @@ function printDisclaimer() {
   │     Without it, your token and data travel in plaintext.      │
   │     https://tailscale.com                                     │
   │                                                               │
-  │  3. Never expose port 3001 to the public internet             │
+  │  3. Never expose your server port to the public internet      │
   │     Use Caddy for automatic TLS if you need public access:    │
   │     https://caddyserver.com/docs/quick-starts/reverse-proxy   │
   │                                                               │
@@ -330,6 +341,7 @@ function cmdStop() {
   }
   try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
   if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE)
+  if (fs.existsSync(PORT_FILE)) fs.unlinkSync(PORT_FILE)
   console.log(`huxflux stopped  (PID ${pid})`)
 }
 

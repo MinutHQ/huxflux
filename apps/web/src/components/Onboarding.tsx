@@ -51,6 +51,23 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         return
       }
 
+      // Verify auth token against a protected endpoint
+      const authHeaders: HeadersInit = token.trim() ? { Authorization: `Bearer ${token.trim()}` } : {}
+      const authController = new AbortController()
+      const authTimer = setTimeout(() => authController.abort(), 5000)
+      try {
+        const authRes = await fetch(`${normalizedUrl}/api/config`, {
+          headers: authHeaders,
+          signal: authController.signal,
+        })
+        if (authRes.status === 401) {
+          setError("Invalid auth token. Check the token from `huxflux status`.")
+          return
+        }
+      } finally {
+        clearTimeout(authTimer)
+      }
+
       const server = add({
         name: name.trim() || "My Server",
         url: normalizedUrl,

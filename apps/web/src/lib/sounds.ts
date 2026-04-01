@@ -1,13 +1,24 @@
-export type SoundId = "chime" | "pop" | "ping" | "bell" | "buzz" | "choo-choo" | "none"
+export type SoundId =
+  | "chime" | "pop" | "ping" | "bell" | "buzz" | "choo-choo"
+  | "giggle" | "scream" | "whistle" | "clown-horn"
+  | "sprinkles" | "sparkler" | "huxflux"
+  | "none"
 
 export const SOUNDS: { id: SoundId; label: string }[] = [
-  { id: "chime",    label: "Chime" },
-  { id: "pop",      label: "Pop" },
-  { id: "ping",     label: "Ping" },
-  { id: "bell",     label: "Bell" },
-  { id: "buzz",     label: "Buzz" },
-  { id: "choo-choo", label: "Choo choo" },
-  { id: "none",     label: "None" },
+  { id: "chime",      label: "Chime" },
+  { id: "pop",        label: "Pop" },
+  { id: "ping",       label: "Ping" },
+  { id: "bell",       label: "Bell" },
+  { id: "buzz",       label: "Buzz" },
+  { id: "sprinkles",  label: "Sprinkles" },
+  { id: "sparkler",   label: "Sparkler" },
+  { id: "huxflux",    label: "Huxflux" },
+  { id: "choo-choo",  label: "Choo choo" },
+  { id: "giggle",     label: "Giggle" },
+  { id: "scream",     label: "Scream" },
+  { id: "whistle",    label: "Whistle" },
+  { id: "clown-horn", label: "Clown horn" },
+  { id: "none",       label: "None" },
 ]
 
 function ctx(): AudioContext {
@@ -20,6 +31,21 @@ function play(fn: (ac: AudioContext) => void) {
     ac.resume().then(() => fn(ac)).catch(() => {})
   } catch {
     // AudioContext unavailable — silent fail
+  }
+}
+
+function playFile(file: string) {
+  return (ac: AudioContext) => {
+    fetch(file)
+      .then((res) => res.arrayBuffer())
+      .then((buf) => ac.decodeAudioData(buf))
+      .then((decoded) => {
+        const src = ac.createBufferSource()
+        src.buffer = decoded
+        src.connect(ac.destination)
+        src.start(ac.currentTime)
+      })
+      .catch(() => {})
   }
 }
 
@@ -86,7 +112,6 @@ function bell(ac: AudioContext) {
 }
 
 function buzz(ac: AudioContext) {
-  // Buzzy bee-like sound: sawtooth with amplitude modulation
   const osc = ac.createOscillator()
   const modOsc = ac.createOscillator()
   const modGain = ac.createGain()
@@ -100,8 +125,8 @@ function buzz(ac: AudioContext) {
   osc.type = "sawtooth"
   osc.frequency.value = 180
   modOsc.type = "sine"
-  modOsc.frequency.value = 22      // wing-beat rate
-  modGain.gain.value = 40          // frequency wobble depth
+  modOsc.frequency.value = 22
+  modGain.gain.value = 40
 
   outGain.gain.setValueAtTime(0, ac.currentTime)
   outGain.gain.linearRampToValueAtTime(0.18, ac.currentTime + 0.03)
@@ -114,26 +139,20 @@ function buzz(ac: AudioContext) {
   osc.stop(ac.currentTime + 0.56)
 }
 
-function chooChoo(ac: AudioContext) {
-  fetch("/choo-choo.mp3")
-    .then((res) => res.arrayBuffer())
-    .then((buf) => ac.decodeAudioData(buf))
-    .then((decoded) => {
-      const src = ac.createBufferSource()
-      src.buffer = decoded
-      src.connect(ac.destination)
-      src.start(ac.currentTime)
-    })
-    .catch(() => {})
-}
-
 const players: Record<SoundId, (ac: AudioContext) => void> = {
   chime,
   pop,
   ping,
   bell,
   buzz,
-  "choo-choo": chooChoo,
+  "choo-choo":  playFile("/choo-choo.mp3"),
+  "giggle":     playFile("/giggle.wav"),
+  "scream":     playFile("/scream.wav"),
+  "whistle":    playFile("/whistle.wav"),
+  "clown-horn": playFile("/clown-horn.mp3"),
+  "sprinkles":  playFile("/sprinkles.mp3"),
+  "sparkler":   playFile("/sparkler.mp3"),
+  "huxflux":    playFile("/huxflux.mp3"),
   none: () => {},
 }
 

@@ -20,11 +20,16 @@ description: What's new in Huxflux.
 - Streaming indicator now restores correctly when navigating back to an agent that is still running
 - Sidebar is now resizable and collapsible via `⌘B`
 - Feedback button and PR status hidden when server has no GitHub token configured
+- Auth token is validated immediately when adding a server — invalid tokens fail before saving
+- New notification sounds: Sprinkles, Sparkler, Huxflux, Giggle, Scream, Whistle, Clown horn
+- File changes tab now correctly shows diffs after the agent finishes running
+- Messages sent by one client are broadcast to all connected clients in real time
 
 ### Server
 
 - Each chat tab now resumes its own Claude session via `--resume <sessionId>`
 - GitHub-dependent UI (PR status, feedback) only shown when `GITHUB_TOKEN` is configured
+- `huxflux status` and `huxflux open` now show the actual bound port when the default port was in use
 
 ---
 

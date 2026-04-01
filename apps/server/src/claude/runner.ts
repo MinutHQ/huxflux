@@ -276,6 +276,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     timestamp: now,
     createdAt: now,
   })
+  emit(agentId, {
+    type: "message:user",
+    agentId,
+    message: { id: userMsgId, role: "user" as const, content: userContent, timestamp: now },
+  })
 
   // Mark agent as in-progress unless already in-review (don't downgrade)
   const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
@@ -448,7 +453,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       }
       try {
         // B3: persistAssistantMessage already calls refreshFileChanges — don't call it again
-        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, worktreePath, branchFrom, flushTimer)
+        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, cwd, branchFrom, flushTimer)
         const doneAt = new Date().toISOString()
         // B2: Restore the pre-run status instead of forcing "in-progress".
         // This preserves "in-review" if it was set before the run.

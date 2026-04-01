@@ -1,17 +1,27 @@
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
-import { mkdirSync, copyFileSync, existsSync } from "node:fs"
+import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
 import * as schema from "./schema.js"
 
 mkdirSync(dirname(config.dbPath), { recursive: true })
 
-// Keep a rolling backup so a single bad migration or accidental bulk-delete
-// can be recovered by copying huxflux.db.bak back to huxflux.db.
+// Rolling daily backup: huxflux.db.bak (yesterday) + huxflux.db.bak2 (day before).
+// Only rotates once every 24 hours so frequent restarts during development
+// don't continuously overwrite the same recovery point.
 if (existsSync(config.dbPath)) {
   try {
-    copyFileSync(config.dbPath, config.dbPath + ".bak")
+    const bak = config.dbPath + ".bak"
+    const bakAge = existsSync(bak)
+      ? Date.now() - statSync(bak).mtimeMs
+      : Infinity
+    const ONE_DAY = 24 * 60 * 60 * 1000
+    if (bakAge > ONE_DAY) {
+      // Rotate: .bak → .bak2, then snapshot current DB → .bak
+      if (existsSync(bak)) copyFileSync(bak, config.dbPath + ".bak2")
+      copyFileSync(config.dbPath, bak)
+    }
   } catch { /* non-fatal */ }
 }
 

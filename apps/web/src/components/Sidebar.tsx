@@ -250,6 +250,25 @@ function NewAgentPopover({
   )
 }
 
+// ── Repo color ────────────────────────────────────────────────────────────────
+
+const repoColors = [
+  "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  "bg-rose-500/20 text-rose-400 border-rose-500/30",
+  "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  "bg-teal-500/20 text-teal-400 border-teal-500/30",
+]
+
+function repoColor(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) % repoColors.length
+  return repoColors[hash]
+}
+
 // ── Agent row ─────────────────────────────────────────────────────────────────
 
 const modelColors: Record<string, string> = {
@@ -361,6 +380,7 @@ function AgentRow({
   onHover,
   onLeave,
   port,
+  repoName,
 }: {
   agent: AgentSummary
   isSelected: boolean
@@ -370,12 +390,13 @@ function AgentRow({
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   port?: number | null
+  repoName?: string
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
-  const modelColor = modelColors[agent.model] ?? "bg-muted text-muted-foreground"
-  const initials = agent.title[0].toUpperCase()
+  const avatarColor = repoName ? repoColor(repoName) : (modelColors[agent.model] ?? "bg-muted text-muted-foreground")
+  const initials = (repoName ?? agent.title)[0].toUpperCase()
   const isCancelled = agent.status === "cancelled"
   const shortcutNum = index < 9 ? index + 1 : null
   const [editing, setEditing] = useState(false)
@@ -438,7 +459,7 @@ function AgentRow({
           isCancelled && "opacity-50"
         )}
       >
-        <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", modelColor)}>
+        <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>
           {initials}
         </div>
         {isStreaming ? (
@@ -506,6 +527,7 @@ function StatusGroup({
   onHover,
   onLeave,
   agentPorts,
+  repoNames,
 }: {
   status: AgentStatus
   agents: AgentSummary[]
@@ -516,6 +538,7 @@ function StatusGroup({
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   agentPorts?: Record<string, number | null>
+  repoNames: Record<string, string>
 }) {
   const [collapsed, setCollapsed] = useState(status === "done")
   const config = statusConfig[status]
@@ -548,6 +571,7 @@ function StatusGroup({
               onHover={onHover}
               onLeave={onLeave}
               port={agentPorts?.[agent.id]}
+              repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
             />
           ))}
         </div>
@@ -613,6 +637,7 @@ function RepoGroup({
               onHover={onHover}
               onLeave={onLeave}
               port={agentPorts?.[agent.id]}
+              repoName={repoName}
             />
           ))}
         </div>
@@ -829,6 +854,9 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     }
   }
 
+  // Repo name lookup map (repoId → name)
+  const repoNames = Object.fromEntries(repos.map((r) => [r.id, r.name]))
+
   // Group by repo
   const repoGrouped = (() => {
     const map = new Map<string, { name: string; agents: AgentSummary[] }>()
@@ -946,6 +974,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
                         agentPorts={agentPorts}
+                        repoNames={repoNames}
                       />
                     ))
                   ) : (

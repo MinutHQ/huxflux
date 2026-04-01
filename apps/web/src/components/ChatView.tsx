@@ -773,37 +773,172 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
 // ── Creation view ─────────────────────────────────────────────────────────────
 
 function CreationView({ agent }: { agent: Agent }) {
+  const [showCursor, setShowCursor] = useState(true)
+  const [typedText, setTypedText] = useState("")
+  const fullText = "Send a message to get started"
+
+  useEffect(() => {
+    let i = 0
+    const interval = setInterval(() => {
+      if (i <= fullText.length) {
+        setTypedText(fullText.slice(0, i))
+        i++
+      } else {
+        clearInterval(interval)
+      }
+    }, 45)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => setShowCursor((c) => !c), 530)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Floating particle positions (seeded for consistency)
+  const particles = Array.from({ length: 18 }, (_, i) => ({
+    id: i,
+    x: ((i * 37 + 13) % 100),
+    y: ((i * 53 + 7) % 100),
+    size: 2 + (i % 4),
+    duration: 3 + (i % 5) * 1.2,
+    delay: (i % 7) * 0.4,
+    opacity: 0.15 + (i % 3) * 0.1,
+  }))
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-card border border-border flex items-center justify-center">
-          <IconHexagon size={24} className="text-amber-400" />
+    <div className="relative flex flex-col items-center justify-center h-full gap-6 px-8 overflow-hidden">
+      {/* CSS animations */}
+      <style>{`
+        @keyframes cv-float { 0%, 100% { transform: translateY(0px) } 50% { transform: translateY(-12px) } }
+        @keyframes cv-particle { 0% { transform: translateY(0) scale(1); opacity: var(--p-op) } 50% { transform: translateY(-30px) scale(1.5); opacity: calc(var(--p-op) * 1.8) } 100% { transform: translateY(0) scale(1); opacity: var(--p-op) } }
+        @keyframes cv-spin-slow { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes cv-pulse-ring { 0% { transform: scale(1); opacity: 0.4 } 100% { transform: scale(2.5); opacity: 0 } }
+        @keyframes cv-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.08), 0 0 60px rgba(251,191,36,0.04) } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.15), 0 0 80px rgba(251,191,36,0.08) } }
+        @keyframes cv-shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+        @keyframes cv-fade-in { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes cv-hex-bob { 0%, 100% { transform: rotate(0deg) scale(1) } 25% { transform: rotate(3deg) scale(1.05) } 75% { transform: rotate(-3deg) scale(1.05) } }
+        @keyframes cv-orbit { from { transform: rotate(0deg) translateX(32px) rotate(0deg) } to { transform: rotate(360deg) translateX(32px) rotate(-360deg) } }
+        @keyframes cv-status-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.5 } }
+        @keyframes cv-border-travel { 0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% } }
+      `}</style>
+
+      {/* Floating particles */}
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="absolute rounded-full bg-amber-400 pointer-events-none"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: p.size,
+            height: p.size,
+            ["--p-op" as string]: p.opacity,
+            opacity: p.opacity,
+            animation: `cv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+          }}
+        />
+      ))}
+
+      {/* Main content with fade-in */}
+      <div
+        className="flex flex-col items-center gap-3 z-10"
+        style={{ animation: "cv-fade-in 0.8s ease-out both" }}
+      >
+        {/* Hexagon icon area */}
+        <div className="relative" style={{ animation: "cv-float 4s ease-in-out infinite" }}>
+          {/* Pulse rings */}
+          <div
+            className="absolute inset-0 rounded-2xl border-2 border-amber-400/30"
+            style={{ animation: "cv-pulse-ring 3s ease-out infinite" }}
+          />
+          <div
+            className="absolute inset-0 rounded-2xl border-2 border-amber-400/20"
+            style={{ animation: "cv-pulse-ring 3s ease-out 1s infinite" }}
+          />
+          <div
+            className="absolute inset-0 rounded-2xl border-2 border-amber-400/10"
+            style={{ animation: "cv-pulse-ring 3s ease-out 2s infinite" }}
+          />
+
+          {/* Orbiting dot */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div style={{ animation: "cv-orbit 6s linear infinite" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400/60" />
+            </div>
+          </div>
+
+          {/* Icon container with glow */}
+          <div
+            className="w-14 h-14 rounded-2xl bg-card border border-amber-400/20 flex items-center justify-center relative"
+            style={{ animation: "cv-glow 3s ease-in-out infinite" }}
+          >
+            <div style={{ animation: "cv-hex-bob 4s ease-in-out infinite" }}>
+              <IconHexagon size={28} className="text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+            </div>
+          </div>
         </div>
+
+        {/* Agent name with shimmer */}
         <div className="text-center">
-          <p className="text-sm font-medium text-foreground">{agent.title}</p>
+          <p
+            className="text-sm font-semibold bg-clip-text text-transparent"
+            style={{
+              backgroundImage: "linear-gradient(90deg, var(--foreground) 0%, var(--foreground) 40%, rgba(251,191,36,0.9) 50%, var(--foreground) 60%, var(--foreground) 100%)",
+              backgroundSize: "200% 100%",
+              animation: "cv-shimmer 4s ease-in-out infinite",
+              WebkitBackgroundClip: "text",
+            }}
+          >
+            {agent.title}
+          </p>
           <p className="text-[12px] text-muted-foreground/60 mt-0.5 font-mono">{agent.branch}</p>
         </div>
       </div>
 
-      <div className="w-full max-w-xs bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
-          <IconGitBranch size={12} className="text-muted-foreground/40" />
-          <span className="text-[11px] text-muted-foreground/60 font-mono">{agent.location}</span>
-        </div>
-        <div className="px-4 py-3 space-y-2 text-[12px] text-muted-foreground/60">
-          <div className="flex items-center justify-between">
-            <span>Model</span>
-            <span className="font-mono text-foreground/70">{agent.model}</span>
+      {/* Info card with animated border */}
+      <div
+        className="w-full max-w-xs z-10 rounded-xl p-[1px]"
+        style={{
+          background: "linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent)",
+          backgroundSize: "200% 100%",
+          animation: "cv-fade-in 0.8s ease-out 0.3s both, cv-border-travel 4s ease-in-out infinite",
+        }}
+      >
+        <div className="bg-card rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border/50 flex items-center gap-2">
+            <IconGitBranch size={12} className="text-amber-400/60" />
+            <span className="text-[11px] text-muted-foreground/60 font-mono">{agent.location}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span>Status</span>
-            <span className="text-amber-400">Ready</span>
+          <div className="px-4 py-3 space-y-2 text-[12px] text-muted-foreground/60">
+            <div className="flex items-center justify-between">
+              <span>Model</span>
+              <span className="font-mono text-foreground/70">{agent.model}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Status</span>
+              <span className="text-amber-400 flex items-center gap-1.5">
+                <span
+                  className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"
+                  style={{ animation: "cv-status-pulse 2s ease-in-out infinite" }}
+                />
+                Ready
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <p className="text-[12px] text-muted-foreground/40 text-center">
-        Send a message to get started
+      {/* Typewriter prompt */}
+      <p
+        className="text-[12px] text-muted-foreground/40 text-center z-10 font-mono"
+        style={{ animation: "cv-fade-in 0.8s ease-out 0.6s both" }}
+      >
+        {typedText}
+        <span
+          className="inline-block w-[1px] h-[13px] bg-amber-400/60 ml-0.5 align-text-bottom"
+          style={{ opacity: showCursor ? 1 : 0 }}
+        />
       </p>
     </div>
   )

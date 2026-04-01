@@ -546,7 +546,7 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
 
     return (
       <div className="mb-5 flex justify-end">
-        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3 max-w-[75%]">
+        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3 max-w-[80%]">
           {files.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {files.map((f) => (
@@ -571,7 +571,7 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
   }
 
   return (
-    <div className="mb-5 max-w-3xl">
+    <div className="mb-5 max-w-4xl">
       {/* Thinking */}
       {msg.thinking && <ThinkingBlock text={msg.thinking} />}
 
@@ -1287,7 +1287,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="px-5 py-6">
+              <div className="px-10 py-8">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />

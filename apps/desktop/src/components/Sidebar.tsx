@@ -886,8 +886,24 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
-        {/* macOS traffic light spacer + drag region */}
-        <div data-tauri-drag-region className="border-b border-sidebar-border shrink-0 pt-7">
+        {/* Custom title bar: drag region + macOS window controls */}
+        <div data-tauri-drag-region className="h-7 shrink-0 flex items-center px-2.5 gap-1.5">
+          <button
+            onClick={() => import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().close())}
+            className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-90 transition-[filter]"
+          />
+          <button
+            onClick={() => import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().minimize())}
+            className="w-3 h-3 rounded-full bg-[#febc2e] hover:brightness-90 transition-[filter]"
+          />
+          <button
+            onClick={() => import("@tauri-apps/api/window").then((m) => m.getCurrentWindow().toggleMaximize())}
+            className="w-3 h-3 rounded-full bg-[#28c840] hover:brightness-90 transition-[filter]"
+          />
+        </div>
+
+        {/* Server switcher */}
+        <div className="border-b border-sidebar-border shrink-0">
           <ServerSwitcher />
         </div>
 

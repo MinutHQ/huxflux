@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
-import { useAgents } from "@hive/shared"
+import { useAgents, useRepos } from "@hive/shared"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -863,6 +863,8 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: allAgents = [] } = useAgents()
+  const { data: repos = [] } = useRepos()
+  const repoName = repos.find((r) => r.id === agent.repoId)?.name
   const { data: repoBranches = [] } = useQuery({
     queryKey: ["repo-branches", agent.repoId],
     queryFn: () => api.getRepoBranches(agent.repoId!),
@@ -1062,6 +1064,12 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     <div className="flex flex-col h-full bg-background">
       {/* Top metadata bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+        {repoName && (
+          <>
+            <span className="text-[12px] text-muted-foreground/50 font-medium truncate shrink-0 max-w-[120px]">{repoName}</span>
+            <span className="text-muted-foreground/30 shrink-0">/</span>
+          </>
+        )}
         <IconGitBranch size={13} className="text-muted-foreground/50 shrink-0" />
         <span className="text-[12px] text-muted-foreground font-mono truncate">{agent.branch}</span>
         <span className="text-muted-foreground/30 shrink-0">›</span>

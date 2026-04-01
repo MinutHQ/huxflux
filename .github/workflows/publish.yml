@@ -10,30 +10,37 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://npm.pkg.github.com"
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
       - name: Install dependencies
-        working-directory: apps/server
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build web
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Embed web into server package
+        run: |
+          mkdir -p apps/server/public
+          cp -r apps/web/dist/. apps/server/public/
+
+      - name: Build server
         working-directory: apps/server
         run: pnpm build
 
-      - name: Publish to GitHub Packages
+      - name: Publish to npm
         working-directory: apps/server
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

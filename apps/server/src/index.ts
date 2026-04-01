@@ -1,6 +1,7 @@
 import Fastify from "fastify"
 import fastifyCors from "@fastify/cors"
 import fastifyWebsocket from "@fastify/websocket"
+import fastifyStatic from "@fastify/static"
 import { config } from "./config.js"
 import { runMigrations } from "./db/index.js"
 import { reposRoutes } from "./routes/repos.js"
@@ -17,6 +18,14 @@ import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { startPoller } from "./poller.js"
+import { existsSync, readFileSync } from "node:fs"
+import * as path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// public/ sits next to dist/ in the installed package, or next to src/ in dev
+const publicDir = path.join(__dirname, "..", "public")
+const hasWeb = existsSync(path.join(publicDir, "index.html"))
 
 const app = Fastify({ logger: true })
 
@@ -61,6 +70,25 @@ await app.register(uploadRoutes)
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
 
+// Serve bundled web app — inject server URL + token so the browser auto-connects
+if (hasWeb) {
+  await app.register(fastifyStatic, {
+    root: publicDir,
+    prefix: "/",
+    // Don't serve index.html automatically — we handle it manually to inject config
+    index: false,
+    decorateReply: false,
+  })
+
+  // Serve index.html for all non-API routes (SPA fallback), with injected config
+  app.get("/*", async (req, reply) => {
+    const url = `${req.protocol}://${req.headers.host}`
+    const html = readFileSync(path.join(publicDir, "index.html"), "utf8")
+    const script = `<script>window.__HUXFLUX__=${JSON.stringify({ url, token: config.authToken || undefined })}</script>`
+    reply.type("text/html").send(html.replace("</head>", `${script}</head>`))
+  })
+}
+
 // Startup — try requested port, then increment up to 10 times on EADDRINUSE
 runMigrations()
 
@@ -87,8 +115,12 @@ if (!boundPort) {
 }
 
 startPoller()
-console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
-console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws\n`)
+if (hasWeb) {
+  console.log(`\nHuxflux  http://localhost:${boundPort}`)
+} else {
+  console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
+  console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws`)
+}
 if (boundPort !== config.port) {
-  console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)
+  console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use).\n`)
 }

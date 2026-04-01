@@ -430,6 +430,19 @@ function cmdRestore(slot?: string) {
   })
 }
 
+function cmdOpen() {
+  const cfg = loadConfig()
+  const pid = getRunningPid()
+  if (!pid) {
+    console.log("huxflux is not running — start it first: huxflux start")
+    process.exit(1)
+  }
+  const url = `http://localhost:${cfg.port}`
+  console.log(`Opening ${url}`)
+  const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
+  spawnSync(opener, [url], { stdio: "inherit" })
+}
+
 function cmdUpdate() {
   console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
   let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
@@ -461,6 +474,7 @@ huxflux — Huxflux server
 
 Usage:
   huxflux [start]   Start the server in the background
+  huxflux open      Open the web UI in your browser
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
   huxflux logs      Tail the server log (Ctrl+C to exit)
@@ -483,6 +497,7 @@ const [,, cmd = "start", ...cmdArgs] = process.argv
 
 switch (cmd) {
   case "start":    cmdStart(); break
+  case "open":     cmdOpen(); break
   case "stop":     cmdStop(); break
   case "status":   cmdStatus(); break
   case "logs":     cmdLogs(); break

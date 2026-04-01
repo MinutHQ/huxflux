@@ -456,15 +456,15 @@ function cmdOpen(host?: string) {
   const url = `${WEB_APP_URL}/?connect=${encodeURIComponent(conn)}`
   console.log(`Opening ${WEB_APP_URL}`)
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
-  spawnSync(opener, [url], { stdio: "inherit" })
+  spawnSync(opener, [url], { stdio: "inherit", shell: true })
 }
 
 function cmdUpdate() {
   console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
-  let result = spawnSync("npm", ["install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
+  let result = spawnSync("npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
   if (result.status !== 0) {
     console.log("\nRetrying with sudo...")
-    result = spawnSync("sudo", ["npm", "install", "-g", "@alexmartosp/huxflux@latest"], { stdio: "inherit" })
+    result = spawnSync("sudo npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
   }
   if (result.status !== 0) {
     console.error("\nUpdate failed. Run manually:")

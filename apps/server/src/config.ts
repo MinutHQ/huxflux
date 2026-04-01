@@ -12,13 +12,19 @@ function parseSandbox(): SandboxConfig | undefined {
   }
 }
 
-const DEFAULT_DATA_DIR = path.join(os.homedir(), ".huxflux")
+const DATA_DIR = path.join(os.homedir(), ".huxflux")
+
+// AUTH_TOKEN is always injected by the CLI (huxflux start / huxflux run).
+// Its absence means we're running in dev mode (pnpm dev / tsx watch).
+// Dev gets its own DB and workspaces so schema migrations during development
+// never touch the production database.
+const isDev = !process.env.AUTH_TOKEN
 
 export const config = {
   port: parseInt(process.env.PORT ?? "3001", 10),
-  dbPath: process.env.DB_PATH ?? path.join(DEFAULT_DATA_DIR, "huxflux.db"),
+  dbPath: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
   githubToken: process.env.GITHUB_TOKEN ?? "",
-  workspacesBase: process.env.WORKSPACES_BASE ?? path.join(DEFAULT_DATA_DIR, "workspaces"),
+  workspacesBase: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, isDev ? "workspaces-dev" : "workspaces"),
   corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : true,
   // Set by the CLI on start. When absent (pnpm dev), auth is disabled.
   authToken: process.env.AUTH_TOKEN ?? "",

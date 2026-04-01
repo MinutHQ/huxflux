@@ -45,8 +45,8 @@ export const dark = {
   // Destructive
   destructive:              '#f87171',
   // Borders & inputs
-  border:                   'rgba(255, 255, 255, 0.10)',
-  input:                    'rgba(255, 255, 255, 0.15)',
+  border:                   'rgba(255, 255, 255, 0.14)',
+  input:                    'rgba(255, 255, 255, 0.20)',
   ring:                     stone[500],
   // Sidebar
   sidebar:                  stone[800],

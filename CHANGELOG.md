@@ -6,8 +6,16 @@
 
 - Simplified new-agent flow to single step — tap a repo to instantly create an agent (auto-generates bee name and branch, no manual input required)
 
+### Desktop
+
+- Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
+- Frameless window with custom traffic light buttons (close/minimize/maximize)
+- Multiple terminals per agent — open and switch between terminal sessions with a tab bar
+- Local release script (`scripts/release-desktop.sh`) builds signed macOS ARM + Intel DMGs and publishes to `AlexMartosP/huxflux-releases`
+
 ### Web
 
+- Streaming indicator now restores correctly when navigating back to an agent that is still running
 - Sidebar is now resizable (12–28% width) and collapsible via `⌘B` or the chevron button
 - Long agent titles in sidebar now ellipsis correctly instead of overflowing
 - "Mark ready for review" button in PR tab to convert draft PRs (uses GitHub GraphQL API)

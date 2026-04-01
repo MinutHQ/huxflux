@@ -87,6 +87,15 @@ function handleStreamEvent(
   messageId: string,
   scheduleFlush: () => void,
 ): void {
+  // Sub-agent events carry parent_tool_use_id — route them before any type checks
+  // so they don't get processed as parent content/tool-calls.
+  if ("parent_tool_use_id" in event && event.parent_tool_use_id) {
+    const toolUseId = event.parent_tool_use_id as string
+    emit(agentId, { type: "subagent:event", agentId, toolUseId, event: event as Record<string, unknown> })
+    emit(agentId, { type: "terminal:line", agentId, line: `[stream] ${JSON.stringify(event)}` })
+    return
+  }
+
   if (event.type === "assistant") {
     for (const block of event.message.content) {
       if (block.type === "text") {

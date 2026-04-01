@@ -5,7 +5,9 @@
   "version": "0.0.1",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm vite --port 1420",
+    "beforeBuildCommand": "pnpm vite build"
   },
   "app": {
     "windows": [

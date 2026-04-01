@@ -26,5 +26,16 @@ export default defineConfig({
     // Output to apps/desktop/dist so tauri.conf.json's frontendDist: "../dist" resolves correctly
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("@tabler/icons-react")) return "icons"
+          if (id.includes("@xterm/")) return "xterm"
+          if (id.includes("@tauri-apps/")) return "tauri"
+          if (id.includes("@tanstack/")) return "query"
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react"
+        },
+      },
+    },
   },
 })

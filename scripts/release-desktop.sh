@@ -50,32 +50,55 @@ fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
-echo "==> Building macOS ARM (aarch64-apple-darwin)..."
-cd "$REPO_ROOT"
-pnpm --filter huxflux-desktop build -- --target aarch64-apple-darwin
-
-echo "==> Building macOS Intel (x86_64-apple-darwin)..."
-pnpm --filter huxflux-desktop build -- --target x86_64-apple-darwin
-
-# ── Locate artifacts ─────────────────────────────────────────────────────────
-
 TARGET_DIR="$REPO_ROOT/apps/desktop/src-tauri/target"
 
+# Clean up temp DMG files left by hdiutil from any previous failed run
+echo "==> Cleaning up leftover DMG temp files..."
+find "$TARGET_DIR" -name "rw.*.dmg" -delete 2>/dev/null || true
+find "$TARGET_DIR" -path "*/bundle/dmg/*.dmg" -delete 2>/dev/null || true
+
+cd "$REPO_ROOT/apps/desktop"
+
+echo "==> Building macOS ARM (aarch64-apple-darwin)..."
+pnpm tauri build --target aarch64-apple-darwin
+
+echo "==> Building macOS Intel (x86_64-apple-darwin)..."
+pnpm tauri build --target x86_64-apple-darwin
+
+# ── Locate DMGs ──────────────────────────────────────────────────────────────
+
 ARM_DMG="$(find "$TARGET_DIR/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)"
-ARM_SIG="$(find "$TARGET_DIR/aarch64-apple-darwin/release/bundle/macos" -name "*.app.tar.gz.sig" | head -1)"
-ARM_TAR="$(find "$TARGET_DIR/aarch64-apple-darwin/release/bundle/macos" -name "*.app.tar.gz" | head -1)"
+X64_DMG="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg"   | head -1)"
 
-X64_DMG="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)"
-X64_SIG="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/macos" -name "*.app.tar.gz.sig" | head -1)"
-X64_TAR="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/macos" -name "*.app.tar.gz" | head -1)"
-
-for f in "$ARM_DMG" "$ARM_SIG" "$ARM_TAR" "$X64_DMG" "$X64_SIG" "$X64_TAR"; do
+for f in "$ARM_DMG" "$X64_DMG"; do
   if [[ -z "$f" || ! -f "$f" ]]; then
-    echo "Error: could not find expected build artifact" >&2
-    echo "  Missing: $f" >&2
+    echo "Error: DMG not found — build may have failed" >&2
     exit 1
   fi
 done
+
+# ── Create updater tarballs + sign ────────────────────────────────────────────
+# tauri build doesn't always auto-generate .app.tar.gz; create and sign explicitly.
+
+APP_NAME="Huxflux"
+ARM_BUNDLE_DIR="$TARGET_DIR/aarch64-apple-darwin/release/bundle/macos"
+X64_BUNDLE_DIR="$TARGET_DIR/x86_64-apple-darwin/release/bundle/macos"
+
+ARM_TAR="${ARM_BUNDLE_DIR}/${APP_NAME}_${VERSION}_aarch64.app.tar.gz"
+X64_TAR="${X64_BUNDLE_DIR}/${APP_NAME}_${VERSION}_x64.app.tar.gz"
+ARM_SIG="${ARM_TAR}.sig"
+X64_SIG="${X64_TAR}.sig"
+
+echo "==> Creating updater tarballs..."
+(cd "$ARM_BUNDLE_DIR" && tar -czf "$ARM_TAR" "${APP_NAME}.app")
+(cd "$X64_BUNDLE_DIR" && tar -czf "$X64_TAR" "${APP_NAME}.app")
+
+echo "==> Signing updater tarballs..."
+cd "$REPO_ROOT/apps/desktop"
+pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+  --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
+pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+  --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$X64_TAR"
 
 ARM_DMG_NAME="$(basename "$ARM_DMG")"
 X64_DMG_NAME="$(basename "$X64_DMG")"
@@ -108,13 +131,14 @@ LATEST_JSON="$(cat <<JSON
 JSON
 )"
 
-LATEST_JSON_FILE="$(mktemp /tmp/latest-XXXXXX.json)"
+LATEST_JSON_FILE="/tmp/huxflux-latest-${TAG}.json"
 echo "$LATEST_JSON" > "$LATEST_JSON_FILE"
 
 # ── Publish release ───────────────────────────────────────────────────────────
 
 echo "==> Creating release ${TAG} on ${RELEASES_REPO}..."
-gh release create "$TAG" \
+GITHUB_TOKEN="" gh auth switch 2>/dev/null || true
+GITHUB_TOKEN="" gh release create "$TAG" \
   --repo "$RELEASES_REPO" \
   --title "Huxflux ${TAG}" \
   --notes "macOS release. The app is unsigned — right-click the .dmg → Open to bypass Gatekeeper." \

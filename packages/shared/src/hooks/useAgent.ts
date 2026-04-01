@@ -38,11 +38,16 @@ export function useAgent(id: string | null) {
   // Persistent client-side sub-agent data, keyed by Agent tool call ID
   const subAgentDataRef = useRef(new Map<string, SubAgentData>())
 
-  // Reset on agent switch
+  // Reset on agent switch — but preserve streaming state if the agent's last
+  // message is still incomplete (user navigated away and back while it ran).
   useEffect(() => {
-    setIsStreaming(false)
+    const cached = queryClient.getQueryData<Agent>(["agent", id])
+    const msgs = cached?.messages
+    const last = msgs?.length ? msgs[msgs.length - 1] : null
+    const wasStreaming = last?.role === "assistant" && last.durationMs == null
+    setIsStreaming(!!wasStreaming)
     subAgentDataRef.current = new Map()
-  }, [id])
+  }, [id, queryClient])
 
   const query = useQuery({
     queryKey: ["agent", id],

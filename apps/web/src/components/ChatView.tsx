@@ -571,7 +571,7 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
   }
 
   return (
-    <div className="mb-5">
+    <div className="mb-5 max-w-3xl">
       {/* Thinking */}
       {msg.thinking && <ThinkingBlock text={msg.thinking} />}
 
@@ -1287,7 +1287,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="px-5 py-6 max-w-3xl mx-auto">
+              <div className="px-5 py-6">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />

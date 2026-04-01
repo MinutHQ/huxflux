@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../api"
 import { useAgentEvents } from "../ws"
 import type { Agent, Message, ToolCall } from "../types"
@@ -36,6 +36,18 @@ export function useAgent(id: string | null) {
       setIsStreaming(false)
     }
   }, [query.data])
+
+  // Poll the agent data every 4s while streaming so a missed message:done
+  // (e.g. from a WS drop during a long sub-agent run) clears within a few seconds.
+  const isStreamingRef = useRef(false)
+  isStreamingRef.current = isStreaming
+  useEffect(() => {
+    if (!isStreaming || !id) return
+    const interval = setInterval(() => {
+      if (isStreamingRef.current) queryClient.invalidateQueries({ queryKey: ["agent", id] })
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [isStreaming, id, queryClient])
 
   const updateMessages = useCallback(
     (updater: (msgs: Message[]) => Message[]) => {
@@ -243,6 +255,12 @@ export function useAgent(id: string | null) {
         if (!old) return old
         return { ...old, ...event.agent }
       })
+    }
+
+    if (event.type === "ws:reconnected") {
+      // Refetch so the defensive useEffect can clear isStreaming if the run finished
+      // while the WS was down.
+      queryClient.invalidateQueries({ queryKey: ["agent", id] })
     }
   })
 

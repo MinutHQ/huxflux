@@ -24,6 +24,16 @@ interface RunnerOptions {
 // Registry of running agent processes
 const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
 
+// Resolve claude binary once at startup instead of on every message
+let _claudeBin: string | null = null
+function getClaudeBin(): string {
+  if (_claudeBin) return _claudeBin
+  if (process.env.CLAUDE_BIN) { _claudeBin = process.env.CLAUDE_BIN; return _claudeBin }
+  try { _claudeBin = execFileSync("which", ["claude"], { encoding: "utf8" }).trim() }
+  catch { _claudeBin = "claude" }
+  return _claudeBin
+}
+
 export function stopAgent(agentId: string): boolean {
   const proc = runningProcesses.get(agentId)
   if (!proc) return false
@@ -246,11 +256,12 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const messageId = uuid()
   const now = new Date().toISOString()
 
-  // Check if this is a continuation (agent already has a Claude session ID)
-  const existingMessages = db.select().from(messagesTable)
+  // Check if this is a continuation — only fetch one row to avoid loading full history
+  const firstMsg = db.select({ id: messagesTable.id }).from(messagesTable)
     .where(eq(messagesTable.agentId, agentId))
-    .all()
-  const isContinuation = existingMessages.length > 0
+    .limit(1)
+    .get()
+  const isContinuation = firstMsg != null
   const existingSessionId = db.select({ sessionId: agentsTable.sessionId })
     .from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.sessionId ?? null
 
@@ -306,15 +317,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
   emit(agentId, { type: "message:start", agentId, messageId })
 
-  // Resolve claude binary — prefer explicit CLAUDE_BIN env, then which, then plain name
-  const claudeBin = (() => {
-    if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN
-    try {
-      return execFileSync("which", ["claude"], { encoding: "utf8" }).trim()
-    } catch {
-      return "claude"
-    }
-  })()
+  const claudeBin = getClaudeBin()
 
   // Ensure cwd exists — fall back to process.cwd() if worktree hasn't been created yet
   let cwd = worktreePath

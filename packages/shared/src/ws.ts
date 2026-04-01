@@ -15,6 +15,7 @@ export type ServerEvent =
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
   | { type: "error";            agentId?: string; message: string }
+  | { type: "ws:reconnected" }
 
 type Handler = (event: ServerEvent) => void
 
@@ -46,10 +47,16 @@ function connect() {
   connectedWsUrl = wsUrl
   socket = new WebSocket(wsUrl)
 
+  let isFirstOpen = true
   socket.onopen = () => {
     for (const agentId of subscriptions) {
       socket!.send(JSON.stringify({ type: "subscribe", agentId }))
     }
+    if (!isFirstOpen) {
+      // Notify handlers so they can refetch stale data after reconnect
+      for (const handler of handlers) handler({ type: "ws:reconnected" } as any)
+    }
+    isFirstOpen = false
   }
 
   socket.onmessage = (e) => {

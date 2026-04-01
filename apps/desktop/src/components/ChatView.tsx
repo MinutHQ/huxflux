@@ -919,6 +919,8 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
   const [linkedAgents, setLinkedAgents] = useState<AgentSummary[]>([])
   const [plusOpen, setPlusOpen] = useState(false)
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: allAgents = [] } = useAgents()
   const { data: repos = [] } = useRepos()
@@ -1008,6 +1010,49 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
       reader.readAsDataURL(file)
     }
     setPlusOpen(false)
+  }
+
+  async function uploadFiles(files: File[]) {
+    for (const file of files) {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const result = await api.uploadFile(agent.id, file.name, reader.result as string, file.type)
+          setAttachments((prev) => [...prev, result])
+        } catch {
+          toast.error(`Failed to upload ${file.name}`)
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounterRef.current++
+    setIsDragOver(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false)
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      uploadFiles(files)
+    }
   }
 
   function toggleLinkedAgent(a: AgentSummary) {
@@ -1405,12 +1450,28 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                   </div>
                 </div>
               )}
-              <div className={cn(
-                "bg-card rounded-xl transition-colors",
-                planMode
-                  ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
-                  : "border border-border focus-within:border-ring"
-              )}>
+              <div
+                className={cn(
+                  "bg-card rounded-xl transition-colors relative",
+                  planMode
+                    ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
+                    : isDragOver
+                      ? "border-2 border-dashed border-ring"
+                      : "border border-border focus-within:border-ring"
+                )}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                {isDragOver && (
+                  <div className="absolute inset-0 rounded-xl bg-accent/30 flex items-center justify-center pointer-events-none z-10">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
+                      <IconPaperclip size={16} />
+                      <span>Drop files to attach</span>
+                    </div>
+                  </div>
+                )}
                 {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
                     {pendingComments.map((c) => {

@@ -22,6 +22,25 @@
 
 ---
 
+## 0.2.3 — 2026-04-01
+
+### Server
+
+- Replaced `better-sqlite3` native addon with Node.js built-in `node:sqlite` — no more native bindings, works on any Node 22.5+ install without recompiling
+- Fixed agent creation and all DB queries returning `undefined` (drizzle async/sync adapter mismatch)
+- Fixed poller `rows is not iterable` error
+- Dev mode now uses port 3002 to avoid conflicting with a running prod server
+- `huxflux open` now opens the hosted web app at `https://huxflux.netlify.app`
+
+### Web
+
+- Repo name shown in ChatView header alongside branch
+- Fixed infinite render loop in workspace tab sync (`useWorkspace`)
+- Web app now auto-connects when opened via `huxflux open` (`?connect=` URL param)
+- Hosted separately on Netlify — server npm package no longer bundles the web UI
+
+---
+
 ## 2026-04-01
 
 ### Mobile App (Expo)

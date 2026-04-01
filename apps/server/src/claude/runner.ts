@@ -358,6 +358,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       `- Update the title again if the focus of the work changes significantly.`,
       `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
       `- Do not include the repo name or branch — just the task.`,
+      ``,
+      `Answer format:`,
+      `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
+      `- Start each new idea or action on its own line.`,
     ].join("\n")
 
     // Launch claude CLI: --print for non-interactive, --output-format stream-json for streaming JSON

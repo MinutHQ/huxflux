@@ -1031,11 +1031,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
 
         {/* Footer */}
         <div className="px-3 py-2.5 border-t border-sidebar-border flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground">
-              A
-            </div>
-          </div>
+          <div />
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
               <IconSettings size={13} />

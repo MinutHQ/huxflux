@@ -395,7 +395,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
     <div className="border-t border-border bg-card/50 shrink-0">
       {/* Tab bar */}
       <div className="border-b border-border/60">
-        <div className="max-w-3xl mx-auto px-5">
+        <div className="mx-auto px-5">
           <div className="flex items-center gap-1 py-1.5 overflow-x-auto">
             <button
               onClick={() => setCollapsed(!collapsed)}
@@ -446,7 +446,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
 
       {/* Output panel */}
       {!collapsed && selected && (
-        <div className="max-w-3xl mx-auto px-5">
+        <div className="mx-auto px-5">
           <TeamAgentOutput selected={selected} />
         </div>
       )}
@@ -1289,7 +1289,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
               <CreationView agent={agent} />
             ) : (
               <ScrollArea className="h-full">
-                <div className="px-5 py-6 max-w-3xl mx-auto">
+                <div className="px-5 py-6 mx-auto">
                   <StatsBar messages={agent.messages} />
                   {agent.messages.map((msg, i) => (
                     <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
@@ -1313,7 +1313,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
 
           {/* Input */}
           <div className="px-5 py-4 border-t border-border shrink-0">
-            <div className="max-w-3xl mx-auto relative">
+            <div className="mx-auto relative">
               {/* Slash command picker */}
               {slashQuery !== null && filteredCommands.length > 0 && (
                 <div className="absolute bottom-full mb-2 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-10">

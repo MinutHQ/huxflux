@@ -4,8 +4,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { cn } from "@/lib/utils"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop } from "@tabler/icons-react"
-import { getActiveServer } from "@hive/shared"
-import { useRepos } from "@/hooks/useRepos"
+import { getActiveServer, useRepos } from "@hive/shared"
 import "@xterm/xterm/css/xterm.css"
 
 interface TerminalViewProps {

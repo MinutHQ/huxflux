@@ -201,7 +201,6 @@ export function useAgent(id: string | null) {
         return [...msgs, incoming]
       })
       setIsStreaming(false)
-      queryClient.invalidateQueries({ queryKey: ["agent", id] })
     }
 
     if (event.type === "file:changed") {

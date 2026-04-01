@@ -4,7 +4,7 @@
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "bin": {
     "huxflux": "dist/cli.js"
@@ -27,7 +27,6 @@
     "@fastify/cors": "^10.0.2",
     "@fastify/websocket": "^11.0.2",
     "@octokit/rest": "^21.1.1",
-    "better-sqlite3": "^11.10.0",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.44.2",
     "fastify": "^5.3.2",
@@ -36,7 +35,6 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.12.0",
     "@types/uuid": "^10.0.0",
     "drizzle-kit": "^0.31.1",

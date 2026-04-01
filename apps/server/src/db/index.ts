@@ -1,4 +1,4 @@
-import Database from "better-sqlite3"
+import { DatabaseSync } from "node:sqlite"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
@@ -25,13 +25,33 @@ if (existsSync(config.dbPath)) {
   } catch { /* non-fatal */ }
 }
 
-const sqlite = new Database(config.dbPath)
+// Thin shim — makes node:sqlite's DatabaseSync look like better-sqlite3
+// so Drizzle's better-sqlite3 adapter works without native bindings.
+const raw = new DatabaseSync(config.dbPath)
+
+const sqlite = {
+  prepare: (sql: string) => raw.prepare(sql),
+  exec: (sql: string) => { raw.exec(sql) },
+  pragma: (text: string) => { raw.exec(`PRAGMA ${text}`) },
+  transaction: <T>(fn: (...args: unknown[]) => T) => (...args: unknown[]): T => {
+    raw.exec("BEGIN")
+    try {
+      const result = fn(...args)
+      raw.exec("COMMIT")
+      return result
+    } catch (err) {
+      try { raw.exec("ROLLBACK") } catch { /* ignore */ }
+      throw err
+    }
+  },
+}
 
 // Enable WAL mode for better concurrent read performance
 sqlite.pragma("journal_mode = WAL")
 sqlite.pragma("foreign_keys = ON")
 
-export const db = drizzle(sqlite, { schema })
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const db = drizzle(sqlite as any, { schema })
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //
@@ -181,7 +201,7 @@ export function runMigrations() {
       SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
   `)
 
-  const currentVersion = (sqlite.prepare("SELECT version FROM schema_version").get() as { version: number }).version
+  const currentVersion = (raw.prepare("SELECT version FROM schema_version").get() as { version: number }).version
 
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
   if (pending.length === 0) return
@@ -189,7 +209,7 @@ export function runMigrations() {
   for (const migration of pending) {
     sqlite.transaction(() => {
       sqlite.exec(migration.sql)
-      sqlite.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+      raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
     })()
     console.log(`[db] applied migration v${migration.version}`)
   }

@@ -4,16 +4,24 @@ import { eq, inArray } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
-import { broadcast } from "../ws/handler.js"
+import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
 import * as path from "node:path"
 import { spawn } from "node:child_process"
 
-function runScript(script: string, cwd: string): Promise<void> {
+function runScript(script: string, cwd: string, agentId: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("sh", ["-c", script], { cwd, stdio: "inherit" })
+    const proc = spawn("sh", ["-c", script], { cwd, stdio: ["ignore", "pipe", "pipe"] })
+    const persistLine = (line: string) => {
+      if (!line.trim()) return
+      const ts = new Date().toISOString()
+      db.insert(terminalLines).values({ id: uuid(), agentId, line: line.trim(), createdAt: ts }).run()
+      emit(agentId, { type: "terminal:line", agentId, line: line.trim() })
+    }
+    proc.stdout?.on("data", (chunk: Buffer) => chunk.toString().split("\n").forEach(persistLine))
+    proc.stderr?.on("data", (chunk: Buffer) => chunk.toString().split("\n").forEach(persistLine))
     proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Setup script exited with code ${code}`)))
     proc.on("error", reject)
   })
@@ -146,7 +154,7 @@ export async function agentsRoutes(app: FastifyInstance) {
         }
         if (repo.setupScript) {
           try {
-            await runScript(repo.setupScript, worktreePath)
+            await runScript(repo.setupScript, worktreePath, id)
           } catch (err) {
             app.log.warn(`Setup script failed: ${err}`)
           }

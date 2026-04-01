@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Mobile
+
+- Simplified new-agent flow to single step — tap a repo to instantly create an agent (auto-generates bee name and branch, no manual input required)
+
+### Web
+
+- Sidebar is now resizable (12–28% width) and collapsible via `⌘B` or the chevron button
+- Long agent titles in sidebar now ellipsis correctly instead of overflowing
+- "Mark ready for review" button in PR tab to convert draft PRs (uses GitHub GraphQL API)
+- Streaming indicator now correctly resets when switching between agents
+- Loading indicator clears correctly after Claude finishes, even after a WS reconnect
+
+### Server
+
+- Each chat tab now resumes its own Claude session via `--resume <sessionId>`, preventing tabs from sharing conversation context
+- Added `session_id` column to agents table (migration v7)
+- Added `PUT` to CORS methods (required for mark-ready endpoint)
+
+---
+
 ## 2026-04-01
 
 ### Mobile App (Expo)

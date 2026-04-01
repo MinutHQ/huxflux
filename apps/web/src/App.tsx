@@ -1,4 +1,5 @@
-import { useState, useEffect, useSyncExternalStore } from "react"
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react"
+import { type PanelImperativeHandle } from "react-resizable-panels"
 import { getTheme, type Theme } from "@/lib/theme"
 import { toast, Toaster } from "sonner"
 import { Sidebar } from "@/components/Sidebar"
@@ -31,7 +32,30 @@ export default function App() {
   const theme = useCurrentTheme()
   const [view, setView] = useState<"app" | "settings">("app")
   const [terminalTab, setTerminalTab] = useState<"setup" | "run" | "terminal">("terminal")
+  const [agentPorts, setAgentPorts] = useState<Record<string, number | null>>({})
   const [onboardingDone, setOnboardingDone] = useState(false)
+
+  const sidebarRef = useRef<PanelImperativeHandle>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  const toggleSidebar = useCallback(() => {
+    if (sidebarRef.current?.isCollapsed()) {
+      sidebarRef.current.expand()
+    } else {
+      sidebarRef.current?.collapse()
+    }
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault()
+        toggleSidebar()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [toggleSidebar])
 
   const { servers, activeId, refresh: refreshServers } = useServers()
   const { data: agents = [] } = useAgents()
@@ -55,12 +79,15 @@ export default function App() {
   }, [servers, activeId])
 
   useNotifications(agents)
-  const streamingAgentId = useStreamingAgentId()
 
   const prReviewEnabled = getFlag("prReview")
 
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming } = useAgent(workspace.resolvedActiveId)
+
+  const lastMsgs = activeAgent?.messages
+  const lastMsgDurationMs = lastMsgs?.length ? (lastMsgs[lastMsgs.length - 1].durationMs ?? null) : null
+  const streamingAgentId = useStreamingAgentId(lastMsgDurationMs)
 
   const selectedPr = prReviewEnabled && workspace.selectedPrId
     ? mockPRs.find((p) => p.id === workspace.selectedPrId) ?? null
@@ -95,80 +122,104 @@ export default function App() {
     prs: prReviewEnabled ? mockPRs : [],
     selectedPrId: workspace.selectedPrId,
     onSelectPr: workspace.selectPr,
+    agentPorts,
+    onToggle: toggleSidebar,
   }
 
-  // PR view
-  if (selectedPr) {
-    return (
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
-        <Sidebar {...sidebarProps} />
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <PRView key={selectedPr.id} pr={selectedPr} />
-        </div>
-      </div>
-    )
-  }
+  const mainContent = selectedPr ? (
+    <div className="flex-1 min-w-0 overflow-hidden">
+      <PRView key={selectedPr.id} pr={selectedPr} />
+    </div>
+  ) : !activeAgent ? (
+    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+      {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
+    </div>
+  ) : (
+    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
+      <ResizablePanel defaultSize="60" minSize="30">
+        <ChatView
+          agent={activeAgent}
+          isStreaming={activeIsStreaming || streamingAgentId === workspace.resolvedActiveId}
+          openFileTab={workspace.openFileTab}
+          onClearFileTab={() => workspace.setOpenFileTab(null)}
+          tabs={workspace.tabs}
+          activeTabId={workspace.activeTabId}
+          onTabSelect={workspace.selectTab}
+          onTabClose={workspace.closeTab}
+          onNewTab={() => activeAgent && workspace.createTab(activeAgent)}
+          onTabTitleChange={workspace.renameTab}
+          pendingComments={workspace.pendingComments}
+          onRemoveComment={(id: string) => workspace.setPendingComments((prev) => prev.filter((c) => c.id !== id))}
+          onClearComments={() => workspace.setPendingComments([])}
+        />
+      </ResizablePanel>
 
-  // No agent selected
-  if (!activeAgent) {
-    return (
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
-        <Sidebar {...sidebarProps} />
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
-        </div>
-      </div>
-    )
-  }
+      <ResizableHandle />
+
+      <ResizablePanel defaultSize="40" minSize="20">
+        <ResizablePanelGroup orientation="vertical">
+          <ResizablePanel defaultSize="65" minSize="20">
+            <FileChangesView
+              agent={activeAgent}
+              selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
+              onFileSelect={(file) => workspace.setOpenFileTab(file ? { type: "diff", file } : null)}
+              onFileContentSelect={(path) => workspace.setOpenFileTab({ type: "content", path })}
+              onAddComment={(c) => workspace.setPendingComments((prev) =>
+                prev.some((p) => p.id === c.id) ? prev : [...prev, c]
+              )}
+            />
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize="35" minSize="15">
+            <TerminalView
+              agent={activeAgent}
+              activeTab={terminalTab}
+              onTabChange={setTerminalTab}
+              onOpenSettings={() => setView("settings")}
+              onPortChange={(agentId, port) => setAgentPorts((prev) => ({ ...prev, [agentId]: port }))}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  )
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+    <div className="h-screen bg-background text-foreground overflow-hidden">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
-      <Sidebar {...sidebarProps} />
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
-        <ResizablePanel defaultSize={60} minSize={30}>
-          <ChatView
-            agent={activeAgent}
-            isStreaming={activeIsStreaming || streamingAgentId === workspace.resolvedActiveId}
-            openFileTab={workspace.openFileTab}
-            onClearFileTab={() => workspace.setOpenFileTab(null)}
-            tabs={workspace.tabs}
-            activeTabId={workspace.activeTabId}
-            onTabSelect={workspace.selectTab}
-            onTabClose={workspace.closeTab}
-            onNewTab={() => activeAgent && workspace.createTab(activeAgent)}
-            onTabTitleChange={workspace.renameTab}
-            pendingComments={workspace.pendingComments}
-            onRemoveComment={(id: string) => workspace.setPendingComments((prev) => prev.filter((c) => c.id !== id))}
-            onClearComments={() => workspace.setPendingComments([])}
-          />
+      <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+        <ResizablePanel
+          panelRef={sidebarRef}
+          defaultSize="16"
+          minSize="12"
+          maxSize="28"
+          collapsible
+          collapsedSize="0"
+          onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
+          className="overflow-hidden"
+        >
+          <Sidebar {...sidebarProps} />
         </ResizablePanel>
 
         <ResizableHandle />
 
-        <ResizablePanel defaultSize={40} minSize={20}>
-          <ResizablePanelGroup orientation="vertical">
-            <ResizablePanel defaultSize={65} minSize={20}>
-              <FileChangesView
-                agent={activeAgent}
-                selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
-                onFileSelect={(file) => workspace.setOpenFileTab(file ? { type: "diff", file } : null)}
-                onFileContentSelect={(path) => workspace.setOpenFileTab({ type: "content", path })}
-                onAddComment={(c) => workspace.setPendingComments((prev) =>
-                  prev.some((p) => p.id === c.id) ? prev : [...prev, c]
-                )}
-              />
-            </ResizablePanel>
-
-            <ResizableHandle />
-
-            <ResizablePanel defaultSize={35} minSize={15}>
-              <TerminalView agent={activeAgent} activeTab={terminalTab} onTabChange={setTerminalTab} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+        <ResizablePanel defaultSize="84" minSize="50" className="flex min-w-0 relative">
+          {/* Expand button shown when sidebar is collapsed */}
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              title="Show sidebar (⌘B)"
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
+            >
+              <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 1l6 5-6 5" />
+              </svg>
+            </button>
+          )}
+          {mainContent}
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

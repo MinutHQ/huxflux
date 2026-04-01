@@ -3,7 +3,7 @@ import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
-import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable } from "../db/schema.js"
+import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable } from "../db/schema.js"
 import { emit } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
 import { eq } from "drizzle-orm"
@@ -136,6 +136,11 @@ function handleStreamEvent(
     state.outputTokens = event.usage.output_tokens ?? null
     state.cacheReadTokens = event.usage.cache_read_input_tokens ?? null
     state.cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
+  } else if (event.type === "system" && event.subtype === "init" && event.session_id) {
+    db.update(agentsTable)
+      .set({ sessionId: event.session_id })
+      .where(eq(agentsTable.id, agentId))
+      .run()
   } else if (event.type !== "system") {
     // Forward unrecognized events (likely sub-agent activity) to frontend.
     const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
@@ -230,11 +235,14 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const messageId = uuid()
   const now = new Date().toISOString()
 
-  // Check if this is a continuation (agent already has messages)
+  // Check if this is a continuation (agent already has a Claude session ID)
   const existingMessages = db.select().from(messagesTable)
     .where(eq(messagesTable.agentId, agentId))
     .all()
   const isContinuation = existingMessages.length > 0
+  const existingSessionId = db.select({ sessionId: agentsTable.sessionId })
+    .from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.sessionId ?? null
+
 
   // Persist user message
   const userMsgId = uuid()
@@ -347,7 +355,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       "--dangerously-skip-permissions",
       "--model", model,
       "--append-system-prompt", systemPrompt,
-      ...(useContinue ? ["--continue"] : []),
+      ...(existingSessionId ? ["--resume", existingSessionId] : useContinue ? ["--continue"] : []),
       userContent,
     ]
     const { bin, args } = config.sandbox
@@ -405,8 +413,12 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     })
 
     proc.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString()
-      emit(agentId, { type: "terminal:line", agentId, line: text.trim() })
+      const lines = chunk.toString().split("\n").filter((l) => l.trim())
+      for (const line of lines) {
+        const ts = new Date().toISOString()
+        db.insert(terminalLinesTable).values({ id: uuid(), agentId, line, createdAt: ts }).run()
+        emit(agentId, { type: "terminal:line", agentId, line })
+      }
     })
 
     proc.on("close", async (code) => {

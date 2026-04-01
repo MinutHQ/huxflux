@@ -24,17 +24,19 @@ import {
   IconSparkles,
   IconGitPullRequest,
   IconTrash,
+  IconWorld,
+  IconLayoutSidebarLeftCollapse,
 } from "@tabler/icons-react"
 
 // ── Hover popover ─────────────────────────────────────────────────────────────
 
-function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
+function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y: number; port?: number | null; sidebarWidth: number }) {
   const cfg = statusConfig[agent.status]
 
   return createPortal(
     <div
       className="fixed z-50 w-72 bg-card border border-border rounded-xl shadow-xl p-3 pointer-events-none"
-      style={{ left: 264, top: Math.max(8, y - 8) }}
+      style={{ left: sidebarWidth + 4, top: Math.max(8, y - 8) }}
     >
       <div className="flex items-start gap-2 mb-2">
         <IconGitBranch size={13} className="text-muted-foreground/50 mt-0.5 shrink-0" />
@@ -55,6 +57,13 @@ function AgentPopover({ agent, y }: { agent: AgentSummary; y: number }) {
           </>
         )}
       </div>
+
+      {port != null && (
+        <div className="flex items-center gap-1.5 text-[12px] text-emerald-400 mb-2">
+          <IconWorld size={11} className="shrink-0" />
+          <span>Running on port <span className="font-mono font-medium">{port}</span></span>
+        </div>
+      )}
 
       {agent.description && (
         <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
@@ -123,10 +132,20 @@ function randomBeeName(): string {
   return `${adj}-${noun}`
 }
 
-function NewAgentDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [creating, setCreating] = useState<string | null>(null) // repoId currently being created
+function NewAgentPopover({
+  onClose,
+  onCreated,
+  anchorRef,
+}: {
+  onClose: () => void
+  onCreated: (id: string) => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const [creating, setCreating] = useState<string | null>(null)
   const { data: repos = [] } = useRepos()
   const queryClient = useQueryClient()
+
+  const pos = anchorRef.current?.getBoundingClientRect()
 
   async function handleSelectRepo(repoId: string) {
     if (creating) return
@@ -150,31 +169,28 @@ function NewAgentDialog({ onClose, onCreated }: { onClose: () => void; onCreated
   }
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
-        if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-          const idx = parseInt(e.key) - 1
-          if (idx < repos.length) handleSelectRepo(repos[idx].id)
-        }
-      }}
-    >
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-xs bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <span className="text-[12px] font-medium text-muted-foreground">New agent in…</span>
-          <button onClick={onClose} className="text-muted-foreground/40 hover:text-foreground transition-colors">
-            <IconX size={14} />
-          </button>
-        </div>
-
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-56 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+        style={{
+          top: pos ? pos.bottom + 6 : 100,
+          left: pos ? Math.max(8, pos.right - 224) : 100,
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose()
+          if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+            const idx = parseInt(e.key) - 1
+            if (idx < repos.length) handleSelectRepo(repos[idx].id)
+          }
+        }}
+      >
         {repos.length === 0 ? (
-          <div className="px-4 py-6 text-center text-[12px] text-muted-foreground/50">
+          <div className="px-3 py-4 text-center text-[12px] text-muted-foreground/50">
             No repositories yet.<br />Add one in Settings first.
           </div>
         ) : (
-          <div className="p-1.5 space-y-0.5">
+          <div className="p-1 space-y-0.5">
             {repos.map((r, i) => {
               const isCreating = creating === r.id
               const shortcut = i < 9 ? i + 1 : null
@@ -185,16 +201,14 @@ function NewAgentDialog({ onClose, onCreated }: { onClose: () => void; onCreated
                   onClick={() => handleSelectRepo(r.id)}
                   disabled={!!creating}
                   className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors",
-                    isCreating
-                      ? "bg-accent text-foreground"
-                      : "hover:bg-accent/60 text-foreground"
+                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
+                    isCreating ? "bg-accent text-foreground" : "hover:bg-accent/60 text-foreground"
                   )}
                 >
-                  <span className="w-6 h-6 rounded-md bg-muted border border-border text-[11px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
+                  <span className="w-5 h-5 rounded bg-muted border border-border text-[10px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
                     {r.name[0].toUpperCase()}
                   </span>
-                  <span className="text-sm font-medium flex-1 truncate">
+                  <span className="text-[12px] font-medium flex-1 truncate">
                     {isCreating ? "Creating…" : r.name}
                   </span>
                   {shortcut && !creating && (
@@ -208,7 +222,7 @@ function NewAgentDialog({ onClose, onCreated }: { onClose: () => void; onCreated
           </div>
         )}
       </div>
-    </div>,
+    </>,
     document.body
   )
 }
@@ -323,6 +337,7 @@ function AgentRow({
   index,
   onHover,
   onLeave,
+  port,
 }: {
   agent: AgentSummary
   isSelected: boolean
@@ -331,6 +346,7 @@ function AgentRow({
   index: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  port?: number | null
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -432,11 +448,16 @@ function AgentRow({
             {agent.title}
           </span>
         )}
-        {shortcutNum !== null && !isStreaming && !editing && (
+        {port != null && !editing ? (
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"
+            title={`Running on :${port}`}
+          />
+        ) : shortcutNum !== null && !isStreaming && !editing ? (
           <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 tabular-nums">
             {shortcutNum}
           </span>
-        )}
+        ) : null}
       </button>
       {contextMenu && (
         <StatusContextMenu
@@ -461,6 +482,7 @@ function StatusGroup({
   startIndex,
   onHover,
   onLeave,
+  agentPorts,
 }: {
   status: AgentStatus
   agents: AgentSummary[]
@@ -470,6 +492,7 @@ function StatusGroup({
   startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  agentPorts?: Record<string, number | null>
 }) {
   const [collapsed, setCollapsed] = useState(status === "done")
   const config = statusConfig[status]
@@ -490,7 +513,7 @@ function StatusGroup({
         <span className="ml-auto text-[11px] text-muted-foreground/40 font-mono">{agents.length}</span>
       </button>
       {!collapsed && (
-        <div className="mt-0.5 space-y-0.5 px-1">
+        <div className="mt-0.5 space-y-0.5 px-1 overflow-hidden">
           {agents.map((agent, i) => (
             <AgentRow
               key={agent.id}
@@ -501,6 +524,7 @@ function StatusGroup({
               index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
+              port={agentPorts?.[agent.id]}
             />
           ))}
         </div>
@@ -520,6 +544,7 @@ function RepoGroup({
   startIndex,
   onHover,
   onLeave,
+  agentPorts,
 }: {
   repoName: string
   agents: AgentSummary[]
@@ -529,6 +554,7 @@ function RepoGroup({
   startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  agentPorts?: Record<string, number | null>
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const initials = repoName[0].toUpperCase()
@@ -552,7 +578,7 @@ function RepoGroup({
         )}
       </button>
       {!collapsed && (
-        <div className="mt-0.5 space-y-0.5 px-1">
+        <div className="mt-0.5 space-y-0.5 px-1 overflow-hidden">
           {agents.map((agent, i) => (
             <AgentRow
               key={agent.id}
@@ -563,6 +589,7 @@ function RepoGroup({
               index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
+              port={agentPorts?.[agent.id]}
             />
           ))}
         </div>
@@ -736,9 +763,11 @@ interface SidebarProps {
   prs: PullRequest[]
   selectedPrId: string | null
   onSelectPr: (id: string) => void
+  agentPorts?: Record<string, number | null>
+  onToggle?: () => void
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated, prs, selectedPrId, onSelectPr }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
@@ -747,6 +776,8 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [repoFilter, setRepoFilter] = useState("all")
   const [tab, setTab] = useState<"agents" | "review">("agents")
   const filterBtnRef = useRef<HTMLButtonElement>(null)
+  const newAgentBtnRef = useRef<HTMLButtonElement>(null)
+  const sidebarContainerRef = useRef<HTMLDivElement>(null)
   const { data: repos = [] } = useRepos()
 
   const prReviewEnabled = getFlag("prReview")
@@ -803,7 +834,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
 
   return (
     <>
-      <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-64 shrink-0">
+      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
         {/* Server switcher */}
         <div className="border-b border-sidebar-border shrink-0">
           <ServerSwitcher />
@@ -855,17 +886,22 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                   <Button variant="ghost" size="icon-xs" onClick={() => setShowAddRepo(true)}>
                     <IconFolderPlus size={13} />
                   </Button>
-                  <Button variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
+                  <Button ref={newAgentBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
                     <IconPlus size={13} />
                   </Button>
+                  {onToggle && (
+                    <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
+                      <IconLayoutSidebarLeftCollapse size={13} />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Agent list */}
-            <div className="flex-1 min-h-0">
-              <ScrollArea className="h-full">
-                <div className="p-2 pt-2.5 space-y-0.5">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+              <ScrollArea className="h-full w-full">
+                <div className="p-2 pt-2.5 space-y-0.5 w-full overflow-hidden">
                   {filteredAgents.length === 0 ? (
                     <button
                       onClick={() => setShowNewAgent(true)}
@@ -886,6 +922,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         startIndex={groupStartIndices[status] ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
+                        agentPorts={agentPorts}
                       />
                     ))
                   ) : (
@@ -900,6 +937,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         startIndex={repoGroupStartIndices.get(group.id) ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
+                        agentPorts={agentPorts}
                       />
                     ))
                   )}
@@ -956,12 +994,17 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
         </div>
       </div>
 
-      {hoveredAgent && (
-        <AgentPopover agent={hoveredAgent.agent} y={hoveredAgent.y} />
+      {hoveredAgent && sidebarContainerRef.current && (
+        <AgentPopover
+          agent={hoveredAgent.agent}
+          y={hoveredAgent.y}
+          port={agentPorts[hoveredAgent.agent.id]}
+          sidebarWidth={sidebarContainerRef.current.getBoundingClientRect().width}
+        />
       )}
 
       {showNewAgent && (
-        <NewAgentDialog onClose={() => setShowNewAgent(false)} onCreated={handleAgentCreated} />
+        <NewAgentPopover onClose={() => setShowNewAgent(false)} onCreated={handleAgentCreated} anchorRef={newAgentBtnRef} />
       )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />

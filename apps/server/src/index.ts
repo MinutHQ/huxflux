@@ -13,6 +13,7 @@ import { fsRoutes } from "./routes/fs.js"
 import { githubRoutes } from "./routes/github.js"
 import { uploadRoutes } from "./routes/upload.js"
 import { registerSocket } from "./ws/handler.js"
+import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { startPoller } from "./poller.js"
@@ -21,7 +22,7 @@ const app = Fastify({ logger: true })
 
 await app.register(fastifyCors, {
   origin: config.corsOrigins,
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 })
 
 await app.register(fastifyWebsocket)
@@ -40,6 +41,9 @@ if (!config.authToken) {
 app.register(async (instance) => {
   instance.get("/ws", { websocket: true }, (socket) => {
     registerSocket(socket)
+  })
+  instance.get<{ Params: { agentId: string } }>("/ws/pty/:agentId", { websocket: true }, (socket, req) => {
+    registerPtySocket(socket, req.params.agentId)
   })
 })
 

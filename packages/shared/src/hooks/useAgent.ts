@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { api } from "../api"
 import { useAgentEvents } from "../ws"
 import type { Agent, Message, ToolCall } from "../types"
@@ -15,12 +15,27 @@ export function useAgent(id: string | null) {
   const queryClient = useQueryClient()
   const [isStreaming, setIsStreaming] = useState(false)
 
+  // Reset streaming state when switching agents so stale true doesn't bleed into a new tab
+  useEffect(() => { setIsStreaming(false) }, [id])
+
   const query = useQuery({
     queryKey: ["agent", id],
     queryFn: () => api.getAgent(id!),
     enabled: !!id,
     staleTime: 10_000,
+    placeholderData: (prev) => prev,
   })
+
+  // Defensive: if the fetched data has a completed last message, clear streaming.
+  // Guards against message:done being missed due to WS reconnect.
+  useEffect(() => {
+    const msgs = query.data?.messages
+    if (!msgs?.length) return
+    const last = msgs[msgs.length - 1]
+    if (last.role === "assistant" && last.durationMs != null) {
+      setIsStreaming(false)
+    }
+  }, [query.data])
 
   const updateMessages = useCallback(
     (updater: (msgs: Message[]) => Message[]) => {

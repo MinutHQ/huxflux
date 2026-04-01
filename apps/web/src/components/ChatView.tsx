@@ -46,6 +46,7 @@ import {
 import type { AgentSummary } from "@/data/mock"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { getSendWith, getAutoConvert, getStripYoureRight, getAlwaysContext } from "@/lib/notificationPrefs"
 
 const MODELS = [
   { id: "claude-opus-4-6",           label: "Opus 4.6" },
@@ -146,6 +147,44 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
         {isRead && call.args && fileChip(call.args)}
       </div>
       {call.result && <ResultBlock result={call.result} />}
+    </div>
+  )
+}
+
+// ── Tool calls accordion ──────────────────────────────────────────────────────
+
+function ToolCallsAccordion({ calls, hasContent }: { calls: ToolCall[]; hasContent: boolean }) {
+  const [open, setOpen] = useState(!hasContent)
+
+  // Auto-collapse when content arrives
+  useEffect(() => {
+    if (hasContent) setOpen(false)
+  }, [hasContent])
+
+  const distinctTools = [...new Set(calls.map((c) => c.tool))]
+  const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
+  const summary = distinctTools.slice(0, 4).join(", ") + (distinctTools.length > 4 ? ", …" : "")
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5 group"
+      >
+        <IconChevronRight size={12} className={cn("transition-transform shrink-0", open && "rotate-90")} />
+        <IconBolt size={12} className="text-muted-foreground/50 shrink-0" />
+        <span className="font-medium text-foreground/70">{label}</span>
+        {!open && (
+          <span className="text-muted-foreground/40 ml-1 truncate">{summary}</span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
+          {calls.map((tc) => (
+            <ToolCallRow key={tc.id} call={tc} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -533,17 +572,16 @@ function MessageBubble({ msg }: { msg: Message }) {
 
       {/* Tool calls */}
       {msg.toolCalls && msg.toolCalls.length > 0 && (
-        <div className="mb-3 space-y-0.5">
-          {msg.toolCalls.map((tc) => (
-            <ToolCallRow key={tc.id} call={tc} />
-          ))}
-        </div>
+        <ToolCallsAccordion calls={msg.toolCalls} hasContent={!!msg.content} />
       )}
 
       {/* Content */}
       {msg.content && (
         <div className="text-sm text-foreground leading-relaxed">
-          <MarkdownContent content={msg.content} />
+          <MarkdownContent content={getStripYoureRight()
+            ? msg.content.replace(/^(You're (absolutely |completely |totally |entirely )?right[!.,]?\s*)+/i, "")
+            : msg.content}
+          />
         </div>
       )}
 
@@ -752,6 +790,51 @@ function CreationView({ agent }: { agent: Agent }) {
       <p className="text-[12px] text-muted-foreground/40 text-center">
         Send a message to get started
       </p>
+    </div>
+  )
+}
+
+// ── Context ring ─────────────────────────────────────────────────────────────
+
+const CLAUDE_CONTEXT_TOKENS = 200_000
+
+function ContextRing({ messages }: { messages: Message[] }) {
+  // Find the latest assistant message with inputTokens
+  const latest = [...messages].reverse().find((m) => m.role === "assistant" && m.inputTokens != null)
+  const tokens = latest?.inputTokens ?? 0
+  const pct = Math.min(tokens / CLAUDE_CONTEXT_TOKENS, 1)
+  const alwaysShow = getAlwaysContext()
+
+  if (tokens === 0 || (!alwaysShow && pct < 0.7)) return null
+
+  const size = 20
+  const r = 7
+  const circ = 2 * Math.PI * r
+  const dash = pct * circ
+  const color = pct >= 0.9 ? "#f87171" : pct >= 0.7 ? "#facc15" : "#60a5fa"
+
+  return (
+    <div
+      className="relative flex items-center justify-center shrink-0"
+      title={`Context: ${Math.round(pct * 100)}% used (${tokens.toLocaleString()} / ${CLAUDE_CONTEXT_TOKENS.toLocaleString()} tokens)`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rotate-[-90deg]">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground/20" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.4s ease" }}
+        />
+      </svg>
+      <span className="absolute text-[7px] font-medium" style={{ color }}>
+        {Math.round(pct * 100)}
+      </span>
     </div>
   )
 }
@@ -1317,6 +1400,26 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                   placeholder={agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
                   rows={2}
                   className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none"
+                  onPaste={(e) => {
+                    if (!getAutoConvert()) return
+                    const text = e.clipboardData.getData("text/plain")
+                    if (text.length > 5000) {
+                      e.preventDefault()
+                      const blob = new Blob([text], { type: "text/plain" })
+                      const file = new File([blob], "pasted-text.txt", { type: "text/plain" })
+                      const reader = new FileReader()
+                      reader.onload = async () => {
+                        try {
+                          const result = await api.uploadFile(agent.id, file.name, reader.result as string, file.type)
+                          setAttachments((prev) => [...prev, result])
+                        } catch {
+                          // Fall back to inserting text directly
+                          setInput((prev) => prev + text)
+                        }
+                      }
+                      reader.readAsDataURL(file)
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (slashQuery !== null && filteredCommands.length > 0) {
                       if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % filteredCommands.length); return }
@@ -1329,7 +1432,13 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                       fileInputRef.current?.click()
                       return
                     }
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    const sendWith = getSendWith()
+                    const shouldSend =
+                      sendWith === "enter" ? (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) :
+                      sendWith === "cmd-enter" ? (e.key === "Enter" && (e.metaKey || e.ctrlKey)) :
+                      sendWith === "shift-enter" ? (e.key === "Enter" && e.shiftKey) :
+                      false
+                    if (shouldSend) {
                       e.preventDefault()
                       handleSend()
                     }
@@ -1377,6 +1486,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                   </div>
                   <div className="flex items-center gap-1">
                     <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={handleFileSelect} />
+                    <ContextRing messages={agent.messages} />
                     <Popover open={plusOpen} onOpenChange={setPlusOpen}>
                       <PopoverTrigger asChild>
                         <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">

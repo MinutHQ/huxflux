@@ -70,7 +70,6 @@ export default function FilesScreen() {
 
       <FlashList
         data={files}
-        estimatedItemSize={60}
         keyExtractor={(f) => f.path}
         renderItem={({ item }) => <FileRow file={item} agentId={id!} />}
         ListEmptyComponent={

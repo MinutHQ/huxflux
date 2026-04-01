@@ -231,7 +231,12 @@ export async function findPRForBranch(repoUrl: string, branch: string): Promise<
 export async function markPRReady(repoUrl: string, prNumber: number): Promise<void> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
-  await octokit.pulls.update({ owner, repo, pull_number: prNumber, draft: false })
+  // REST API doesn't support converting draft → ready; use GraphQL mutation
+  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
+  await octokit.graphql(
+    `mutation MarkReady($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }`,
+    { id: pr.node_id }
+  )
 }
 
 export async function rerequestReview(repoUrl: string, prNumber: number): Promise<void> {

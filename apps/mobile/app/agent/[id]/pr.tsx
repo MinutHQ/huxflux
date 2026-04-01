@@ -160,9 +160,9 @@ export default function PRScreen() {
           <TouchableOpacity
             onPress={handleMarkReady}
             disabled={markingReady}
-            style={{ backgroundColor: c.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+            style={{ backgroundColor: c.fgBright, borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
           >
-            <Text style={{ color: c.white, fontWeight: "600", fontSize: 14 }}>
+            <Text style={{ color: c.fgBrightFg, fontWeight: "600", fontSize: 14 }}>
               {markingReady ? "Marking ready…" : "Mark ready for review"}
             </Text>
           </TouchableOpacity>

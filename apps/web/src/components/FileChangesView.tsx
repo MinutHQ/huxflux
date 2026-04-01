@@ -257,7 +257,22 @@ function ThreadBlock({ thread, onAddComment }: { thread: PRThread; onAddComment:
 
 function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: PRComment) => void }) {
   const [rerequesting, setRerequesting] = useState(false)
+  const [markingReady, setMarkingReady] = useState(false)
   const queryClient = useQueryClient()
+
+  async function handleMarkReady() {
+    setMarkingReady(true)
+    try {
+      await api.markPRReady(agentId)
+      queryClient.invalidateQueries({ queryKey: ["pr-details", agentId] })
+      queryClient.invalidateQueries({ queryKey: ["agent", agentId] })
+      toast.success("PR marked ready for review")
+    } catch (err) {
+      toast.error(`Failed to mark ready: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setMarkingReady(false)
+    }
+  }
 
   async function handleRerequestReview() {
     setRerequesting(true)
@@ -325,6 +340,18 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
         <div className={cn("flex items-center justify-center px-3 py-2 rounded-lg border text-[12px] font-medium", banner.cls)}>
           {banner.label}
         </div>
+
+        {/* Mark ready for review */}
+        {pr.draft && !pr.merged && (
+          <Button
+            size="sm"
+            className="w-full text-[12px]"
+            onClick={handleMarkReady}
+            disabled={markingReady}
+          >
+            {markingReady ? "Marking ready…" : "Mark ready for review"}
+          </Button>
+        )}
 
         {/* Re-request review */}
         {(pr.hasChangeRequests || pr.hasDismissedReviews) && !pr.merged && (

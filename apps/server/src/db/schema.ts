@@ -12,6 +12,7 @@ export const repos = sqliteTable("repos", {
   setupScript: text("setup_script"),
   runScript: text("run_script"),
   archiveScript: text("archive_script"),
+  preferences: text("preferences"), // JSON blob: Record<string, string>
   createdAt: text("created_at").notNull(),
 })
 
@@ -30,6 +31,7 @@ export const agents = sqliteTable("agents", {
   prStatus: text("pr_status"), // JSON: PRStatus
   baseBranch: text("base_branch"), // optional per-agent override of repo.branchFrom
   parentAgentId: text("parent_agent_id"), // if set, this is a child tab — hidden from sidebar
+  sessionId: text("session_id"), // Claude Code session ID — used for --resume on follow-up messages
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

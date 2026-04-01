@@ -3,7 +3,13 @@ import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme
 import { createPortal } from "react-dom"
 import { Switch } from "@/components/ui/switch"
 import { SOUNDS, playSound } from "@/lib/sounds"
-import { getSoundPref, setSoundPref, getSoundEnabled, setSoundEnabled } from "@/lib/notificationPrefs"
+import {
+  getSoundPref, setSoundPref, getSoundEnabled, setSoundEnabled,
+  getSendWith, setSendWith, getAutoConvert, setAutoConvert,
+  getStripYoureRight, setStripYoureRight, getAlwaysContext, setAlwaysContext,
+  getDesktopNotif, setDesktopNotif,
+  type SendWith,
+} from "@/lib/notificationPrefs"
 import type { SoundId } from "@/lib/sounds"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -18,7 +24,6 @@ import {
   IconPlug,
   IconPalette,
   IconGitBranch,
-  IconUser,
   IconFlask,
   IconAdjustments,
   IconRefresh,
@@ -50,7 +55,6 @@ type Section =
   | "appearance"
   | "git"
   | "servers"
-  | "account"
   | "experimental"
   | "advanced"
   | "updates"
@@ -79,7 +83,6 @@ const navMain = [
   { id: "appearance" as Section, label: "Appearance", icon: IconPalette },
   { id: "git" as Section, label: "Git", icon: IconGitBranch },
   { id: "servers" as Section, label: "Servers", icon: IconCloud },
-  { id: "account" as Section, label: "Account", icon: IconUser },
 ]
 
 const navMore = [
@@ -110,12 +113,12 @@ function SettingInfo({ label, description }: { label: string; description?: stri
 // ── Section content ───────────────────────────────────────────────────────────
 
 function GeneralSettings() {
-  const [notifications, setNotifications] = useState(true)
+  const [notifications, setNotificationsState] = useState(getDesktopNotif)
   const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled)
-  const [autoConvert, setAutoConvert] = useState(true)
-  const [stripYoureRight, setStripYoureRight] = useState(false)
-  const [alwaysContext, setAlwaysContext] = useState(false)
-  const [sendWith, setSendWith] = useState("enter")
+  const [autoConvertState, setAutoConvertState] = useState(getAutoConvert)
+  const [stripYoureRightState, setStripYoureRightState] = useState(getStripYoureRight)
+  const [alwaysContextState, setAlwaysContextState] = useState(getAlwaysContext)
+  const [sendWithState, setSendWithState] = useState<SendWith>(getSendWith)
   const [sound, setSoundState] = useState<SoundId>(getSoundPref)
 
   function handleSoundChange(id: SoundId) {
@@ -128,6 +131,34 @@ function GeneralSettings() {
     setSoundEnabled(enabled)
   }
 
+  function handleNotificationsChange(enabled: boolean) {
+    setNotificationsState(enabled)
+    setDesktopNotif(enabled)
+    if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission()
+    }
+  }
+
+  function handleSendWithChange(v: string) {
+    setSendWithState(v as SendWith)
+    setSendWith(v as SendWith)
+  }
+
+  function handleAutoConvertChange(v: boolean) {
+    setAutoConvertState(v)
+    setAutoConvert(v)
+  }
+
+  function handleStripYoureRightChange(v: boolean) {
+    setStripYoureRightState(v)
+    setStripYoureRight(v)
+  }
+
+  function handleAlwaysContextChange(v: boolean) {
+    setAlwaysContextState(v)
+    setAlwaysContext(v)
+  }
+
   return (
     <div>
       <SettingRow>
@@ -136,7 +167,7 @@ function GeneralSettings() {
           <div className="text-[12px] text-muted-foreground/60 mt-1">Use ⇧↵ for new lines</div>
         </div>
         <div className="shrink-0">
-          <Select value={sendWith} onValueChange={setSendWith}>
+          <Select value={sendWithState} onValueChange={handleSendWithChange}>
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
@@ -151,7 +182,7 @@ function GeneralSettings() {
 
       <SettingRow>
         <SettingInfo label="Desktop notifications" description="Get notified when AI finishes working in a chat." />
-        <Switch checked={notifications} onCheckedChange={setNotifications} />
+        <Switch checked={notifications} onCheckedChange={handleNotificationsChange} />
       </SettingRow>
 
       <SettingRow>
@@ -180,7 +211,7 @@ function GeneralSettings() {
           label="Auto-convert long text"
           description="Convert pasted text over 5000 characters into text attachments"
         />
-        <Switch checked={autoConvert} onCheckedChange={setAutoConvert} />
+        <Switch checked={autoConvertState} onCheckedChange={handleAutoConvertChange} />
       </SettingRow>
 
       <SettingRow>
@@ -188,15 +219,15 @@ function GeneralSettings() {
           label="I'm not absolutely right, thank you very much"
           description={'Strip "You\'re absolutely right!" from AI messages'}
         />
-        <Switch checked={stripYoureRight} onCheckedChange={setStripYoureRight} />
+        <Switch checked={stripYoureRightState} onCheckedChange={handleStripYoureRightChange} />
       </SettingRow>
 
       <SettingRow>
         <SettingInfo
           label="Always show context usage"
-          description="Always how the context percent used in a chat (Claude only). By default, context usage is only shown when > 70% is used."
+          description="Always show the context percent used in a chat (Claude only). By default, context usage is only shown when > 70% is used."
         />
-        <Switch checked={alwaysContext} onCheckedChange={setAlwaysContext} />
+        <Switch checked={alwaysContextState} onCheckedChange={handleAlwaysContextChange} />
       </SettingRow>
     </div>
   )
@@ -206,20 +237,18 @@ function ModelsSettings() {
   return (
     <div className="space-y-6">
       {[
-        { name: "claude-opus-4-6", provider: "Anthropic", context: "200K", enabled: true },
-        { name: "claude-sonnet-4-6", provider: "Anthropic", context: "200K", enabled: true },
-        { name: "claude-haiku-4-5", provider: "Anthropic", context: "200K", enabled: true },
-        { name: "gpt-4o", provider: "OpenAI", context: "128K", enabled: false },
-        { name: "gpt-4o-mini", provider: "OpenAI", context: "128K", enabled: false },
+        { name: "claude-opus-4-6", context: "200K" },
+        { name: "claude-sonnet-4-6", context: "200K" },
+        { name: "claude-haiku-4-5-20251001", context: "200K" },
       ].map((model) => (
         <div key={model.name} className="flex items-center justify-between py-4 border-b border-border last:border-0">
           <div>
             <div className="text-sm font-medium text-foreground font-mono">{model.name}</div>
             <div className="text-[12px] text-muted-foreground mt-0.5">
-              {model.provider} · {model.context} context
+              Anthropic · {model.context} context
             </div>
           </div>
-          <Switch defaultChecked={model.enabled} />
+          <Switch defaultChecked />
         </div>
       ))}
     </div>
@@ -229,29 +258,17 @@ function ModelsSettings() {
 function ProvidersSettings() {
   return (
     <div className="space-y-4">
-      {[
-        { name: "Anthropic", key: "sk-ant-••••••••••••••••••••••••••ABCD", connected: true },
-        { name: "OpenAI", key: "", connected: false },
-      ].map((p) => (
-        <div key={p.name} className="p-4 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-foreground">{p.name}</span>
-            <span className={cn("text-[11px] px-2 py-0.5 rounded-full border", p.connected ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-secondary text-muted-foreground border-border")}>
-              {p.connected ? "Connected" : "Not connected"}
-            </span>
-          </div>
-          {p.connected ? (
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-[12px] font-mono bg-secondary border border-border rounded px-3 py-1.5 text-muted-foreground truncate">
-                {p.key}
-              </code>
-              <Button variant="outline" size="sm">Remove</Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm">Add API key</Button>
-          )}
+      <div className="p-4 rounded-lg border border-border bg-card">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-foreground">Anthropic</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full border bg-secondary text-muted-foreground border-border">
+            Configured on server
+          </span>
         </div>
-      ))}
+        <p className="text-[12px] text-muted-foreground leading-snug">
+          The Anthropic API key is configured via the <code className="font-mono">ANTHROPIC_API_KEY</code> environment variable on the server.
+        </p>
+      </div>
     </div>
   )
 }
@@ -263,7 +280,7 @@ function AppearanceSettings() {
     setTheme(value)
     applyThemeSetting(value)
   }
-  const [fontSize, setFontSize] = useState("14")
+
   return (
     <div>
       <SettingRow>
@@ -279,73 +296,32 @@ function AppearanceSettings() {
           </SelectContent>
         </Select>
       </SettingRow>
-      <SettingRow>
-        <SettingInfo label="Font size" description="Code and terminal font size" />
-        <Select value={fontSize} onValueChange={setFontSize}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {["12", "13", "14", "15", "16"].map(s => (
-              <SelectItem key={s} value={s}>{s}px</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingRow>
     </div>
   )
 }
 
+const GIT_AUTO_PUSH_KEY = "huxflux:git:auto-push"
+const GIT_DELETE_BRANCH_KEY = "huxflux:git:delete-branch-on-archive"
+const GIT_ARCHIVE_ON_MERGE_KEY = "huxflux:git:archive-on-merge"
+
 function GitSettings() {
-  const [autoPush, setAutoPush] = useState(false)
-  const [signCommits, setSignCommits] = useState(true)
+  const [autoPush, setAutoPushState] = useState(() => localStorage.getItem(GIT_AUTO_PUSH_KEY) === "true")
+  const [deleteBranch, setDeleteBranchState] = useState(() => localStorage.getItem(GIT_DELETE_BRANCH_KEY) === "true")
+  const [archiveOnMerge, setArchiveOnMergeState] = useState(() => localStorage.getItem(GIT_ARCHIVE_ON_MERGE_KEY) !== "false")
+
   return (
     <div>
       <SettingRow>
         <SettingInfo label="Auto-push after commit" description="Automatically push to remote after each commit" />
-        <Switch checked={autoPush} onCheckedChange={setAutoPush} />
+        <Switch checked={autoPush} onCheckedChange={(v) => { setAutoPushState(v); localStorage.setItem(GIT_AUTO_PUSH_KEY, String(v)) }} />
       </SettingRow>
       <SettingRow>
-        <SettingInfo label="Sign commits" description="Sign commits with your GPG key" />
-        <Switch checked={signCommits} onCheckedChange={setSignCommits} />
+        <SettingInfo label="Delete branch on archive" description="Delete the git branch when an agent is archived" />
+        <Switch checked={deleteBranch} onCheckedChange={(v) => { setDeleteBranchState(v); localStorage.setItem(GIT_DELETE_BRANCH_KEY, String(v)) }} />
       </SettingRow>
       <SettingRow>
-        <SettingInfo label="Default branch" description="Branch to use when creating new workspaces" />
-        <Select defaultValue="develop">
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="main">main</SelectItem>
-            <SelectItem value="develop">develop</SelectItem>
-            <SelectItem value="master">master</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingRow>
-    </div>
-  )
-}
-
-function AccountSettings() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
-        <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-lg font-bold text-primary-foreground">
-          A
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-foreground">alexmartosp</div>
-          <div className="text-[13px] text-muted-foreground">alex@minut.com</div>
-        </div>
-        <Button variant="outline" size="sm" className="ml-auto">Sign out</Button>
-      </div>
-      <SettingRow>
-        <SettingInfo label="Usage this month" description="API calls made across all agents" />
-        <span className="text-sm font-mono text-foreground">2,847 calls</span>
-      </SettingRow>
-      <SettingRow>
-        <SettingInfo label="Plan" description="Your current subscription" />
-        <span className="text-[12px] px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium">Pro</span>
+        <SettingInfo label="Archive on merge" description="Automatically archive agents when their PR is merged" />
+        <Switch checked={archiveOnMerge} onCheckedChange={(v) => { setArchiveOnMergeState(v); localStorage.setItem(GIT_ARCHIVE_ON_MERGE_KEY, String(v)) }} />
       </SettingRow>
     </div>
   )
@@ -397,14 +373,25 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   const [archiveScript, setArchiveScript] = useState(repo.archiveScript ?? "")
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [openPref, setOpenPref] = useState<string | null>(null)
-  const [prefValues, setPrefValues] = useState<Record<string, string>>({})
+  const [prefValues, setPrefValues] = useState<Record<string, string>>(() => {
+    try { return repo.preferences ? JSON.parse(repo.preferences) : {} } catch { return {} }
+  })
   const [isSaving, setIsSaving] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
 
   async function handleSave() {
     setIsSaving(true)
     try {
-      await api.updateRepo(repo.id, { branchFrom: branch, branchPrefix: branchPrefix || undefined, remote, previewUrl, setupScript, runScript, archiveScript })
+      await api.updateRepo(repo.id, {
+        branchFrom: branch,
+        branchPrefix: branchPrefix || undefined,
+        remote,
+        previewUrl,
+        setupScript,
+        runScript,
+        archiveScript,
+        preferences: JSON.stringify(prefValues),
+      })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
     } finally {
       setIsSaving(false)
@@ -511,7 +498,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
           type="text"
           value={previewUrl}
           onChange={(e) => setPreviewUrl(e.target.value)}
-          placeholder="https://localhost:$CONDUCTOR_PORT"
+          placeholder="https://localhost:3000"
           className="w-full text-[13px] font-mono bg-card border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
         />
       </div>
@@ -564,12 +551,6 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
             )}
           </div>
 
-          <p className="text-[12px] text-muted-foreground/60">
-            Want to share scripts with your team?{" "}
-            <span className="text-foreground/70 underline underline-offset-2 cursor-pointer hover:text-foreground transition-colors">
-              Create a conductor.json file
-            </span>
-          </p>
         </div>
       </div>
 
@@ -935,7 +916,6 @@ const sectionContent: Record<Section, React.ReactNode> = {
   appearance: <AppearanceSettings />,
   git: <GitSettings />,
   servers: <ServersSettings />,
-  account: <AccountSettings />,
   experimental: <ExperimentalSettings />,
   advanced: <PlaceholderSettings title="Advanced" />,
   updates: <PlaceholderSettings title="Updates" />,
@@ -948,7 +928,6 @@ const sectionTitles: Record<Section, string> = {
   appearance: "Appearance",
   git: "Git",
   servers: "Servers",
-  account: "Account",
   experimental: "Experimental",
   advanced: "Advanced",
   updates: "Check for updates",

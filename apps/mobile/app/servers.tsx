@@ -98,7 +98,7 @@ export default function ServersScreen() {
             style={{
               backgroundColor: c.card,
               borderWidth: 1,
-              borderColor: server.id === activeId ? c.primary : c.border,
+              borderColor: server.id === activeId ? c.fg : c.border,
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
@@ -113,7 +113,7 @@ export default function ServersScreen() {
               <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>{server.url}</Text>
             </View>
             {server.id === activeId && (
-              <Text style={{ color: c.primary, fontSize: 12, fontWeight: "600" }}>Active</Text>
+              <Text style={{ color: c.fgBright, fontSize: 12, fontWeight: "600" }}>Active</Text>
             )}
             <TouchableOpacity onPress={() => handleRemove(server.id)} hitSlop={8}>
               <Text style={{ color: c.fgSub, fontSize: 18 }}>×</Text>
@@ -150,9 +150,9 @@ export default function ServersScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAdd}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.primary, alignItems: "center" }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.fgBright, alignItems: "center" }}
               >
-                <Text style={{ color: c.white, fontWeight: "600" }}>Add</Text>
+                <Text style={{ color: c.fgBrightFg, fontWeight: "600" }}>Add</Text>
               </TouchableOpacity>
             </View>
           </View>

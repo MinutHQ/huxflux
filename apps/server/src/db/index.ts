@@ -126,6 +126,18 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agents ADD COLUMN parent_agent_id TEXT;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE repos ADD COLUMN preferences TEXT;
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      ALTER TABLE agents ADD COLUMN session_id TEXT;
+    `,
+  },
 ]
 
 export function runMigrations() {

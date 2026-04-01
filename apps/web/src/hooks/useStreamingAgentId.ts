@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAgentEvents } from "@hive/shared"
 
 const SESSION_KEY = "huxflux:streaming-agent"
@@ -18,9 +18,17 @@ function writeSession(id: string | null) {
  * Survives page refreshes via sessionStorage: after a reload the WS
  * reconnects and incoming message:chunk events re-confirm the active agent.
  */
-export function useStreamingAgentId(): string | null {
+export function useStreamingAgentId(lastMessageDurationMs?: number | null): string | null {
   // Initialise from sessionStorage so the indicator survives a reload
   const [streamingId, setStreamingId] = useState<string | null>(readSession)
+
+  // If the current agent's last message is complete, clear any stale sessionStorage value
+  useEffect(() => {
+    if (lastMessageDurationMs != null) {
+      setStreamingId(null)
+      writeSession(null)
+    }
+  }, [lastMessageDurationMs])
 
   useAgentEvents(null, (event) => {
     const agentId = (event as { agentId?: string }).agentId ?? null

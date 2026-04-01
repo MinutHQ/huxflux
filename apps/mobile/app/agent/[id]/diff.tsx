@@ -92,7 +92,6 @@ export default function DiffScreen() {
 
       <FlashList
         data={lines}
-        estimatedItemSize={22}
         keyExtractor={(_, i) => String(i)}
         renderItem={({ item }) => <DiffLineRow line={item} />}
         ListEmptyComponent={

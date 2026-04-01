@@ -135,6 +135,7 @@ export interface Repo {
   setupScript?: string
   runScript?: string
   archiveScript?: string
+  preferences?: string  // JSON blob: Record<string, string>
   createdAt: string
 }
 

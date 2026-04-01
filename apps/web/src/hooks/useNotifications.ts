@@ -1,7 +1,7 @@
 import { toast } from "sonner"
 import { useAgentEvents } from "@hive/shared"
 import { playSound } from "@/lib/sounds"
-import { getSoundPref, getSoundEnabled } from "@/lib/notificationPrefs"
+import { getSoundPref, getSoundEnabled, getDesktopNotif } from "@/lib/notificationPrefs"
 import type { AgentSummary } from "@/data/mock"
 
 /**
@@ -23,6 +23,10 @@ export function useNotifications(agents: AgentSummary[]) {
 
     if (getSoundEnabled()) {
       playSound(getSoundPref())
+    }
+
+    if (getDesktopNotif() && typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification(`${title} finished`, { body: "Claude has completed its response." })
     }
   })
 }

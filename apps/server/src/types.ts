@@ -138,5 +138,6 @@ export interface Repo {
   setupScript?: string
   runScript?: string
   archiveScript?: string
+  preferences?: string
   createdAt: string
 }

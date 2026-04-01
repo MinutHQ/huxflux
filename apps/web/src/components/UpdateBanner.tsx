@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { IconX, IconDownload } from "@tabler/icons-react"
-import type { Update } from "@tauri-apps/plugin-updater"
 
 interface UpdateBannerProps {
-  update: Update
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  update: any
   isInstalling: boolean
   progress: number | null
   onInstall: () => void

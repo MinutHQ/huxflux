@@ -152,7 +152,7 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
 
 // ── Tool calls accordion ──────────────────────────────────────────────────────
 
-function ToolCallsAccordion({ calls, hasContent, isStreaming }: { calls: ToolCall[]; hasContent: boolean; isStreaming?: boolean }) {
+function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasContent?: boolean; isStreaming?: boolean }) {
   const [open, setOpen] = useState(true)
 
   // Collapse as soon as streaming ends, regardless of whether there's text content

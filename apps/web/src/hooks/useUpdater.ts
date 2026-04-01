@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { isTauri } from "@/lib/platform"
-import type { Update } from "@tauri-apps/plugin-updater"
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Update = any
 
 interface UpdaterState {
   update: Update | null
@@ -33,7 +35,7 @@ export function useUpdater(): UpdaterState {
     try {
       let downloaded = 0
       let total = 0
-      await update.downloadAndInstall((event) => {
+      await update.downloadAndInstall((event: any) => {
         if (event.event === "Started") {
           total = event.data.contentLength ?? 0
         } else if (event.event === "Progress") {

@@ -331,9 +331,15 @@ function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgen
 
 function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [toolsOpen, setToolsOpen] = useState(true)
   const hasSubCalls = selected.subCalls && selected.subCalls.length > 0
   const hasOutput = selected.outputText && selected.outputText.trim()
   const hasResult = selected.result && selected.result.trim()
+
+  // Collapse tools accordion when agent finishes
+  useEffect(() => {
+    if (selected.status === "done") setToolsOpen(false)
+  }, [selected.status])
 
   // Auto-scroll when content changes
   useEffect(() => {
@@ -348,18 +354,32 @@ function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
         <p className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-2">{selected.prompt}</p>
       )}
 
+      {/* Tool calls accordion */}
+      {hasSubCalls && (
+        <div>
+          <button
+            onClick={() => setToolsOpen(!toolsOpen)}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5"
+          >
+            <IconChevronRight size={11} className={cn("transition-transform shrink-0", toolsOpen && "rotate-90")} />
+            <IconBolt size={11} className="text-muted-foreground/50 shrink-0" />
+            <span className="font-medium text-foreground/70">
+              {selected.subCalls!.length === 1 ? "1 tool call" : `${selected.subCalls!.length} tool calls`}
+            </span>
+          </button>
+          {toolsOpen && (
+            <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
+              {selected.subCalls!.map((sub) => (
+                <ToolCallRow key={sub.id} call={sub} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Text output streamed by the sub-agent */}
       {hasOutput && (
         <pre className="text-[11px] font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap">{selected.outputText}</pre>
-      )}
-
-      {/* Tool calls made by the sub-agent */}
-      {hasSubCalls && (
-        <div className="space-y-0.5">
-          {selected.subCalls!.map((sub) => (
-            <ToolCallRow key={sub.id} call={sub} />
-          ))}
-        </div>
       )}
 
       {/* Final result */}

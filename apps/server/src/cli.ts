@@ -430,7 +430,7 @@ function cmdRestore(slot?: string) {
   })
 }
 
-const WEB_APP_URL = "https://app.huxflux.dev"
+const WEB_APP_URL = "https://huxflux.netlify.app"
 
 function cmdOpen(host?: string) {
   const cfg = loadConfig()

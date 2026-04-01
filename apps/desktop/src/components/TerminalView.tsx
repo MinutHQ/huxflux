@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { cn } from "@hive/ui"
 import type { Agent } from "@/data/mock"
-import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop } from "@tabler/icons-react"
+import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
 import { getActiveServer, useRepos } from "@hive/shared"
 import "@xterm/xterm/css/xterm.css"
 
@@ -22,10 +22,16 @@ interface Session {
   div: HTMLDivElement
   port: number | null
   isRunning: boolean
-  outputBuf: string  // rolling buffer for port detection
+  outputBuf: string
+}
+
+interface TerminalTab {
+  id: string
+  num: number
 }
 
 // Module-level session store — survives component unmount/remount
+// Key: `${agentId}:${terminalId}`
 const globalSessions = new Map<string, Session>()
 
 function getPtyWsUrl(agentId: string): string {
@@ -36,16 +42,10 @@ function getPtyWsUrl(agentId: string): string {
   return server?.token ? `${url}?token=${server.token}` : url
 }
 
-// Strip ANSI escape codes so port patterns aren't broken by color codes
 const ANSI_RE = /\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*\x07|\r/g
 
 function scanForPort(buf: string): number | null {
   const clean = buf.replace(ANSI_RE, "")
-  // Match common server-ready output patterns:
-  // - "localhost:3000" / "127.0.0.1:3000" / "0.0.0.0:3000"
-  // - "Local:   http://localhost:3000"
-  // - "listening on port 3000"
-  // - "started server on 0.0.0.0:3000"
   const patterns = [
     /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{4,5})/,
     /(?:port|PORT)[^\d]*(\d{4,5})/,
@@ -77,16 +77,26 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const { data: repos = [] } = useRepos()
   const repo = repos.find((r) => r.id === agent.repoId)
 
-  // Wrapper that holds all per-agent terminal divs
   const wrapperRef = useRef<HTMLDivElement>(null)
   const resizeObsRef = useRef<ResizeObserver | null>(null)
+  const activeSessionKeyRef = useRef(`${agent.id}:t1`)
+  const nextTerminalNumRef = useRef(2)
 
-  // Local UI state derived from the active session
+  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([{ id: "t1", num: 1 }])
+  const [activeTerminalId, setActiveTerminalId] = useState("t1")
   const [isRunning, setIsRunning] = useState(false)
   const [detectedPort, setDetectedPort] = useState<number | null>(null)
 
-  function getOrCreateSession(agentId: string): Session {
-    const existing = globalSessions.get(agentId)
+  // Reset terminal tabs when agent changes
+  useEffect(() => {
+    nextTerminalNumRef.current = 2
+    setTerminalTabs([{ id: "t1", num: 1 }])
+    setActiveTerminalId("t1")
+    activeSessionKeyRef.current = `${agent.id}:t1`
+  }, [agent.id])
+
+  function getOrCreateSession(sessionKey: string): Session {
+    const existing = globalSessions.get(sessionKey)
     if (existing) return existing
 
     const div = document.createElement("div")
@@ -102,12 +112,12 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     term.loadAddon(fitAddon)
 
     const session: Session = { term, fitAddon, ws: null, div, port: null, isRunning: false, outputBuf: "" }
-    globalSessions.set(agentId, session)
+    globalSessions.set(sessionKey, session)
     return session
   }
 
   function connectSession(agentId: string, session: Session) {
-    if (session.ws) return // already connected
+    if (session.ws) return
 
     const ws = new WebSocket(getPtyWsUrl(agentId))
     session.ws = ws
@@ -122,16 +132,14 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         const msg = JSON.parse(ev.data)
         if (msg.type === "output") {
           session.term.write(msg.data)
-          // Scan a rolling buffer for port patterns (handles split chunks + ANSI codes)
           if (!session.port) {
             session.outputBuf = (session.outputBuf + msg.data).slice(-2000)
             const port = scanForPort(session.outputBuf)
             if (port) {
               session.port = port
-              // Auto-mark as running whether started via Run button or typed manually
               session.isRunning = true
               onPortChange?.(agentId, port)
-              if (agentId === agent.id) {
+              if (activeSessionKeyRef.current.startsWith(agentId + ":")) {
                 setDetectedPort(port)
                 setIsRunning(true)
               }
@@ -154,19 +162,16 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     })
   }
 
-  // Activate a session: attach its div to wrapper, open terminal if new, connect WS
-  function activateSession(agentId: string) {
+  function activateSession(sessionKey: string, agentId: string) {
     if (!wrapperRef.current) return
 
-    const isNew = !globalSessions.has(agentId)
-    const session = getOrCreateSession(agentId)
+    const isNew = !globalSessions.has(sessionKey)
+    const session = getOrCreateSession(sessionKey)
 
-    // Detach all other session divs — only the active one lives in the DOM
-    for (const [id, s] of globalSessions.entries()) {
-      if (id !== agentId) s.div.parentElement?.removeChild(s.div)
+    for (const [key, s] of globalSessions.entries()) {
+      if (key !== sessionKey) s.div.parentElement?.removeChild(s.div)
     }
 
-    // Attach active session div if not already there
     if (!session.div.parentElement) {
       wrapperRef.current.appendChild(session.div)
       if (isNew) {
@@ -174,28 +179,27 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       }
     }
 
-    // Fit and connect
     requestAnimationFrame(() => {
       session.fitAddon.fit()
       connectSession(agentId, session)
     })
   }
 
-  // Activate/switch session whenever the terminal tab is active or the agent changes
   useEffect(() => {
     if (activeTab !== "terminal") return
-    activateSession(agent.id)
-    const session = globalSessions.get(agent.id)
+    const key = `${agent.id}:${activeTerminalId}`
+    activeSessionKeyRef.current = key
+    activateSession(key, agent.id)
+    const session = globalSessions.get(key)
     setIsRunning(session?.isRunning ?? false)
     setDetectedPort(session?.port ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, agent.id])
+  }, [activeTab, agent.id, activeTerminalId])
 
-  // Resize observer on wrapper — resize the active session
   useEffect(() => {
     if (!wrapperRef.current) return
     resizeObsRef.current = new ResizeObserver(() => {
-      const session = globalSessions.get(agent.id)
+      const session = globalSessions.get(activeSessionKeyRef.current)
       if (!session?.ws || session.ws.readyState !== WebSocket.OPEN) return
       try {
         session.fitAddon.fit()
@@ -208,8 +212,6 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // On unmount: detach all session divs from the wrapper DOM node.
-  // Sessions (Terminal + WS) remain alive in globalSessions for when we remount.
   useEffect(() => {
     return () => {
       for (const session of globalSessions.values()) {
@@ -218,10 +220,38 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     }
   }, [])
 
+  function addTerminal() {
+    const num = nextTerminalNumRef.current++
+    const id = `t${num}`
+    setTerminalTabs((prev) => [...prev, { id, num }])
+    setActiveTerminalId(id)
+  }
+
+  function closeTerminal(id: string) {
+    if (terminalTabs.length <= 1) return
+    const sessionKey = `${agent.id}:${id}`
+    const session = globalSessions.get(sessionKey)
+    if (session) {
+      session.div.parentElement?.removeChild(session.div)
+      try { session.ws?.close() } catch { /* ignore */ }
+      session.term.dispose()
+      globalSessions.delete(sessionKey)
+    }
+    setTerminalTabs((prev) => {
+      const next = prev.filter((t) => t.id !== id)
+      if (id === activeTerminalId) {
+        const idx = prev.findIndex((t) => t.id === id)
+        setActiveTerminalId(next[Math.min(idx, next.length - 1)].id)
+      }
+      return next
+    })
+  }
+
   function handleRun() {
     if (!repo?.runScript) return
     onTabChange("terminal")
-    const session = getOrCreateSession(agent.id)
+    const key = `${agent.id}:${activeTerminalId}`
+    const session = getOrCreateSession(key)
     session.isRunning = true
     session.port = null
     setIsRunning(true)
@@ -235,7 +265,8 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   }
 
   function handleStop() {
-    const session = globalSessions.get(agent.id)
+    const key = `${agent.id}:${activeTerminalId}`
+    const session = globalSessions.get(key)
     if (session?.ws?.readyState === WebSocket.OPEN) {
       session.ws.send(JSON.stringify({ type: "input", data: "\x03" }))
     }
@@ -251,25 +282,66 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
 
   return (
     <div className="flex flex-col h-full bg-[#1c1917] border-t border-border">
-      {/* Tab bar */}
+      {/* Top tab bar: Setup / Run / terminal tabs / + */}
       <div className="flex items-center px-3 border-b border-border shrink-0 bg-background">
         <div className="flex items-center flex-1 min-w-0">
-          {(["setup", "run", "terminal"] as const).map((tab) => (
+          {(["setup", "run"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => onTabChange(tab)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize -mb-px",
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize -mb-px shrink-0",
                 activeTab === tab
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
-              {tab === "terminal" && <IconTerminal2 size={12} />}
               {tab === "run" && <IconPlayerPlay size={12} />}
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
+
+          {/* Terminal tabs */}
+          {terminalTabs.map((tab) => {
+            const isActive = activeTab === "terminal" && activeTerminalId === tab.id
+            return (
+              <div
+                key={tab.id}
+                className={cn(
+                  "flex items-center border-b-2 -mb-px transition-colors",
+                  isActive ? "border-foreground" : "border-transparent"
+                )}
+              >
+                <button
+                  onClick={() => { onTabChange("terminal"); setActiveTerminalId(tab.id) }}
+                  className={cn(
+                    "flex items-center gap-1.5 pl-3 pr-1.5 py-2 text-xs font-medium transition-colors",
+                    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <IconTerminal2 size={12} />
+                  {terminalTabs.length > 1 ? tab.num : "Terminal"}
+                </button>
+                {terminalTabs.length > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id) }}
+                    className="pr-2 py-2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                  >
+                    <IconX size={10} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Add terminal button */}
+          <button
+            onClick={() => { onTabChange("terminal"); addTerminal() }}
+            className="flex items-center justify-center w-7 h-7 ml-0.5 text-muted-foreground/50 hover:text-foreground transition-colors shrink-0"
+            title="New terminal"
+          >
+            <IconPlus size={12} />
+          </button>
         </div>
 
         {repo?.runScript && (
@@ -313,7 +385,6 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
 
       {/* Terminal area */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
-        {/* Wrapper holds all per-agent terminal divs (appended imperatively) */}
         <div
           ref={wrapperRef}
           className="absolute inset-0"

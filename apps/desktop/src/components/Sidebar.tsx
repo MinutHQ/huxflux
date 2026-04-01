@@ -886,8 +886,8 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
-        {/* Drag region for frameless window + server switcher */}
-        <div data-tauri-drag-region className="border-b border-sidebar-border shrink-0">
+        {/* macOS traffic light spacer + drag region */}
+        <div data-tauri-drag-region className="border-b border-sidebar-border shrink-0 pt-7">
           <ServerSwitcher />
         </div>
 

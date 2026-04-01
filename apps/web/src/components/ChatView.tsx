@@ -416,7 +416,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
     }
   }, [agents]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (dismissed || agents.length === 0) return null
+  if (dismissed || agents.length < 2) return null
 
   const selected = agents.find((a) => a.id === selectedId) ?? agents[0]
   const runningCount = agents.filter((a) => a.status === "running").length

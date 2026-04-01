@@ -12,6 +12,7 @@ import { slashCommandsRoutes } from "./routes/slashCommands.js"
 import { fsRoutes } from "./routes/fs.js"
 import { githubRoutes } from "./routes/github.js"
 import { uploadRoutes } from "./routes/upload.js"
+import { feedbackRoutes } from "./routes/feedback.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -57,6 +58,7 @@ await app.register(slashCommandsRoutes)
 await app.register(fsRoutes)
 await app.register(githubRoutes)
 await app.register(uploadRoutes)
+await app.register(feedbackRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))

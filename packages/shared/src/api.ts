@@ -117,6 +117,10 @@ export const api = {
       body: JSON.stringify({ name, data, mimeType }),
     }),
 
+  // Feedback
+  submitFeedback: (body: { title: string; body?: string }) =>
+    req<{ url: string; number: number }>("/api/feedback", { method: "POST", body: JSON.stringify(body) }),
+
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""

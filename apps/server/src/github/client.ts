@@ -269,6 +269,24 @@ export async function rerequestReview(repoUrl: string, prNumber: number): Promis
   }
 }
 
+export async function createIssue(params: {
+  owner: string
+  repo: string
+  title: string
+  body?: string
+  labels?: string[]
+}): Promise<{ url: string; number: number }> {
+  const octokit = getOctokit()
+  const { data } = await octokit.issues.create({
+    owner: params.owner,
+    repo: params.repo,
+    title: params.title,
+    body: params.body ?? "",
+    labels: params.labels,
+  })
+  return { url: data.html_url, number: data.number }
+}
+
 export async function listBranches(repoUrl: string): Promise<string[]> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)

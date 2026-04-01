@@ -9,6 +9,7 @@ import { api, useRepos } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog } from "@/components/SettingsPage"
+import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { getFlag } from "@/lib/flags"
 import { toast } from "sonner"
 import { TitleBar } from "@/components/TitleBar"
@@ -26,6 +27,7 @@ import {
   IconTrash,
   IconWorld,
   IconLayoutSidebarLeftCollapse,
+  IconMessageCircle,
 } from "@tabler/icons-react"
 
 // ── Hover popover ─────────────────────────────────────────────────────────────
@@ -822,6 +824,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [groupBy, setGroupBy] = useState<GroupByMode>("status")
   const [repoFilter, setRepoFilter] = useState("all")
@@ -1035,6 +1038,9 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
         <div className="px-3 py-2.5 border-t border-sidebar-border flex items-center justify-between shrink-0">
           <div />
           <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-xs" onClick={() => setShowFeedback(true)} title="Send feedback">
+              <IconMessageCircle size={13} />
+            </Button>
             <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
               <IconSettings size={13} />
             </Button>
@@ -1061,6 +1067,9 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />
+      )}
+      {showFeedback && (
+        <FeedbackDialog onClose={() => setShowFeedback(false)} />
       )}
       {showFilter && (
         <FilterPopover

@@ -1,6 +1,6 @@
 /**
  * Request audit log — writes one line per authenticated request to
- * ~/.huxflux/audit.log so users can review who did what and when.
+ * ~/huxflux/audit.log so users can review who did what and when.
  *
  * Format (newline-delimited JSON):
  *   { "t": <ISO timestamp>, "method": "POST", "url": "/api/agents/…/messages", "ip": "…", "status": 200 }
@@ -14,7 +14,7 @@ import * as os from "node:os"
 import * as path from "node:path"
 import type { FastifyInstance } from "fastify"
 
-const AUDIT_LOG = path.join(os.homedir(), ".huxflux", "audit.log")
+const AUDIT_LOG = path.join(os.homedir(), "huxflux", "audit.log")
 const SKIP_PATHS = new Set(["/health"])
 
 export function registerAuditLog(app: FastifyInstance) {

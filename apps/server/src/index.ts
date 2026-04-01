@@ -30,7 +30,7 @@ await app.register(fastifyWebsocket)
 // Auth — enforced on all routes when AUTH_TOKEN is set
 app.addHook("preHandler", authHook)
 
-// Audit log — append one line per request to ~/.huxflux/audit.log
+// Audit log — append one line per request to ~/huxflux/audit.log
 registerAuditLog(app)
 
 if (!config.authToken) {

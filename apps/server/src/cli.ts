@@ -15,7 +15,7 @@ import type { SandboxConfig } from "./sandbox.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
-const DATA_DIR     = path.join(os.homedir(), ".huxflux")
+const DATA_DIR     = path.join(os.homedir(), "huxflux")
 const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
 const LOG_FILE     = path.join(DATA_DIR, "server.log")
@@ -160,7 +160,7 @@ function printSandboxStatus(cfg: Config) {
   const builtins = ["git", "node", "claude", "sh", "bash", "curl"]
   console.log(`  Built-in binaries:  ${builtins.join(", ")}`)
   console.log(`  Extra binaries:     ${extras.length > 0 ? extras.join(", ") : "(none)"}`)
-  console.log(`  Paths:              derived from registered repos + ~/.huxflux\n`)
+  console.log(`  Paths:              derived from registered repos + ~/huxflux\n`)
   console.log(`Commands:`)
   console.log(`  huxflux sandbox add <bin> [bin...]   Allow extra binaries`)
   console.log(`  huxflux sandbox remove <bin>         Revoke a binary`)

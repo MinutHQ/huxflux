@@ -4,7 +4,7 @@
  * File access paths are derived automatically:
  *   - worktreePath  (the agent's specific checkout, read/write)
  *   - repoPath      (base repo for reading existing code, read/write)
- *   - dataDir       (~/.huxflux — worktrees, DB, config)
+ *   - dataDir       (~/huxflux — worktrees, DB, config)
  *   - dev tool caches (auto-detected: ~/.npm, ~/.cargo, ~/.cache/pip, etc.)
  *
  * Network: restricted to localhost + the repo's git remote host.
@@ -31,7 +31,7 @@ export interface SandboxConfig {
 
 const ALWAYS_ALLOWED_BINS = ["git", "node", "claude", "sh", "bash", "env", "curl"]
 
-const DATA_DIR = path.join(os.homedir(), ".huxflux")
+const DATA_DIR = path.join(os.homedir(), "huxflux")
 
 // ── Dev tool cache detection ──────────────────────────────────────────────────
 // These directories are needed for common package managers to function.

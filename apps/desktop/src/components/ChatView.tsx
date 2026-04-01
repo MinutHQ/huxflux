@@ -156,10 +156,10 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
 function ToolCallsAccordion({ calls, hasContent, isStreaming }: { calls: ToolCall[]; hasContent: boolean; isStreaming?: boolean }) {
   const [open, setOpen] = useState(true)
 
-  // Collapse only when the message is fully done (content arrived, no longer streaming)
+  // Collapse as soon as streaming ends, regardless of whether there's text content
   useEffect(() => {
-    if (hasContent && !isStreaming) setOpen(false)
-  }, [hasContent, isStreaming])
+    if (!isStreaming) setOpen(false)
+  }, [isStreaming])
 
   const distinctTools = [...new Set(calls.map((c) => c.tool))]
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
@@ -1063,6 +1063,12 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     onClearFileTab()
   }
 
+  // If the last assistant message has durationMs, the run is complete regardless of isStreaming.
+  // Guards against missed WS events keeping spinners alive after Claude finishes.
+  const lastMsg = agent.messages[agent.messages.length - 1]
+  const lastMsgDone = lastMsg?.role === "assistant" && lastMsg.durationMs != null
+  const uiIsStreaming = isStreaming && !lastMsgDone
+
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
 
@@ -1279,16 +1285,16 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
       ) : (
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 min-h-0">
-            {agent.messages.length === 0 && !isStreaming ? (
+            {agent.messages.length === 0 && !uiIsStreaming ? (
               <CreationView agent={agent} />
             ) : (
               <ScrollArea className="h-full">
                 <div className="px-5 py-6 max-w-3xl mx-auto">
                   <StatsBar messages={agent.messages} />
                   {agent.messages.map((msg, i) => (
-                    <MessageBubble key={msg.id} msg={msg} isStreaming={isStreaming && i === agent.messages.length - 1} />
+                    <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
                   ))}
-                  {isStreaming && <TypingBubble />}
+                  {uiIsStreaming && <TypingBubble />}
                   {queuedMessage !== null && (
                     <div className="mb-5 opacity-40">
                       <div className="bg-card border border-border rounded-xl px-5 py-4">
@@ -1303,7 +1309,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           </div>
 
           {/* Team agent bar */}
-          <TeamAgentBar agents={extractTeamAgents(agent.messages, isStreaming)} isStreaming={isStreaming} />
+          <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
 
           {/* Input */}
           <div className="px-5 py-4 border-t border-border shrink-0">

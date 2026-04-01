@@ -850,9 +850,10 @@ interface SidebarProps {
   onSelectPr: (id: string) => void
   agentPorts?: Record<string, number | null>
   onToggle?: () => void
+  feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
@@ -902,10 +903,12 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     for (const agent of filteredAgents) {
       const repoId = agent.repoId ?? "unknown"
       const repoName = repos.find((r) => r.id === repoId)?.name ?? agent.location ?? "Unknown"
-      if (!map.has(repoId)) {
-        map.set(repoId, { name: repoName, agents: [] })
+      let entry = map.get(repoId)
+      if (!entry) {
+        entry = { name: repoName, agents: [] }
+        map.set(repoId, entry)
       }
-      map.get(repoId)!.agents.push(agent)
+      entry.agents.push(agent)
     }
     return Array.from(map.entries()).map(([id, { name, agents: a }]) => ({ id, name, agents: a }))
   })()
@@ -1109,9 +1112,11 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
         <div className="px-3 py-2.5 border-t border-sidebar-border flex items-center justify-between shrink-0">
           <div />
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon-xs" onClick={() => setShowFeedback(true)} title="Send feedback">
-              <IconMessageCircle size={13} />
-            </Button>
+            {feedbackEnabled && (
+              <Button variant="ghost" size="icon-xs" onClick={() => setShowFeedback(true)} title="Send feedback">
+                <IconMessageCircle size={13} />
+              </Button>
+            )}
             <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
               <IconSettings size={13} />
             </Button>

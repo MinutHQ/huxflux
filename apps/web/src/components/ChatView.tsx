@@ -289,7 +289,7 @@ function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgen
           existing.push(sm)
           sendMessagesByAgent.set(to, existing)
         }
-      } catch { /* ignore */ }
+      } catch (err) { console.warn("Failed to parse SendMessage args", sm.args, err) }
     }
 
     return agentCalls.map((tc) => {
@@ -1396,9 +1396,10 @@ interface ChatViewProps {
   pendingComments?: PRComment[]
   onRemoveComment?: (id: string) => void
   onClearComments?: () => void
+  githubEnabled?: boolean
 }
 
-export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)

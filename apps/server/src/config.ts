@@ -14,11 +14,10 @@ function parseSandbox(): SandboxConfig | undefined {
 
 export const DATA_DIR = path.join(os.homedir(), "huxflux")
 
-// AUTH_TOKEN is always injected by the CLI (huxflux start / huxflux run).
-// Its absence means we're running in dev mode (pnpm dev / tsx watch).
-// Dev gets its own DB and workspaces so schema migrations during development
+// Dev mode is determined by NODE_ENV, not by the presence of AUTH_TOKEN.
+// Dev gets its own DB and workspaces so migrations during development
 // never touch the production database.
-const isDev = !process.env.AUTH_TOKEN
+const isDev = process.env.NODE_ENV !== "production"
 
 export const config = {
   port: parseInt(process.env.PORT ?? (isDev ? "3002" : "3001"), 10),

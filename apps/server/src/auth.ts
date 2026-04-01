@@ -6,10 +6,11 @@ import { config } from "./config.js"
 const PUBLIC = new Set(["/health"])
 
 export async function authHook(req: FastifyRequest, reply: FastifyReply) {
-  // Auth disabled when AUTH_TOKEN is not set (local dev)
-  if (!config.authToken) return
-
   if (PUBLIC.has(req.routeOptions?.url ?? req.url)) return
+
+  if (!config.authToken) {
+    return reply.code(503).send({ error: "AUTH_TOKEN is not configured" })
+  }
 
   // WebSocket connections can't set headers — accept ?token= query param
   const query = req.query as Record<string, string>

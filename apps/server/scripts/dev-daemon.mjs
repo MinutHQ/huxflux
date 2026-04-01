@@ -25,10 +25,10 @@ const SRC_ENTRY = path.resolve(__dirname, "../src/index.ts")
 
 const DEV_ENV = {
   ...process.env,
+  NODE_ENV: "development",
   PORT: "3002",
   DB_PATH: path.join(DATA_DIR, "huxflux-dev.db"),
   WORKSPACES_BASE: path.join(DATA_DIR, "workspaces-dev"),
-  // AUTH_TOKEN intentionally absent — disables auth in dev
 }
 
 function getRunningPid() {

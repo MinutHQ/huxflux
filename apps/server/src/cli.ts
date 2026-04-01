@@ -74,6 +74,7 @@ function getRunningPid(): number | null {
 function serverEnv(cfg: Config): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    NODE_ENV: "production",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
     DB_PATH: path.join(DATA_DIR, "huxflux.db"),

@@ -137,10 +137,11 @@ echo "$LATEST_JSON" > "$LATEST_JSON_FILE"
 # ── Publish release ───────────────────────────────────────────────────────────
 
 echo "==> Creating release ${TAG} on ${RELEASES_REPO}..."
-GITHUB_TOKEN="" gh auth switch 2>/dev/null || true
+GITHUB_TOKEN="" gh auth switch --user AlexMartosP
 GITHUB_TOKEN="" gh release create "$TAG" \
   --repo "$RELEASES_REPO" \
   --title "Huxflux ${TAG}" \
+  --clobber \
   --notes "macOS release. The app is unsigned — right-click the .dmg → Open to bypass Gatekeeper." \
   "$ARM_DMG" \
   "$ARM_TAR" \

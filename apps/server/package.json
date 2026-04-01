@@ -17,7 +17,7 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "NODE_ENV=development tsx watch src/index.ts",
     "dev:start": "node scripts/dev-daemon.mjs start",
     "dev:stop": "node scripts/dev-daemon.mjs stop",
     "dev:logs": "node scripts/dev-daemon.mjs logs",

@@ -35,7 +35,7 @@ app.addHook("preHandler", authHook)
 registerAuditLog(app)
 
 if (!config.authToken) {
-  console.warn("\n⚠  AUTH_TOKEN not set — running without authentication (dev mode)\n")
+  console.error("\n✖  AUTH_TOKEN is not set. All API requests will be rejected.\n  Set AUTH_TOKEN in your .env file.\n")
 }
 
 // WebSocket endpoint — clients subscribe to agent events here
@@ -90,7 +90,10 @@ if (!boundPort) {
 
 startPoller()
 console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
-console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws\n`)
+console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws`)
+if (config.authToken) {
+  console.log(`\n  Connect: http://localhost:${boundPort}?token=${config.authToken}\n`)
+}
 if (boundPort !== config.port) {
   console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)
 }

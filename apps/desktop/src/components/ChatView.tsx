@@ -153,13 +153,13 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
 
 // ── Tool calls accordion ──────────────────────────────────────────────────────
 
-function ToolCallsAccordion({ calls, hasContent }: { calls: ToolCall[]; hasContent: boolean }) {
-  const [open, setOpen] = useState(!hasContent)
+function ToolCallsAccordion({ calls, hasContent, isStreaming }: { calls: ToolCall[]; hasContent: boolean; isStreaming?: boolean }) {
+  const [open, setOpen] = useState(true)
 
-  // Auto-collapse when content arrives
+  // Collapse only when the message is fully done (content arrived, no longer streaming)
   useEffect(() => {
-    if (hasContent) setOpen(false)
-  }, [hasContent])
+    if (hasContent && !isStreaming) setOpen(false)
+  }, [hasContent, isStreaming])
 
   const distinctTools = [...new Set(calls.map((c) => c.tool))]
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
@@ -267,7 +267,7 @@ interface TeamAgent {
   result?: string
 }
 
-function extractTeamAgents(messages: Message[]): TeamAgent[] {
+function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgent[] {
   // Only show agents from the latest message that has Agent tool calls
   // so a new team supersedes the old one
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -319,7 +319,7 @@ function extractTeamAgents(messages: Message[]): TeamAgent[] {
         description,
         prompt,
         name,
-        status: (tc.result != null && tc.result !== "") ? "done" as const : "running" as const,
+        status: (!isStreaming || (tc.result != null && tc.result !== "")) ? "done" as const : "running" as const,
         subCalls: combinedSubCalls.length > 0 ? combinedSubCalls : undefined,
         result: tc.result,
       }
@@ -367,7 +367,7 @@ function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   )
 }
 
-function TeamAgentBar({ agents }: { agents: TeamAgent[] }) {
+function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreaming?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [dismissed, setDismissed] = useState(false)
@@ -394,55 +394,61 @@ function TeamAgentBar({ agents }: { agents: TeamAgent[] }) {
   return (
     <div className="border-t border-border bg-card/50 shrink-0">
       {/* Tab bar */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border/60 overflow-x-auto">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
-        >
-          <IconUsers size={13} className="text-muted-foreground/50" />
-          <span>Team</span>
-          <span className="text-muted-foreground/40 font-mono">
-            {runningCount > 0 && `${runningCount} running`}
-            {runningCount > 0 && doneCount > 0 && ", "}
-            {doneCount > 0 && `${doneCount} done`}
-          </span>
-          <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
-        </button>
-        <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
-        {agents.map((agent) => {
-          const isActive = agent.id === selected.id
-          return (
+      <div className="border-b border-border/60">
+        <div className="max-w-3xl mx-auto px-5">
+          <div className="flex items-center gap-1 py-1.5 overflow-x-auto">
             <button
-              key={agent.id}
-              onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
-                isActive
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
+              onClick={() => setCollapsed(!collapsed)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
             >
-              {agent.status === "running" ? (
-                <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
-              ) : (
-                <IconCheck size={11} className="text-emerald-400 shrink-0" />
-              )}
-              <span className="max-w-[140px] truncate">{agent.description}</span>
+              <IconUsers size={13} className="text-muted-foreground/50" />
+              <span>Team</span>
+              <span className="text-muted-foreground/40 font-mono">
+                {runningCount > 0 && `${runningCount} running`}
+                {runningCount > 0 && doneCount > 0 && ", "}
+                {doneCount > 0 && `${doneCount} done`}
+              </span>
+              <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
             </button>
-          )
-        })}
-        <button
-          onClick={() => setDismissed(true)}
-          className="ml-auto p-1 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
-          title="Close team panel"
-        >
-          <IconX size={12} />
-        </button>
+            <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
+            {agents.map((agent) => {
+              const isActive = agent.id === selected.id
+              return (
+                <button
+                  key={agent.id}
+                  onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
+                    isActive
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  )}
+                >
+                  {agent.status === "running" && isStreaming ? (
+                    <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
+                  ) : (
+                    <IconCheck size={11} className="text-emerald-400 shrink-0" />
+                  )}
+                  <span className="max-w-[140px] truncate">{agent.description}</span>
+                </button>
+              )
+            })}
+            <button
+              onClick={() => setDismissed(true)}
+              className="ml-auto p-1 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+              title="Close team panel"
+            >
+              <IconX size={12} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Output panel */}
       {!collapsed && selected && (
-        <TeamAgentOutput selected={selected} />
+        <div className="max-w-3xl mx-auto px-5">
+          <TeamAgentOutput selected={selected} />
+        </div>
       )}
     </div>
   )
@@ -518,7 +524,7 @@ function TypingBubble() {
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
   const isUser = msg.role === "user"
   const isEmpty = !msg.content && !msg.thinking && (!msg.toolCalls || msg.toolCalls.length === 0)
 
@@ -572,7 +578,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 
       {/* Tool calls */}
       {msg.toolCalls && msg.toolCalls.length > 0 && (
-        <ToolCallsAccordion calls={msg.toolCalls} hasContent={!!msg.content} />
+        <ToolCallsAccordion calls={msg.toolCalls} hasContent={!!msg.content} isStreaming={isStreaming} />
       )}
 
       {/* Content */}
@@ -711,7 +717,7 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
         <Button
           variant="ghost"
           size="sm"
-          className="h-5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+          className="h-5 px-2 text-[11px] text-muted-foreground hover:text-foreground rounded-md"
           onClick={handleMarkReady}
           disabled={marking}
         >
@@ -1271,7 +1277,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           )}
         </div>
       ) : (
-        <>
+        <div className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 min-h-0">
             {agent.messages.length === 0 && !isStreaming ? (
               <CreationView agent={agent} />
@@ -1279,10 +1285,17 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
               <ScrollArea className="h-full">
                 <div className="px-5 py-6 max-w-3xl mx-auto">
                   <StatsBar messages={agent.messages} />
-                  {agent.messages.map((msg) => (
-                    <MessageBubble key={msg.id} msg={msg} />
+                  {agent.messages.map((msg, i) => (
+                    <MessageBubble key={msg.id} msg={msg} isStreaming={isStreaming && i === agent.messages.length - 1} />
                   ))}
                   {isStreaming && <TypingBubble />}
+                  {queuedMessage !== null && (
+                    <div className="mb-5 opacity-40">
+                      <div className="bg-card border border-border rounded-xl px-5 py-4">
+                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{queuedMessage}</p>
+                      </div>
+                    </div>
+                  )}
                   <div ref={bottomRef} />
                 </div>
               </ScrollArea>
@@ -1290,7 +1303,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           </div>
 
           {/* Team agent bar */}
-          <TeamAgentBar agents={extractTeamAgents(agent.messages)} />
+          <TeamAgentBar agents={extractTeamAgents(agent.messages, isStreaming)} isStreaming={isStreaming} />
 
           {/* Input */}
           <div className="px-5 py-4 border-t border-border shrink-0">
@@ -1322,18 +1335,6 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-              {queuedMessage !== null && (
-                <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                  <span>Message queued — will send when agent finishes</span>
-                  <button
-                    onClick={() => setQueuedMessage(null)}
-                    className="ml-auto text-amber-400/60 hover:text-amber-400 transition-colors"
-                  >
-                    <IconX size={11} />
-                  </button>
                 </div>
               )}
               <div className={cn(
@@ -1550,7 +1551,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

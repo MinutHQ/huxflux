@@ -11,6 +11,7 @@ import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
 import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer } from "@hive/shared"
+import { useQueryClient } from "@tanstack/react-query"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
@@ -57,6 +58,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey)
   }, [toggleSidebar])
 
+  const queryClient = useQueryClient()
   const { servers, activeId, refresh: refreshServers } = useServers()
   const { data: agents = [] } = useAgents()
 
@@ -122,7 +124,11 @@ export default function App() {
     return (
       <>
         <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
-        <Onboarding onComplete={() => { refreshServers(); setOnboardingDone(true) }} />
+        <Onboarding onComplete={() => {
+          refreshServers()
+          setOnboardingDone(true)
+          void queryClient.invalidateQueries()
+        }} />
       </>
     )
   }

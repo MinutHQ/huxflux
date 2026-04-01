@@ -883,6 +883,25 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
+
+  // Callback ref: attaches the scroll listener as soon as the element mounts
+  // (useEffect with [] misses it when the element is initially absent)
+  const setScrollContainer = useCallback((el: HTMLDivElement | null) => {
+    const prev = scrollContainerRef.current
+    if (prev) {
+      const handler = (prev as HTMLDivElement & { _scrollHandler?: () => void })._scrollHandler
+      if (handler) prev.removeEventListener("scroll", handler)
+    }
+    ;(scrollContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    if (el) {
+      const onScroll = () => {
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+        setIsAtBottom(dist < 80)
+      }
+      ;(el as HTMLDivElement & { _scrollHandler?: () => void })._scrollHandler = onScroll
+      el.addEventListener("scroll", onScroll, { passive: true })
+    }
+  }, [])
   const queryClient = useQueryClient()
   const [input, setInput] = useState("")
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
@@ -1084,18 +1103,6 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     setIsAtBottom(true)
     bottomRef.current?.scrollIntoView({ behavior: "instant" })
   }, [agent.id])
-
-  // Track whether the user is near the bottom of the scroll container
-  useEffect(() => {
-    const el = scrollContainerRef.current
-    if (!el) return
-    const onScroll = () => {
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      setIsAtBottom(distFromBottom < 80)
-    }
-    el.addEventListener("scroll", onScroll, { passive: true })
-    return () => el.removeEventListener("scroll", onScroll)
-  }, [])
 
   // Auto-scroll to bottom when streaming, but only if the user is already at the bottom
   useEffect(() => {
@@ -1333,7 +1340,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           {agent.messages.length === 0 && !uiIsStreaming ? (
             <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
           ) : (
-            <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto relative">
+            <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto relative">
               <div className="px-10 py-8">
                 <StatsBar messages={agent.messages} />
                 {agent.messages.map((msg, i) => (

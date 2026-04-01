@@ -2,7 +2,6 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useAgents, useRepos } from "@hive/shared"
-import { ScrollArea } from "@hive/ui"
 import { Button } from "@hive/ui"
 import { cn } from "@hive/ui"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
@@ -1283,30 +1282,28 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
           )}
         </div>
       ) : (
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 min-h-0">
-            {agent.messages.length === 0 && !uiIsStreaming ? (
-              <CreationView agent={agent} />
-            ) : (
-              <ScrollArea className="h-full">
-                <div className="px-5 py-6">
-                  <StatsBar messages={agent.messages} />
-                  {agent.messages.map((msg, i) => (
-                    <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
-                  ))}
-                  {uiIsStreaming && <TypingBubble />}
-                  {queuedMessage !== null && (
-                    <div className="mb-5 opacity-40">
-                      <div className="bg-card border border-border rounded-xl px-5 py-4">
-                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{queuedMessage}</p>
-                      </div>
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {agent.messages.length === 0 && !uiIsStreaming ? (
+            <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
+          ) : (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="px-5 py-6">
+                <StatsBar messages={agent.messages} />
+                {agent.messages.map((msg, i) => (
+                  <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
+                ))}
+                {uiIsStreaming && <TypingBubble />}
+                {queuedMessage !== null && (
+                  <div className="mb-5 opacity-40">
+                    <div className="bg-card border border-border rounded-xl px-5 py-4">
+                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{queuedMessage}</p>
                     </div>
-                  )}
-                  <div ref={bottomRef} />
-                </div>
-              </ScrollArea>
-            )}
-          </div>
+                  </div>
+                )}
+                <div ref={bottomRef} />
+              </div>
+            </div>
+          )}
 
           {/* Team agent bar */}
           <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />

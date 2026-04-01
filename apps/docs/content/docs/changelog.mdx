@@ -1,0 +1,102 @@
+---
+title: Changelog
+description: What's new in Huxflux.
+---
+
+## Unreleased
+
+### Mobile
+
+- Simplified new-agent flow to single step — tap a repo to instantly create an agent
+
+### Desktop
+
+- Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
+- Native macOS traffic lights and rounded window corners
+- Multiple terminals per agent — open and switch between terminal sessions with a tab bar
+
+### Web
+
+- Streaming indicator now restores correctly when navigating back to an agent that is still running
+- Sidebar is now resizable and collapsible via `⌘B`
+- Feedback button and PR status hidden when server has no GitHub token configured
+
+### Server
+
+- Each chat tab now resumes its own Claude session via `--resume <sessionId>`
+- GitHub-dependent UI (PR status, feedback) only shown when `GITHUB_TOKEN` is configured
+
+---
+
+## 0.2.3 — 2026-04-01
+
+### Server
+
+- Replaced `better-sqlite3` with Node.js built-in `node:sqlite` — no native bindings, works on any Node 22.5+ install
+- Fixed agent creation and DB queries returning `undefined`
+- Fixed poller `rows is not iterable` error
+- Dev mode uses port 3002 to avoid conflicting with a running prod server
+- `huxflux open` opens the hosted web app at `https://huxflux.netlify.app`
+
+### Web
+
+- Repo name shown in ChatView header alongside branch
+- Fixed infinite render loop in workspace tab sync
+- Web app auto-connects when opened via `huxflux open` (`?connect=` URL param)
+- Hosted separately on Netlify — server package no longer bundles the web UI
+
+---
+
+## 2026-04-01
+
+### Mobile
+
+- New `apps/mobile` — Expo app for iOS and Android
+- Connect to any Hive server by entering its URL
+- Agent list with live WebSocket updates and unread badges
+- Chat screen with streaming, tool call indicators, and optimistic sends
+- File changes list, diff viewer, PR status screen
+- Create agent wizard: pick repo, set title/branch/model
+
+### Shared package
+
+- New `packages/shared` extracted from web app — types, API client, WebSocket client, hooks, diff parser
+- Platform-agnostic storage via `StorageAdapter` — web uses `localStorage`, mobile uses AsyncStorage
+
+### Web
+
+- Base branch selector replaced with a searchable dropdown populated from GitHub branches
+- "Re-request review" button for dismissed approvals
+
+---
+
+## 2026-03-31
+
+### GitHub PR integration
+
+- Auto-detect PRs for an agent's branch via background polling (every 60s)
+- Sync agent status from PR state: draft → in-progress, open → in-review, merged → done
+- PR status pill in ChatView header with action buttons
+- SSH URL alias support for GitHub remotes
+
+### Pull request tab
+
+- New PR tab in the file changes panel
+- Shows title, status, reviews, CI checks, and review threads
+- "Add to chat" on unresolved comments
+
+### Chat
+
+- Write follow-up messages while agent is streaming — queued and auto-sent on finish
+- Rename agent directly in the tab bar
+
+### Configuration
+
+- Branch prefix configurable per repo in Settings
+- Per-agent base branch override
+- Worktrees branch from the configured remote tracking branch
+
+### Other
+
+- Server tries ports 3001–3010 on startup
+- Stop agent button kills the Claude subprocess via SIGTERM

@@ -32,6 +32,7 @@ export const agents = sqliteTable("agents", {
   baseBranch: text("base_branch"), // optional per-agent override of repo.branchFrom
   parentAgentId: text("parent_agent_id"), // if set, this is a child tab — hidden from sidebar
   sessionId: text("session_id"), // Claude Code session ID — used for --resume on follow-up messages
+  noWorktree: integer("no_worktree"), // 1 = run directly in repo.path, no git worktree
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

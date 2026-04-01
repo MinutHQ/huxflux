@@ -78,7 +78,7 @@ export async function messagesRoutes(app: FastifyInstance) {
     if (agent.repoId) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (repo) {
-        worktreePath = path.join(repo.workspacesPath, agent.location)
+        worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       }
     }
 

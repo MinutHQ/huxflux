@@ -53,6 +53,7 @@ export const api = {
     location?: string
     description?: string
     shareWorktreeWith?: string
+    noWorktree?: boolean
   }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (
     id: string,

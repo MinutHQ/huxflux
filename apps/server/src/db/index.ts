@@ -138,6 +138,12 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agents ADD COLUMN session_id TEXT;
     `,
   },
+  {
+    version: 8,
+    sql: `
+      ALTER TABLE agents ADD COLUMN no_worktree INTEGER;
+    `,
+  },
 ]
 
 export function runMigrations() {

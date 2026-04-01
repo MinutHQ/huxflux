@@ -108,9 +108,10 @@ export async function agentsRoutes(app: FastifyInstance) {
       location?: string
       description?: string
       shareWorktreeWith?: string // agent ID to share worktree with
+      noWorktree?: boolean
     }
   }>("/api/agents", async (req, reply) => {
-    const { repoId, title, branch, model = "Sonnet 4.6", location, description, shareWorktreeWith } = req.body
+    const { repoId, title, branch, model = "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree } = req.body
     const now = new Date().toISOString()
     const id = uuid()
 
@@ -138,12 +139,13 @@ export async function agentsRoutes(app: FastifyInstance) {
       location: agentLocation,
       description: description ?? null,
       parentAgentId: shareWorktreeWith ?? null,
+      noWorktree: noWorktree ? 1 : null,
       createdAt: now,
       updatedAt: now,
     })
 
     // If a repo is linked and not sharing an existing worktree, create a git worktree
-    if (agentRepoId && !skipWorktreeCreation) {
+    if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
@@ -214,7 +216,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       await db.delete(agents).where(eq(agents.id, child.id))
     }
 
-    if (agent.repoId) {
+    if (agent.repoId && !agent.noWorktree) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agent.location)

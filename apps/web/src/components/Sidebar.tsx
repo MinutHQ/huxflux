@@ -142,6 +142,7 @@ function NewAgentPopover({
   anchorRef: React.RefObject<HTMLButtonElement | null>
 }) {
   const [creating, setCreating] = useState<string | null>(null)
+  const [direct, setDirect] = useState(false)
   const { data: repos = [] } = useRepos()
   const queryClient = useQueryClient()
 
@@ -160,6 +161,7 @@ function NewAgentPopover({
         branch,
         model: "claude-sonnet-4-6",
         repoId,
+        noWorktree: direct || undefined,
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       onCreated(agent.id)
@@ -190,36 +192,58 @@ function NewAgentPopover({
             No repositories yet.<br />Add one in Settings first.
           </div>
         ) : (
-          <div className="p-1 space-y-0.5">
-            {repos.map((r, i) => {
-              const isCreating = creating === r.id
-              const shortcut = i < 9 ? i + 1 : null
-              return (
-                <button
-                  key={r.id}
-                  autoFocus={i === 0}
-                  onClick={() => handleSelectRepo(r.id)}
-                  disabled={!!creating}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
-                    isCreating ? "bg-accent text-foreground" : "hover:bg-accent/60 text-foreground"
-                  )}
-                >
-                  <span className="w-5 h-5 rounded bg-muted border border-border text-[10px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
-                    {r.name[0].toUpperCase()}
-                  </span>
-                  <span className="text-[12px] font-medium flex-1 truncate">
-                    {isCreating ? "Creating…" : r.name}
-                  </span>
-                  {shortcut && !creating && (
-                    <span className="text-[11px] text-muted-foreground/40 font-mono tabular-nums shrink-0">
-                      {shortcut}
+          <>
+            <div className="flex items-center gap-1 p-1 border-b border-border">
+              <button
+                onClick={() => setDirect(false)}
+                className={cn(
+                  "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
+                  !direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Worktree
+              </button>
+              <button
+                onClick={() => setDirect(true)}
+                className={cn(
+                  "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
+                  direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Direct
+              </button>
+            </div>
+            <div className="p-1 space-y-0.5">
+              {repos.map((r, i) => {
+                const isCreating = creating === r.id
+                const shortcut = i < 9 ? i + 1 : null
+                return (
+                  <button
+                    key={r.id}
+                    autoFocus={i === 0}
+                    onClick={() => handleSelectRepo(r.id)}
+                    disabled={!!creating}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
+                      isCreating ? "bg-accent text-foreground" : "hover:bg-accent/60 text-foreground"
+                    )}
+                  >
+                    <span className="w-5 h-5 rounded bg-muted border border-border text-[10px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
+                      {r.name[0].toUpperCase()}
                     </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                    <span className="text-[12px] font-medium flex-1 truncate">
+                      {isCreating ? "Creating…" : r.name}
+                    </span>
+                    {shortcut && !creating && (
+                      <span className="text-[11px] text-muted-foreground/40 font-mono tabular-nums shrink-0">
+                        {shortcut}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
     </>,

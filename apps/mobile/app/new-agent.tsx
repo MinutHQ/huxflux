@@ -30,6 +30,7 @@ export default function NewAgentScreen() {
   const queryClient = useQueryClient()
   const { data: repos = [], isLoading } = useRepos()
   const [creating, setCreating] = useState<string | null>(null)
+  const [direct, setDirect] = useState(false)
 
   async function handleSelectRepo(repo: Repo) {
     if (creating) return
@@ -43,6 +44,7 @@ export default function NewAgentScreen() {
         title: name,
         branch,
         model: "claude-sonnet-4-6",
+        noWorktree: direct || undefined,
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       router.replace(`/agent/${agent.id}`)
@@ -54,7 +56,21 @@ export default function NewAgentScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
+      <View style={{ flexDirection: "row", margin: 12, backgroundColor: c.surface, borderRadius: 8, padding: 2 }}>
+        <TouchableOpacity
+          onPress={() => setDirect(false)}
+          style={{ flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: "center", backgroundColor: !direct ? c.bg : "transparent" }}
+        >
+          <Text style={{ color: !direct ? c.fg : c.fgSub, fontSize: 13, fontWeight: "500" }}>Worktree</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setDirect(true)}
+          style={{ flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: "center", backgroundColor: direct ? c.bg : "transparent" }}
+        >
+          <Text style={{ color: direct ? c.fg : c.fgSub, fontSize: 13, fontWeight: "500" }}>Direct</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, paddingHorizontal: 16, paddingBottom: 8 }}>
         Select Repository
       </Text>
       {isLoading ? (

@@ -30,7 +30,12 @@ export function useServers() {
   const update = useCallback(
     (id: string, patch: Partial<Pick<HiveServer, "name" | "url" | "token">>) => {
       updateServer(id, patch)
-      refresh()
+      // Reload if connection details changed so WS reconnects with new settings
+      if (patch.url !== undefined || patch.token !== undefined) {
+        window.location.reload()
+      } else {
+        refresh()
+      }
     },
     [refresh]
   )
@@ -38,9 +43,9 @@ export function useServers() {
   const remove = useCallback(
     (id: string) => {
       removeServer(id)
-      refresh()
+      window.location.reload()
     },
-    [refresh]
+    []
   )
 
   const setActive = useCallback(

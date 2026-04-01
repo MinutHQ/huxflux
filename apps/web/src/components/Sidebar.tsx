@@ -375,7 +375,7 @@ function AgentRow({
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const modelColor = modelColors[agent.model] ?? "bg-muted text-muted-foreground"
-  const initials = (agent.location ?? agent.title)[0].toUpperCase()
+  const initials = agent.title[0].toUpperCase()
   const isCancelled = agent.status === "cancelled"
   const shortcutNum = index < 9 ? index + 1 : null
   const [editing, setEditing] = useState(false)

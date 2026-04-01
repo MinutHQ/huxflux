@@ -930,7 +930,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Workspaces</span>
-                <div className="flex items-center gap-0.5">
+                <div className="flex items-center gap-1">
                   <Button ref={filterBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowFilter(!showFilter)}>
                     <IconFilter size={13} />
                   </Button>

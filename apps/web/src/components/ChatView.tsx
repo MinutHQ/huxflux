@@ -263,6 +263,7 @@ interface TeamAgent {
   name?: string
   status: "running" | "done"
   subCalls?: ToolCall[]
+  outputText?: string
   result?: string
 }
 
@@ -318,8 +319,9 @@ function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgen
         description,
         prompt,
         name,
-        status: (!isStreaming || (tc.result != null && tc.result !== "")) ? "done" as const : "running" as const,
+        status: (!isStreaming || tc.result != null) ? "done" as const : "running" as const,
         subCalls: combinedSubCalls.length > 0 ? combinedSubCalls : undefined,
+        outputText: tc.outputText,
         result: tc.result,
       }
     })
@@ -330,38 +332,48 @@ function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgen
 function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const hasSubCalls = selected.subCalls && selected.subCalls.length > 0
+  const hasOutput = selected.outputText && selected.outputText.trim()
+  const hasResult = selected.result && selected.result.trim()
 
   // Auto-scroll when content changes
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [selected.subCalls?.length, selected.result])
+  }, [selected.subCalls?.length, selected.outputText, selected.result])
 
   return (
-    <div ref={scrollRef} className="max-h-48 overflow-y-auto px-4 py-3">
+    <div ref={scrollRef} className="max-h-56 overflow-y-auto px-4 py-3 space-y-2">
       {/* Task description */}
       {selected.prompt && (
-        <p className="text-[11px] text-muted-foreground/60 leading-relaxed mb-2 line-clamp-3">{selected.prompt}</p>
+        <p className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-2">{selected.prompt}</p>
       )}
 
-      {/* Activity: sub-calls + SendMessage interactions */}
+      {/* Text output streamed by the sub-agent */}
+      {hasOutput && (
+        <pre className="text-[11px] font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap">{selected.outputText}</pre>
+      )}
+
+      {/* Tool calls made by the sub-agent */}
       {hasSubCalls && (
-        <div className="space-y-0.5 mb-2">
+        <div className="space-y-0.5">
           {selected.subCalls!.map((sub) => (
             <ToolCallRow key={sub.id} call={sub} />
           ))}
         </div>
       )}
 
-      {/* Result */}
-      {selected.result && selected.result.trim() ? (
+      {/* Final result */}
+      {hasResult && !hasOutput && (
         <pre className="text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre-wrap">{selected.result}</pre>
-      ) : selected.status === "running" && !hasSubCalls ? (
+      )}
+
+      {/* Idle placeholder */}
+      {selected.status === "running" && !hasSubCalls && !hasOutput && (
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50">
           <IconLoader2 size={12} className="animate-spin" />
           <span>Running in background…</span>
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

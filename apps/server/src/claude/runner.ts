@@ -194,10 +194,6 @@ async function persistAssistantMessage(
       .where(eq(toolCallsTable.id, tc.id))
   }
 
-  // Persist file changes before emitting message:done so that when the
-  // client invalidates its query cache the DB already has fresh data.
-  await refreshFileChanges(agentId, worktreePath, branchFrom)
-
   const builtMessage: Message = {
     id: messageId,
     role: "assistant",
@@ -218,7 +214,13 @@ async function persistAssistantMessage(
     })),
   }
 
+  // Emit message:done immediately after the message is persisted with durationMs
+  // set — this clears the client loading state regardless of what happens next.
   emit(agentId, { type: "message:done", agentId, messageId, message: builtMessage })
+
+  // Refresh file changes after emitting so the client query cache is warm
+  // by the time it re-fetches. Failures here don't affect the done signal.
+  await refreshFileChanges(agentId, worktreePath, branchFrom)
 }
 
 // ── Main runner ─────────────────────────────────────────────────────────────

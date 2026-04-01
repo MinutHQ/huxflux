@@ -184,23 +184,33 @@ export function useAgent(id: string | null) {
 
     if (event.type === "subagent:event") {
       const subEvent = event.event as Record<string, unknown>
-      // Convert sub-agent events into subCalls on the matching Agent tool call
+      // Convert sub-agent events into subCalls / outputText on the matching Agent tool call
       if (subEvent.type === "assistant" && subEvent.message) {
         const msg = subEvent.message as { content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }> }
+        let textChunk = ""
+        const newSubCalls: ToolCall[] = []
         for (const block of msg.content) {
-          if (block.type === "tool_use" && block.id && block.name) {
-            const subCall: ToolCall = { id: block.id, tool: block.name, args: block.input ? JSON.stringify(block.input) : undefined }
-            updateMessages((msgs) =>
-              msgs.map((m) => ({
-                ...m,
-                toolCalls: (m.toolCalls ?? []).map((tc) =>
-                  (tc.id === event.toolUseId || tc.tool === "Agent")
-                    ? { ...tc, subCalls: [...(tc.subCalls ?? []), subCall] }
-                    : tc
-                ),
-              }))
-            )
+          if (block.type === "text" && block.text) {
+            textChunk += block.text
+          } else if (block.type === "tool_use" && block.id && block.name) {
+            newSubCalls.push({ id: block.id, tool: block.name, args: block.input ? JSON.stringify(block.input) : undefined })
           }
+        }
+        if (textChunk || newSubCalls.length > 0) {
+          updateMessages((msgs) =>
+            msgs.map((m) => ({
+              ...m,
+              toolCalls: (m.toolCalls ?? []).map((tc) =>
+                (tc.id === event.toolUseId || tc.tool === "Agent")
+                  ? {
+                      ...tc,
+                      subCalls: newSubCalls.length > 0 ? [...(tc.subCalls ?? []), ...newSubCalls] : tc.subCalls,
+                      outputText: textChunk ? ((tc.outputText ?? "") + textChunk) : tc.outputText,
+                    }
+                  : tc
+              ),
+            }))
+          )
         }
       } else if (subEvent.type === "tool_result" && subEvent.tool_use_id) {
         const subToolId = subEvent.tool_use_id as string

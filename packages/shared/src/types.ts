@@ -80,6 +80,7 @@ export interface ToolCall {
   result?: string
   duration?: string
   subCalls?: ToolCall[]
+  outputText?: string  // text output streamed by a sub-agent
 }
 
 export interface Message {

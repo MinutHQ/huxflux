@@ -1,0 +1,27 @@
+{
+  "name": "@hive/ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "react": "^19.2.4",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@radix-ui/react-popover": "^1.1.15",
+    "@tabler/icons-react": "^3.41.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "radix-ui": "^1.4.3",
+    "react-resizable-panels": "^4.8.0",
+    "tailwind-merge": "^3.5.0"
+  }
+}

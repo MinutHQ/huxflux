@@ -8,7 +8,9 @@
     "dev:stop": "pnpm --filter @alexmartosp/huxflux dev:stop",
     "dev:logs": "pnpm --filter @alexmartosp/huxflux dev:logs",
     "dev:status": "pnpm --filter @alexmartosp/huxflux dev:status",
-    "build": "pnpm --filter huxflux-web build && pnpm --filter @alexmartosp/huxflux build"
+    "dev:desktop": "pnpm --filter huxflux-desktop dev",
+    "build": "pnpm --filter huxflux-web build && pnpm --filter @alexmartosp/huxflux build",
+    "build:desktop": "pnpm --filter huxflux-desktop build"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

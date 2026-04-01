@@ -1,5 +1,7 @@
 import { DatabaseSync } from "node:sqlite"
-import { drizzle } from "drizzle-orm/sqlite-proxy"
+import { BetterSQLiteSession } from "drizzle-orm/better-sqlite3/session"
+import { BaseSQLiteDatabase, SQLiteSyncDialect } from "drizzle-orm/sqlite-core"
+import { extractTablesRelationalConfig, createTableRelationsHelpers } from "drizzle-orm/relations"
 import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
@@ -18,51 +20,74 @@ if (existsSync(config.dbPath)) {
       : Infinity
     const ONE_DAY = 24 * 60 * 60 * 1000
     if (bakAge > ONE_DAY) {
-      // Rotate: .bak → .bak2, then snapshot current DB → .bak
       if (existsSync(bak)) copyFileSync(bak, config.dbPath + ".bak2")
       copyFileSync(config.dbPath, bak)
     }
   } catch { /* non-fatal */ }
 }
 
-// Thin shim — makes node:sqlite's DatabaseSync look like better-sqlite3
-// so Drizzle's better-sqlite3 adapter works without native bindings.
 const raw = new DatabaseSync(config.dbPath)
 
-const sqlite = {
-  prepare: (sql: string) => raw.prepare(sql),
-  exec: (sql: string) => { raw.exec(sql) },
-  pragma: (text: string) => { raw.exec(`PRAGMA ${text}`) },
-  transaction: <T>(fn: (...args: unknown[]) => T) => (...args: unknown[]): T => {
-    raw.exec("BEGIN")
-    try {
-      const result = fn(...args)
-      raw.exec("COMMIT")
-      return result
-    } catch (err) {
-      try { raw.exec("ROLLBACK") } catch { /* ignore */ }
-      throw err
-    }
-  },
+// Shim: makes node:sqlite's DatabaseSync look like better-sqlite3 so that
+// drizzle-orm/better-sqlite3/session works without native bindings.
+// All methods are typed as `any` because the better-sqlite3 interface isn't
+// exported by drizzle and node:sqlite has slightly different TS signatures.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function makeStmt(sql: string): any {
+  return {
+    run:     (...p: any[]) => (raw.prepare(sql) as any).run(...p),
+    get:     (...p: any[]) => (raw.prepare(sql) as any).get(...p),
+    all:     (...p: any[]) => (raw.prepare(sql) as any).all(...p),
+    iterate: (...p: any[]) => (raw.prepare(sql) as any).iterate(...p),
+    columns: () => raw.prepare(sql).columns(),
+    // raw() returns arrays instead of objects — used by drizzle for mapped queries
+    raw: (): any => ({
+      get: (...p: any[]) => { const s = raw.prepare(sql); s.setReturnArrays(true); return (s as any).get(...p) },
+      all: (...p: any[]) => { const s = raw.prepare(sql); s.setReturnArrays(true); return (s as any).all(...p) },
+    }),
+  }
 }
 
-// Enable WAL mode for better concurrent read performance
+const sqlite: any = {
+  prepare: makeStmt,
+  exec: (sql: string) => { raw.exec(sql) },
+  pragma: (text: string) => { raw.exec(`PRAGMA ${text}`) },
+  transaction: (fn: (...args: any[]) => any) => {
+    const execute = (...args: any[]) => {
+      raw.exec("BEGIN")
+      try {
+        const result = fn(...args)
+        raw.exec("COMMIT")
+        return result
+      } catch (err) {
+        try { raw.exec("ROLLBACK") } catch { /* ignore */ }
+        throw err
+      }
+    }
+    execute.deferred  = execute
+    execute.immediate = execute
+    execute.exclusive = execute
+    return execute
+  },
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 sqlite.pragma("journal_mode = WAL")
 sqlite.pragma("foreign_keys = ON")
 
-export const db = drizzle((sql, params, method) => {
-  const stmt = raw.prepare(sql)
-  if (method === "run") {
-    stmt.run(...(params as unknown[]))
-    return { rows: [] }
-  }
-  if (method === "get") {
-    const row = stmt.get(...(params as unknown[]))
-    return { rows: row ? Object.values(row as object) : [] }
-  }
-  const rows = stmt.all(...(params as unknown[])) as object[]
-  return { rows: rows.map((r) => Object.values(r)) }
-}, { schema })
+// Build schema config for relational queries
+const tablesConfig = extractTablesRelationalConfig(schema, createTableRelationsHelpers)
+const schemaConfig = {
+  fullSchema: schema,
+  schema: tablesConfig.tables,
+  tableNamesMap: tablesConfig.tableNamesMap,
+}
+
+const dialect = new SQLiteSyncDialect({})
+const session = new BetterSQLiteSession(sqlite, dialect, schemaConfig, {})
+// Typed as BetterSQLite3Database shape via BaseSQLiteDatabase<"sync", ...>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const db = new BaseSQLiteDatabase("sync", dialect, session, schemaConfig) as any
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //
@@ -203,7 +228,6 @@ const MIGRATIONS: Migration[] = [
 ]
 
 export function runMigrations() {
-  // Bootstrap the version tracker
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER NOT NULL

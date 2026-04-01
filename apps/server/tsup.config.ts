@@ -11,7 +11,7 @@ const sharedExternal = [
   /^@fastify/,
   /^fastify/,
   "dotenv",
-  "drizzle-orm",
+  /^drizzle-orm/,
   "@octokit/rest",
   "simple-git",
   "uuid",

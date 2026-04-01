@@ -22,27 +22,27 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
 
   // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const agentIds = new Set(agents.map(a => a.id))
-    setTabs(prev => {
-      const next = prev
-        .filter(tab => tab.isChild || agentIds.has(tab.agentId))
-        .map(tab => {
-          const a = agents.find(ag => ag.id === tab.agentId)
-          return a ? { ...tab, title: a.title } : tab
-        })
-      if (activeTabId && !next.some(t => t.agentId === activeTabId)) {
-        if (next.length > 0) {
-          setActiveTabId(next[next.length - 1].agentId)
-        } else {
-          setActiveTabId(null)
-        }
-        setOpenFileTab(null)
-        setPendingComments([])
-      }
-      return next
-    })
-  }, [agents, activeTabId])
+    const next = tabs
+      .filter(tab => tab.isChild || agentIds.has(tab.agentId))
+      .map(tab => {
+        const a = agents.find(ag => ag.id === tab.agentId)
+        return a ? { ...tab, title: a.title } : tab
+      })
+    // Guard: only update state when something actually changed.
+    // `agents` can be a new array reference every render (default `[]`),
+    // so always calling setTabs would cause an infinite loop.
+    const tabsChanged = next.length !== tabs.length ||
+      next.some((t, i) => t.agentId !== tabs[i].agentId || t.title !== tabs[i].title || t.isChild !== tabs[i].isChild)
+    if (tabsChanged) setTabs(next)
+    if (activeTabId && !next.some(t => t.agentId === activeTabId)) {
+      setActiveTabId(next.length > 0 ? next[next.length - 1].agentId : null)
+      setOpenFileTab(null)
+      setPendingComments([])
+    }
+  }, [agents])
 
   function selectAgent(id: string) {
     const a = agents.find(ag => ag.id === id)

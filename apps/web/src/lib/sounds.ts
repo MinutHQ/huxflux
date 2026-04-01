@@ -16,7 +16,8 @@ function ctx(): AudioContext {
 
 function play(fn: (ac: AudioContext) => void) {
   try {
-    fn(ctx())
+    const ac = ctx()
+    ac.resume().then(() => fn(ac)).catch(() => {})
   } catch {
     // AudioContext unavailable — silent fail
   }

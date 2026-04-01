@@ -323,6 +323,12 @@ function cmdStart() {
 
   fs.writeFileSync(PID_FILE, String(child.pid))
 
+  // Wait for the server to bind and write its port file (up to 5s)
+  const deadline = Date.now() + 5000
+  while (!fs.existsSync(PORT_FILE) && Date.now() < deadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
+  }
+
   console.log(`\nhuxflux started\n`)
   printConnectInfo(cfg, child.pid)
   console.log(`\n  huxflux logs   — tail the server log`)

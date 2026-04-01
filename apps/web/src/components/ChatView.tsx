@@ -395,7 +395,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
     <div className="border-t border-border bg-card/50 shrink-0">
       {/* Tab bar */}
       <div className="border-b border-border/60">
-        <div className="mx-auto px-5">
+        <div className="px-5">
           <div className="flex items-center gap-1 py-1.5 overflow-x-auto">
             <button
               onClick={() => setCollapsed(!collapsed)}
@@ -446,7 +446,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
 
       {/* Output panel */}
       {!collapsed && selected && (
-        <div className="mx-auto px-5">
+        <div className="px-5">
           <TeamAgentOutput selected={selected} />
         </div>
       )}
@@ -546,8 +546,8 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
       : (attachmentMatch ? attachmentMatch[2] : msg.content).replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
 
     return (
-      <div className="mb-5">
-        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
+      <div className="mb-5 flex justify-end">
+        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3 max-w-[75%]">
           {files.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {files.map((f) => (
@@ -1289,7 +1289,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
               <CreationView agent={agent} />
             ) : (
               <ScrollArea className="h-full">
-                <div className="px-5 py-6 mx-auto">
+                <div className="px-5 py-6">
                   <StatsBar messages={agent.messages} />
                   {agent.messages.map((msg, i) => (
                     <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
@@ -1313,7 +1313,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
 
           {/* Input */}
           <div className="px-5 py-4 border-t border-border shrink-0">
-            <div className="mx-auto relative">
+            <div className="relative">
               {/* Slash command picker */}
               {slashQuery !== null && filteredCommands.length > 0 && (
                 <div className="absolute bottom-full mb-2 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-10">

@@ -1359,25 +1359,22 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
             </div>
           )}
 
-          {/* Scroll to bottom button — outside scroll container so it doesn't scroll away */}
-          {!isAtBottom && agent.messages.length > 0 && (
-            <button
-              onClick={() => {
-                setIsAtBottom(true)
-                bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-              }}
-              className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
-            >
-              <IconChevronDown size={13} />
-              <span>Scroll to bottom</span>
-            </button>
-          )}
-
-          {/* Team agent bar */}
-          <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
-
-          {/* Input */}
-          <div className="px-5 py-4 border-t border-border shrink-0">
+          {/* Team agent bar + input — wrapped so button can float above them */}
+          <div className="shrink-0 relative">
+            {!isAtBottom && agent.messages.length > 0 && (
+              <button
+                onClick={() => {
+                  setIsAtBottom(true)
+                  bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+                }}
+                className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
+              >
+                <IconChevronDown size={13} />
+                <span>Scroll to bottom</span>
+              </button>
+            )}
+            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
+            <div className="px-5 py-4 border-t border-border">
             <div className="relative">
               {/* Slash command picker */}
               {slashQuery !== null && filteredCommands.length > 0 && (
@@ -1621,6 +1618,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}

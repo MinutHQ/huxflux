@@ -1,0 +1,58 @@
+---
+title: Security
+description: Recommendations for running Huxflux safely.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+<Aside type="danger">
+  The auth token grants full shell access to the machine running Huxflux.
+  Treat it like an SSH private key — keep it secret and rotate it if it leaks.
+</Aside>
+
+## Use a dedicated user
+
+Claude can read and write every file your OS user can access. Run Huxflux as a separate low-privilege user, not your main account, and never as root.
+
+```sh
+# Linux
+sudo useradd -m -s /bin/bash huxflux-user
+sudo -u huxflux-user npm install -g huxflux
+sudo -u huxflux-user huxflux start
+```
+
+## Use Tailscale for encrypted access
+
+Without TLS, your token and all data travel in plaintext. [Tailscale](https://tailscale.com) (WireGuard-based) encrypts everything for free. Once installed, use the Tailscale IP in your connection string:
+
+```
+huxflux://100.x.x.x:3001?token=...
+```
+
+## Don't expose port 3001 publicly
+
+If you need public HTTPS access, put Huxflux behind a reverse proxy like [Caddy](https://caddyserver.com):
+
+```
+# Caddyfile
+your.domain.com {
+    reverse_proxy localhost:3001
+}
+```
+
+## Watch for prompt injection
+
+Malicious content in a repository — README files, code comments, test fixtures — can instruct Claude to exfiltrate data or run arbitrary commands. Only point Huxflux at repositories you trust.
+
+## Rotate the token
+
+```sh
+huxflux token rotate
+huxflux stop && huxflux start
+```
+
+## Audit requests
+
+```sh
+huxflux audit   # tail the request audit log
+```

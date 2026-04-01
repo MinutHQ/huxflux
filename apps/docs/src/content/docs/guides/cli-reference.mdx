@@ -1,0 +1,35 @@
+---
+title: CLI Reference
+description: All Huxflux CLI commands.
+---
+
+## Server management
+
+| Command | Description |
+|---|---|
+| `huxflux start` | Start the server |
+| `huxflux stop` | Stop the server |
+| `huxflux open [host]` | Open the web app and auto-connect to this server |
+| `huxflux status` | Show connection URL and auth token |
+| `huxflux logs` | Tail the server log |
+| `huxflux update` | Update to the latest version |
+
+## Token
+
+| Command | Description |
+|---|---|
+| `huxflux token rotate` | Rotate the auth token |
+
+## Security & audit
+
+| Command | Description |
+|---|---|
+| `huxflux security` | Print security recommendations |
+| `huxflux audit` | Tail the request audit log |
+
+## Options
+
+| Flag | Description |
+|---|---|
+| `--port <number>` | Port to listen on (default: `3001`) |
+| `--version` | Print the installed version |

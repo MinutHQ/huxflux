@@ -10,7 +10,9 @@
     "dev:status": "pnpm --filter @alexmartosp/huxflux dev:status",
     "dev:desktop": "pnpm --filter huxflux-desktop dev",
     "build": "pnpm --filter huxflux-web build && pnpm --filter @alexmartosp/huxflux build",
-    "build:desktop": "pnpm --filter huxflux-desktop build"
+    "build:desktop": "pnpm --filter huxflux-desktop build",
+    "dev:docs": "pnpm --filter huxflux-docs dev",
+    "build:docs": "pnpm --filter huxflux-docs build"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

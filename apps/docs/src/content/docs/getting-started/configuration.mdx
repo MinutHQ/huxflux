@@ -1,0 +1,42 @@
+---
+title: Configuration
+description: Configure Huxflux after installation.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## Adding a server
+
+After starting `huxflux`, open the web app and go to **Settings → Servers**. Paste the connection string shown by `huxflux status`:
+
+```
+huxflux://100.x.x.x:3001?token=...
+```
+
+The token authenticates the web app to your server. Treat it like a password.
+
+## Models
+
+Huxflux uses Claude models via the Anthropic API. Add your API key under **Settings → Providers** in the web app. You can switch models per-agent or set a default under **Settings → Models**.
+
+## Repositories
+
+Point Huxflux at a local directory containing your Git repositories. Set the path under **Settings → Repositories**. Agents run inside that directory and can read and write any files your OS user can access.
+
+<Aside type="caution">
+  Only point Huxflux at repositories you trust. Malicious content in a
+  repository (README, comments, test fixtures) can instruct Claude to run
+  arbitrary commands.
+</Aside>
+
+## Network
+
+By default, `huxflux` listens on port **3001**. We recommend keeping this port off the public internet and accessing it via [Tailscale](https://tailscale.com) instead.
+
+To use a custom port:
+
+```sh
+huxflux --port 3002
+```

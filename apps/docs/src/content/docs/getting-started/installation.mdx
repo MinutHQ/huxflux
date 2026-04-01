@@ -1,0 +1,50 @@
+---
+title: Installation
+description: Install Huxflux on your machine.
+sidebar:
+  order: 1
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+## Requirements
+
+- **Node.js** 22.5 or later
+
+## Install
+
+<Steps>
+
+1. **Install globally**
+
+   ```sh
+   npm install -g @alexmartosp/huxflux
+   ```
+
+2. **Start the server**
+
+   ```sh
+   huxflux start
+   ```
+
+3. **Open the web app**
+
+   ```sh
+   huxflux open
+   ```
+
+   This opens the web app in your browser and automatically connects it to your server.
+
+</Steps>
+
+## Troubleshooting
+
+**`huxflux` not found after install**
+
+npm's global bin directory may not be in your `PATH`. Add it:
+
+```sh
+export PATH="$(npm config get prefix)/bin:$PATH"
+```
+
+Paste this into `~/.bashrc` or `~/.zshrc` and run `source ~/.zshrc`.

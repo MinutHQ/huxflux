@@ -652,28 +652,6 @@ function MessageBubble({ msg }: { msg: Message }) {
   )
 }
 
-// ── Elapsed timer ─────────────────────────────────────────────────────────────
-
-function useElapsedSeconds(running: boolean) {
-  const [seconds, setSeconds] = useState(0)
-  const startRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    if (running) {
-      startRef.current = Date.now()
-      setSeconds(0)
-      const id = setInterval(() => {
-        setSeconds(Math.floor((Date.now() - startRef.current!) / 1000))
-      }, 1000)
-      return () => clearInterval(id)
-    } else {
-      startRef.current = null
-    }
-  }, [running])
-
-  return seconds
-}
-
 // ── PR status pill ────────────────────────────────────────────────────────────
 
 function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: string }) {

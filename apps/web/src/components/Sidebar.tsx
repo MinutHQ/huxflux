@@ -20,7 +20,6 @@ import {
   IconGitBranch,
   IconFolderPlus,
   IconArrowUpRight,
-  IconX,
   IconSparkles,
   IconGitPullRequest,
   IconTrash,

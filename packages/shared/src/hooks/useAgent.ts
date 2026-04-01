@@ -69,17 +69,6 @@ export function useAgent(id: string | null) {
     }
   }, [query.data])
 
-  // Poll every 4s while streaming so a missed message:done clears within a few seconds.
-  const isStreamingRef = useRef(false)
-  isStreamingRef.current = isStreaming
-  useEffect(() => {
-    if (!isStreaming || !id) return
-    const interval = setInterval(() => {
-      if (isStreamingRef.current) queryClient.invalidateQueries({ queryKey: ["agent", id] })
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [isStreaming, id, queryClient])
-
   const updateMessages = useCallback(
     (updater: (msgs: Message[]) => Message[]) => {
       queryClient.setQueryData<Agent>(["agent", id], (old) => {

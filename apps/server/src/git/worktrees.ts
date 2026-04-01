@@ -18,15 +18,18 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
   await mkdir(path.dirname(worktreePath), { recursive: true })
 
   const branches = await git.branch(["-a"])
-  const branchExists = branches.all.some((b) => {
-    const normalized = b.replace(/^\* /, "").replace(/^remotes\/[^/]+\//, "")
+
+  // Check if a LOCAL branch with this name already exists
+  const localBranchExists = branches.all.some((b) => {
+    const normalized = b.replace(/^\* /, "").trim()
     return normalized === branch
   })
 
-  if (branchExists) {
+  if (localBranchExists) {
+    // Check out the existing local branch into the new worktree
     await git.raw(["worktree", "add", worktreePath, branch])
   } else if (startPoint) {
-    // Branch from the specified remote tracking branch (e.g. origin/main)
+    // Create a new local branch from the specified start point (e.g. origin/main)
     await git.raw(["worktree", "add", "-b", branch, worktreePath, startPoint])
   } else {
     await git.raw(["worktree", "add", "-b", branch, worktreePath])

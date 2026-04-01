@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify"
+import { existsSync } from "node:fs"
 import { eq } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, fileChanges, repos } from "../db/schema.js"
@@ -45,6 +46,7 @@ export async function filesRoutes(app: FastifyInstance) {
       if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
       const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+      if (!existsSync(worktreePath)) return reply.code(404).send({ error: "Worktree does not exist on disk" })
       return getFileTree(worktreePath)
     }
   )

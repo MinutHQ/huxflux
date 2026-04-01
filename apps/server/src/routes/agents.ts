@@ -9,6 +9,7 @@ import { stopAgent } from "../claude/runner.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
 import * as path from "node:path"
+import { existsSync } from "node:fs"
 import { spawn } from "node:child_process"
 
 function runScript(script: string, cwd: string, agentId: string): Promise<void> {
@@ -148,11 +149,17 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo) {
+        if (!existsSync(repo.path)) {
+          await db.delete(agents).where(eq(agents.id, id))
+          return reply.code(400).send({ error: `Repo path does not exist on disk: ${repo.path}` })
+        }
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
         try {
           await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
         } catch (err) {
-          app.log.warn(`Worktree creation failed: ${err}`)
+          // Roll back the agent row so we don't leave an orphaned record
+          await db.delete(agents).where(eq(agents.id, id))
+          return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
         }
         if (repo.setupScript) {
           try {

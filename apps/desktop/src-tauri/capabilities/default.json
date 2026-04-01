@@ -4,7 +4,6 @@
   "description": "Default capability for Huxflux desktop",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "store:default"
+    "core:default"
   ]
 }

@@ -2,7 +2,6 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Store } from "@tauri-apps/plugin-store"
 import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
 import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
 import "./index.css"
@@ -12,13 +11,8 @@ import App from "./App.tsx"
 applyTheme(getTheme())
 watchSystemTheme()
 
-// Initialize Tauri store for persistent storage (replaces localStorage)
-const store = await Store.load("config.json")
-configureStorage({
-  getItem: (key) => store.get<string>(key).then((v) => v ?? null),
-  setItem: async (key, value) => { await store.set(key, value); await store.save() },
-  removeItem: async (key) => { await store.delete(key); await store.save() },
-})
+// Tauri's WebView has its own persistent localStorage (stored in app data dir)
+configureStorage(localStorage)
 
 configureAgentErrorHandler((message) => {
   toast.error("Agent error", { description: message, duration: 6000 })

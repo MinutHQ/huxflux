@@ -10,6 +10,7 @@ import {
   IconPlus,
   IconLoader2,
   IconAlertCircle,
+  IconTrash,
 } from "@tabler/icons-react"
 
 // ── Status dot ────────────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ interface DropdownProps {
 }
 
 function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
-  const { servers, activeId, setActive } = useServers()
+  const { servers, activeId, setActive, remove } = useServers()
   const statuses = useServerStatus(servers)
   const [showAdd, setShowAdd] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -180,6 +181,12 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
                   Switch
                 </button>
               )}
+              <button
+                onClick={() => remove(server.id)}
+                className="p-1 text-muted-foreground/40 hover:text-red-400 transition-colors rounded shrink-0"
+              >
+                <IconTrash size={12} />
+              </button>
             </div>
           )
         })}

@@ -30,6 +30,29 @@ import {
   IconMessageCircle,
 } from "@tabler/icons-react"
 
+// ── Worktree duration tracking ────────────────────────────────────────────────
+
+const WT_DURATION_KEY = "huxflux:worktree-durations"
+const DEFAULT_DURATION_MS = 8000
+
+function getWorktreeDuration(repoId: string): number {
+  try {
+    const raw = localStorage.getItem(WT_DURATION_KEY)
+    if (!raw) return DEFAULT_DURATION_MS
+    const map = JSON.parse(raw) as Record<string, number>
+    return map[repoId] ?? DEFAULT_DURATION_MS
+  } catch { return DEFAULT_DURATION_MS }
+}
+
+function saveWorktreeDuration(repoId: string, ms: number) {
+  try {
+    const raw = localStorage.getItem(WT_DURATION_KEY)
+    const map = raw ? JSON.parse(raw) as Record<string, number> : {}
+    map[repoId] = ms
+    localStorage.setItem(WT_DURATION_KEY, JSON.stringify(map))
+  } catch { /* ignore */ }
+}
+
 // ── Hover popover ─────────────────────────────────────────────────────────────
 
 function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y: number; port?: number | null; sidebarWidth: number }) {
@@ -136,42 +159,24 @@ function randomBeeName(): string {
 
 function NewAgentPopover({
   onClose,
-  onCreated,
+  onSelect,
   anchorRef,
 }: {
   onClose: () => void
-  onCreated: (id: string) => void
+  onSelect: (repoId: string, title: string, branch: string, direct: boolean) => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
 }) {
-  const [creating, setCreating] = useState<string | null>(null)
   const [direct, setDirect] = useState(false)
   const { data: repos = [] } = useRepos()
-  const queryClient = useQueryClient()
 
   const pos = anchorRef.current?.getBoundingClientRect()
 
-  async function handleSelectRepo(repoId: string) {
-    if (creating) return
-    setCreating(repoId)
-    try {
-      const name = randomBeeName()
-      const repo = repos.find((r) => r.id === repoId)
-      const prefix = repo?.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
-      const branch = `${prefix}${name}`
-      const agent = await api.createAgent({
-        title: name,
-        branch,
-        model: "claude-sonnet-4-6",
-        repoId,
-        noWorktree: direct || undefined,
-      })
-      queryClient.invalidateQueries({ queryKey: ["agents"] })
-      onCreated(agent.id)
-    } catch (err) {
-      toast.error((err as Error).message || "Failed to create agent")
-    } finally {
-      setCreating(null)
-    }
+  function handleSelectRepo(repoId: string) {
+    const name = randomBeeName()
+    const repo = repos.find((r) => r.id === repoId)
+    const prefix = repo?.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
+    const branch = `${prefix}${name}`
+    onSelect(repoId, name, branch, direct)
   }
 
   return createPortal(
@@ -219,26 +224,21 @@ function NewAgentPopover({
             </div>
             <div className="p-1 space-y-0.5">
               {repos.map((r, i) => {
-                const isCreating = creating === r.id
                 const shortcut = i < 9 ? i + 1 : null
                 return (
                   <button
                     key={r.id}
                     autoFocus={i === 0}
                     onClick={() => handleSelectRepo(r.id)}
-                    disabled={!!creating}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
-                      isCreating ? "bg-accent text-foreground" : "hover:bg-accent/60 text-foreground"
-                    )}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors hover:bg-accent/60 text-foreground"
                   >
                     <span className="w-5 h-5 rounded bg-muted border border-border text-[10px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
                       {r.name[0].toUpperCase()}
                     </span>
                     <span className="text-[12px] font-medium flex-1 truncate">
-                      {isCreating ? "Creating…" : r.name}
+                      {r.name}
                     </span>
-                    {shortcut && !creating && (
+                    {shortcut && (
                       <span className="text-[11px] text-muted-foreground/40 font-mono tabular-nums shrink-0">
                         {shortcut}
                       </span>
@@ -306,11 +306,13 @@ function StatusContextMenu({
   y,
   agent,
   onClose,
+  onDelete,
 }: {
   x: number
   y: number
   agent: AgentSummary
   onClose: () => void
+  onDelete: (agent: AgentSummary) => void
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -324,18 +326,13 @@ function StatusContextMenu({
     )
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!confirmDelete) {
       setConfirmDelete(true)
       return
     }
     onClose()
-    try {
-      await api.deleteAgent(agent.id)
-      queryClient.invalidateQueries({ queryKey: ["agents"] })
-    } catch (err) {
-      toast.error(`Delete failed: ${err instanceof Error ? err.message : "unknown"}`)
-    }
+    onDelete(agent)
   }
 
   return createPortal(
@@ -384,6 +381,7 @@ function AgentRow({
   index,
   onHover,
   onLeave,
+  onDelete,
   port,
   repoName,
 }: {
@@ -394,6 +392,7 @@ function AgentRow({
   index: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  onDelete: (agent: AgentSummary) => void
   port?: number | null
   repoName?: string
 }) {
@@ -514,9 +513,31 @@ function AgentRow({
           y={contextMenu.y}
           agent={agent}
           onClose={() => setContextMenu(null)}
+          onDelete={onDelete}
         />
       )}
     </>
+  )
+}
+
+// ── Pending agent row ─────────────────────────────────────────────────────────
+
+function PendingAgentRow({ title, repoName }: { title: string; repoName: string }) {
+  const avatarColor = repoName ? repoColor(repoName) : "bg-muted text-muted-foreground"
+  const initials = (repoName || title)[0].toUpperCase()
+
+  return (
+    <div className="w-full min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-sidebar-accent text-sidebar-accent-foreground">
+      <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>
+        {initials}
+      </div>
+      <svg width="11" height="11" viewBox="0 0 11 11" className="text-amber-400 shrink-0 animate-spin">
+        <circle cx="5.5" cy="5.5" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="12 13" strokeLinecap="round" />
+      </svg>
+      <span className="text-xs flex-1 min-w-0 truncate leading-tight font-semibold">
+        {title}
+      </span>
+    </div>
   )
 }
 
@@ -531,6 +552,7 @@ function StatusGroup({
   startIndex,
   onHover,
   onLeave,
+  onDelete,
   agentPorts,
   repoNames,
 }: {
@@ -542,6 +564,7 @@ function StatusGroup({
   startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  onDelete: (agent: AgentSummary) => void
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
 }) {
@@ -575,6 +598,7 @@ function StatusGroup({
               index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
+              onDelete={onDelete}
               port={agentPorts?.[agent.id]}
               repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
             />
@@ -596,6 +620,7 @@ function RepoGroup({
   startIndex,
   onHover,
   onLeave,
+  onDelete,
   agentPorts,
 }: {
   repoName: string
@@ -606,6 +631,7 @@ function RepoGroup({
   startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
+  onDelete: (agent: AgentSummary) => void
   agentPorts?: Record<string, number | null>
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -641,6 +667,7 @@ function RepoGroup({
               index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
+              onDelete={onDelete}
               port={agentPorts?.[agent.id]}
               repoName={repoName}
             />
@@ -812,7 +839,12 @@ interface SidebarProps {
   streamingAgentId: string | null
   onSelect: (id: string) => void
   onOpenSettings: () => void
+  onAgentCreating: (info: { title: string; branch: string; repoName: string }) => void
   onAgentCreated: (id: string) => void
+  clearPendingAgent: () => void
+  pendingAgent: { title: string; branch: string; repoName: string } | null
+  onAgentDeleting: (agentId: string, info: { title: string; branch: string; repoName: string }) => void
+  clearDeletingAgent: () => void
   prs: PullRequest[]
   selectedPrId: string | null
   onSelectPr: (id: string) => void
@@ -820,7 +852,7 @@ interface SidebarProps {
   onToggle?: () => void
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreated, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
@@ -833,6 +865,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const newAgentBtnRef = useRef<HTMLButtonElement>(null)
   const sidebarContainerRef = useRef<HTMLDivElement>(null)
   const { data: repos = [] } = useRepos()
+  const queryClient = useQueryClient()
 
   const prReviewEnabled = getFlag("prReview")
   const unreadPrCount = prs.filter((p) => p.unread).length
@@ -884,9 +917,42 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     repoGlobalIndex += group.agents.length
   }
 
-  function handleAgentCreated(id: string) {
+  async function handleCreateAgent(repoId: string, title: string, branch: string, direct: boolean) {
     setShowNewAgent(false)
-    onAgentCreated(id)
+    const repoName = repos.find(r => r.id === repoId)?.name ?? ""
+    const savedMs = getWorktreeDuration(repoId)
+    onAgentCreating({ title, branch, repoName, estimatedMs: savedMs })
+    const t0 = Date.now()
+    try {
+      const agent = await api.createAgent({
+        title,
+        branch,
+        model: "claude-sonnet-4-6",
+        repoId,
+        noWorktree: direct || undefined,
+      })
+      saveWorktreeDuration(repoId, Date.now() - t0)
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
+      onAgentCreated(agent.id)
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to create agent")
+      clearPendingAgent()
+    }
+  }
+
+  function handleDeleteAgent(agent: AgentSummary) {
+    const repoName = agent.repoId ? (repos.find(r => r.id === agent.repoId)?.name ?? "") : ""
+    onAgentDeleting(agent.id, { title: agent.title, branch: agent.branch, repoName })
+    // Optimistically remove from sidebar immediately
+    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+      old ? old.filter((a) => a.id !== agent.id) : old
+    )
+    // Fire API in background — don't block the UI
+    api.deleteAgent(agent.id).catch((err) =>
+      toast.error(`Delete failed: ${err instanceof Error ? err.message : "unknown"}`)
+    )
+    // Clear animation after it finishes
+    setTimeout(() => clearDeletingAgent(), 1500)
   }
 
   return (
@@ -955,7 +1021,10 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
               <ScrollArea className="h-full w-full">
                 <div className="p-2 pt-2.5 space-y-0.5 w-full overflow-hidden">
-                  {filteredAgents.length === 0 ? (
+                  {pendingAgent && (
+                    <PendingAgentRow title={pendingAgent.title} repoName={pendingAgent.repoName} />
+                  )}
+                  {filteredAgents.length === 0 && !pendingAgent ? (
                     <button
                       onClick={() => setShowNewAgent(true)}
                       className="w-full flex flex-col items-center gap-2 py-8 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
@@ -975,6 +1044,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         startIndex={groupStartIndices[status] ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
+                        onDelete={handleDeleteAgent}
                         agentPorts={agentPorts}
                         repoNames={repoNames}
                       />
@@ -991,6 +1061,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         startIndex={repoGroupStartIndices.get(group.id) ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
+                        onDelete={handleDeleteAgent}
                         agentPorts={agentPorts}
                       />
                     ))
@@ -1063,7 +1134,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       )}
 
       {showNewAgent && (
-        <NewAgentPopover onClose={() => setShowNewAgent(false)} onCreated={handleAgentCreated} anchorRef={newAgentBtnRef} />
+        <NewAgentPopover onClose={() => setShowNewAgent(false)} onSelect={handleCreateAgent} anchorRef={newAgentBtnRef} />
       )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />

@@ -944,6 +944,390 @@ function CreationView({ agent }: { agent: Agent }) {
   )
 }
 
+// ── Setup view (shown while worktree is being created) ──────────────────────
+
+interface SetupStep {
+  label: string
+  icon: string
+}
+
+const SETUP_STEPS: SetupStep[] = [
+  { label: "Creating branch", icon: "⑂" },
+  { label: "Setting up worktree", icon: "⬡" },
+  { label: "Scaffolding workspace", icon: "⧉" },
+  { label: "Linking dependencies", icon: "⇄" },
+  { label: "Initializing environment", icon: "◈" },
+]
+
+export function SetupView({ pending }: { pending: { title: string; branch: string; repoName: string; estimatedMs: number } }) {
+  const [visibleSteps, setVisibleSteps] = useState(0)
+  const [completedSteps, setCompletedSteps] = useState(0)
+  const [typedTitle, setTypedTitle] = useState("")
+
+  // Typewriter effect for the title
+  useEffect(() => {
+    let i = 0
+    const interval = setInterval(() => {
+      if (i <= pending.title.length) {
+        setTypedTitle(pending.title.slice(0, i))
+        i++
+      } else {
+        clearInterval(interval)
+      }
+    }, 50)
+    return () => clearInterval(interval)
+  }, [pending.title])
+
+  // Distribute steps across ~90% of the estimated duration so the last step
+  // only spins briefly rather than hanging for a long time.
+  useEffect(() => {
+    const total = pending.estimatedMs
+    // Use 90% of estimated time for the first N-1 steps, leave 10% buffer
+    const budget = total * 0.9
+    const stepTime = budget / SETUP_STEPS.length
+    const timers: ReturnType<typeof setTimeout>[] = []
+    SETUP_STEPS.forEach((_, i) => {
+      const showAt = 300 + i * stepTime
+      const doneAt = showAt + stepTime * 0.65
+      timers.push(setTimeout(() => setVisibleSteps(i + 1), showAt))
+      if (i < SETUP_STEPS.length - 1) {
+        timers.push(setTimeout(() => setCompletedSteps(i + 1), doneAt))
+      }
+    })
+    return () => timers.forEach(clearTimeout)
+  }, [pending.estimatedMs])
+
+  const progress = Math.min(((completedSteps + 0.5) / SETUP_STEPS.length) * 100, 95)
+
+  // Floating particle positions
+  const particles = Array.from({ length: 24 }, (_, i) => ({
+    id: i,
+    x: ((i * 41 + 17) % 100),
+    y: ((i * 59 + 11) % 100),
+    size: 1.5 + (i % 3),
+    duration: 2.5 + (i % 4) * 1.1,
+    delay: (i % 8) * 0.35,
+    opacity: 0.1 + (i % 4) * 0.08,
+  }))
+
+  return (
+    <div className="relative flex flex-col items-center justify-center h-full gap-5 px-8 overflow-hidden bg-background">
+      <style>{`
+        @keyframes sv-float { 0%, 100% { transform: translateY(0px) rotate(0deg) } 50% { transform: translateY(-8px) rotate(2deg) } }
+        @keyframes sv-particle { 0% { transform: translateY(0) scale(1); opacity: var(--p-op) } 50% { transform: translateY(-24px) scale(1.4); opacity: calc(var(--p-op) * 2) } 100% { transform: translateY(0) scale(1); opacity: var(--p-op) } }
+        @keyframes sv-fade-up { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes sv-check { from { stroke-dashoffset: 16 } to { stroke-dashoffset: 0 } }
+        @keyframes sv-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes sv-progress { from { width: 0% } to { width: var(--sv-progress) } }
+        @keyframes sv-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.06), 0 0 60px rgba(251,191,36,0.03) } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.15), 0 0 80px rgba(251,191,36,0.08) } }
+        @keyframes sv-orbit { from { transform: rotate(0deg) translateX(36px) rotate(0deg) } to { transform: rotate(360deg) translateX(36px) rotate(-360deg) } }
+        @keyframes sv-orbit2 { from { transform: rotate(120deg) translateX(28px) rotate(-120deg) } to { transform: rotate(480deg) translateX(28px) rotate(-480deg) } }
+        @keyframes sv-hex-assemble { 0% { opacity: 0; transform: scale(0.3) rotate(-180deg) } 50% { opacity: 1; transform: scale(1.1) rotate(10deg) } 100% { opacity: 1; transform: scale(1) rotate(0deg) } }
+        @keyframes sv-ring-expand { 0% { transform: scale(0.8); opacity: 0.5 } 100% { transform: scale(2.5); opacity: 0 } }
+        @keyframes sv-shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+        @keyframes sv-step-in { from { opacity: 0; transform: translateX(-8px) } to { opacity: 1; transform: translateX(0) } }
+        @keyframes sv-dots { 0% { content: '' } 25% { content: '.' } 50% { content: '..' } 75% { content: '...' } }
+        @keyframes sv-scanner { 0% { top: 0%; opacity: 0 } 10% { opacity: 1 } 90% { opacity: 1 } 100% { top: 100%; opacity: 0 } }
+      `}</style>
+
+      {/* Floating particles */}
+      {particles.map((p) => (
+        <div
+          key={p.id}
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.id % 3 === 0 ? "rgb(251,191,36)" : p.id % 3 === 1 ? "rgb(96,165,250)" : "rgb(167,139,250)",
+            ["--p-op" as string]: p.opacity,
+            opacity: p.opacity,
+            animation: `sv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+          }}
+        />
+      ))}
+
+      {/* Main animated icon */}
+      <div
+        className="relative z-10"
+        style={{ animation: "sv-float 3.5s ease-in-out infinite" }}
+      >
+        {/* Expanding rings */}
+        <div
+          className="absolute inset-0 rounded-2xl border-2 border-amber-400/25"
+          style={{ animation: "sv-ring-expand 2.5s ease-out infinite" }}
+        />
+        <div
+          className="absolute inset-0 rounded-2xl border-2 border-blue-400/15"
+          style={{ animation: "sv-ring-expand 2.5s ease-out 0.8s infinite" }}
+        />
+        <div
+          className="absolute inset-0 rounded-2xl border-2 border-violet-400/10"
+          style={{ animation: "sv-ring-expand 2.5s ease-out 1.6s infinite" }}
+        />
+
+        {/* Orbiting dots */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div style={{ animation: "sv-orbit 4s linear infinite" }}>
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400/70" />
+          </div>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div style={{ animation: "sv-orbit2 5s linear infinite" }}>
+            <div className="w-1 h-1 rounded-full bg-blue-400/50" />
+          </div>
+        </div>
+
+        {/* Icon container */}
+        <div
+          className="w-16 h-16 rounded-2xl bg-card border border-amber-400/20 flex items-center justify-center relative overflow-hidden"
+          style={{ animation: "sv-glow 2.5s ease-in-out infinite" }}
+        >
+          {/* Scanner line */}
+          <div
+            className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none"
+            style={{ animation: "sv-scanner 2s ease-in-out infinite" }}
+          />
+          <div style={{ animation: "sv-hex-assemble 0.8s ease-out both" }}>
+            <IconHexagon size={32} className="text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Title area */}
+      <div
+        className="text-center z-10"
+        style={{ animation: "sv-fade-up 0.6s ease-out 0.2s both" }}
+      >
+        <p
+          className="text-sm font-semibold bg-clip-text text-transparent"
+          style={{
+            backgroundImage: "linear-gradient(90deg, var(--foreground) 0%, var(--foreground) 35%, rgba(251,191,36,0.9) 50%, var(--foreground) 65%, var(--foreground) 100%)",
+            backgroundSize: "200% 100%",
+            animation: "sv-shimmer 3s ease-in-out infinite",
+            WebkitBackgroundClip: "text",
+          }}
+        >
+          {typedTitle}
+          <span className="inline-block w-[1px] h-[13px] bg-amber-400/70 ml-0.5 align-text-bottom animate-pulse" />
+        </p>
+        <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">{pending.branch}</p>
+      </div>
+
+      {/* Terminal-style step list */}
+      <div
+        className="w-full max-w-xs z-10 rounded-xl overflow-hidden border border-border/60 bg-card/80 backdrop-blur-sm"
+        style={{ animation: "sv-fade-up 0.6s ease-out 0.5s both" }}
+      >
+        {/* Terminal header */}
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-secondary/40">
+          <div className="w-2 h-2 rounded-full bg-red-400/40" />
+          <div className="w-2 h-2 rounded-full bg-yellow-400/40" />
+          <div className="w-2 h-2 rounded-full bg-green-400/40" />
+          <span className="text-[9px] text-muted-foreground/40 font-mono ml-1.5">{pending.repoName}</span>
+        </div>
+
+        {/* Steps */}
+        <div className="px-3 py-2.5 space-y-1.5">
+          {SETUP_STEPS.slice(0, visibleSteps).map((step, i) => {
+            const isDone = i < completedSteps
+            const isCurrent = i === visibleSteps - 1 && !isDone
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[11px] font-mono"
+                style={{ animation: "sv-step-in 0.3s ease-out both" }}
+              >
+                <span className="text-muted-foreground/40 shrink-0">{step.icon}</span>
+                <span className={cn(
+                  "flex-1 transition-colors duration-300",
+                  isDone ? "text-muted-foreground/40" : isCurrent ? "text-amber-400/90" : "text-foreground/70"
+                )}>
+                  {step.label}
+                </span>
+                {isDone ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-emerald-400">
+                    <path
+                      d="M3 6.5L5 8.5L9 4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray="16"
+                      style={{ animation: "sv-check 0.3s ease-out both" }}
+                    />
+                  </svg>
+                ) : isCurrent ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-amber-400" style={{ animation: "sv-spin 1s linear infinite" }}>
+                    <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 15" strokeLinecap="round" />
+                  </svg>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Progress bar */}
+        <div className="px-3 pb-2.5">
+          <div className="h-[3px] rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400/80 via-amber-400 to-yellow-300"
+              style={{
+                ["--sv-progress" as string]: `${progress}%`,
+                width: `${progress}%`,
+                transition: "width 0.6s ease-out",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Teardown view (shown while worktree is being deleted) ───────────────────
+
+const TEARDOWN_STEPS = [
+  { label: "Stopping processes", icon: "◼" },
+  { label: "Removing worktree", icon: "⑂" },
+  { label: "Cleaning up", icon: "✕" },
+]
+
+export function TeardownView({ deleting }: { deleting: { title: string; branch: string; repoName: string } }) {
+  const [visibleSteps, setVisibleSteps] = useState(0)
+  const [completedSteps, setCompletedSteps] = useState(0)
+  const [shrink, setShrink] = useState(false)
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    TEARDOWN_STEPS.forEach((_, i) => {
+      timers.push(setTimeout(() => setVisibleSteps(i + 1), 100 + i * 350))
+      timers.push(setTimeout(() => setCompletedSteps(i + 1), 100 + i * 350 + 250))
+    })
+    timers.push(setTimeout(() => setShrink(true), 1200))
+    return () => timers.forEach(clearTimeout)
+  }, [])
+
+  const particles = Array.from({ length: 14 }, (_, i) => {
+    // Golden-ratio-based scatter for even distribution
+    const phi = 1.618033988749
+    const theta = i * phi * Math.PI * 2
+    const r = 0.25 + (i / 14) * 0.55
+    return {
+      id: i,
+      x: 50 + Math.cos(theta) * r * 45,
+      y: 50 + Math.sin(theta) * r * 40,
+      size: 1.5 + (i % 4),
+      delay: (i * 0.11) % 0.9,
+    }
+  })
+
+  return (
+    <div className="relative flex flex-col items-center justify-center h-full gap-4 px-8 overflow-hidden bg-background">
+      <style>{`
+        @keyframes td-fade-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes td-check { from { stroke-dashoffset: 16 } to { stroke-dashoffset: 0 } }
+        @keyframes td-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes td-scatter { 0% { transform: translate(0,0) scale(1); opacity: 0.6 } 100% { transform: translate(var(--td-dx), var(--td-dy)) scale(0); opacity: 0 } }
+        @keyframes td-shrink { 0% { transform: scale(1); opacity: 1 } 100% { transform: scale(0.5); opacity: 0 } }
+        @keyframes td-ring-collapse { 0% { transform: scale(1); opacity: 0.3 } 100% { transform: scale(0.3); opacity: 0 } }
+      `}</style>
+
+      {/* Scattering particles — fly outward from their position toward the edges */}
+      {particles.map((p) => {
+        const angle = Math.atan2(p.y - 50, p.x - 50)
+        const dist = 40 + (p.id % 5) * 12
+        return (
+          <div
+            key={p.id}
+            className="absolute rounded-full bg-red-400 pointer-events-none"
+            style={{
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              width: p.size,
+              height: p.size,
+              ["--td-dx" as string]: `${Math.cos(angle) * dist}px`,
+              ["--td-dy" as string]: `${Math.sin(angle) * dist}px`,
+              animation: `td-scatter 1.2s ease-out ${p.delay}s both`,
+            }}
+          />
+        )
+      })}
+
+      {/* Collapsing icon */}
+      <div
+        className="relative z-10"
+        style={shrink ? { animation: "td-shrink 0.4s ease-in both" } : undefined}
+      >
+        <div
+          className="absolute inset-0 rounded-2xl border-2 border-red-400/20"
+          style={{ animation: "td-ring-collapse 0.8s ease-in 0.3s both" }}
+        />
+        <div className="w-14 h-14 rounded-2xl bg-card border border-red-400/20 flex items-center justify-center">
+          <IconHexagon size={28} className="text-red-400/70 drop-shadow-[0_0_8px_rgba(248,113,113,0.4)]" />
+        </div>
+      </div>
+
+      {/* Title */}
+      <div
+        className="text-center z-10"
+        style={shrink ? { animation: "td-shrink 0.4s ease-in 0.05s both" } : { animation: "td-fade-up 0.3s ease-out both" }}
+      >
+        <p className="text-sm font-semibold text-muted-foreground/70">{deleting.title}</p>
+        <p className="text-[11px] text-muted-foreground/40 mt-0.5 font-mono">{deleting.branch}</p>
+      </div>
+
+      {/* Quick step list */}
+      <div
+        className="w-full max-w-xs z-10 rounded-xl overflow-hidden border border-border/40 bg-card/60"
+        style={shrink ? { animation: "td-shrink 0.4s ease-in 0.1s both" } : { animation: "td-fade-up 0.3s ease-out 0.1s both" }}
+      >
+        <div className="px-3 py-2 space-y-1">
+          {TEARDOWN_STEPS.slice(0, visibleSteps).map((step, i) => {
+            const isDone = i < completedSteps
+            const isCurrent = i === visibleSteps - 1 && !isDone
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[11px] font-mono"
+                style={{ animation: "td-fade-up 0.15s ease-out both" }}
+              >
+                <span className="text-red-400/50 shrink-0">{step.icon}</span>
+                <span className={cn(
+                  "flex-1 transition-colors duration-200",
+                  isDone ? "text-muted-foreground/30" : isCurrent ? "text-red-400/80" : "text-foreground/60"
+                )}>
+                  {step.label}
+                </span>
+                {isDone ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-muted-foreground/40">
+                    <path
+                      d="M3 6.5L5 8.5L9 4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray="16"
+                      style={{ animation: "td-check 0.2s ease-out both" }}
+                    />
+                  </svg>
+                ) : isCurrent ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-red-400/60" style={{ animation: "td-spin 0.8s linear infinite" }}>
+                    <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 15" strokeLinecap="round" />
+                  </svg>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Context ring ─────────────────────────────────────────────────────────────
 
 const CLAUDE_CONTEXT_TOKENS = 200_000

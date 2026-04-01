@@ -12,6 +12,19 @@ export interface ChatTab {
 
 export type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string }
 
+export interface PendingAgent {
+  title: string
+  branch: string
+  repoName: string
+  estimatedMs: number
+}
+
+export interface DeletingAgent {
+  title: string
+  branch: string
+  repoName: string
+}
+
 export function useWorkspace(agents: AgentSummary[]) {
   const queryClient = useQueryClient()
 
@@ -20,6 +33,9 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
+  const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
+  const [deletingAgent, setDeletingAgent] = useState<DeletingAgent | null>(null)
+  const [justDeleted, setJustDeleted] = useState(false)
 
   // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,6 +69,7 @@ export function useWorkspace(agents: AgentSummary[]) {
       setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
       setActiveTabId(id)
     }
+    setJustDeleted(false)
     setSelectedPrId(null)
     setOpenFileTab(null)
     setPendingComments([])
@@ -115,14 +132,46 @@ export function useWorkspace(agents: AgentSummary[]) {
     setTabs(prev => prev.map(t => t.agentId === agentId ? { ...t, title: newTitle } : t))
   }
 
+  function onAgentDeleting(agentId: string, info: DeletingAgent) {
+    setDeletingAgent(info)
+    setJustDeleted(true)
+    // Clear workspace state for the deleted agent so it doesn't reopen after the animation
+    setTabs(prev => prev.filter(t => t.agentId !== agentId))
+    if (activeTabId === agentId) {
+      setActiveTabId(null)
+      setOpenFileTab(null)
+      setPendingComments([])
+    }
+    // Evict cached agent data so useAgent doesn't return stale data
+    queryClient.removeQueries({ queryKey: ["agent", agentId] })
+  }
+
+  function clearDeletingAgent() {
+    setDeletingAgent(null)
+  }
+
+  function onAgentCreating(info: PendingAgent) {
+    setPendingAgent(info)
+    setSelectedPrId(null)
+  }
+
+  function clearPendingAgent() {
+    setPendingAgent(null)
+  }
+
   function onAgentCreated(id: string) {
+    setPendingAgent(null)
+    setJustDeleted(false)
     const a = agents.find(ag => ag.id === id)
     setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
     setActiveTabId(id)
     setSelectedPrId(null)
   }
 
-  const resolvedActiveId = activeTabId ?? (selectedPrId ? null : agents[0]?.id ?? null)
+  // Don't auto-select an agent during or right after a deletion
+  const resolvedActiveId = (deletingAgent || justDeleted)
+    ? null
+    : activeTabId ?? (selectedPrId ? null : agents[0]?.id ?? null)
   const sidebarSelectedId = tabs.length > 0 ? tabs[0].agentId : ""
 
   return {
@@ -133,6 +182,10 @@ export function useWorkspace(agents: AgentSummary[]) {
     selectedPrId,
     openFileTab,
     pendingComments,
+    pendingAgent,
+    deletingAgent,
+    onAgentDeleting,
+    clearDeletingAgent,
     setOpenFileTab,
     setPendingComments,
     selectAgent,
@@ -141,6 +194,8 @@ export function useWorkspace(agents: AgentSummary[]) {
     closeTab,
     createTab,
     renameTab,
+    onAgentCreating,
+    clearPendingAgent,
     onAgentCreated,
   }
 }

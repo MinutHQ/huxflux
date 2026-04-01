@@ -3,7 +3,7 @@ import { type PanelImperativeHandle } from "react-resizable-panels"
 import { getTheme, type Theme } from "@/lib/theme"
 import { toast, Toaster } from "sonner"
 import { Sidebar } from "@/components/Sidebar"
-import { ChatView } from "@/components/ChatView"
+import { ChatView, SetupView, TeardownView } from "@/components/ChatView"
 import { FileChangesView } from "@/components/FileChangesView"
 import { TerminalView } from "@/components/TerminalView"
 import { SettingsPage } from "@/components/SettingsPage"
@@ -151,7 +151,12 @@ export default function App() {
     streamingAgentId,
     onSelect: workspace.selectAgent,
     onOpenSettings: () => setView("settings"),
+    onAgentCreating: workspace.onAgentCreating,
     onAgentCreated: workspace.onAgentCreated,
+    clearPendingAgent: workspace.clearPendingAgent,
+    pendingAgent: workspace.pendingAgent,
+    onAgentDeleting: workspace.onAgentDeleting,
+    clearDeletingAgent: workspace.clearDeletingAgent,
     prs: prReviewEnabled ? mockPRs : [],
     selectedPrId: workspace.selectedPrId,
     onSelectPr: workspace.selectPr,
@@ -173,7 +178,15 @@ export default function App() {
     <div className="flex-1 min-w-0 overflow-hidden">
       <PRView key={selectedPr.id} pr={selectedPr} />
     </div>
-  ) : !activeAgent ? (
+  ) : workspace.deletingAgent ? (
+    <div className="flex-1 min-w-0 overflow-hidden">
+      <TeardownView deleting={workspace.deletingAgent} />
+    </div>
+  ) : workspace.pendingAgent ? (
+    <div className="flex-1 min-w-0 overflow-hidden">
+      <SetupView pending={workspace.pendingAgent} />
+    </div>
+  ) : !workspace.resolvedActiveId || !activeAgent ? (
     <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
       {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
     </div>

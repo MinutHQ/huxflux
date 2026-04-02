@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { ScrollArea, Button, cn, ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
 import { useRepos } from "@hive/shared"
 import type { Repo } from "@hive/shared"
@@ -11,6 +11,10 @@ import {
   IconTicket,
   IconListDetails,
   IconCheck,
+  IconPencil,
+  IconTrash,
+  IconX,
+  IconPlus,
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -223,9 +227,95 @@ function MessageBubble({
   )
 }
 
+// ── Inline editable field ─────────────────────────────────────────────────────
+
+function EditableField({
+  label,
+  value,
+  onSave,
+  multiline = true,
+}: {
+  label: string
+  value: string
+  onSave: (v: string) => void
+  multiline?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null)
+
+  useEffect(() => { if (editing) ref.current?.focus() }, [editing])
+
+  function commit() {
+    onSave(draft.trim())
+    setEditing(false)
+  }
+  function cancel() {
+    setDraft(value)
+    setEditing(false)
+  }
+
+  return (
+    <div className="space-y-1.5 group/field">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">{label}</span>
+        {!editing && (
+          <button
+            onClick={() => { setDraft(value); setEditing(true) }}
+            className="opacity-0 group-hover/field:opacity-100 transition-opacity text-muted-foreground/40 hover:text-muted-foreground"
+          >
+            <IconPencil size={11} />
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-1.5">
+          {multiline ? (
+            <textarea
+              ref={ref as React.RefObject<HTMLTextAreaElement>}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") cancel() }}
+              rows={3}
+              className="w-full text-sm bg-muted/50 border border-border rounded-md px-2.5 py-1.5 resize-none focus:outline-none focus:border-ring"
+            />
+          ) : (
+            <input
+              ref={ref as React.RefObject<HTMLInputElement>}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel() }}
+              className="w-full text-sm bg-muted/50 border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-ring"
+            />
+          )}
+          <div className="flex gap-1.5">
+            <Button size="sm" className="h-6 text-[11px] px-2.5" onClick={commit}>Save</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={cancel}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <p
+          className="text-sm text-foreground leading-relaxed cursor-pointer hover:bg-muted/40 rounded px-1 -mx-1 py-0.5 transition-colors"
+          onClick={() => { setDraft(value); setEditing(true) }}
+        >
+          {value || <span className="text-muted-foreground/40 italic">Empty — click to edit</span>}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Spec panel ────────────────────────────────────────────────────────────────
 
-function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }) {
+function SpecPanel({
+  session,
+  repos,
+  onUpdate,
+}: {
+  session: RefineSession
+  repos: Repo[]
+  onUpdate: (s: RefineSession) => void
+}) {
   const selectedRepos = session.repoIds
     .map((id) => repos.find((r) => r.id === id))
     .filter((r): r is Repo => !!r)
@@ -236,6 +326,46 @@ function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }
     ? criteria.split(/[\n,;]/).map((s) => s.trim()).filter(Boolean)
     : []
 
+  // Editing state for subtasks
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null)
+  const [subtaskDraft, setSubtaskDraft] = useState("")
+
+  function updateAnswer(index: number, value: string) {
+    const next = [...session.answers]
+    while (next.length <= index) next.push("")
+    next[index] = value
+    onUpdate({ ...session, answers: next })
+  }
+
+  function removeSubtask(id: string) {
+    onUpdate({ ...session, subtasks: session.subtasks.filter((t) => t.id !== id) })
+  }
+
+  function saveSubtask(id: string) {
+    onUpdate({
+      ...session,
+      subtasks: session.subtasks.map((t) => t.id === id ? { ...t, title: subtaskDraft.trim() || t.title } : t),
+    })
+    setEditingSubtaskId(null)
+  }
+
+  function addSubtask() {
+    const firstRepo = selectedRepos[0]
+    if (!firstRepo) return
+    const id = `subtask-${Date.now()}`
+    onUpdate({
+      ...session,
+      subtasks: [
+        ...session.subtasks,
+        { id, repoId: firstRepo.id, repoName: firstRepo.name, title: "New subtask" },
+      ],
+    })
+    setEditingSubtaskId(id)
+    setSubtaskDraft("New subtask")
+  }
+
+  const hasContent = goal || patterns || criteria || session.subtasks.length > 0 || selectedRepos.length > 0
+
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="px-4 py-2.5 border-b border-border shrink-0">
@@ -244,13 +374,15 @@ function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }
           <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Task Spec</span>
         </div>
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-4 space-y-4">
+          {/* Ticket ID */}
           <div className="flex items-center gap-2">
             <IconTicket size={14} className="text-muted-foreground shrink-0" />
             <span className="text-sm font-mono font-medium">{session.ticketId}</span>
           </div>
 
+          {/* Repos */}
           {selectedRepos.length > 0 && (
             <div className="space-y-1.5">
               <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Repos</span>
@@ -265,54 +397,102 @@ function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }
             </div>
           )}
 
+          {/* Goal */}
           {goal && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Goal</span>
-              <p className="text-sm text-foreground leading-relaxed">{goal}</p>
-            </div>
+            <EditableField
+              label="Goal"
+              value={goal}
+              onSave={(v) => updateAnswer(0, v)}
+            />
           )}
 
+          {/* Notes */}
           {patterns && !/^(n\/a|none|-)$/i.test(patterns.trim()) && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Notes</span>
-              <p className="text-sm text-foreground leading-relaxed">{patterns}</p>
-            </div>
+            <EditableField
+              label="Notes"
+              value={patterns}
+              onSave={(v) => updateAnswer(1, v)}
+            />
           )}
 
+          {/* Acceptance Criteria */}
           {criteriaItems.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Acceptance Criteria</span>
-              <ul className="space-y-1">
-                {criteriaItems.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                    <IconCircle size={12} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <EditableField
+              label="Acceptance Criteria"
+              value={criteria}
+              onSave={(v) => updateAnswer(2, v)}
+            />
           )}
 
-          {session.subtasks.length > 0 && (
+          {/* Subtasks */}
+          {(session.subtasks.length > 0 || selectedRepos.length > 0) && (
             <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Subtasks</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Subtasks</span>
+                <button
+                  onClick={addSubtask}
+                  disabled={selectedRepos.length === 0}
+                  className="text-muted-foreground/40 hover:text-muted-foreground transition-colors disabled:opacity-30"
+                  title="Add subtask"
+                >
+                  <IconPlus size={11} />
+                </button>
+              </div>
               <div className="space-y-1.5">
                 {session.subtasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-border bg-card text-sm">
-                    <IconCircleCheck size={14} className="text-muted-foreground/30 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground block w-fit mb-0.5">
-                        {task.repoName}
-                      </span>
-                      <span className="text-foreground leading-snug">{task.title}</span>
-                    </div>
+                  <div key={task.id} className="group/task rounded-lg border border-border bg-card text-sm overflow-hidden">
+                    {editingSubtaskId === task.id ? (
+                      <div className="p-2.5 space-y-1.5">
+                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-block">
+                          {task.repoName}
+                        </span>
+                        <input
+                          autoFocus
+                          value={subtaskDraft}
+                          onChange={(e) => setSubtaskDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveSubtask(task.id)
+                            if (e.key === "Escape") setEditingSubtaskId(null)
+                          }}
+                          className="w-full text-sm bg-muted/50 border border-border rounded px-2 py-1 focus:outline-none focus:border-ring"
+                        />
+                        <div className="flex gap-1.5">
+                          <Button size="sm" className="h-6 text-[11px] px-2.5" onClick={() => saveSubtask(task.id)}>Save</Button>
+                          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={() => setEditingSubtaskId(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 px-3 py-2">
+                        <IconCircleCheck size={14} className="text-muted-foreground/30 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground block w-fit mb-0.5">
+                            {task.repoName}
+                          </span>
+                          <span className="text-foreground leading-snug">{task.title}</span>
+                        </div>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover/task:opacity-100 transition-opacity shrink-0">
+                          <button
+                            onClick={() => { setEditingSubtaskId(task.id); setSubtaskDraft(task.title) }}
+                            className="p-1 rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted transition-colors"
+                          >
+                            <IconPencil size={11} />
+                          </button>
+                          <button
+                            onClick={() => removeSubtask(task.id)}
+                            className="p-1 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <IconTrash size={11} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {session.status === "repos" && session.repoIds.length === 0 && (
+          {!hasContent && (
             <p className="text-center py-8 text-muted-foreground/40 text-sm">
               Spec builds up as you answer questions
             </p>
@@ -518,7 +698,7 @@ export function RefineView({
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel defaultSize="38" minSize="25">
-        <SpecPanel session={session} repos={repos} />
+        <SpecPanel session={session} repos={repos} onUpdate={handleUpdate} />
       </ResizablePanel>
     </ResizablePanelGroup>
   )

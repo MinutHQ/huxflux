@@ -1607,12 +1607,12 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     return content
   }
 
-  async function sendContent(content: string) {
+  async function sendContent(displayText: string, apiContent: string) {
     setIsSending(true)
     const optimisticMsg: Message = {
       id: `optimistic-${Date.now()}`,
       role: "user",
-      content,
+      content: displayText,
       timestamp: new Date().toISOString(),
     }
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => {
@@ -1620,7 +1620,7 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
       return { ...old, messages: [...old.messages, optimisticMsg] }
     })
     try {
-      await api.sendMessage(agent.id, content)
+      await api.sendMessage(agent.id, apiContent)
     } catch {
       queryClient.setQueryData<Agent>(["agent", agent.id], (old) => {
         if (!old) return old
@@ -1635,18 +1635,17 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     const text = input.trim()
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
-    const content = buildContent(text)
+    const apiContent = buildContent(text)
     setInput("")
     onClearComments?.()
     setAttachments([])
-    setLinkedAgents([])
 
     if (isStreaming) {
-      setQueuedMessage(content)
+      setQueuedMessage(JSON.stringify({ display: text, api: apiContent }))
       return
     }
 
-    void sendContent(content)
+    void sendContent(text, apiContent)
   }
 
   // Auto-send queued message when streaming ends
@@ -1654,7 +1653,12 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
     if (!isStreaming && queuedMessage !== null) {
       const msg = queuedMessage
       setQueuedMessage(null)
-      void sendContent(msg)
+      try {
+        const parsed = JSON.parse(msg) as { display: string; api: string }
+        void sendContent(parsed.display, parsed.api)
+      } catch {
+        void sendContent(msg, msg)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming])
@@ -1912,32 +1916,36 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
                 ))}
                 {uiIsStreaming && <TypingBubble />}
-                {queuedMessage !== null && (
-                  <div className="mb-5 group relative">
-                    <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
-                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{queuedMessage}</p>
+                {queuedMessage !== null && (() => {
+                  let displayText = queuedMessage
+                  try { displayText = (JSON.parse(queuedMessage) as { display: string }).display } catch { /* raw */ }
+                  return (
+                    <div className="mb-5 group relative">
+                      <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
+                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{displayText}</p>
+                      </div>
+                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => {
+                            setInput(displayText)
+                            setQueuedMessage(null)
+                          }}
+                          className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
+                          title="Edit queued message"
+                        >
+                          <IconPencil size={11} />
+                        </button>
+                        <button
+                          onClick={() => setQueuedMessage(null)}
+                          className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-red-400 transition-colors"
+                          title="Cancel queued message"
+                        >
+                          <IconX size={11} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => {
-                          setInput(queuedMessage)
-                          setQueuedMessage(null)
-                        }}
-                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
-                        title="Edit queued message"
-                      >
-                        <IconPencil size={11} />
-                      </button>
-                      <button
-                        onClick={() => setQueuedMessage(null)}
-                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-red-400 transition-colors"
-                        title="Cancel queued message"
-                      >
-                        <IconX size={11} />
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
                 <div ref={bottomRef} />
               </div>
             </div>

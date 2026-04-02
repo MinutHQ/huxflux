@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from "react"
+import React, { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useAgents, useRepos } from "@hive/shared"
@@ -778,6 +778,11 @@ function CreationView({ agent }: { agent: Agent }) {
   const [showCursor, setShowCursor] = useState(true)
   const [typedText, setTypedText] = useState("")
   const fullText = "Send a message to get started"
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mouseRef = useRef({ x: -1, y: -1 })
+  const particleRefs = useRef<(HTMLDivElement | null)[]>([])
+  const animFrameRef = useRef<number>(0)
+  const timeRef = useRef(0)
 
   useEffect(() => {
     let i = 0
@@ -798,22 +803,135 @@ function CreationView({ agent }: { agent: Agent }) {
   }, [])
 
   // Floating particle positions (seeded for consistency)
-  const particles = Array.from({ length: 18 }, (_, i) => ({
+  const particles = useMemo(() => Array.from({ length: 120 }, (_, i) => ({
     id: i,
     x: ((i * 37 + 13) % 100),
     y: ((i * 53 + 7) % 100),
-    size: 2 + (i % 4),
-    duration: 3 + (i % 5) * 1.2,
-    delay: (i % 7) * 0.4,
-    opacity: 0.15 + (i % 3) * 0.1,
-  }))
+    size: 2.5 + (i % 5) * 1.2,
+    duration: 3 + (i % 7) * 0.9,
+    delay: (i % 11) * 0.3,
+    opacity: 0.1 + (i % 4) * 0.08,
+    phase: (i * 2.39996) % (Math.PI * 2), // golden angle offset for varied motion
+  })), [])
+
+  // Mouse tracking
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const onMove = (e: MouseEvent) => {
+      const rect = container.getBoundingClientRect()
+      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    }
+    const onLeave = () => { mouseRef.current = { x: -1, y: -1 } }
+    container.addEventListener("mousemove", onMove)
+    container.addEventListener("mouseleave", onLeave)
+    return () => {
+      container.removeEventListener("mousemove", onMove)
+      container.removeEventListener("mouseleave", onLeave)
+    }
+  }, [])
+
+  // Animation loop for magnetic attraction + floating
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    let lastTime = performance.now()
+
+    const animate = (now: number) => {
+      const dt = (now - lastTime) / 1000
+      lastTime = now
+      timeRef.current += dt
+
+      const cw = container.offsetWidth
+      const ch = container.offsetHeight
+      const mx = mouseRef.current.x
+      const my = mouseRef.current.y
+      const hasMouse = mx >= 0 && my >= 0
+
+      for (let i = 0; i < particles.length; i++) {
+        const el = particleRefs.current[i]
+        if (!el) continue
+        const p = particles[i]
+
+        // Base position as percentage of container
+        const baseX = (p.x / 100) * cw
+        const baseY = (p.y / 100) * ch
+
+        // Floating offset (unique phase per particle)
+        const t = timeRef.current
+        const floatX = Math.sin(t / p.duration * Math.PI * 2 + p.phase) * 15
+        const floatY = Math.cos(t / p.duration * Math.PI * 2 + p.phase * 1.3) * 20
+        const floatScale = 1 + Math.sin(t / p.duration * Math.PI * 2 + p.phase * 0.7) * 0.3
+
+        let finalX = baseX + floatX
+        let finalY = baseY + floatY
+        let opacityMul = 1
+
+        // Magnetic attraction toward cursor
+        if (hasMouse) {
+          const dx = mx - finalX
+          const dy = my - finalY
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const radius = 500
+          if (dist < radius) {
+            const strength = (1 - dist / radius) ** 2 * 60
+            finalX -= (dx / dist) * strength
+            finalY -= (dy / dist) * strength
+            opacityMul = 1 + (1 - dist / radius) * 1.5
+          }
+        }
+
+        el.style.transform = `translate(${finalX}px, ${finalY}px) scale(${floatScale})`
+        el.style.opacity = String(Math.min(p.opacity * opacityMul, 0.7))
+      }
+
+      animFrameRef.current = requestAnimationFrame(animate)
+    }
+
+    animFrameRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animFrameRef.current)
+  }, [particles])
+
+  // Click to spawn flying symbols
+  const [flyingSymbols, setFlyingSymbols] = useState<{ id: number; x: number; y: number; symbol: string; flyX: number; flyY: number; fontSize: number }[]>([])
+  const symbolIdRef = useRef(0)
+  const symbols = ["✦", "⟡", "◈", "⬡", "✧", "⊹", "⟐", "◇", "❖", "⊛", "✶", "⟢", "△", "○", "☆"]
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const onClick = (e: MouseEvent) => {
+      if ((e.target as HTMLElement) !== container) return
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      const angle = Math.random() * Math.PI * 2
+      const flyDist = 250 + Math.random() * 200
+      const symbol = symbols[Math.floor(Math.random() * symbols.length)]
+      const id = symbolIdRef.current++
+      setFlyingSymbols((prev) => [...prev, {
+        id, x, y, symbol,
+        flyX: Math.cos(angle) * flyDist,
+        flyY: Math.sin(angle) * flyDist,
+        fontSize: 18 + Math.random() * 14,
+      }])
+      setTimeout(() => {
+        setFlyingSymbols((prev) => prev.filter((s) => s.id !== id))
+      }, 2000)
+    }
+    container.addEventListener("click", onClick)
+    return () => container.removeEventListener("click", onClick)
+  }, [])
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full gap-6 px-8 overflow-hidden">
+    <div ref={containerRef} className="relative flex flex-col items-center justify-center h-full gap-6 px-8 overflow-hidden">
       {/* CSS animations */}
       <style>{`
         @keyframes cv-float { 0%, 100% { transform: translateY(0px) } 50% { transform: translateY(-12px) } }
-        @keyframes cv-particle { 0% { transform: translateY(0) scale(1); opacity: var(--p-op) } 50% { transform: translateY(-30px) scale(1.5); opacity: calc(var(--p-op) * 1.8) } 100% { transform: translateY(0) scale(1); opacity: var(--p-op) } }
+        @keyframes cv-symbol-fly {
+          0% { transform: translate(0, 0) scale(0.5); opacity: 1 }
+          100% { transform: translate(var(--fly-x), var(--fly-y)) scale(1.5); opacity: 0 }
+        }
         @keyframes cv-spin-slow { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
         @keyframes cv-pulse-ring { 0% { transform: scale(1); opacity: 0.4 } 100% { transform: scale(2.5); opacity: 0 } }
         @keyframes cv-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.08), 0 0 60px rgba(251,191,36,0.04) } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.15), 0 0 80px rgba(251,191,36,0.08) } }
@@ -825,21 +943,37 @@ function CreationView({ agent }: { agent: Agent }) {
         @keyframes cv-border-travel { 0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% } }
       `}</style>
 
-      {/* Floating particles */}
-      {particles.map((p) => (
+      {/* Floating particles (JS-driven for magnetic attraction) */}
+      {particles.map((p, i) => (
         <div
           key={p.id}
-          className="absolute rounded-full bg-amber-400 pointer-events-none"
+          ref={(el) => { particleRefs.current[i] = el }}
+          className="absolute left-0 top-0 rounded-full bg-amber-400 pointer-events-none will-change-transform"
           style={{
-            left: `${p.x}%`,
-            top: `${p.y}%`,
             width: p.size,
             height: p.size,
-            ["--p-op" as string]: p.opacity,
             opacity: p.opacity,
-            animation: `cv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+            transition: "opacity 0.3s ease",
           }}
         />
+      ))}
+
+      {/* Flying symbols on click */}
+      {flyingSymbols.map((s) => (
+        <div
+          key={s.id}
+          className="absolute pointer-events-none text-amber-400 z-20"
+          style={{
+            left: s.x,
+            top: s.y,
+            fontSize: s.fontSize,
+            ["--fly-x" as string]: `${s.flyX}px`,
+            ["--fly-y" as string]: `${s.flyY}px`,
+            animation: "cv-symbol-fly 2s ease-out forwards",
+          }}
+        >
+          {s.symbol}
+        </div>
       ))}
 
       {/* Main content with fade-in */}

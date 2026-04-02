@@ -294,6 +294,7 @@ export default function App() {
           update={update}
           isInstalling={isInstalling}
           progress={progress}
+          isIdle={!streamingAgentId && agents.every((a) => a.status !== "in-progress")}
           onInstall={downloadAndInstall}
         />
       )}

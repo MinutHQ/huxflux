@@ -1,7 +1,8 @@
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { useAgents, statusOrder, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { useAgents, useServerStatus, statusOrder, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
 import { c, statusColors } from "../../theme"
 import { useState } from "react"
 
@@ -22,8 +23,8 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
             {agent.title}
           </Text>
           {!!agent.unread && (
-            <View style={{ backgroundColor: c.fgBright, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
-              <Text style={{ color: c.fgBrightFg, fontSize: 10, fontWeight: "700" }}>{agent.unread}</Text>
+            <View style={{ backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{agent.unread}</Text>
             </View>
           )}
         </View>
@@ -55,9 +56,13 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 
 export default function AgentsScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const { data: agents = [], isLoading, refetch } = useAgents()
   const [refreshing, setRefreshing] = useState(false)
   const server = getActiveServer()
+  const serverStatuses = useServerStatus(server ? [server] : [])
+  const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
+  const isUnauthorized = serverStatus === "unauthorized"
 
   async function onRefresh() {
     setRefreshing(true)
@@ -80,7 +85,7 @@ export default function AgentsScreen() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={c.link} />
+        <ActivityIndicator color={c.accent} />
       </View>
     )
   }
@@ -110,30 +115,44 @@ export default function AgentsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: c.border }}>
-        <View style={{ gap: 2 }}>
-          <Text style={{ color: c.fg, fontSize: 18, fontWeight: "700", letterSpacing: -0.3 }}>Hive</Text>
+      {/* Header — clears Dynamic Island / status bar */}
+      <View style={{
+        paddingTop: insets.top + 10,
+        paddingBottom: 12,
+        paddingHorizontal: 16,
+        backgroundColor: c.card,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
+        <View style={{ gap: 3 }}>
+          <Text style={{ color: c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4 }}>Hive</Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.success }} />
-            <Text style={{ color: c.fgSub, fontSize: 12 }}>{server.name}</Text>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isUnauthorized ? c.warning : serverStatus === "offline" ? c.error : c.success }} />
+            <Text style={{ color: isUnauthorized ? c.warning : c.fgSub, fontSize: 12 }}>{server.name}</Text>
           </View>
         </View>
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          <Pressable
-            onPress={() => router.push("/servers")}
-            style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: c.secondary, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
-          >
-            <Ionicons name="server-outline" size={16} color={c.fgSub} />
-          </Pressable>
-          <Pressable
-            onPress={() => router.push("/new-agent")}
-            style={{ paddingHorizontal: 14, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}
-          >
-            <Ionicons name="add" size={16} color="#fff" />
-            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => router.push("/new-agent")}
+          style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
+        >
+          <Ionicons name="add" size={17} color="#fff" />
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
+        </Pressable>
       </View>
+
+      {isUnauthorized && (
+        <Pressable
+          onPress={() => router.push("/servers")}
+          style={{ backgroundColor: "rgba(251,191,36,0.12)", borderBottomWidth: 1, borderBottomColor: "rgba(251,191,36,0.25)", paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 }}
+        >
+          <Ionicons name="warning-outline" size={15} color={c.warning} />
+          <Text style={{ color: c.warning, fontSize: 12, flex: 1 }}>Authentication failed — tap to update token</Text>
+          <Ionicons name="chevron-forward" size={13} color={c.warning} />
+        </Pressable>
+      )}
 
       <FlatList
         data={items}
@@ -145,7 +164,7 @@ export default function AgentsScreen() {
           }
           return <AgentRow agent={item.agent} />
         }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.link} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
         ListEmptyComponent={
           <View style={{ padding: 32, alignItems: "center" }}>
             <Text style={{ color: c.fgSub, fontSize: 14 }}>No agents yet</Text>

@@ -11,18 +11,21 @@ import {
   IconLoader2,
   IconAlertCircle,
   IconTrash,
+  IconKey,
 } from "@tabler/icons-react"
+import type { ServerStatus } from "@hive/shared"
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: "online" | "offline" | "checking" }) {
+function StatusDot({ status }: { status: ServerStatus }) {
   return (
     <span
       className={cn(
         "w-2 h-2 rounded-full shrink-0",
         status === "online" && "bg-emerald-400",
         status === "offline" && "bg-red-400",
-        status === "checking" && "bg-amber-400 animate-pulse"
+        status === "checking" && "bg-amber-400 animate-pulse",
+        status === "unauthorized" && "bg-amber-400"
       )}
     />
   )
@@ -30,10 +33,29 @@ function StatusDot({ status }: { status: "online" | "offline" | "checking" }) {
 
 // ── Inline add-server form ────────────────────────────────────────────────────
 
+async function validateAuth(url: string, token?: string): Promise<"ok" | "unauthorized" | "unreachable"> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+  try {
+    const res = await fetch(`${url}/api/config`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
+    })
+    if (res.status === 401 || res.status === 403) return "unauthorized"
+    if (!res.ok) return "unreachable"
+    return "ok"
+  } catch {
+    return "unreachable"
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function AddServerForm({ onDone }: { onDone: () => void }) {
   const { add } = useServers()
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
+  const [token, setToken] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,23 +66,13 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
     setLoading(true)
 
     const normalizedUrl = url.trim().replace(/\/$/, "")
+    const trimmedToken = token.trim() || undefined
     try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 5000)
-      let ok = false
-      try {
-        const res = await fetch(`${normalizedUrl}/health`, { signal: controller.signal })
-        ok = res.ok
-      } finally {
-        clearTimeout(timer)
-      }
+      const result = await validateAuth(normalizedUrl, trimmedToken)
+      if (result === "unreachable") { setError("Could not reach server. Check the URL."); return }
+      if (result === "unauthorized") { setError("Invalid auth token."); return }
 
-      if (!ok) {
-        setError("Server returned an error. Check the URL.")
-        return
-      }
-
-      const server = add({ name: name.trim() || "My Server", url: normalizedUrl })
+      const server = add({ name: name.trim() || "My Server", url: normalizedUrl, token: trimmedToken })
       setActiveServerId(server.id)
       onDone()
     } catch (err) {
@@ -94,6 +106,13 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
         placeholder="http://localhost:3001"
         className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
       />
+      <input
+        type="password"
+        value={token}
+        onChange={(e) => { setToken(e.target.value); setError(null) }}
+        placeholder="Auth token (if required)"
+        className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+      />
       {error && (
         <div className="flex items-center gap-1.5 text-[11px] text-red-400">
           <IconAlertCircle size={11} />
@@ -114,7 +133,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
           className="text-[12px] bg-primary text-primary-foreground rounded px-3 py-1 disabled:opacity-50 flex items-center gap-1.5"
         >
           {loading && <IconLoader2 size={11} className="animate-spin" />}
-          {loading ? "Connecting…" : "Connect"}
+          {loading ? "Verifying…" : "Connect"}
         </button>
       </div>
     </form>
@@ -129,10 +148,29 @@ interface DropdownProps {
 }
 
 function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
-  const { servers, activeId, setActive, remove } = useServers()
+  const { servers, activeId, setActive, remove, update } = useServers()
   const statuses = useServerStatus(servers)
   const [showAdd, setShowAdd] = useState(false)
+  const [editingTokenId, setEditingTokenId] = useState<string | null>(null)
+  const [tokenInput, setTokenInput] = useState("")
+  const [tokenError, setTokenError] = useState<string | null>(null)
+  const [tokenSaving, setTokenSaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  async function handleSaveToken(serverId: string) {
+    const server = servers.find((s) => s.id === serverId)
+    if (!server || tokenSaving) return
+    setTokenError(null)
+    setTokenSaving(true)
+    try {
+      const result = await validateAuth(server.url, tokenInput.trim() || undefined)
+      if (result === "unauthorized") { setTokenError("Invalid token — auth still failing."); return }
+      if (result === "unreachable") { setTokenError("Server unreachable."); return }
+      update(serverId, { token: tokenInput.trim() || undefined })
+    } finally {
+      setTokenSaving(false)
+    }
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -157,36 +195,70 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
         {servers.map((server) => {
           const isActive = server.id === activeId
           const status = statuses[server.id] ?? "checking"
+          const isEditingToken = editingTokenId === server.id
           return (
-            <div
-              key={server.id}
-              className={cn(
-                "flex items-center gap-2 px-2.5 py-2 rounded-md",
-                isActive && "bg-accent"
-              )}
-            >
-              <StatusDot status={status} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-medium text-foreground truncate">{server.name}</div>
-                <div className="text-[11px] font-mono text-muted-foreground/60 truncate">{server.url}</div>
-              </div>
-              {!isActive && (
+            <div key={server.id} className={cn("rounded-md", isActive && "bg-accent")}>
+              <div className="flex items-center gap-2 px-2.5 py-2">
+                <StatusDot status={status} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-medium text-foreground truncate">{server.name}</div>
+                  {status === "unauthorized"
+                    ? <div className="text-[11px] text-amber-400 truncate">Auth failed — token invalid</div>
+                    : <div className="text-[11px] font-mono text-muted-foreground/60 truncate">{server.url}</div>
+                  }
+                </div>
+                {status === "unauthorized" && (
+                  <button
+                    onClick={() => { setEditingTokenId(isEditingToken ? null : server.id); setTokenInput(server.token ?? "") }}
+                    className="p-1 text-amber-400 hover:text-amber-300 transition-colors rounded shrink-0"
+                    title="Update token"
+                  >
+                    <IconKey size={12} />
+                  </button>
+                )}
+                {!isActive && (
+                  <button
+                    onClick={() => { setActive(server.id); onClose() }}
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 px-1.5 py-0.5 rounded hover:bg-accent/60"
+                  >
+                    Switch
+                  </button>
+                )}
                 <button
-                  onClick={() => {
-                    setActive(server.id)
-                    onClose()
-                  }}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 px-1.5 py-0.5 rounded hover:bg-accent/60"
+                  onClick={() => remove(server.id)}
+                  className="p-1 text-muted-foreground/40 hover:text-red-400 transition-colors rounded shrink-0"
                 >
-                  Switch
+                  <IconTrash size={12} />
                 </button>
+              </div>
+              {isEditingToken && (
+                <div className="px-2.5 pb-2.5 space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input
+                      autoFocus
+                      type="password"
+                      value={tokenInput}
+                      onChange={(e) => { setTokenInput(e.target.value); setTokenError(null) }}
+                      placeholder="Paste token…"
+                      className="flex-1 text-[11px] font-mono bg-background border border-input rounded px-2 py-1 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring"
+                    />
+                    <button
+                      onClick={() => handleSaveToken(server.id)}
+                      disabled={tokenSaving}
+                      className="text-[11px] bg-primary text-primary-foreground rounded px-2 py-1 font-medium disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {tokenSaving && <IconLoader2 size={10} className="animate-spin" />}
+                      {tokenSaving ? "Checking…" : "Save"}
+                    </button>
+                  </div>
+                  {tokenError && (
+                    <div className="flex items-center gap-1 text-[11px] text-red-400">
+                      <IconAlertCircle size={10} />
+                      {tokenError}
+                    </div>
+                  )}
+                </div>
               )}
-              <button
-                onClick={() => remove(server.id)}
-                className="p-1 text-muted-foreground/40 hover:text-red-400 transition-colors rounded shrink-0"
-              >
-                <IconTrash size={12} />
-              </button>
             </div>
           )
         })}
@@ -224,6 +296,7 @@ export function ServerSwitcher() {
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   const activeStatus = activeServer ? (statuses[activeServer.id] ?? "checking") : "checking"
+  const isUnauthorized = activeStatus === "unauthorized"
 
   return (
     <>
@@ -235,7 +308,7 @@ export function ServerSwitcher() {
         <div className="w-5 h-5 rounded-sm bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
           <IconServer size={11} className="text-primary" />
         </div>
-        <span className="text-[12px] font-medium text-sidebar-foreground flex-1 min-w-0 truncate">
+        <span className={cn("text-[12px] font-medium flex-1 min-w-0 truncate", isUnauthorized ? "text-amber-400" : "text-sidebar-foreground")}>
           {activeServer?.name ?? "No server"}
         </span>
         <StatusDot status={activeStatus} />

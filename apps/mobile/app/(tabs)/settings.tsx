@@ -1,18 +1,28 @@
 import { View, Text, TouchableOpacity } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { getActiveServer, getServers } from "@hive/shared"
 import { c } from "../../theme"
 
 export default function SettingsScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const server = getActiveServer()
   const servers = getServers()
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: c.border }}>
-        <Text style={{ color: c.fg, fontSize: 18, fontWeight: "700", letterSpacing: -0.3 }}>Settings</Text>
+      {/* Header */}
+      <View style={{
+        paddingTop: insets.top + 10,
+        paddingBottom: 12,
+        paddingHorizontal: 16,
+        backgroundColor: c.card,
+        borderBottomWidth: 1,
+        borderBottomColor: c.border,
+      }}>
+        <Text style={{ color: c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4 }}>Settings</Text>
       </View>
 
       <View style={{ padding: 16 }}>

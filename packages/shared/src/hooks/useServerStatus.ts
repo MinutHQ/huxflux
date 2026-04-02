@@ -1,16 +1,22 @@
 import { useState, useEffect, useRef } from "react"
 import type { HiveServer } from "../serverStore"
 
-export type ServerStatus = "online" | "offline" | "checking"
+export type ServerStatus = "online" | "offline" | "checking" | "unauthorized"
 
-async function checkHealth(url: string): Promise<boolean> {
+async function checkStatus(server: HiveServer): Promise<ServerStatus> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
-    const res = await fetch(`${url}/health`, { signal: controller.signal })
-    return res.ok
+    const healthRes = await fetch(`${server.url}/health`, { signal: controller.signal })
+    if (!healthRes.ok) return "offline"
+    const authRes = await fetch(`${server.url}/api/config`, {
+      headers: server.token ? { Authorization: `Bearer ${server.token}` } : {},
+      signal: controller.signal,
+    })
+    if (authRes.status === 401 || authRes.status === 403) return "unauthorized"
+    return "online"
   } catch {
-    return false
+    return "offline"
   } finally {
     clearTimeout(timer)
   }
@@ -47,15 +53,11 @@ export function useServerStatus(servers: HiveServer[]): Record<string, ServerSta
 
     async function poll() {
       if (cancelled) return
-      const results = await Promise.all(
-        servers.map(async (s) => ({ id: s.id, online: await checkHealth(s.url) }))
-      )
+      const results = await Promise.all(servers.map(async (s) => ({ id: s.id, status: await checkStatus(s) })))
       if (cancelled) return
       setStatuses((prev) => {
         const next = { ...prev }
-        for (const r of results) {
-          next[r.id] = r.online ? "online" : "offline"
-        }
+        for (const r of results) next[r.id] = r.status
         return next
       })
     }

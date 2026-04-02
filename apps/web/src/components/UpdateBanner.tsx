@@ -1,16 +1,26 @@
-import { useState } from "react"
-import { IconX, IconDownload } from "@tabler/icons-react"
+import { useState, useEffect } from "react"
+import { IconX, IconDownload, IconClock } from "@tabler/icons-react"
 
 interface UpdateBannerProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update: any
   isInstalling: boolean
   progress: number | null
+  isIdle: boolean
   onInstall: () => void
 }
 
-export function UpdateBanner({ update, isInstalling, progress, onInstall }: UpdateBannerProps) {
+export function UpdateBanner({ update, isInstalling, progress, isIdle, onInstall }: UpdateBannerProps) {
   const [dismissed, setDismissed] = useState(false)
+  const [pendingIdle, setPendingIdle] = useState(false)
+
+  // When "restart when idle" is pending and app becomes idle, install
+  useEffect(() => {
+    if (pendingIdle && isIdle) {
+      onInstall()
+    }
+  }, [pendingIdle, isIdle, onInstall])
+
   if (dismissed) return null
 
   return (
@@ -29,6 +39,26 @@ export function UpdateBanner({ update, isInstalling, progress, onInstall }: Upda
             />
           </div>
         </div>
+      ) : pendingIdle ? (
+        <>
+          <span className="flex-1 min-w-0 flex items-center gap-1.5">
+            <IconClock size={12} className="shrink-0" />
+            Waiting for agents to finish, then restarting…
+          </span>
+          <button
+            onClick={() => setPendingIdle(false)}
+            className="shrink-0 px-2.5 py-0.5 rounded-md bg-primary-foreground/15 hover:bg-primary-foreground/25 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            aria-label="Dismiss update banner"
+            onClick={() => setDismissed(true)}
+            className="shrink-0 text-primary-foreground/60 hover:text-primary-foreground transition-colors"
+          >
+            <IconX size={13} />
+          </button>
+        </>
       ) : (
         <>
           <span className="flex-1 min-w-0">
@@ -40,6 +70,15 @@ export function UpdateBanner({ update, isInstalling, progress, onInstall }: Upda
           >
             Install &amp; Restart
           </button>
+          {!isIdle && (
+            <button
+              onClick={() => setPendingIdle(true)}
+              className="shrink-0 px-2.5 py-0.5 rounded-md bg-primary-foreground/10 hover:bg-primary-foreground/20 transition-colors"
+              title="Restart automatically when no agents are running"
+            >
+              Restart when idle
+            </button>
+          )}
           <button
             aria-label="Dismiss update banner"
             onClick={() => setDismissed(true)}

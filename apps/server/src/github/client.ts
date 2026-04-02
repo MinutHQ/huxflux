@@ -290,6 +290,6 @@ export async function createIssue(params: {
 export async function listBranches(repoUrl: string): Promise<string[]> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
-  const { data } = await octokit.repos.listBranches({ owner, repo, per_page: 100 })
-  return data.map((b) => b.name)
+  const branches = await octokit.paginate(octokit.repos.listBranches, { owner, repo, per_page: 100 })
+  return branches.map((b) => b.name)
 }

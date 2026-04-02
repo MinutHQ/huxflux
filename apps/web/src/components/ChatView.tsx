@@ -10,6 +10,7 @@ import { DiffView } from "@/components/DiffView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkBreaks from "remark-breaks"
 import {
   IconChevronDown,
   IconChevronRight,
@@ -490,7 +491,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
 function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,

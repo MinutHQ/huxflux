@@ -1,15 +1,21 @@
 import { Tabs } from "expo-router"
-import { Text } from "react-native"
+import { Ionicons } from "@expo/vector-icons"
 import { c } from "../../theme"
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: c.bg },
-        headerTintColor: c.fg,
-        tabBarStyle: { backgroundColor: c.bg, borderTopColor: c.border },
-        tabBarActiveTintColor: c.link,
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: c.card,
+          borderTopWidth: 1,
+          borderTopColor: c.border,
+          height: 58,
+          paddingBottom: 8,
+          paddingTop: 6,
+        },
+        tabBarActiveTintColor: c.accent,
         tabBarInactiveTintColor: c.fgSub,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
       }}
@@ -18,16 +24,18 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Agents",
-          tabBarLabel: "Agents",
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>⬡</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "layers" : "layers-outline"} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarLabel: "Settings",
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>⚙</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "settings" : "settings-outline"} size={22} color={color} />
+          ),
         }}
       />
     </Tabs>

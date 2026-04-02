@@ -23,6 +23,7 @@ export const c = {
   error:   diffColors.deletion,               // #f87171
   warning: statusColors["in-progress"].color, // #fbbf24
   link:    statusColors["in-review"].color,   // #60a5fa
+  accent:  dark.sidebarPrimary,              // #6366f1 — indigo, matches web sidebar-primary
 
   // Diff backgrounds
   addBg: diffColors.additionBg,

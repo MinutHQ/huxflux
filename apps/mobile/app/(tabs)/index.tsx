@@ -1,5 +1,6 @@
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
 import { useRouter } from "expo-router"
+import { Ionicons } from "@expo/vector-icons"
 import { useAgents, statusOrder, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
 import { c, statusColors } from "../../theme"
 import { useState } from "react"
@@ -36,7 +37,7 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
         </View>
       </View>
 
-      <Text style={{ color: c.fgSub, fontSize: 11 }}>›</Text>
+      <Ionicons name="chevron-forward" size={14} color={c.fgSub} />
     </TouchableOpacity>
   )
 }
@@ -91,9 +92,9 @@ export default function AgentsScreen() {
         <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center", marginBottom: 24 }}>Add a Hive server to get started</Text>
         <TouchableOpacity
           onPress={() => router.push("/servers")}
-          style={{ backgroundColor: c.fgBright, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
+          style={{ backgroundColor: c.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
         >
-          <Text style={{ color: c.fgBrightFg, fontWeight: "600", fontSize: 14 }}>Add Server</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Add Server</Text>
         </TouchableOpacity>
       </View>
     )
@@ -109,23 +110,27 @@ export default function AgentsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: c.border }}>
-        <View>
-          <Text style={{ color: c.fg, fontSize: 20, fontWeight: "700" }}>Agents</Text>
-          <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 1 }}>{server.name}</Text>
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: c.border }}>
+        <View style={{ gap: 2 }}>
+          <Text style={{ color: c.fg, fontSize: 18, fontWeight: "700", letterSpacing: -0.3 }}>Hive</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.success }} />
+            <Text style={{ color: c.fgSub, fontSize: 12 }}>{server.name}</Text>
+          </View>
         </View>
-        <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           <Pressable
             onPress={() => router.push("/servers")}
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
+            style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: c.secondary, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
           >
-            <Text style={{ color: c.fgSub, fontSize: 16 }}>⊕</Text>
+            <Ionicons name="server-outline" size={16} color={c.fgSub} />
           </Pressable>
           <Pressable
             onPress={() => router.push("/new-agent")}
-            style={{ paddingHorizontal: 14, height: 34, borderRadius: 8, backgroundColor: c.fgBright, alignItems: "center", justifyContent: "center" }}
+            style={{ paddingHorizontal: 14, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 5 }}
           >
-            <Text style={{ color: c.fgBrightFg, fontSize: 13, fontWeight: "600" }}>+ New</Text>
+            <Ionicons name="add" size={16} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
           </Pressable>
         </View>
       </View>

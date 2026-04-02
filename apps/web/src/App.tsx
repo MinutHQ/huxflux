@@ -11,7 +11,7 @@ import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { useAgents, useAgent, useRepos, api, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
+import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
@@ -71,7 +71,6 @@ export default function App() {
   const { update, isInstalling, progress, downloadAndInstall } = useUpdater()
   const { servers, activeId, refresh: refreshServers } = useServers()
   const { data: agents = [] } = useAgents()
-  const { data: repos = [] } = useRepos()
 
   // Auto-register server from ?connect= URL param (e.g. opened via `huxflux open`)
   useEffect(() => {
@@ -150,41 +149,22 @@ export default function App() {
     )
   }
 
-  async function handleNewRefine(ticketId: string) {
+  function handleNewRefine(ticketId: string) {
     const id = `refine-${Date.now()}`
     const session: RefineSession = {
       id,
       ticketId,
-      agentId: null,
+      status: "repos",
+      repoIds: [],
+      messages: [],
+      answers: [],
+      subtasks: [],
       createdAt: new Date().toISOString(),
     }
     const next = [...refineSessions, session]
     setRefineSessions(next)
     saveRefineSessions(next)
     setSelectedRefineId(id)
-
-    // Create the real agent — use first available repo as the base (noWorktree so it reads live code)
-    try {
-      const baseRepo = repos[0]
-      const agent = await api.createAgent({
-        repoId: baseRepo?.id,
-        title: `Refine: ${ticketId}`,
-        branch: `refine/${ticketId.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
-        model: "claude-sonnet-4-6",
-        noWorktree: true,
-      })
-      const withAgent = { ...session, agentId: agent.id }
-      const updated = next.map((s) => (s.id === id ? withAgent : s))
-      setRefineSessions(updated)
-      saveRefineSessions(updated)
-
-      // Send the initial refinement prompt
-      const { buildInitialPrompt } = await import("@/components/RefineView")
-      const prompt = buildInitialPrompt(ticketId, repos.map((r) => ({ name: r.name, path: r.path })))
-      await api.sendMessage(agent.id, prompt)
-    } catch (err) {
-      toast.error(`Failed to start refinement: ${(err as Error).message}`)
-    }
   }
 
   const sidebarProps = {

@@ -138,8 +138,17 @@ export function useAgent(id: string | null) {
   useAgentEvents(id, (event) => {
     if (event.type === "message:user") {
       updateMessages((msgs) => {
-        // Avoid duplicate if the sender already optimistically added it
+        // Avoid duplicate if already present with real id
         if (msgs.some((m) => m.id === event.message.id)) return msgs
+        // Replace optimistic placeholder from the sender
+        const optimisticIdx = msgs.findLastIndex(
+          (m) => m.id.startsWith("optimistic-") && m.role === "user"
+        )
+        if (optimisticIdx !== -1) {
+          const next = [...msgs]
+          next[optimisticIdx] = { ...event.message, toolCalls: [] }
+          return next
+        }
         return [...msgs, { ...event.message, toolCalls: [] }]
       })
     }

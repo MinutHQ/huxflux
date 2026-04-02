@@ -106,7 +106,8 @@ export default function ServersScreen() {
     if (!editingId || editLoading) return
     const trimmedUrl = editUrl.trim()
     if (!trimmedUrl) return
-    const trimmedToken = editToken.trim() || undefined
+    const trimmedToken = editToken.trim()
+    if (!trimmedToken) { setEditError("Auth token is required."); return }
     setEditError(null)
     setEditLoading(true)
     try {
@@ -116,7 +117,7 @@ export default function ServersScreen() {
       updateServer(editingId, {
         name: editName.trim() || new URL(trimmedUrl).hostname,
         url: trimmedUrl,
-        token: trimmedToken,
+        token: trimmedToken || undefined,
       })
       setEditingId(null)
       refresh()
@@ -191,7 +192,7 @@ export default function ServersScreen() {
               <TextInput
                 value={editToken}
                 onChangeText={setEditToken}
-                placeholder="Auth token (optional)"
+                placeholder="Auth token"
                 placeholderTextColor={c.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -278,7 +279,7 @@ export default function ServersScreen() {
             <TextInput
               value={addToken}
               onChangeText={(v) => { setAddToken(v); setAddError(null) }}
-              placeholder="Auth token (if required)"
+              placeholder="Auth token"
               placeholderTextColor={c.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
@@ -297,8 +298,8 @@ export default function ServersScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAdd}
-                disabled={addLoading}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", opacity: addLoading ? 0.6 : 1 }}
+                disabled={addLoading || !input.trim() || !addToken.trim()}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", opacity: (addLoading || !input.trim() || !addToken.trim()) ? 0.5 : 1 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "600" }}>{addLoading ? "Verifying…" : "Add"}</Text>
               </TouchableOpacity>

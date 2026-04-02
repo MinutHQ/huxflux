@@ -66,7 +66,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
     setLoading(true)
 
     const normalizedUrl = url.trim().replace(/\/$/, "")
-    const trimmedToken = token.trim() || undefined
+    const trimmedToken = token.trim()
     try {
       const result = await validateAuth(normalizedUrl, trimmedToken)
       if (result === "unreachable") { setError("Could not reach server. Check the URL."); return }
@@ -110,7 +110,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
         type="password"
         value={token}
         onChange={(e) => { setToken(e.target.value); setError(null) }}
-        placeholder="Auth token (if required)"
+        placeholder="Auth token"
         className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
       />
       {error && (
@@ -129,7 +129,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
         </button>
         <button
           type="submit"
-          disabled={!url.trim() || loading}
+          disabled={!url.trim() || !token.trim() || loading}
           className="text-[12px] bg-primary text-primary-foreground rounded px-3 py-1 disabled:opacity-50 flex items-center gap-1.5"
         >
           {loading && <IconLoader2 size={11} className="animate-spin" />}
@@ -244,7 +244,7 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
                     />
                     <button
                       onClick={() => handleSaveToken(server.id)}
-                      disabled={tokenSaving}
+                      disabled={tokenSaving || !tokenInput.trim()}
                       className="text-[11px] bg-primary text-primary-foreground rounded px-2 py-1 font-medium disabled:opacity-50 flex items-center gap-1"
                     >
                       {tokenSaving && <IconLoader2 size={10} className="animate-spin" />}

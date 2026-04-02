@@ -103,6 +103,11 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       fontFamily: '"Geist Mono", "JetBrains Mono", "Fira Code", monospace',
       theme: getTerminalTheme(),
     })
+    // Let F1 propagate to the window handler (for terminal maximize toggle)
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.key === "F1") return false
+      return true
+    })
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
 

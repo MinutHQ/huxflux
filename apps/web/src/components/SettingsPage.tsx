@@ -708,14 +708,35 @@ function ServerRow({
   const [name, setName] = useState(server.name)
   const [url, setUrl] = useState(server.url)
   const [token, setToken] = useState(server.token ?? "")
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
-  function handleSave() {
-    onUpdate({
-      name: name.trim() || server.name,
-      url: url.trim() || server.url,
-      token: token.trim() || undefined,
-    })
-    setEditing(false)
+  async function handleSave() {
+    const trimmedToken = token.trim()
+    if (!trimmedToken || saving) return
+    setSaveError(null)
+    setSaving(true)
+    try {
+      const targetUrl = (url.trim() || server.url).replace(/\/$/, "")
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 5000)
+      try {
+        const res = await fetch(`${targetUrl}/api/config`, {
+          headers: { Authorization: `Bearer ${trimmedToken}` },
+          signal: controller.signal,
+        })
+        if (res.status === 401 || res.status === 403) { setSaveError("Invalid auth token."); return }
+        if (!res.ok) { setSaveError("Could not reach server."); return }
+      } finally {
+        clearTimeout(timer)
+      }
+      onUpdate({ name: name.trim() || server.name, url: targetUrl, token: trimmedToken })
+      setEditing(false)
+    } catch {
+      setSaveError("Connection timed out.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handleRemove() {
@@ -751,11 +772,17 @@ function ServerRow({
             className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
           />
         </div>
+        {saveError && (
+          <div className="flex items-center gap-1.5 text-[12px] text-red-400">
+            <IconAlertCircle size={13} />
+            {saveError}
+          </div>
+        )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => { setName(server.name); setUrl(server.url); setToken(server.token ?? ""); setEditing(false) }}>Cancel</Button>
-          <Button size="sm" onClick={handleSave}>
-            <IconCheck size={13} />
-            Save
+          <Button variant="ghost" size="sm" onClick={() => { setName(server.name); setUrl(server.url); setToken(server.token ?? ""); setSaveError(null); setEditing(false) }}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={!token.trim() || saving}>
+            {saving ? <IconLoader2 size={13} className="animate-spin" /> : <IconCheck size={13} />}
+            {saving ? "Verifying…" : "Save"}
           </Button>
         </div>
       </div>
@@ -817,22 +844,27 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!url.trim() || loading) return
+    if (!url.trim() || !token.trim() || loading) return
     setError(null)
     setLoading(true)
     const normalizedUrl = url.trim().replace(/\/$/, "")
+    const trimmedToken = token.trim()
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 5000)
-      let ok = false
+      let authResult: "ok" | "unauthorized" | "unreachable" = "unreachable"
       try {
-        const res = await fetch(`${normalizedUrl}/health`, { signal: controller.signal })
-        ok = res.ok
+        const res = await fetch(`${normalizedUrl}/api/config`, {
+          headers: { Authorization: `Bearer ${trimmedToken}` },
+          signal: controller.signal,
+        })
+        authResult = res.status === 401 || res.status === 403 ? "unauthorized" : res.ok ? "ok" : "unreachable"
       } finally {
         clearTimeout(timer)
       }
-      if (!ok) { setError("Server returned an error."); return }
-      add({ name: name.trim() || "My Server", url: normalizedUrl, token: token.trim() || undefined })
+      if (authResult === "unreachable") { setError("Could not reach server. Check the URL."); return }
+      if (authResult === "unauthorized") { setError("Invalid auth token."); return }
+      add({ name: name.trim() || "My Server", url: normalizedUrl, token: trimmedToken })
       onDone()
     } catch (err) {
       setError(err instanceof Error && err.name === "AbortError" ? "Connection timed out." : "Could not reach server.")
@@ -877,7 +909,7 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
       )}
       {!token && (
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token <span className="normal-case font-normal text-muted-foreground/40">(optional)</span></label>
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token</label>
           <input
             value={token}
             onChange={(e) => setToken(e.target.value)}
@@ -894,7 +926,7 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
       )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onDone}>Cancel</Button>
-        <Button type="submit" size="sm" disabled={!url.trim() || loading}>
+        <Button type="submit" size="sm" disabled={!url.trim() || !token.trim() || loading}>
           {loading && <IconLoader2 size={13} className="animate-spin" />}
           {loading ? "Connecting…" : "Add server"}
         </Button>

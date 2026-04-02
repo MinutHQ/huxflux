@@ -51,16 +51,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         return
       }
 
-      // Verify auth token against a protected endpoint
-      const authHeaders: HeadersInit = token.trim() ? { Authorization: `Bearer ${token.trim()}` } : {}
+      // Verify auth token
+      const trimmedToken = token.trim()
       const authController = new AbortController()
       const authTimer = setTimeout(() => authController.abort(), 5000)
       try {
         const authRes = await fetch(`${normalizedUrl}/api/config`, {
-          headers: authHeaders,
+          headers: { Authorization: `Bearer ${trimmedToken}` },
           signal: authController.signal,
         })
-        if (authRes.status === 401) {
+        if (authRes.status === 401 || authRes.status === 403) {
           setError("Invalid auth token. Check the token from `huxflux status`.")
           return
         }
@@ -71,7 +71,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       const server = add({
         name: name.trim() || "My Server",
         url: normalizedUrl,
-        token: token.trim() || undefined,
+        token: trimmedToken,
       })
 
       setActiveServerId(server.id)
@@ -143,7 +143,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           ) : (
             <div>
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
-                Auth Token <span className="normal-case font-normal text-muted-foreground/40">(optional)</span>
+                Auth Token
               </label>
               <input
                 value={token}
@@ -164,7 +164,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           <Button
             type="submit"
             className="w-full mt-1"
-            disabled={!url.trim() || loading}
+            disabled={!url.trim() || !token.trim() || loading}
           >
             {loading ? (
               <span className="flex items-center gap-2">

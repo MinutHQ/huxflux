@@ -116,6 +116,7 @@ export interface Agent {
   description?: string
   diffSummary?: { additions: number; deletions: number; commits?: number }
   messages: Message[]
+  hasMore?: boolean
   fileChanges: FileChange[]
   terminalOutput: string[]
   createdAt?: string

@@ -117,7 +117,7 @@ export default function App() {
   const { githubEnabled, feedbackEnabled } = useServerConfig()
 
   const workspace = useWorkspace(agents)
-  const { data: activeAgent, isStreaming: activeIsStreaming } = useAgent(workspace.resolvedActiveId)
+  const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore } = useAgent(workspace.resolvedActiveId)
 
   const lastMsgs = activeAgent?.messages
   const lastMsgDurationMs = lastMsgs?.length ? (lastMsgs[lastMsgs.length - 1].durationMs ?? null) : null
@@ -202,6 +202,9 @@ export default function App() {
         <ChatView
           agent={activeAgent}
           isStreaming={activeIsStreaming}
+          loadMore={activeLoadMore}
+          hasMore={activeHasMore}
+          isLoadingMore={activeIsLoadingMore}
           openFileTab={workspace.openFileTab}
           onClearFileTab={() => workspace.setOpenFileTab(null)}
           tabs={workspace.tabs}

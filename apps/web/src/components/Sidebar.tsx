@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react"
+import React, { useRef, useState, useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { ScrollArea } from "@hive/ui"
 import { Button } from "@hive/ui"
@@ -374,7 +374,7 @@ function StatusContextMenu({
   )
 }
 
-function AgentRow({
+const AgentRow = React.memo(function AgentRow({
   agent,
   isSelected,
   isStreaming,
@@ -519,7 +519,7 @@ function AgentRow({
       )}
     </>
   )
-}
+})
 
 // ── Pending agent row ─────────────────────────────────────────────────────────
 
@@ -873,18 +873,22 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const unreadPrCount = prs.filter((p) => p.unread).length
 
   // Filter agents by repo
-  const filteredAgents = repoFilter === "all"
-    ? agents
-    : agents.filter((a) => a.repoId === repoFilter)
+  const filteredAgents = useMemo(
+    () => repoFilter === "all" ? agents : agents.filter((a) => a.repoId === repoFilter),
+    [agents, repoFilter]
+  )
 
   // Group by status
-  const grouped = visibleStatuses.reduce<Record<string, AgentSummary[]>>(
-    (acc, status) => {
-      acc[status] = filteredAgents.filter((a) => a.status === status)
-      return acc
-    },
-    {}
-  ) as Record<AgentStatus, AgentSummary[]>
+  const grouped = useMemo(
+    () => visibleStatuses.reduce<Record<string, AgentSummary[]>>(
+      (acc, status) => {
+        acc[status] = filteredAgents.filter((a) => a.status === status)
+        return acc
+      },
+      {}
+    ) as Record<AgentStatus, AgentSummary[]>,
+    [filteredAgents]
+  )
 
   let globalIndex = 0
   const groupStartIndices: Partial<Record<AgentStatus, number>> = {}
@@ -896,10 +900,13 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   }
 
   // Repo name lookup map (repoId → name)
-  const repoNames = Object.fromEntries(repos.map((r) => [r.id, r.name]))
+  const repoNames = useMemo(
+    () => Object.fromEntries(repos.map((r) => [r.id, r.name])),
+    [repos]
+  )
 
   // Group by repo
-  const repoGrouped = (() => {
+  const repoGrouped = useMemo(() => {
     const map = new Map<string, { name: string; agents: AgentSummary[] }>()
     for (const agent of filteredAgents) {
       const repoId = agent.repoId ?? "unknown"
@@ -912,7 +919,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       entry.agents.push(agent)
     }
     return Array.from(map.entries()).map(([id, { name, agents: a }]) => ({ id, name, agents: a }))
-  })()
+  }, [filteredAgents, repos])
 
   let repoGlobalIndex = 0
   const repoGroupStartIndices = new Map<string, number>()

@@ -67,6 +67,8 @@ export const api = {
 
   // Messages
   getMessages: (agentId: string) => req<Message[]>(`/api/agents/${agentId}/messages`),
+  getMoreMessages: (agentId: string, before: string) =>
+    req<Message[]>(`/api/agents/${agentId}/messages?before=${encodeURIComponent(before)}&limit=50`),
   sendMessage: (agentId: string, content: string) =>
     req<{ status: string }>(`/api/agents/${agentId}/messages`, {
       method: "POST",

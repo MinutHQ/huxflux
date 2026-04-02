@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify"
-import { eq, inArray } from "drizzle-orm"
+import { eq, inArray, lt, and } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, repos } from "../db/schema.js"
 import { runClaude, isAgentRunning } from "../claude/runner.js"
@@ -28,7 +28,11 @@ export async function messagesRoutes(app: FastifyInstance) {
       if (!agent) return reply.code(404).send({ error: "Not found" })
 
       const msgs = db.select().from(messages)
-        .where(eq(messages.agentId, id))
+        .where(
+          req.query.before
+            ? and(eq(messages.agentId, id), lt(messages.createdAt, req.query.before))
+            : eq(messages.agentId, id)
+        )
         .all()
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .slice(-limit)

@@ -225,6 +225,16 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agents ADD COLUMN deleted_at TEXT;
     `,
   },
+  {
+    version: 10,
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_messages_agent_id ON messages(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_tool_calls_message_id ON tool_calls(message_id);
+      CREATE INDEX IF NOT EXISTS idx_file_changes_agent_id ON file_changes(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_terminal_lines_agent_id ON terminal_lines(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status, deleted_at);
+    `,
+  },
 ]
 
 export function runMigrations() {

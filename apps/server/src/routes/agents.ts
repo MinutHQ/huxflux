@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify"
 import { v4 as uuid } from "uuid"
-import { eq, inArray, isNull, and } from "drizzle-orm"
+import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
@@ -32,8 +32,20 @@ export async function agentsRoutes(app: FastifyInstance) {
   // GET /api/agents — list with diffSummary computed from file_changes (excludes child tabs and soft-deleted)
   app.get("/api/agents", async () => {
     const rows = db.select().from(agents).where(and(isNull(agents.parentAgentId), isNull(agents.deletedAt))).all()
-    return Promise.all(rows.map(async (a) => {
-      const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, a.id)).all()
+    if (rows.length === 0) return []
+
+    const allFiles = db.select().from(fileChanges)
+      .where(inArray(fileChanges.agentId, rows.map((r) => r.id)))
+      .all()
+    const filesByAgent = new Map<string, typeof allFiles>()
+    for (const f of allFiles) {
+      const list = filesByAgent.get(f.agentId) ?? []
+      list.push(f)
+      filesByAgent.set(f.agentId, list)
+    }
+
+    return rows.map((a) => {
+      const files = filesByAgent.get(a.id) ?? []
       const additions = files.reduce((s, f) => s + f.additions, 0)
       const deletions = files.reduce((s, f) => s + f.deletions, 0)
       return {
@@ -41,7 +53,7 @@ export async function agentsRoutes(app: FastifyInstance) {
         diffSummary: files.length > 0 ? { additions, deletions } : undefined,
         prStatus: parsePrStatus(a.prStatus),
       }
-    }))
+    })
   })
 
   // GET /api/agents/:id — full agent with messages + files + terminal
@@ -49,10 +61,21 @@ export async function agentsRoutes(app: FastifyInstance) {
     const agent = db.select().from(agents).where(and(eq(agents.id, req.params.id), isNull(agents.deletedAt))).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
-    const msgs = db.select().from(messages)
+    const MESSAGE_LIMIT = 50
+
+    // Count total messages for hasMore
+    const totalMsgs = db.select({ count: count() }).from(messages)
+      .where(eq(messages.agentId, agent.id))
+      .get()?.count ?? 0
+
+    const allMsgs = db.select().from(messages)
       .where(eq(messages.agentId, agent.id))
       .all()
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+
+    // Take last MESSAGE_LIMIT
+    const msgs = allMsgs.slice(-MESSAGE_LIMIT)
+    const hasMore = totalMsgs > MESSAGE_LIMIT
 
     // Bulk-fetch all tool calls for these messages (avoids N+1)
     const msgIds = msgs.map((m) => m.id)
@@ -92,6 +115,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     return {
       ...agent,
       messages: messagesWithTools,
+      hasMore,
       fileChanges: files,
       terminalOutput: terminal,
       diffSummary: files.length > 0 ? { additions, deletions } : undefined,

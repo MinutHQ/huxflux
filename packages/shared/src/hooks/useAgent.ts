@@ -34,6 +34,8 @@ function mergeSubAgentData(msgs: Message[], map: Map<string, SubAgentData>): Mes
 export function useAgent(id: string | null) {
   const queryClient = useQueryClient()
   const [isStreaming, setIsStreaming] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // Persistent client-side sub-agent data, keyed by Agent tool call ID
   const subAgentDataRef = useRef(new Map<string, SubAgentData>())
@@ -62,6 +64,13 @@ export function useAgent(id: string | null) {
       return { ...data, messages: mergeSubAgentData(data.messages, map) }
     },
   })
+
+  // Sync hasMore from fetched data
+  useEffect(() => {
+    if (query.data?.hasMore !== undefined) {
+      setHasMore(query.data.hasMore)
+    }
+  }, [query.data?.hasMore])
 
   // Defensive: if fetched data has a completed last message, clear streaming.
   // Guards against message:done being missed due to WS drop.
@@ -93,6 +102,28 @@ export function useAgent(id: string | null) {
     }, 5000)
     return () => clearInterval(interval)
   }, [isStreaming, id, queryClient])
+
+  const loadMore = useCallback(async () => {
+    if (!id || isLoadingMore || !hasMore) return
+    const msgs = queryClient.getQueryData<Agent>(["agent", id])?.messages
+    if (!msgs?.length) return
+    const oldest = msgs[0].timestamp
+    setIsLoadingMore(true)
+    try {
+      const older = await api.getMoreMessages(id, oldest)
+      if (older.length === 0) { setHasMore(false); return }
+      queryClient.setQueryData<Agent>(["agent", id], (old) => {
+        if (!old) return old
+        // Deduplicate by id
+        const existingIds = new Set(old.messages.map((m) => m.id))
+        const newMsgs = older.filter((m) => !existingIds.has(m.id))
+        return { ...old, messages: [...newMsgs, ...old.messages] }
+      })
+      setHasMore(older.length === 50)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [id, isLoadingMore, hasMore, queryClient])
 
   const updateMessages = useCallback(
     (updater: (msgs: Message[]) => Message[]) => {
@@ -318,5 +349,5 @@ export function useAgent(id: string | null) {
     }
   })
 
-  return { ...query, isStreaming }
+  return { ...query, isStreaming, loadMore, hasMore, isLoadingMore }
 }

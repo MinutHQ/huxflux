@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react"
+import React, { useRef, useEffect, useState, useCallback } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useAgents, useRepos } from "@hive/shared"
@@ -14,6 +14,7 @@ import remarkBreaks from "remark-breaks"
 import {
   IconChevronDown,
   IconChevronRight,
+  IconChevronUp,
   IconSend,
   IconPlus,
   IconBrain,
@@ -488,7 +489,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
-function MarkdownContent({ content }: { content: string }) {
+const MarkdownContent = React.memo(function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -532,7 +533,7 @@ function MarkdownContent({ content }: { content: string }) {
       {content}
     </ReactMarkdown>
   )
-}
+})
 
 // ── Typing indicator ──────────────────────────────────────────────────────────
 
@@ -556,7 +557,7 @@ function TypingBubble() {
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
   const isUser = msg.role === "user"
   const isEmpty = !msg.content && !msg.thinking && (!msg.toolCalls || msg.toolCalls.length === 0)
 
@@ -688,7 +689,7 @@ function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boole
       </div>
     </div>
   )
-}
+})
 
 // ── PR status pill ────────────────────────────────────────────────────────────
 
@@ -1386,6 +1387,9 @@ interface ChatTab {
 interface ChatViewProps {
   agent: Agent
   isStreaming: boolean
+  loadMore?: () => Promise<void>
+  hasMore?: boolean
+  isLoadingMore?: boolean
   openFileTab: OpenFile | null
   onClearFileTab: () => void
   tabs?: ChatTab[]
@@ -1400,7 +1404,7 @@ interface ChatViewProps {
   githubEnabled?: boolean
 }
 
-export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -1913,6 +1917,22 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
             <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
               <div className="px-10 py-8">
                 <StatsBar messages={agent.messages} />
+                {hasMore && (
+                  <div className="flex justify-center pb-4">
+                    <button
+                      onClick={loadMore}
+                      disabled={isLoadingMore}
+                      className="text-[12px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isLoadingMore ? (
+                        <IconLoader2 size={13} className="animate-spin" />
+                      ) : (
+                        <IconChevronUp size={13} />
+                      )}
+                      {isLoadingMore ? "Loading…" : "Load earlier messages"}
+                    </button>
+                  </div>
+                )}
                 {agent.messages.map((msg, i) => (
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
                 ))}

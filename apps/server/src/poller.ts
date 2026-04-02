@@ -73,8 +73,9 @@ export function startPoller(intervalMs = 60_000) {
       .all()
 
     console.log(`[poller] checking ${rows.length} agent(s)`)
-    for (const agent of rows) {
-      await pollAgent(agent)
+    const CONCURRENCY = 5
+    for (let i = 0; i < rows.length; i += CONCURRENCY) {
+      await Promise.all(rows.slice(i, i + CONCURRENCY).map(pollAgent))
     }
   }
 

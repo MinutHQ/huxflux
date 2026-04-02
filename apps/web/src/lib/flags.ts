@@ -12,7 +12,7 @@ type Flags = {
 
 const DEFAULTS: Flags = {
   prReview: false,
-  refine: true,
+  refine: false,
 }
 
 function load(): Flags {

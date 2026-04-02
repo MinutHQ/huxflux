@@ -952,11 +952,7 @@ function PlaceholderSettings({ title }: { title: string }) {
 
 function ExperimentalSettings() {
   const [prReview, setPrReview] = useState(() => getFlag("prReview"))
-
-  function toggle(value: boolean) {
-    setFlag("prReview", value)
-    setPrReview(value)
-  }
+  const [refine, setRefine] = useState(() => getFlag("refine"))
 
   return (
     <div className="space-y-6">
@@ -967,7 +963,16 @@ function ExperimentalSettings() {
             Show a Review tab in the sidebar for reviewing GitHub pull requests. Reload required after toggling.
           </div>
         </div>
-        <Switch checked={prReview} onCheckedChange={toggle} />
+        <Switch checked={prReview} onCheckedChange={(v) => { setFlag("prReview", v); setPrReview(v) }} />
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Refine</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Show a Refine tab in the sidebar for breaking down tickets into subtasks. Reload required after toggling.
+          </div>
+        </div>
+        <Switch checked={refine} onCheckedChange={(v) => { setFlag("refine", v); setRefine(v) }} />
       </div>
     </div>
   )

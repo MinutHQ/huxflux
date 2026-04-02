@@ -1,47 +1,44 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { ScrollArea, Button, cn } from "@hive/ui"
-import { useRepos } from "@hive/shared"
-import type { Repo } from "@hive/shared"
+import { api, useAgent, useRepos } from "@hive/shared"
+import type { Message } from "@hive/shared"
 import {
   IconSend,
-  IconCheck,
-  IconLoader2,
-  IconGitBranch,
-  IconCircleCheck,
-  IconCircle,
   IconFlask,
+  IconGitBranch,
+  IconCircle,
+  IconCircleCheck,
   IconTicket,
   IconListDetails,
+  IconLoader2,
+  IconPlayerStop,
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import remarkBreaks from "remark-breaks"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface RefineSubtask {
-  id: string
-  repoId: string
-  repoName: string
+  repo: string
   title: string
+  description?: string
+}
+
+export interface TaskSpec {
+  title?: string
+  description?: string
+  repos?: string[]
+  acceptanceCriteria?: string[]
+  subtasks?: RefineSubtask[]
 }
 
 export interface RefineSession {
   id: string
   ticketId: string
-  status: "repos" | "questions" | "done"
-  repoIds: string[]
-  messages: RefineMessage[]
-  /** Answers to the 3 refinement questions (indexed 0–2) */
-  answers: string[]
-  subtasks: RefineSubtask[]
+  /** ID of the real Claude agent backing this session */
+  agentId: string | null
   createdAt: string
-}
-
-export interface RefineMessage {
-  id: string
-  role: "user" | "agent"
-  content: string
-  type: "text" | "repo-select"
-  timestamp: string
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -61,159 +58,71 @@ export function saveRefineSessions(sessions: RefineSession[]) {
   localStorage.setItem(REFINE_STORAGE_KEY, JSON.stringify(sessions))
 }
 
-// ── Script ────────────────────────────────────────────────────────────────────
+// ── Initial prompt ────────────────────────────────────────────────────────────
 
-const QUESTIONS = [
-  "What is the **goal of this change** from the user's perspective? What problem does it solve?",
-  "Are there any **existing patterns, APIs, or components** we should reuse or stay consistent with?",
-  "What are the **acceptance criteria**? How will we know this task is done?",
-]
+export function buildInitialPrompt(
+  ticketId: string,
+  repos: { name: string; path: string }[]
+): string {
+  const repoList = repos.map((r) => `- \`${r.name}\`: \`${r.path}\``).join("\n")
+  return `Refine Jira ticket **${ticketId}** into implementation-ready subtasks.
 
-function buildIntroMessage(ticketId: string): string {
-  return `I'll help you refine **${ticketId}** into actionable subtasks.\n\nFirst — which repositories are involved in this change? Select all that apply below.`
+## Steps
+
+1. **Get ticket context** — run \`acli jira get-issue ${ticketId}\` to read the full description, acceptance criteria, and current status.
+
+2. **Explore the codebase** — the following repos are configured:
+${repoList}
+   Browse relevant files to understand existing patterns, naming conventions, and what needs to change. Focus on areas the ticket likely touches.
+
+3. **Ask clarifying questions** — based on the ticket and code, ask 2–3 focused questions to clarify scope or approach.
+
+4. **Output the task spec** — once you have enough context, output a structured spec in this exact format (as a fenced code block tagged \`task-spec\`):
+
+\`\`\`task-spec
+{
+  "title": "Short task title",
+  "description": "What needs to be built and why",
+  "repos": ["repo-name-1"],
+  "acceptanceCriteria": ["AC item 1", "AC item 2"],
+  "subtasks": [
+    { "repo": "repo-name", "title": "Subtask title", "description": "What to implement" }
+  ]
+}
+\`\`\`
+
+Start now — get the ticket and explore the code first.`
 }
 
-function buildQuestionMessage(index: number): string {
-  return QUESTIONS[index]
-}
+// ── Spec parser ───────────────────────────────────────────────────────────────
 
-function buildDoneMessage(session: RefineSession, repos: Repo[]): string {
-  const repoNames = session.repoIds
-    .map((id) => repos.find((r) => r.id === id)?.name ?? id)
-    .join(", ")
-  return `Great — I have enough context. I've built the task spec on the right and broken it down into ${session.subtasks.length} subtask${session.subtasks.length !== 1 ? "s" : ""} across **${repoNames}**.\n\nYou can now create agents for each subtask.`
-}
-
-function generateSubtasks(session: RefineSession, repos: Repo[]): RefineSubtask[] {
-  const selectedRepos = session.repoIds
-    .map((id) => repos.find((r) => r.id === id))
-    .filter((r): r is Repo => !!r)
-
-  if (selectedRepos.length === 0) return []
-
-  const tasks: RefineSubtask[] = []
-
-  for (const repo of selectedRepos) {
-    tasks.push({
-      id: `${repo.id}-impl`,
-      repoId: repo.id,
-      repoName: repo.name,
-      title: `Implement changes for ${session.ticketId}`,
-    })
+function parseTaskSpec(messages: Message[]): TaskSpec | null {
+  // Walk messages in reverse to find the most recent task-spec block
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== "assistant") continue
+    const match = msg.content.match(/```task-spec\s*([\s\S]*?)```/)
+    if (!match) continue
+    try {
+      return JSON.parse(match[1].trim()) as TaskSpec
+    } catch {
+      continue
+    }
   }
-
-  // Add a test task to the first repo if multiple repos selected
-  if (selectedRepos.length >= 2) {
-    const testRepo = selectedRepos[0]
-    tasks.push({
-      id: `${testRepo.id}-tests`,
-      repoId: testRepo.id,
-      repoName: testRepo.name,
-      title: `Add tests for ${session.ticketId}`,
-    })
-  }
-
-  return tasks
+  return null
 }
 
-// ── Typing indicator ─────────────────────────────────────────────────────────
+// ── Message renderer ──────────────────────────────────────────────────────────
 
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-muted w-fit">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
-          style={{ animationDelay: `${i * 150}ms` }}
-        />
-      ))}
-    </div>
-  )
-}
+function MessageBubble({ msg }: { msg: Message }) {
+  const isUser = msg.role === "user"
 
-// ── Repo selector (inline message widget) ────────────────────────────────────
-
-function RepoSelector({
-  repos,
-  selected,
-  onChange,
-  onConfirm,
-  confirmed,
-}: {
-  repos: Repo[]
-  selected: string[]
-  onChange: (ids: string[]) => void
-  onConfirm: () => void
-  confirmed: boolean
-}) {
-  function toggle(id: string) {
-    if (confirmed) return
-    onChange(
-      selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]
-    )
-  }
+  // Strip task-spec blocks from display so the raw JSON doesn't clutter the chat
+  const displayContent = msg.content.replace(/```task-spec[\s\S]*?```/g, "*(task spec generated — see panel →)*")
 
   return (
-    <div className="flex flex-col gap-2 mt-3">
-      <div className="flex flex-wrap gap-1.5">
-        {repos.map((repo) => {
-          const isSelected = selected.includes(repo.id)
-          return (
-            <button
-              key={repo.id}
-              onClick={() => toggle(repo.id)}
-              disabled={confirmed}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border transition-colors",
-                isSelected
-                  ? "bg-primary/10 border-primary/30 text-primary"
-                  : "bg-background border-border text-muted-foreground hover:border-border/80 hover:text-foreground",
-                confirmed && "opacity-60 cursor-default"
-              )}
-            >
-              <IconGitBranch size={11} />
-              {repo.name}
-              {isSelected && <IconCheck size={10} />}
-            </button>
-          )
-        })}
-      </div>
-      {!confirmed && (
-        <Button
-          size="sm"
-          className="self-start"
-          disabled={selected.length === 0}
-          onClick={onConfirm}
-        >
-          Confirm
-        </Button>
-      )}
-    </div>
-  )
-}
-
-// ── Message bubble ─────────────────────────────────────────────────────────
-
-function MessageBubble({
-  msg,
-  repos,
-  selectedRepos,
-  onReposChange,
-  onReposConfirm,
-  reposConfirmed,
-}: {
-  msg: RefineMessage
-  repos: Repo[]
-  selectedRepos: string[]
-  onReposChange: (ids: string[]) => void
-  onReposConfirm: () => void
-  reposConfirmed: boolean
-}) {
-  const isAgent = msg.role === "agent"
-  return (
-    <div className={cn("flex gap-2", isAgent ? "items-start" : "items-start flex-row-reverse")}>
-      {isAgent && (
+    <div className={cn("flex gap-2", isUser ? "flex-row-reverse" : "items-start")}>
+      {!isUser && (
         <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
           <IconFlask size={11} className="text-primary" />
         </div>
@@ -221,33 +130,29 @@ function MessageBubble({
       <div
         className={cn(
           "max-w-[85%] px-3 py-2 rounded-xl text-sm leading-relaxed",
-          isAgent
-            ? "bg-muted text-foreground rounded-tl-sm"
-            : "bg-primary text-primary-foreground rounded-tr-sm"
+          isUser
+            ? "bg-primary text-primary-foreground rounded-tr-sm"
+            : "bg-muted text-foreground rounded-tl-sm"
         )}
       >
-        {isAgent ? (
-          <>
-            <ReactMarkdown
-              components={{
-                p: ({ children }) => <span>{children}</span>,
-                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
-            {msg.type === "repo-select" && (
-              <RepoSelector
-                repos={repos}
-                selected={selectedRepos}
-                onChange={onReposChange}
-                onConfirm={onReposConfirm}
-                confirmed={reposConfirmed}
-              />
-            )}
-          </>
+        {isUser ? (
+          <span className="whitespace-pre-wrap">{msg.content}</span>
         ) : (
-          <span>{msg.content}</span>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkBreaks]}
+            components={{
+              p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+              code: ({ children, className }) => {
+                if (!className) return <code className="bg-black/20 px-1 rounded text-[12px] font-mono">{children}</code>
+                return <code className="block bg-black/20 p-2 rounded text-[12px] font-mono whitespace-pre-wrap my-1">{children}</code>
+              },
+              ul: ({ children }) => <ul className="list-disc ml-4 space-y-0.5">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal ml-4 space-y-0.5">{children}</ol>,
+              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+            }}
+          >
+            {displayContent}
+          </ReactMarkdown>
         )}
       </div>
     </div>
@@ -256,115 +161,99 @@ function MessageBubble({
 
 // ── Spec panel ─────────────────────────────────────────────────────────────
 
-function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }) {
-  const selectedRepos = session.repoIds
-    .map((id) => repos.find((r) => r.id === id))
-    .filter((r): r is Repo => !!r)
-
-  const [goal, patterns, criteria] = session.answers
-
-  const criteriaItems = criteria
-    ? criteria
-        .split(/[\n,;]/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : []
-
+function SpecPanel({ spec, isStreaming }: { spec: TaskSpec | null; isStreaming: boolean }) {
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="px-4 py-2.5 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <IconListDetails size={13} className="text-muted-foreground" />
           <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Task Spec</span>
+          {isStreaming && <IconLoader2 size={11} className="text-muted-foreground/40 animate-spin ml-auto" />}
         </div>
       </div>
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-4">
-          {/* Ticket */}
-          <div className="flex items-center gap-2">
-            <IconTicket size={14} className="text-muted-foreground shrink-0" />
-            <span className="text-sm font-mono font-medium text-foreground">{session.ticketId}</span>
-          </div>
-
-          {/* Repos */}
-          {selectedRepos.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Repos</span>
-              <div className="flex flex-wrap gap-1.5">
-                {selectedRepos.map((repo) => (
-                  <span
-                    key={repo.id}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-[11px] text-primary font-medium"
-                  >
-                    <IconGitBranch size={10} />
-                    {repo.name}
-                  </span>
-                ))}
-              </div>
+          {!spec ? (
+            <div className="text-center py-8 text-muted-foreground/40 text-sm space-y-1">
+              <IconListDetails size={20} className="mx-auto mb-2 opacity-40" />
+              <p>Spec will appear here once the agent completes its analysis</p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Title */}
+              {spec.title && (
+                <p className="text-sm font-semibold text-foreground">{spec.title}</p>
+              )}
 
-          {/* Goal / description */}
-          {goal && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Goal</span>
-              <p className="text-sm text-foreground leading-relaxed">{goal}</p>
-            </div>
-          )}
-
-          {/* Patterns / notes */}
-          {patterns && patterns.toLowerCase() !== "n/a" && patterns.toLowerCase() !== "none" && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Notes</span>
-              <p className="text-sm text-foreground leading-relaxed">{patterns}</p>
-            </div>
-          )}
-
-          {/* Acceptance criteria */}
-          {criteriaItems.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Acceptance Criteria</span>
-              <ul className="space-y-1">
-                {criteriaItems.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                    <IconCircle size={12} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Subtasks */}
-          {session.subtasks.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Subtasks</span>
-              <div className="space-y-1.5">
-                {session.subtasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg border border-border bg-card text-sm"
-                  >
-                    <IconCircleCheck size={14} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
-                          {task.repoName}
-                        </span>
-                      </div>
-                      <span className="text-foreground leading-snug mt-0.5 block">{task.title}</span>
-                    </div>
+              {/* Repos */}
+              {spec.repos && spec.repos.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Repos</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {spec.repos.map((repo) => (
+                      <span
+                        key={repo}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-[11px] text-primary font-medium"
+                      >
+                        <IconGitBranch size={10} />
+                        {repo}
+                      </span>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
+              )}
 
-          {/* Empty state */}
-          {session.status === "repos" && session.repoIds.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground/40 text-sm">
-              Spec will build up as you answer questions
-            </div>
+              {/* Description */}
+              {spec.description && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Description</span>
+                  <p className="text-sm text-foreground leading-relaxed">{spec.description}</p>
+                </div>
+              )}
+
+              {/* Acceptance Criteria */}
+              {spec.acceptanceCriteria && spec.acceptanceCriteria.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Acceptance Criteria</span>
+                  <ul className="space-y-1">
+                    {spec.acceptanceCriteria.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <IconCircle size={12} className="text-muted-foreground/40 shrink-0 mt-0.5" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Subtasks */}
+              {spec.subtasks && spec.subtasks.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Subtasks</span>
+                  <div className="space-y-1.5">
+                    {spec.subtasks.map((task, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 px-3 py-2 rounded-lg border border-border bg-card text-sm"
+                      >
+                        <IconCircleCheck size={14} className="text-muted-foreground/30 shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                              {task.repo}
+                            </span>
+                          </div>
+                          <span className="text-foreground leading-snug block">{task.title}</span>
+                          {task.description && (
+                            <span className="text-[11px] text-muted-foreground/60 leading-snug block mt-0.5">{task.description}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>
@@ -372,201 +261,136 @@ function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }
   )
 }
 
-// ── Main RefineSession view ───────────────────────────────────────────────────
+// ── Main refinement conversation ──────────────────────────────────────────────
 
 function RefineConversation({
   session,
-  onUpdate,
 }: {
   session: RefineSession
-  onUpdate: (session: RefineSession) => void
 }) {
-  const { data: repos = [] } = useRepos()
+  const { data: agent, messages, isStreaming } = useAgent(session.agentId)
   const [input, setInput] = useState("")
-  const [isTyping, setIsTyping] = useState(false)
-  const [selectedRepos, setSelectedRepos] = useState<string[]>(session.repoIds)
-  const [reposConfirmed, setReposConfirmed] = useState(session.status !== "repos")
+  const [isSending, setIsSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Determine what question we're on (0-indexed)
-  const questionIndex = session.answers.length
+  const spec = parseTaskSpec(messages)
 
   // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [session.messages, isTyping])
+  }, [messages])
 
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  function addAgentMessage(
-    content: string,
-    type: RefineMessage["type"],
-    updatedSession: RefineSession
-  ): RefineSession {
-    const msg: RefineMessage = {
-      id: `agent-${Date.now()}`,
-      role: "agent",
-      content,
-      type,
-      timestamp: new Date().toISOString(),
-    }
-    return { ...updatedSession, messages: [...updatedSession.messages, msg] }
-  }
-
-  const handleReposConfirm = useCallback(() => {
-    if (selectedRepos.length === 0) return
-    setReposConfirmed(true)
-
-    const withRepos: RefineSession = { ...session, repoIds: selectedRepos, status: "questions" }
-
-    setIsTyping(true)
-    setTimeout(() => {
-      setIsTyping(false)
-      const next = addAgentMessage(QUESTIONS[0], "text", withRepos)
-      onUpdate(next)
-    }, 900)
-
-    onUpdate(withRepos)
-  }, [selectedRepos, session, onUpdate])
-
-  function handleSend() {
+  const handleSend = useCallback(async () => {
     const text = input.trim()
-    if (!text || isTyping || session.status === "done") return
-
+    if (!text || isSending || !session.agentId) return
     setInput("")
-
-    const userMsg: RefineMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: text,
-      type: "text",
-      timestamp: new Date().toISOString(),
+    setIsSending(true)
+    try {
+      await api.sendMessage(session.agentId, text)
+    } finally {
+      setIsSending(false)
     }
-
-    const newAnswers = [...session.answers, text]
-    const withUserMsg: RefineSession = {
-      ...session,
-      messages: [...session.messages, userMsg],
-      answers: newAnswers,
-    }
-    onUpdate(withUserMsg)
-
-    setIsTyping(true)
-
-    const nextQuestionIdx = newAnswers.length
-
-    if (nextQuestionIdx < QUESTIONS.length) {
-      // More questions
-      setTimeout(() => {
-        setIsTyping(false)
-        const next = addAgentMessage(QUESTIONS[nextQuestionIdx], "text", withUserMsg)
-        onUpdate(next)
-      }, 800 + Math.random() * 400)
-    } else {
-      // All questions answered — generate spec
-      const subtasks = generateSubtasks(withUserMsg, repos)
-      const withSubtasks: RefineSession = { ...withUserMsg, subtasks, status: "done" }
-
-      setTimeout(() => {
-        setIsTyping(false)
-        const next = addAgentMessage(buildDoneMessage(withSubtasks, repos), "text", withSubtasks)
-        onUpdate(next)
-      }, 1200 + Math.random() * 600)
-
-      onUpdate(withSubtasks)
-    }
-  }
+    textareaRef.current?.focus()
+  }, [input, isSending, session.agentId])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
-  const isInputDisabled = isTyping || session.status === "repos" || session.status === "done"
+  const canSend = !isSending && input.trim().length > 0 && !!session.agentId
 
   return (
     <div className="flex h-full">
       {/* Conversation */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-border">
-        <div className="px-4 py-2.5 border-b border-border shrink-0">
+        {/* Header */}
+        <div className="px-4 py-2.5 border-b border-border shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <IconFlask size={13} className="text-muted-foreground" />
             <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Refinement</span>
-            <span className="text-[11px] font-mono text-muted-foreground/40 ml-auto">{session.ticketId}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-muted-foreground/40">{session.ticketId}</span>
+            {isStreaming && (
+              <div className="flex items-center gap-1 text-[10px] text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                running
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Messages */}
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-3">
-            {session.messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                repos={repos}
-                selectedRepos={selectedRepos}
-                onReposChange={setSelectedRepos}
-                onReposConfirm={handleReposConfirm}
-                reposConfirmed={reposConfirmed}
-              />
-            ))}
-
-            {isTyping && (
-              <div className="flex gap-2 items-start">
+            {messages.length === 0 ? (
+              <div className="flex items-start gap-2">
                 <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
                   <IconFlask size={11} className="text-primary" />
                 </div>
-                <TypingIndicator />
+                <div className="bg-muted px-3 py-2 rounded-xl rounded-tl-sm">
+                  <div className="flex items-center gap-1 text-[13px] text-muted-foreground/60">
+                    <IconLoader2 size={12} className="animate-spin" />
+                    <span>Starting refinement…</span>
+                  </div>
+                </div>
               </div>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble key={msg.id} msg={msg} />
+              ))
             )}
-
             <div ref={bottomRef} />
           </div>
         </ScrollArea>
 
-        {/* Input */}
-        <div className="px-3 py-2.5 border-t border-border shrink-0">
-          <div className="flex items-end gap-2">
+        {/* Input — matches ChatView design */}
+        <div className="p-3 shrink-0">
+          <div
+            className={cn(
+              "bg-card rounded-xl border transition-colors",
+              "border-border focus-within:border-ring"
+            )}
+          >
             <textarea
-              ref={inputRef}
-              rows={1}
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isInputDisabled}
-              placeholder={
-                session.status === "repos"
-                  ? "Select repos above first…"
-                  : session.status === "done"
-                  ? "Refinement complete"
-                  : "Answer…"
-              }
-              className={cn(
-                "flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/40 py-1.5 max-h-32 leading-relaxed",
-                isInputDisabled && "opacity-50 cursor-not-allowed"
-              )}
-              style={{ fieldSizing: "content" } as React.CSSProperties}
+              placeholder="Answer or add context…"
+              rows={2}
+              className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none"
             />
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              onClick={handleSend}
-              disabled={isInputDisabled || !input.trim()}
-            >
-              <IconSend size={13} />
-            </Button>
+            <div className="flex items-center justify-end px-3 pb-3 gap-1">
+              {isStreaming && (
+                <Button
+                  size="icon-xs"
+                  variant="destructive"
+                  onClick={() => session.agentId && api.stopAgent(session.agentId).catch(() => {})}
+                >
+                  <IconPlayerStop size={13} />
+                </Button>
+              )}
+              <Button
+                size="icon-xs"
+                variant={canSend ? "default" : "secondary"}
+                disabled={!canSend}
+                onClick={() => void handleSend()}
+              >
+                <IconSend size={13} />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Spec panel */}
       <div className="w-64 shrink-0 flex flex-col">
-        <SpecPanel session={session} repos={repos} />
+        <SpecPanel spec={spec} isStreaming={isStreaming} />
       </div>
     </div>
   )
@@ -577,19 +401,13 @@ function RefineConversation({
 export function RefineView({
   sessionId,
   sessions,
-  onSessionsChange,
+  onSessionsChange: _onSessionsChange,
 }: {
   sessionId: string | null
   sessions: RefineSession[]
   onSessionsChange: (sessions: RefineSession[]) => void
 }) {
   const session = sessions.find((s) => s.id === sessionId) ?? null
-
-  function handleUpdate(updated: RefineSession) {
-    const next = sessions.map((s) => (s.id === updated.id ? updated : s))
-    onSessionsChange(next)
-    saveRefineSessions(next)
-  }
 
   if (!session) {
     return (
@@ -601,11 +419,7 @@ export function RefineView({
 
   return (
     <div className="flex-1 min-w-0 overflow-hidden flex">
-      <RefineConversation
-        key={session.id}
-        session={session}
-        onUpdate={handleUpdate}
-      />
+      <RefineConversation key={session.id} session={session} />
     </div>
   )
 }

@@ -1099,14 +1099,11 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         <IconTicket size={12} className="shrink-0 mt-0.5 text-muted-foreground/50" />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-mono font-medium truncate block">{session.ticketId}</span>
-                          <span className="text-[10px] text-muted-foreground/50 capitalize">
-                            {session.status === "done" ? "Complete" : session.status === "questions" ? "In progress" : "Pending"}
+                          <span className="text-[10px] text-muted-foreground/50">
+                            {session.agentId ? "In progress" : "Starting…"}
                           </span>
                         </div>
-                        {session.status === "done" && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 shrink-0 mt-1.5" />
-                        )}
-                        {session.status === "questions" && (
+                        {session.agentId && (
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500/60 shrink-0 mt-1.5" />
                         )}
                       </button>

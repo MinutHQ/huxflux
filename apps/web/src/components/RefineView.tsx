@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react"
-import { ScrollArea, Button, cn } from "@hive/ui"
+import { useState, useRef, useCallback } from "react"
+import { ScrollArea, Button, cn, ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
 import { useRepos } from "@hive/shared"
 import type { Repo } from "@hive/shared"
 import {
@@ -323,67 +323,46 @@ function SpecPanel({ session, repos }: { session: RefineSession; repos: Repo[] }
   )
 }
 
-// ── Conversation ──────────────────────────────────────────────────────────────
+// ── Conversation pane ─────────────────────────────────────────────────────────
 
-function RefineConversation({
+function ConversationPane({
   session,
   onUpdate,
+  repos,
 }: {
   session: RefineSession
   onUpdate: (s: RefineSession) => void
+  repos: Repo[]
 }) {
-  const { data: repos = [] } = useRepos()
   const [input, setInput] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [selectedRepos, setSelectedRepos] = useState<string[]>(session.repoIds)
   const reposConfirmed = session.status !== "repos"
   const bottomRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  // Kick off the opening message once repos are loaded
-  const openingFired = useRef(session.messages.length > 0)
-  useEffect(() => {
-    if (openingFired.current || repos.length === 0) return
-    openingFired.current = true
-    setIsTyping(true)
-    const t = setTimeout(() => {
-      setIsTyping(false)
-      const opening: RefineMessage = {
-        id: `agent-open-${Date.now()}`,
-        role: "agent",
-        content: `I'll help you refine **${session.ticketId}** into actionable subtasks.\n\nFirst — which repositories are involved in this change?`,
-        type: "repo-select",
-        timestamp: new Date().toISOString(),
-      }
-      onUpdate({ ...session, messages: [opening] })
-    }, 700)
-    return () => clearTimeout(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repos.length])
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [session.messages, isTyping])
 
   const addAgentMessage = useCallback(
-    (content: string, type: RefineMessage["type"], base: RefineSession): RefineSession => {
-      const msg: RefineMessage = {
-        id: `agent-${Date.now()}`,
-        role: "agent",
-        content,
-        type,
-        timestamp: new Date().toISOString(),
-      }
-      return { ...base, messages: [...base.messages, msg] }
-    },
+    (content: string, type: RefineMessage["type"], base: RefineSession): RefineSession => ({
+      ...base,
+      messages: [
+        ...base.messages,
+        { id: `agent-${Date.now()}`, role: "agent" as const, content, type, timestamp: new Date().toISOString() },
+      ],
+    }),
     []
   )
+
+  // Scroll to bottom on new messages / typing change — use ref callback to trigger on each relevant change
+  const messagesLen = session.messages.length
+  const bottomRefCb = useCallback((el: HTMLDivElement | null) => {
+    // @ts-expect-error assign mutable ref
+    bottomRef.current = el
+    el?.scrollIntoView({ behavior: "smooth" })
+  }, [messagesLen, isTyping]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleReposConfirm() {
     if (selectedRepos.length === 0) return
     const withRepos: RefineSession = { ...session, repoIds: selectedRepos, status: "questions" }
     onUpdate(withRepos)
-
     setIsTyping(true)
     setTimeout(() => {
       setIsTyping(false)
@@ -396,24 +375,19 @@ function RefineConversation({
     if (!text || isTyping || session.status === "done") return
     setInput("")
 
-    const userMsg: RefineMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: text,
-      type: "text",
-      timestamp: new Date().toISOString(),
-    }
     const newAnswers = [...session.answers, text]
     const withUser: RefineSession = {
       ...session,
-      messages: [...session.messages, userMsg],
+      messages: [
+        ...session.messages,
+        { id: `user-${Date.now()}`, role: "user" as const, content: text, type: "text" as const, timestamp: new Date().toISOString() },
+      ],
       answers: newAnswers,
     }
     onUpdate(withUser)
-
     setIsTyping(true)
-    const nextIdx = newAnswers.length
 
+    const nextIdx = newAnswers.length
     if (nextIdx < QUESTIONS.length) {
       setTimeout(() => {
         setIsTyping(false)
@@ -423,105 +397,87 @@ function RefineConversation({
       const subtasks = generateSubtasks(withUser, repos)
       const done: RefineSession = { ...withUser, subtasks, status: "done" }
       const repoNames = done.repoIds.map((id) => repos.find((r) => r.id === id)?.name ?? id).join(", ")
+      onUpdate(done)
       setTimeout(() => {
         setIsTyping(false)
-        onUpdate(
-          addAgentMessage(
-            `I have enough context. I've built the task spec on the right with ${subtasks.length} subtask${subtasks.length !== 1 ? "s" : ""} across **${repoNames}**.`,
-            "text",
-            done
-          )
-        )
+        onUpdate(addAgentMessage(
+          `I have enough context. I've built the task spec with ${subtasks.length} subtask${subtasks.length !== 1 ? "s" : ""} across **${repoNames}**.`,
+          "text",
+          done
+        ))
       }, 1000 + Math.random() * 500)
-      onUpdate(done)
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
     }
   }
 
   const inputDisabled = isTyping || session.status === "repos" || session.status === "done"
 
   return (
-    <div className="flex h-full">
-      {/* Conversation */}
-      <div className="flex flex-col flex-1 min-w-0 border-r border-border">
-        <div className="px-4 py-2.5 border-b border-border shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <IconFlask size={13} className="text-muted-foreground" />
-            <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Refinement</span>
-          </div>
-          <span className="text-[11px] font-mono text-muted-foreground/40">{session.ticketId}</span>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Header */}
+      <div className="px-4 py-2.5 border-b border-border shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <IconFlask size={13} className="text-muted-foreground" />
+          <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Refinement</span>
         </div>
-
-        <ScrollArea className="flex-1">
-          <div className="p-4 space-y-3">
-            {session.messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                repos={repos}
-                selectedRepos={selectedRepos}
-                onReposChange={setSelectedRepos}
-                onReposConfirm={handleReposConfirm}
-                reposConfirmed={reposConfirmed}
-              />
-            ))}
-            {isTyping && (
-              <div className="flex gap-2 items-start">
-                <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-                  <IconFlask size={11} className="text-primary" />
-                </div>
-                <TypingIndicator />
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Input — matches ChatView design */}
-        <div className="p-3 shrink-0">
-          <div className={cn(
-            "bg-card rounded-xl border transition-colors",
-            inputDisabled ? "border-border" : "border-border focus-within:border-ring"
-          )}>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={inputDisabled}
-              placeholder={
-                session.status === "repos"
-                  ? "Select repos above first…"
-                  : session.status === "done"
-                  ? "Refinement complete"
-                  : "Answer…"
-              }
-              rows={2}
-              className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none disabled:cursor-not-allowed"
-            />
-            <div className="flex items-center justify-end px-3 pb-3">
-              <Button
-                size="icon-xs"
-                variant={!inputDisabled && input.trim() ? "default" : "secondary"}
-                disabled={inputDisabled || !input.trim()}
-                onClick={handleSend}
-              >
-                <IconSend size={13} />
-              </Button>
-            </div>
-          </div>
-        </div>
+        <span className="text-[11px] font-mono text-muted-foreground/40">{session.ticketId}</span>
       </div>
 
-      {/* Spec */}
-      <div className="w-64 shrink-0 flex flex-col">
-        <SpecPanel session={session} repos={repos} />
+      {/* Messages */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-4 space-y-3">
+          {session.messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              msg={msg}
+              repos={repos}
+              selectedRepos={selectedRepos}
+              onReposChange={setSelectedRepos}
+              onReposConfirm={handleReposConfirm}
+              reposConfirmed={reposConfirmed}
+            />
+          ))}
+          {isTyping && (
+            <div className="flex gap-2 items-start">
+              <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                <IconFlask size={11} className="text-primary" />
+              </div>
+              <TypingIndicator />
+            </div>
+          )}
+          <div ref={bottomRefCb} />
+        </div>
+      </ScrollArea>
+
+      {/* Input — matches ChatView design */}
+      <div className="p-3 shrink-0">
+        <div className={cn(
+          "bg-card rounded-xl border transition-colors",
+          !inputDisabled && "focus-within:border-ring"
+        )}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+            disabled={inputDisabled}
+            placeholder={
+              session.status === "repos" ? "Select repos above first…"
+              : session.status === "done" ? "Refinement complete"
+              : "Answer…"
+            }
+            rows={2}
+            className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none disabled:cursor-not-allowed"
+          />
+          <div className="flex items-center justify-end px-3 pb-3">
+            <Button
+              size="icon-xs"
+              variant={!inputDisabled && input.trim() ? "default" : "secondary"}
+              disabled={inputDisabled || !input.trim()}
+              onClick={handleSend}
+            >
+              <IconSend size={13} />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -538,6 +494,7 @@ export function RefineView({
   sessions: RefineSession[]
   onSessionsChange: (sessions: RefineSession[]) => void
 }) {
+  const { data: repos = [] } = useRepos()
   const session = sessions.find((s) => s.id === sessionId) ?? null
 
   function handleUpdate(updated: RefineSession) {
@@ -555,8 +512,14 @@ export function RefineView({
   }
 
   return (
-    <div className="flex-1 min-w-0 overflow-hidden flex">
-      <RefineConversation key={session.id} session={session} onUpdate={handleUpdate} />
-    </div>
+    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0 h-full">
+      <ResizablePanel defaultSize="62" minSize="35">
+        <ConversationPane key={session.id} session={session} onUpdate={handleUpdate} repos={repos} />
+      </ResizablePanel>
+      <ResizableHandle />
+      <ResizablePanel defaultSize="38" minSize="25">
+        <SpecPanel session={session} repos={repos} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   )
 }

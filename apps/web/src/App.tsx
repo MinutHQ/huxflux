@@ -151,12 +151,19 @@ export default function App() {
 
   function handleNewRefine(ticketId: string) {
     const id = `refine-${Date.now()}`
+    const openingMessage = {
+      id: `agent-open-${Date.now()}`,
+      role: "agent" as const,
+      content: `I'll help you refine **${ticketId}** into actionable subtasks.\n\nFirst — which repositories are involved in this change?`,
+      type: "repo-select" as const,
+      timestamp: new Date().toISOString(),
+    }
     const session: RefineSession = {
       id,
       ticketId,
       status: "repos",
       repoIds: [],
-      messages: [],
+      messages: [openingMessage],
       answers: [],
       subtasks: [],
       createdAt: new Date().toISOString(),
@@ -202,11 +209,13 @@ export default function App() {
   )
 
   const mainContent = selectedRefineId ? (
-    <RefineView
-      sessionId={selectedRefineId}
-      sessions={refineSessions}
-      onSessionsChange={(next) => { setRefineSessions(next); saveRefineSessions(next) }}
-    />
+    <div className="flex-1 min-w-0 h-full overflow-hidden flex">
+      <RefineView
+        sessionId={selectedRefineId}
+        sessions={refineSessions}
+        onSessionsChange={(next) => { setRefineSessions(next); saveRefineSessions(next) }}
+      />
+    </div>
   ) : selectedPr ? (
     <div className="flex-1 min-w-0 overflow-hidden">
       <PRView key={selectedPr.id} pr={selectedPr} />

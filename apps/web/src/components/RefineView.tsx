@@ -268,7 +268,8 @@ function RefineConversation({
 }: {
   session: RefineSession
 }) {
-  const { data: agent, messages, isStreaming } = useAgent(session.agentId)
+  const { data: agent, isStreaming } = useAgent(session.agentId)
+  const messages = agent?.messages ?? []
   const [input, setInput] = useState("")
   const [isSending, setIsSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)

@@ -107,6 +107,8 @@ export const api = {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""
     return req<{ name: string; path: string }[]>(`/api/fs/repos${qs}`)
   },
+  getDefaultBranch: (repoPath: string) =>
+    req<{ branch: string }>(`/api/fs/default-branch?path=${encodeURIComponent(repoPath)}`),
 
   // GitHub / PR
   getPRDetails: (agentId: string) => req<PRDetails>(`/api/agents/${agentId}/pr/details`),

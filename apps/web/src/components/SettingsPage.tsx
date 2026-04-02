@@ -436,12 +436,14 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   const [prefValues, setPrefValues] = useState<Record<string, string>>(() => {
     try { return repo.preferences ? JSON.parse(repo.preferences) : {} } catch { return {} }
   })
-  const [isSaving, setIsSaving] = useState(false)
+  const [showSaved, setShowSaved] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
+  const isFirstRender = useRef(true)
 
-  async function handleSave() {
-    setIsSaving(true)
-    try {
+  // Auto-save on any field change (debounced 800ms)
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    const t = setTimeout(async () => {
       await api.updateRepo(repo.id, {
         branchFrom: branch,
         branchPrefix: branchPrefix || undefined,
@@ -453,10 +455,12 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         preferences: JSON.stringify(prefValues),
       })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
-    } finally {
-      setIsSaving(false)
-    }
-  }
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+    }, 800)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branch, branchPrefix, remote, previewUrl, setupScript, runScript, archiveScript, prefValues])
 
   async function handleRemove() {
     if (!confirm(`Remove repository "${repo.name}"? This cannot be undone.`)) return
@@ -655,14 +659,14 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         </div>
       </div>
 
-      {/* Save + Remove */}
+      {/* Remove + saved indicator */}
       <div className="pt-4 border-t border-border flex items-center justify-between">
         <Button variant="destructive" size="sm" onClick={handleRemove} disabled={isRemoving}>
           {isRemoving ? "Removing…" : "Remove repository"}
         </Button>
-        <Button size="sm" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? "Saving…" : "Save"}
-        </Button>
+        <span className={cn("text-[12px] text-muted-foreground/60 transition-opacity duration-500", showSaved ? "opacity-100" : "opacity-0")}>
+          Saved
+        </span>
       </div>
     </div>
   )
@@ -1005,6 +1009,7 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
   const [manualName, setManualName] = useState("")
   const [useManual, setUseManual] = useState(false)
   const [branchFrom, setBranchFrom] = useState("origin/main")
+  const [branchLoading, setBranchLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1024,6 +1029,19 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
     }
   }, [manualPath])
 
+  // Auto-detect default branch from manual path (debounced)
+  useEffect(() => {
+    if (!useManual || !manualPath.trim()) return
+    const t = setTimeout(() => {
+      setBranchLoading(true)
+      api.getDefaultBranch(manualPath.trim())
+        .then((res) => setBranchFrom(res.branch))
+        .catch(() => {})
+        .finally(() => setBranchLoading(false))
+    }, 600)
+    return () => clearTimeout(t)
+  }, [manualPath, useManual])
+
   function handleQueryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const q = e.target.value
     setQuery(q)
@@ -1040,6 +1058,11 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
     setSelected(r)
     setQuery(r.name)
     setShowResults(false)
+    setBranchLoading(true)
+    api.getDefaultBranch(r.path)
+      .then((res) => setBranchFrom(res.branch))
+      .catch(() => {})
+      .finally(() => setBranchLoading(false))
   }
 
   function handleSwitchToManual() {
@@ -1206,13 +1229,18 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
           {/* Branch from */}
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Branch from</label>
-            <input
-              type="text"
-              value={branchFrom}
-              onChange={(e) => setBranchFrom(e.target.value)}
-              placeholder="origin/main"
-              className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={branchFrom}
+                onChange={(e) => setBranchFrom(e.target.value)}
+                placeholder="origin/main"
+                className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+              />
+              {branchLoading && (
+                <IconLoader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 animate-spin" />
+              )}
+            </div>
           </div>
         </div>
 

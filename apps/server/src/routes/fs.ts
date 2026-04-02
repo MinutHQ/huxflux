@@ -3,6 +3,10 @@ import * as fs from "node:fs/promises"
 import type { Dirent } from "node:fs"
 import * as path from "node:path"
 import * as os from "node:os"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
 
 interface RepoResult {
   name: string
@@ -88,5 +92,25 @@ export async function fsRoutes(app: FastifyInstance) {
       .sort((a, b) => a.name.localeCompare(b.name))
 
     return { path: dirPath, dirs }
+  })
+
+  // GET /api/fs/default-branch?path= — detect default remote branch for a local git repo
+  app.get<{ Querystring: { path?: string } }>("/api/fs/default-branch", async (req, reply) => {
+    const repoPath = req.query.path
+    if (!repoPath) return reply.code(400).send({ error: "path required" })
+
+    try {
+      const { stdout } = await execFileAsync("git", ["-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { timeout: 5000 })
+      return { branch: stdout.trim() }
+    } catch {
+      // Fall back to checking which of main/master exists
+      for (const branch of ["origin/main", "origin/master"]) {
+        try {
+          await execFileAsync("git", ["-C", repoPath, "rev-parse", "--verify", branch], { timeout: 5000 })
+          return { branch }
+        } catch { /* try next */ }
+      }
+      return { branch: "origin/main" }
+    }
   })
 }

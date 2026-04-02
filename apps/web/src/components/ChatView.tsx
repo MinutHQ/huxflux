@@ -1913,9 +1913,28 @@ export function ChatView({ agent, isStreaming, openFileTab, onClearFileTab, tabs
                 ))}
                 {uiIsStreaming && <TypingBubble />}
                 {queuedMessage !== null && (
-                  <div className="mb-5 opacity-40">
-                    <div className="bg-card border border-border rounded-xl px-5 py-4">
+                  <div className="mb-5 group relative">
+                    <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
                       <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{queuedMessage}</p>
+                    </div>
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setInput(queuedMessage)
+                          setQueuedMessage(null)
+                        }}
+                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
+                        title="Edit queued message"
+                      >
+                        <IconPencil size={11} />
+                      </button>
+                      <button
+                        onClick={() => setQueuedMessage(null)}
+                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-red-400 transition-colors"
+                        title="Cancel queued message"
+                      >
+                        <IconX size={11} />
+                      </button>
                     </div>
                   </div>
                 )}

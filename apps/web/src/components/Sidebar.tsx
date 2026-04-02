@@ -6,6 +6,7 @@ import { cn } from "@hive/ui"
 import { statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
 import type { PullRequest } from "@/data/mockReviews"
 import type { PendingAgent } from "@/hooks/useWorkspace"
+import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
@@ -29,6 +30,8 @@ import {
   IconWorld,
   IconLayoutSidebarLeftCollapse,
   IconMessageCircle,
+  IconFlask,
+  IconTicket,
 } from "@tabler/icons-react"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
@@ -849,12 +852,16 @@ interface SidebarProps {
   prs: PullRequest[]
   selectedPrId: string | null
   onSelectPr: (id: string) => void
+  refineSessions?: RefineSession[]
+  selectedRefineId?: string | null
+  onSelectRefine?: (id: string) => void
+  onNewRefine?: (ticketId: string) => void
   agentPorts?: Record<string, number | null>
   onToggle?: () => void
   feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
@@ -862,7 +869,9 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [showFilter, setShowFilter] = useState(false)
   const [groupBy, setGroupBy] = useState<GroupByMode>("status")
   const [repoFilter, setRepoFilter] = useState("all")
-  const [tab, setTab] = useState<"agents" | "review">("agents")
+  const [tab, setTab] = useState<"agents" | "review" | "refine">("agents")
+  const [newRefineInput, setNewRefineInput] = useState("")
+  const [showNewRefine, setShowNewRefine] = useState(false)
   const filterBtnRef = useRef<HTMLButtonElement>(null)
   const newAgentBtnRef = useRef<HTMLButtonElement>(null)
   const sidebarContainerRef = useRef<HTMLDivElement>(null)
@@ -870,6 +879,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const queryClient = useQueryClient()
 
   const prReviewEnabled = getFlag("prReview")
+  const refineEnabled = getFlag("refine")
   const unreadPrCount = prs.filter((p) => p.unread).length
 
   // Filter agents by repo
@@ -976,7 +986,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
         </div>
 
         {/* Tabs */}
-        {prReviewEnabled && (
+        {(prReviewEnabled || refineEnabled) && (
           <div className="flex border-b border-sidebar-border shrink-0">
             <button
               onClick={() => setTab("agents")}
@@ -989,26 +999,124 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             >
               Agents
             </button>
-            <button
-              onClick={() => setTab("review")}
-              className={cn(
-                "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
-                tab === "review"
-                  ? "text-foreground border-b-2 border-primary -mb-px"
-                  : "text-muted-foreground/60 hover:text-muted-foreground"
-              )}
-            >
-              Review
-              {unreadPrCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-                  {unreadPrCount}
-                </span>
-              )}
-            </button>
+            {prReviewEnabled && (
+              <button
+                onClick={() => setTab("review")}
+                className={cn(
+                  "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
+                  tab === "review"
+                    ? "text-foreground border-b-2 border-primary -mb-px"
+                    : "text-muted-foreground/60 hover:text-muted-foreground"
+                )}
+              >
+                Review
+                {unreadPrCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+                    {unreadPrCount}
+                  </span>
+                )}
+              </button>
+            )}
+            {refineEnabled && (
+              <button
+                onClick={() => setTab("refine")}
+                className={cn(
+                  "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1",
+                  tab === "refine"
+                    ? "text-foreground border-b-2 border-primary -mb-px"
+                    : "text-muted-foreground/60 hover:text-muted-foreground"
+                )}
+              >
+                <IconFlask size={11} />
+                Refine
+              </button>
+            )}
           </div>
         )}
 
-        {(!prReviewEnabled || tab === "agents") ? (
+        {tab === "refine" && refineEnabled ? (
+          <>
+            {/* Refine header */}
+            <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Refinements</span>
+                <Button variant="ghost" size="icon-xs" onClick={() => setShowNewRefine(true)} title="New refinement">
+                  <IconPlus size={13} />
+                </Button>
+              </div>
+            </div>
+
+            {/* New refinement input */}
+            {showNewRefine && (
+              <div className="px-3 py-2 border-b border-sidebar-border shrink-0 flex gap-2 items-center">
+                <IconTicket size={12} className="text-muted-foreground/40 shrink-0" />
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Ticket ID (e.g. ENG-123)"
+                  value={newRefineInput}
+                  onChange={(e) => setNewRefineInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newRefineInput.trim()) {
+                      onNewRefine?.(newRefineInput.trim())
+                      setNewRefineInput("")
+                      setShowNewRefine(false)
+                    }
+                    if (e.key === "Escape") {
+                      setNewRefineInput("")
+                      setShowNewRefine(false)
+                    }
+                  }}
+                  className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/40"
+                />
+              </div>
+            )}
+
+            {/* Refinement sessions list */}
+            <div className="flex-1 min-h-0">
+              <ScrollArea className="h-full">
+                <div className="p-2 space-y-0.5">
+                  {refineSessions.length === 0 ? (
+                    <button
+                      onClick={() => setShowNewRefine(true)}
+                      className="w-full flex flex-col items-center gap-2 py-8 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                    >
+                      <IconFlask size={20} />
+                      <span className="text-[12px]">Start a new refinement</span>
+                    </button>
+                  ) : (
+                    refineSessions.slice().reverse().map((session) => (
+                      <button
+                        key={session.id}
+                        onClick={() => onSelectRefine?.(session.id)}
+                        className={cn(
+                          "w-full min-w-0 flex items-start gap-2 px-2.5 py-2 rounded-md text-left transition-all overflow-hidden",
+                          selectedRefineId === session.id
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <IconTicket size={12} className="shrink-0 mt-0.5 text-muted-foreground/50" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-mono font-medium truncate block">{session.ticketId}</span>
+                          <span className="text-[10px] text-muted-foreground/50 capitalize">
+                            {session.status === "done" ? "Complete" : session.status === "questions" ? "In progress" : "Pending"}
+                          </span>
+                        </div>
+                        {session.status === "done" && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 shrink-0 mt-1.5" />
+                        )}
+                        {session.status === "questions" && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500/60 shrink-0 mt-1.5" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </>
+        ) : (!prReviewEnabled || tab === "agents") ? (
           <>
             {/* Agents header */}
             <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">

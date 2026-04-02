@@ -9,6 +9,7 @@ import { TerminalView } from "@/components/TerminalView"
 import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
+import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
 import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
 import { useNotifications } from "@/hooks/useNotifications"
@@ -38,6 +39,8 @@ export default function App() {
   const [agentPorts, setAgentPorts] = useState<Record<string, number | null>>({})
   const [terminalMaximized, setTerminalMaximized] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(false)
+  const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
+  const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -146,6 +149,32 @@ export default function App() {
     )
   }
 
+  function handleNewRefine(ticketId: string) {
+    const id = `refine-${Date.now()}`
+    const session: RefineSession = {
+      id,
+      ticketId,
+      status: "repos",
+      repoIds: [],
+      messages: [
+        {
+          id: `agent-init-${Date.now()}`,
+          role: "agent",
+          content: `I'll help you refine **${ticketId}** into actionable subtasks.\n\nFirst — which repositories are involved in this change? Select all that apply below.`,
+          type: "repo-select",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      answers: [],
+      subtasks: [],
+      createdAt: new Date().toISOString(),
+    }
+    const next = [...refineSessions, session]
+    setRefineSessions(next)
+    saveRefineSessions(next)
+    setSelectedRefineId(id)
+  }
+
   const sidebarProps = {
     agents,
     selectedId: workspace.sidebarSelectedId,
@@ -161,6 +190,10 @@ export default function App() {
     prs: prReviewEnabled ? mockPRs : [],
     selectedPrId: workspace.selectedPrId,
     onSelectPr: workspace.selectPr,
+    refineSessions,
+    selectedRefineId,
+    onSelectRefine: setSelectedRefineId,
+    onNewRefine: handleNewRefine,
     agentPorts,
     onToggle: toggleSidebar,
     feedbackEnabled,
@@ -176,7 +209,13 @@ export default function App() {
     />
   )
 
-  const mainContent = selectedPr ? (
+  const mainContent = selectedRefineId ? (
+    <RefineView
+      sessionId={selectedRefineId}
+      sessions={refineSessions}
+      onSessionsChange={(next) => { setRefineSessions(next); saveRefineSessions(next) }}
+    />
+  ) : selectedPr ? (
     <div className="flex-1 min-w-0 overflow-hidden">
       <PRView key={selectedPr.id} pr={selectedPr} />
     </div>

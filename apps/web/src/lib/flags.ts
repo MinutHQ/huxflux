@@ -7,10 +7,12 @@ const STORAGE_KEY = "huxflux:flags"
 
 type Flags = {
   prReview: boolean
+  refine: boolean
 }
 
 const DEFAULTS: Flags = {
   prReview: false,
+  refine: true,
 }
 
 function load(): Flags {

@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify"
 import { v4 as uuid } from "uuid"
+import * as path from "node:path"
 import { db } from "../db/index.js"
 import { repos } from "../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { Repo } from "../types.js"
 import { listBranches } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
+import { config } from "../config.js"
 
 export async function reposRoutes(app: FastifyInstance) {
   app.get("/api/repos", async () => {
@@ -20,7 +22,7 @@ export async function reposRoutes(app: FastifyInstance) {
       id,
       name: body.name,
       path: body.path,
-      workspacesPath: body.workspacesPath,
+      workspacesPath: body.workspacesPath ?? path.join(config.workspacesBase, body.name),
       branchFrom: body.branchFrom ?? "origin/main",
       branchPrefix: body.branchPrefix ?? null,
       remote: body.remote ?? "origin",

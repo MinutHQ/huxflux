@@ -1064,7 +1064,6 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
       const repo = await api.createRepo({
         name: repoName,
         path: repoPath,
-        workspacesPath: `${repoPath.replace(/\/$/, "")}/../.huxflux/workspaces/${repoName}`,
         branchFrom,
         remote: "origin",
       })

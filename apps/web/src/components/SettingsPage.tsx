@@ -898,26 +898,15 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
           Paste the connection string from <code className="font-mono">huxflux status</code> to fill both fields automatically.
         </p>
       </div>
-      {token && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-500/8 border border-emerald-500/20">
-          <IconCheck size={12} className="text-emerald-400 shrink-0" />
-          <span className="text-[11px] text-emerald-400">Token detected</span>
-          <button onClick={() => setToken("")} className="ml-auto text-emerald-400/50 hover:text-emerald-400">
-            <IconX size={11} />
-          </button>
-        </div>
-      )}
-      {!token && (
-        <div>
-          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token</label>
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Paste token from huxflux status"
-            className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-          />
-        </div>
-      )}
+      <div>
+        <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Auth Token</label>
+        <input
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="Paste token from huxflux status"
+          className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+        />
+      </div>
       {error && (
         <div className="flex items-center gap-1.5 text-[12px] text-red-400">
           <IconAlertCircle size={13} />

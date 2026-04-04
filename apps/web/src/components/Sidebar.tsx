@@ -40,7 +40,6 @@ import {
   IconBook,
   IconX,
   IconHome,
-  IconWorld,
   IconZap,
 } from "@tabler/icons-react"
 

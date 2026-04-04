@@ -24,6 +24,19 @@ description: What's new in Huxflux.
 - New notification sounds: Sprinkles, Sparkler, Huxflux, Giggle, Scream, Whistle, Clown horn
 - File changes tab now correctly shows diffs after the agent finishes running
 - Messages sent by one client are broadcast to all connected clients in real time
+- Switching between Agents and Review tabs now restores the last viewed agent or PR
+- Replaced feedback button in sidebar footer with a `?` help menu — links to docs, keyboard shortcuts dialog, and feedback
+- Keyboard shortcuts dialog with search, accessible from the `?` menu
+- Repo icon picker in Settings — choose a Tabler icon for each repo, shown in the sidebar agent list
+- Agent tool calls now show the task description as a title and fold the full prompt into a collapsible accordion
+- PR review sidebar: PR number moved to metadata row, additions/deletions shown next to the title
+- PR review sidebar: items grouped into Re-requested, Review requested, and Reviewed accordions
+- PR review sidebar: filter popover to hide PRs that are ready to merge
+- PR review sidebar: loading skeleton shown while PRs are being fetched
+- Submitting a GitHub review (approve / request changes / comment) now appears as a message in the chat
+- Sound and desktop notifications fire when an AI review finishes
+- AI review no longer reads files from disk — processes the diff directly, significantly reducing review time
+- Server switcher moved inline with the sidebar footer action buttons
 
 ### Server
 
@@ -33,6 +46,8 @@ description: What's new in Huxflux.
 - `huxflux update` now correctly finds npm when installed via nvm or Homebrew
 - `huxflux start` now shows the correct port when the default port was already in use
 - Performance: DB indexes, message pagination (last 50 + load more), poller parallelization, N+1 fix in agent list
+- PR ready-to-merge state derived from GitHub's `mergeableState` field
+- Repos now support an optional icon name stored in the database
 
 ---
 

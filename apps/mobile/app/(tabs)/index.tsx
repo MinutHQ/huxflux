@@ -1,84 +1,66 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Alert, ActionSheetIOS, Platform } from "react-native"
-import { useRouter } from "expo-router"
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
+import { useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, useServerStatus, statusOrder, statusConfig, api, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
+import { useAgents, useRepos, useServerStatus, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId } from "@huxflux/shared"
 import { c, statusColors } from "../../theme"
-import { useState } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { useHydrated } from "../_layout"
+import { useModal } from "../../components/Modal"
 
+// Match the desktop sidebar order
+const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
 const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "in-review", "done", "backlog", "cancelled"]
+
+// ── Agent row ────────────────────────────────────────────────────────────────
 
 function AgentRow({ agent }: { agent: AgentSummary }) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const modal = useModal()
+  const agentsKey = ["agents", getActiveServer()?.url ?? null]
   const dotColor = statusColors[agent.status]?.color ?? c.fgSub
 
   function handleLongPress() {
-    const options = ["Rename", "Change status", "Delete", "Cancel"]
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: 3, destructiveButtonIndex: 2, title: agent.title },
-        (idx) => {
-          if (idx === 0) promptRename()
-          if (idx === 1) promptStatus()
-          if (idx === 2) promptDelete()
-        }
-      )
-    } else {
-      Alert.alert(agent.title, undefined, [
-        { text: "Rename", onPress: promptRename },
-        { text: "Change status", onPress: promptStatus },
-        { text: "Delete", style: "destructive", onPress: promptDelete },
-        { text: "Cancel", style: "cancel" },
-      ])
-    }
+    modal.showActionSheet(agent.title, [
+      { label: "Rename", icon: "✏️", onPress: promptRename },
+      { label: "Change status", icon: "📊", onPress: promptStatus },
+      { label: "Delete", icon: "🗑", onPress: promptDelete, destructive: true },
+    ])
   }
 
   function promptRename() {
-    Alert.prompt("Rename agent", undefined, (newTitle) => {
-      if (!newTitle?.trim() || newTitle.trim() === agent.title) return
-      api.updateAgent(agent.id, { title: newTitle.trim() })
-      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-        old ? old.map((a) => a.id === agent.id ? { ...a, title: newTitle.trim() } : a) : old
+    modal.showPrompt("Rename agent", agent.title, (newTitle) => {
+      if (newTitle === agent.title) return
+      api.updateAgent(agent.id, { title: newTitle })
+      queryClient.setQueryData<AgentSummary[]>(agentsKey, (old) =>
+        old ? old.map((a) => a.id === agent.id ? { ...a, title: newTitle } : a) : old
       )
-    }, "plain-text", agent.title)
+    })
   }
 
   function promptStatus() {
-    const labels = STATUS_OPTIONS.map((s) => statusConfig[s].label)
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: [...labels, "Cancel"], cancelButtonIndex: labels.length, title: "Change status" },
-        (idx) => {
-          if (idx < STATUS_OPTIONS.length) applyStatus(STATUS_OPTIONS[idx])
-        }
-      )
-    } else {
-      Alert.alert("Change status", undefined, [
-        ...STATUS_OPTIONS.map((s) => ({ text: statusConfig[s].label, onPress: () => applyStatus(s) })),
-        { text: "Cancel", style: "cancel" },
-      ])
-    }
+    modal.showActionSheet("Change status", STATUS_OPTIONS.map((s) => ({
+      label: statusConfig[s].label,
+      onPress: () => applyStatus(s),
+    })))
   }
 
   function applyStatus(s: AgentStatus) {
     api.updateAgent(agent.id, { status: s })
-    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+    queryClient.setQueryData<AgentSummary[]>(agentsKey, (old) =>
       old ? old.map((a) => a.id === agent.id ? { ...a, status: s } : a) : old
     )
   }
 
   function promptDelete() {
-    Alert.alert("Delete agent", `Delete "${agent.title}"? This cannot be undone.`, [
-      { text: "Delete", style: "destructive", onPress: () => {
-        api.deleteAgent(agent.id)
-        queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-          old ? old.filter((a) => a.id !== agent.id) : old
-        )
-      }},
-      { text: "Cancel", style: "cancel" },
-    ])
+    modal.showConfirm("Delete agent", `Delete "${agent.title}"? This cannot be undone.`, "Delete", () => {
+      api.deleteAgent(agent.id)
+      queryClient.setQueryData<AgentSummary[]>(agentsKey, (old) =>
+        old ? old.filter((a) => a.id !== agent.id) : old
+      )
+    }, true)
   }
 
   const prColor = agent.prStatus
@@ -127,37 +109,79 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
   )
 }
 
-function SectionHeader({ title, count, collapsed, onToggle }: { title: string; count: number; collapsed: boolean; onToggle: () => void }) {
+// ── Section headers ──────────────────────────────────────────────────────────
+
+function StatusSectionHeader({ status, count, collapsed, onToggle }: { status: AgentStatus; count: number; collapsed: boolean; onToggle: () => void }) {
+  const sc = statusColors[status]
+  const color = sc?.color ?? c.fgSub
   return (
     <Pressable
       onPress={onToggle}
       style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
     >
-      <Ionicons
-        name={collapsed ? "chevron-forward" : "chevron-down"}
-        size={12}
-        color={c.placeholder}
-      />
-      <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
-        {title}
+      <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={color} />
+      <Text style={{ color, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
+        {statusConfig[status].label}
       </Text>
       <Text style={{ color: c.placeholder, fontSize: 11, marginLeft: "auto" }}>{count}</Text>
     </Pressable>
   )
 }
 
+function RepoSectionHeader({ name, count, collapsed, onToggle }: { name: string; count: number; collapsed: boolean; onToggle: () => void }) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 8 }}
+    >
+      <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={c.fgSub} />
+      <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: c.accent, fontSize: 11 }}>⟨/⟩</Text>
+      </View>
+      <Text style={{ color: c.fg, fontSize: 12, fontWeight: "600", flex: 1 }}>{name}</Text>
+      <Text style={{ color: c.placeholder, fontSize: 11 }}>{count}</Text>
+    </Pressable>
+  )
+}
+
+// ── Main screen ──────────────────────────────────────────────────────────────
+
+type GroupBy = "status" | "repo"
+
 export default function AgentsScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const hydrated = useHydrated()
+  const modal = useModal()
+  const [, setFocusCount] = useState(0)
+  useFocusEffect(useCallback(() => { setFocusCount((n) => n + 1) }, []))
+
   const { data: agents = [], isLoading, refetch } = useAgents()
   const { data: repos = [] } = useRepos()
   const [refreshing, setRefreshing] = useState(false)
-  const [collapsed, setCollapsed] = useState<Set<AgentStatus>>(new Set(["done", "cancelled"]))
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["done", "cancelled"]))
   const [repoFilter, setRepoFilter] = useState<string>("all")
+  const [groupBy, setGroupBy] = useState<GroupBy>("status")
   const server = getActiveServer()
+  const allServers = getServers()
   const serverStatuses = useServerStatus(server ? [server] : [])
   const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
   const isUnauthorized = serverStatus === "unauthorized"
+
+  function showServerSwitcher() {
+    if (allServers.length <= 1) {
+      router.push("/servers")
+      return
+    }
+    const options = allServers
+      .filter((s) => s.id !== server?.id)
+      .map((s) => ({
+        label: s.name,
+        onPress: () => { setActiveServerId(s.id); setFocusCount((n) => n + 1) },
+      }))
+    options.push({ label: "Manage servers…", onPress: () => router.push("/servers") })
+    modal.showActionSheet("Switch server", options)
+  }
 
   async function onRefresh() {
     setRefreshing(true)
@@ -165,50 +189,70 @@ export default function AgentsScreen() {
     setRefreshing(false)
   }
 
-  function toggleCollapsed(status: AgentStatus) {
+  function toggleCollapsed(key: string) {
     setCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(status)) next.delete(status)
-      else next.add(status)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
   function showRepoFilter() {
-    const options = ["All repos", ...repos.map((r) => r.name), "Cancel"]
-    const cancelIdx = options.length - 1
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: cancelIdx, title: "Filter by repo" },
-        (idx) => {
-          if (idx === 0) setRepoFilter("all")
-          else if (idx < cancelIdx) setRepoFilter(repos[idx - 1].id)
-        }
-      )
-    } else {
-      Alert.alert("Filter by repo", undefined, [
-        { text: "All repos", onPress: () => setRepoFilter("all") },
-        ...repos.map((r) => ({ text: r.name, onPress: () => setRepoFilter(r.id) })),
-        { text: "Cancel", style: "cancel" as const },
-      ])
-    }
+    modal.showActionSheet("Filter by repo", [
+      { label: "All repos", onPress: () => setRepoFilter("all") },
+      ...repos.map((r) => ({ label: r.name, onPress: () => setRepoFilter(r.id) })),
+    ])
   }
 
   const filteredAgents = repoFilter === "all" ? agents : agents.filter((a) => a.repoId === repoFilter)
   const activeRepoName = repoFilter !== "all" ? repos.find((r) => r.id === repoFilter)?.name : null
 
   type ListItem =
-    | { kind: "header"; status: AgentStatus; count: number }
+    | { kind: "status-header"; status: AgentStatus; count: number }
+    | { kind: "repo-header"; repoId: string; name: string; count: number }
     | { kind: "agent"; agent: AgentSummary }
 
-  const items: ListItem[] = []
-  for (const status of statusOrder) {
-    const group = filteredAgents.filter((a) => a.status === status)
-    // Always show all status groups (even empty), like web
-    items.push({ kind: "header", status, count: group.length })
-    if (!collapsed.has(status)) {
-      for (const agent of group) items.push({ kind: "agent", agent })
+  const items = useMemo(() => {
+    const list: ListItem[] = []
+
+    if (groupBy === "status") {
+      for (const status of SIDEBAR_STATUS_ORDER) {
+        const group = filteredAgents.filter((a) => a.status === status)
+        list.push({ kind: "status-header", status, count: group.length })
+        if (!collapsed.has(status)) {
+          for (const agent of group) list.push({ kind: "agent", agent })
+        }
+      }
+    } else {
+      const repoMap = new Map<string, { name: string; agents: AgentSummary[] }>()
+      for (const agent of filteredAgents) {
+        const rid = agent.repoId ?? "_none"
+        if (!repoMap.has(rid)) {
+          const repo = repos.find((r) => r.id === rid)
+          repoMap.set(rid, { name: repo?.name ?? "Unknown", agents: [] })
+        }
+        repoMap.get(rid)!.agents.push(agent)
+      }
+      const sorted = [...repoMap.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name))
+      for (const [rid, { name, agents: repoAgents }] of sorted) {
+        list.push({ kind: "repo-header", repoId: rid, name, count: repoAgents.length })
+        if (!collapsed.has(`repo-${rid}`)) {
+          for (const agent of repoAgents) list.push({ kind: "agent", agent })
+        }
+      }
     }
+
+    return list
+  }, [groupBy, filteredAgents, collapsed, repos])
+
+  // Show loader until hydration is complete
+  if (!hydrated) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={c.accent} />
+      </View>
+    )
   }
 
   if (isLoading) {
@@ -223,7 +267,7 @@ export default function AgentsScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center", padding: 32 }}>
         <Text style={{ color: c.fg, fontSize: 17, fontWeight: "600", marginBottom: 8 }}>No server connected</Text>
-        <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center", marginBottom: 24 }}>Add a Hive server to get started</Text>
+        <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center", marginBottom: 24 }}>Add a Huxflux server to get started</Text>
         <TouchableOpacity
           onPress={() => router.push("/servers")}
           style={{ backgroundColor: c.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
@@ -244,26 +288,31 @@ export default function AgentsScreen() {
         backgroundColor: c.card,
         borderBottomWidth: 1,
         borderBottomColor: c.border,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
+        gap: 10,
       }}>
-        <View style={{ gap: 3 }}>
-          <Text style={{ color: c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4 }}>Hive</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isUnauthorized ? c.warning : serverStatus === "offline" ? c.error : c.success }} />
-            <Text style={{ color: isUnauthorized ? c.warning : c.fgSub, fontSize: 12 }}>{server.name}</Text>
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Pressable onPress={showServerSwitcher} style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isUnauthorized ? c.warning : serverStatus === "offline" ? c.error : c.success }} />
+            <Text style={{ color: isUnauthorized ? c.warning : c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4, flex: 1 }} numberOfLines={1}>
+              {server.name}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={c.fgSub} style={{ marginLeft: -2 }} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/new-agent")}
+            style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4, marginLeft: 12 }}
+          >
+            <Ionicons name="add" size={17} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
+          </Pressable>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          {/* Add repo */}
           <Pressable
             onPress={() => router.push("/add-repo")}
             style={{ width: 34, height: 34, borderRadius: 8, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="folder-open-outline" size={16} color={c.fgSub} />
           </Pressable>
-          {/* Filter */}
           <Pressable
             onPress={showRepoFilter}
             style={{
@@ -281,14 +330,6 @@ export default function AgentsScreen() {
               </Text>
             )}
           </Pressable>
-          {/* New agent */}
-          <Pressable
-            onPress={() => router.push("/new-agent")}
-            style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
-          >
-            <Ionicons name="add" size={17} color="#fff" />
-            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
-          </Pressable>
         </View>
       </View>
 
@@ -303,17 +344,49 @@ export default function AgentsScreen() {
         </Pressable>
       )}
 
+      {/* Group-by toggle */}
+      <View style={{ flexDirection: "row", paddingHorizontal: 14, paddingVertical: 8, gap: 4, borderBottomWidth: 1, borderBottomColor: c.border }}>
+        {(["status", "repo"] as const).map((g) => (
+          <Pressable
+            key={g}
+            onPress={() => setGroupBy(g)}
+            style={{
+              paddingHorizontal: 12, paddingVertical: 5, borderRadius: 6,
+              backgroundColor: groupBy === g ? c.secondary : "transparent",
+            }}
+          >
+            <Text style={{ color: groupBy === g ? c.fg : c.fgSub, fontSize: 12, fontWeight: groupBy === g ? "600" : "400" }}>
+              {g === "status" ? "By Status" : "By Repo"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       <FlatList
         data={items}
-        keyExtractor={(item) => item.kind === "header" ? `h-${item.status}` : item.agent.id}
+        keyExtractor={(item) => {
+          if (item.kind === "status-header") return `sh-${item.status}`
+          if (item.kind === "repo-header") return `rh-${item.repoId}`
+          return item.agent.id
+        }}
         renderItem={({ item }) => {
-          if (item.kind === "header") {
+          if (item.kind === "status-header") {
             return (
-              <SectionHeader
-                title={statusConfig[item.status].label}
+              <StatusSectionHeader
+                status={item.status}
                 count={item.count}
                 collapsed={collapsed.has(item.status)}
                 onToggle={() => toggleCollapsed(item.status)}
+              />
+            )
+          }
+          if (item.kind === "repo-header") {
+            return (
+              <RepoSectionHeader
+                name={item.name}
+                count={item.count}
+                collapsed={collapsed.has(`repo-${item.repoId}`)}
+                onToggle={() => toggleCollapsed(`repo-${item.repoId}`)}
               />
             )
           }

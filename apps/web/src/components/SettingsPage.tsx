@@ -44,6 +44,8 @@ import {
   IconCheck,
   IconSearch,
   IconFolder,
+  IconWorld,
+  IconZap,
 } from "@tabler/icons-react"
 import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"
@@ -1518,6 +1520,210 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
           <Button type="submit" size="sm" disabled={!canSubmit || isSubmitting}>
             {isSubmitting ? "Adding…" : "Add repository"}
+          </Button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  )
+}
+
+export function CloneRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
+  const queryClient = useQueryClient()
+  const [url, setUrl] = useState("")
+  const [location, setLocation] = useState("")
+  const [name, setName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Auto-fill name and location from URL
+  useEffect(() => {
+    const derived = url.trim().split("/").pop()?.replace(/\.git$/, "") ?? ""
+    if (derived) {
+      setName(derived)
+      setLocation(`~/projects/${derived}`)
+    }
+  }, [url])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!url.trim() || !location.trim() || isSubmitting) return
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      const repo = await api.cloneRepo({ url: url.trim(), location: location.trim(), name: name.trim() || undefined })
+      queryClient.invalidateQueries({ queryKey: ["repos"] })
+      onAdded(repo.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Clone failed")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onClose} />
+      <form
+        onSubmit={handleSubmit}
+        className="relative z-10 w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-5"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold text-foreground">Clone from URL</h2>
+          <button type="button" onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors">
+            <IconX size={15} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Repository URL</label>
+            <input
+              autoFocus
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/user/repo"
+              className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Destination</label>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="~/projects/repo"
+              className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={url.trim().split("/").pop()?.replace(/\.git$/, "") || "repo"}
+              className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+          </div>
+          {error && (
+            <p className="text-[12px] text-destructive">{error}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" size="sm" disabled={!url.trim() || !location.trim() || isSubmitting}>
+            {isSubmitting ? "Cloning…" : "Clone repository"}
+          </Button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  )
+}
+
+const TEMPLATES = [
+  { id: "vite" as const, label: "Vite", description: "React + TypeScript starter" },
+  { id: "tanstack-start" as const, label: "TanStack Start", description: "Full-stack React framework" },
+]
+
+export function QuickStartDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState("")
+  const [location, setLocation] = useState("~/projects")
+  const [template, setTemplate] = useState<"vite" | "tanstack-start">("vite")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim() || !location.trim() || isSubmitting) return
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      const repo = await api.quickStartRepo({ name: name.trim(), location: location.trim(), template })
+      queryClient.invalidateQueries({ queryKey: ["repos"] })
+      onAdded(repo.id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Scaffold failed")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={onClose} />
+      <form
+        onSubmit={handleSubmit}
+        className="relative z-10 w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-5"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold text-foreground">Quick start</h2>
+          <button type="button" onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors">
+            <IconX size={15} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Project name</label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="my-app"
+              className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Location</label>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="~/projects"
+              className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+            {name.trim() && (
+              <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">
+                {location.trim() || "~/projects"}/{name.trim()}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Template</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTemplate(t.id)}
+                  className={cn(
+                    "flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-lg border text-left transition-colors",
+                    template === t.id
+                      ? "border-ring bg-accent"
+                      : "border-border hover:bg-accent/50"
+                  )}
+                >
+                  <span className="text-[12px] font-medium text-foreground">{t.label}</span>
+                  <span className="text-[11px] text-muted-foreground/60">{t.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {error && (
+            <p className="text-[12px] text-destructive">{error}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" size="sm" disabled={!name.trim() || !location.trim() || isSubmitting}>
+            {isSubmitting ? "Creating…" : "Create project"}
           </Button>
         </div>
       </form>

@@ -146,6 +146,10 @@ export const api = {
   getRepos: () => req<Repo[]>("/api/repos"),
   createRepo: (body: Omit<Repo, "id" | "createdAt">) =>
     req<Repo>("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  cloneRepo: (body: { url: string; location: string; name?: string }) =>
+    req<Repo>("/api/repos/clone", { method: "POST", body: JSON.stringify(body) }),
+  quickStartRepo: (body: { name: string; location: string; template: "vite" | "tanstack-start" }) =>
+    req<Repo>("/api/repos/quick-start", { method: "POST", body: JSON.stringify(body) }),
   updateRepo: (id: string, body: Partial<Repo>) =>
     req<Repo>(`/api/repos/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRepo: (id: string) => req<void>(`/api/repos/${id}`, { method: "DELETE" }),

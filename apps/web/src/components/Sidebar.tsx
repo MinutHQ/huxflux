@@ -11,7 +11,7 @@ import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos } from "@hive/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
-import { AddRepoDialog } from "@/components/SettingsPage"
+import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { getFlag } from "@/lib/flags"
 import { toast } from "sonner"
@@ -40,6 +40,8 @@ import {
   IconBook,
   IconX,
   IconHome,
+  IconWorld,
+  IconZap,
 } from "@tabler/icons-react"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
@@ -745,6 +747,55 @@ function RepoGroup({
   )
 }
 
+// ── Add workspace popover ────────────────────────────────────────────────────
+
+function AddWorkspacePopover({
+  onClose,
+  onOpenProject,
+  onClone,
+  onQuickStart,
+  anchorRef,
+}: {
+  onClose: () => void
+  onOpenProject: () => void
+  onClone: () => void
+  onQuickStart: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const pos = anchorRef.current?.getBoundingClientRect()
+
+  const items = [
+    { icon: IconFolder, label: "Open project", onClick: onOpenProject },
+    { icon: IconWorld, label: "Clone from URL", onClick: onClone },
+    { icon: IconZap, label: "Quick start", onClick: onQuickStart },
+  ]
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-48 bg-card border border-border rounded-xl shadow-xl overflow-hidden py-1"
+        style={{
+          top: pos ? pos.bottom + 6 : 100,
+          left: pos ? Math.max(8, pos.right - 192) : 100,
+        }}
+      >
+        {items.map(({ icon: Icon, label, onClick }) => (
+          <button
+            key={label}
+            onClick={() => { onClose(); onClick() }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-foreground hover:bg-accent/60 transition-colors text-left"
+          >
+            <Icon size={13} className="text-muted-foreground/60 shrink-0" />
+            {label}
+          </button>
+        ))}
+      </div>
+    </>,
+    document.body
+  )
+}
+
 // ── Filter popover ───────────────────────────────────────────────────────────
 
 type GroupByMode = "status" | "repo"
@@ -1239,7 +1290,11 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
+  const [showAddWorkspace, setShowAddWorkspace] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
+  const [showCloneRepo, setShowCloneRepo] = useState(false)
+  const [showQuickStart, setShowQuickStart] = useState(false)
+  const addWorkspaceBtnRef = useRef<HTMLButtonElement>(null)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
@@ -1532,7 +1587,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                   <Button ref={filterBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowFilter(!showFilter)}>
                     <IconFilter size={13} />
                   </Button>
-                  <Button variant="ghost" size="icon-xs" onClick={() => setShowAddRepo(true)}>
+                  <Button ref={addWorkspaceBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowAddWorkspace(true)}>
                     <IconFolderPlus size={13} />
                   </Button>
                   <Button ref={newAgentBtnRef} variant="ghost" size="icon-xs" onClick={() => setShowNewAgent(true)}>
@@ -1681,8 +1736,23 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       {showNewAgent && (
         <NewAgentPopover onClose={() => setShowNewAgent(false)} onSelect={handleCreateAgent} anchorRef={newAgentBtnRef} />
       )}
+      {showAddWorkspace && (
+        <AddWorkspacePopover
+          onClose={() => setShowAddWorkspace(false)}
+          onOpenProject={() => setShowAddRepo(true)}
+          onClone={() => setShowCloneRepo(true)}
+          onQuickStart={() => setShowQuickStart(true)}
+          anchorRef={addWorkspaceBtnRef}
+        />
+      )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />
+      )}
+      {showCloneRepo && (
+        <CloneRepoDialog onClose={() => setShowCloneRepo(false)} onAdded={() => setShowCloneRepo(false)} />
+      )}
+      {showQuickStart && (
+        <QuickStartDialog onClose={() => setShowQuickStart(false)} onAdded={() => setShowQuickStart(false)} />
       )}
       {showFeedback && (
         <FeedbackDialog onClose={() => setShowFeedback(false)} />

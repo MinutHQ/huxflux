@@ -1316,11 +1316,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
         noWorktree: direct || undefined,
       })
       saveWorktreeDuration(repoId, Date.now() - t0)
-      // Optimistically add to cache so it appears immediately in the correct status group
-      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-        old ? [agent as unknown as AgentSummary, ...old] : [agent as unknown as AgentSummary]
-      )
-      queryClient.invalidateQueries({ queryKey: ["agents"] })
       onAgentCreated(agent.id)
     } catch (err) {
       toast.error((err as Error).message || "Failed to create agent")

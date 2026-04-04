@@ -12,7 +12,8 @@ import { PRView } from "@/components/PRView"
 import { HomeView } from "@/components/HomeView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
+import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig, api } from "@hive/shared"
+import { useQuery } from "@tanstack/react-query"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
@@ -134,6 +135,20 @@ export default function App() {
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore } = useAgent(workspace.resolvedActiveId)
 
+  // Terminal always uses the root agent (first tab) so switching chat sessions
+  // doesn't restart the PTY connection.
+  // Use plain useQuery (no placeholderData) to avoid brief wrong-agent flash
+  // when switching agents: useAgent's placeholderData returns the previous
+  // agent's data while re-fetching, which would cause TerminalView to briefly
+  // open a PTY for the wrong worktree.
+  const terminalAgentId = workspace.tabs[0]?.agentId ?? workspace.resolvedActiveId ?? null
+  const { data: terminalAgentData } = useQuery({
+    queryKey: ["agent", terminalAgentId],
+    queryFn: () => api.getAgent(terminalAgentId!),
+    enabled: !!terminalAgentId,
+    staleTime: 10_000,
+  })
+
   const lastMsgs = activeAgent?.messages
   const lastMsgDurationMs = lastMsgs?.length ? (lastMsgs[lastMsgs.length - 1].durationMs ?? null) : null
   const streamingAgentId = useStreamingAgentId(lastMsgDurationMs)
@@ -219,9 +234,9 @@ export default function App() {
     feedbackEnabled,
   }
 
-  const terminalPanel = activeAgent && (
+  const terminalPanel = terminalAgentData && (
     <TerminalView
-      agent={activeAgent}
+      agent={terminalAgentData}
       activeTab={terminalTab}
       onTabChange={setTerminalTab}
       onOpenSettings={() => setView("settings")}

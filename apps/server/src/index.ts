@@ -50,8 +50,9 @@ app.register(async (instance) => {
   instance.get("/ws", { websocket: true }, (socket) => {
     registerSocket(socket)
   })
-  instance.get<{ Params: { agentId: string } }>("/ws/pty/:agentId", { websocket: true }, (socket, req) => {
-    registerPtySocket(socket, req.params.agentId)
+  instance.get<{ Params: { agentId: string }; Querystring: { terminalId?: string } }>("/ws/pty/:agentId", { websocket: true }, (socket, req) => {
+    const terminalId = (req.query as { terminalId?: string }).terminalId ?? "t1"
+    registerPtySocket(socket, req.params.agentId, terminalId)
   })
 })
 

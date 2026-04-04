@@ -13,6 +13,7 @@ try {
     fs.chmodSync(helper, 0o755)
   }
 } catch { /* not on a platform that needs it */ }
+
 import type { WebSocket } from "@fastify/websocket"
 import { db } from "../db/index.js"
 import { agents, repos } from "../db/schema.js"
@@ -21,8 +22,77 @@ import { eq } from "drizzle-orm"
 type PtyMessage =
   | { type: "input"; data: string }
   | { type: "resize"; cols: number; rows: number }
+  | { type: "kill" }
 
-export function registerPtySocket(socket: WebSocket, agentId: string) {
+const OUTPUT_BUF_SIZE = 100_000 // ~100KB
+
+interface PtyEntry {
+  process: pty.IPty
+  outputBuf: string
+  clients: Set<WebSocket>
+}
+
+// Key: `${agentId}:${terminalId}` — persists across WS reconnects
+// PTY processes live until explicitly killed (user closes tab or agent deleted).
+const globalPtyMap = new Map<string, PtyEntry>()
+
+export function killTerminal(key: string): void {
+  const entry = globalPtyMap.get(key)
+  if (!entry) return
+  globalPtyMap.delete(key)
+  for (const ws of entry.clients) {
+    try { ws.close() } catch { /* ignore */ }
+  }
+  try { entry.process.kill() } catch { /* already dead */ }
+}
+
+/** Kill all PTY processes belonging to an agent (call on agent delete). */
+export function killAgentTerminals(agentId: string): void {
+  for (const key of [...globalPtyMap.keys()]) {
+    if (key.startsWith(agentId + ":")) killTerminal(key)
+  }
+}
+
+function attachClientHandlers(socket: WebSocket, entry: PtyEntry, key: string): void {
+  socket.on("message", (raw: Buffer | string) => {
+    try {
+      const msg: PtyMessage = JSON.parse(raw.toString())
+      if (msg.type === "input") {
+        entry.process.write(msg.data)
+      } else if (msg.type === "resize") {
+        entry.process.resize(msg.cols, msg.rows)
+      } else if (msg.type === "kill") {
+        killTerminal(key)
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  })
+
+  socket.on("close", () => {
+    entry.clients.delete(socket)
+    // Don't kill the process — it persists for reconnection or other clients
+  })
+}
+
+export function registerPtySocket(socket: WebSocket, agentId: string, terminalId: string) {
+  const key = `${agentId}:${terminalId}`
+
+  // Reconnect to an existing PTY process
+  const existing = globalPtyMap.get(key)
+  if (existing) {
+    // Only replay the output buffer when there are no currently connected clients
+    // (i.e. page refresh scenario where the xterm is fresh). If clients exist, the
+    // new connection is from another device/tab whose xterm already has the history —
+    // sending the buffer again would produce duplicate content.
+    if (existing.clients.size === 0 && existing.outputBuf) {
+      socket.send(JSON.stringify({ type: "output", data: existing.outputBuf }))
+    }
+    existing.clients.add(socket)
+    attachClientHandlers(socket, existing, key)
+    return
+  }
+
   // Resolve the worktree path for this agent
   const agent = db.select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) {
@@ -56,33 +126,28 @@ export function registerPtySocket(socket: WebSocket, agentId: string) {
     env: process.env as Record<string, string>,
   })
 
+  const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }
+  globalPtyMap.set(key, entry)
+
   ptyProcess.onData((data) => {
-    if (socket.readyState === socket.OPEN) {
-      socket.send(JSON.stringify({ type: "output", data }))
+    const e = globalPtyMap.get(key)
+    if (!e) return
+    e.outputBuf = (e.outputBuf + data).slice(-OUTPUT_BUF_SIZE)
+    const msg = JSON.stringify({ type: "output", data })
+    for (const ws of e.clients) {
+      if (ws.readyState === ws.OPEN) ws.send(msg)
     }
   })
 
   ptyProcess.onExit(({ exitCode }) => {
-    if (socket.readyState === socket.OPEN) {
-      socket.send(JSON.stringify({ type: "exit", exitCode }))
-      socket.close()
+    const e = globalPtyMap.get(key)
+    globalPtyMap.delete(key)
+    if (!e) return
+    const msg = JSON.stringify({ type: "exit", exitCode })
+    for (const ws of e.clients) {
+      if (ws.readyState === ws.OPEN) ws.send(msg)
     }
   })
 
-  socket.on("message", (raw: Buffer | string) => {
-    try {
-      const msg: PtyMessage = JSON.parse(raw.toString())
-      if (msg.type === "input") {
-        ptyProcess.write(msg.data)
-      } else if (msg.type === "resize") {
-        ptyProcess.resize(msg.cols, msg.rows)
-      }
-    } catch {
-      // ignore malformed messages
-    }
-  })
-
-  socket.on("close", () => {
-    try { ptyProcess.kill() } catch { /* already dead */ }
-  })
+  attachClientHandlers(socket, entry, key)
 }

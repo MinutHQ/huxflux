@@ -40,12 +40,12 @@ const globalSessions = new Map<string, Session>()
 interface AgentTabState { tabs: TerminalTab[]; activeId: string; nextNum: number }
 const globalTabState = new Map<string, AgentTabState>()
 
-function getPtyWsUrl(agentId: string): string {
+function getPtyWsUrl(agentId: string, terminalId: string): string {
   const server = getActiveServer()
   const base = server?.url ?? "http://localhost:3001"
   const wsBase = base.replace(/^http/, "ws")
-  const url = `${wsBase}/ws/pty/${agentId}`
-  return server?.token ? `${url}?token=${server.token}` : url
+  const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}`
+  return server?.token ? `${url}&token=${server.token}` : url
 }
 
 const ANSI_RE = /\x1b\[[0-9;]*[mGKHF]|\x1b\][^\x07]*\x07|\r/g
@@ -149,10 +149,11 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     return session
   }
 
-  function connectSession(agentId: string, session: Session) {
-    if (session.ws) return
+  function connectSession(agentId: string, terminalId: string, session: Session) {
+    // Allow reconnect if WS is closed/closing; skip only if connecting or open
+    if (session.ws && session.ws.readyState <= WebSocket.OPEN) return
 
-    const ws = new WebSocket(getPtyWsUrl(agentId))
+    const ws = new WebSocket(getPtyWsUrl(agentId, terminalId))
     session.ws = ws
 
     ws.onopen = () => {
@@ -187,6 +188,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     }
 
     ws.onclose = () => {
+      session.ws = null  // allow reconnection on next activateSession call
       session.term.writeln("\r\n\x1b[2m[connection closed]\x1b[0m")
     }
 
@@ -195,7 +197,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     })
   }
 
-  function activateSession(sessionKey: string, agentId: string) {
+  function activateSession(sessionKey: string, agentId: string, terminalId: string) {
     if (!wrapperRef.current) return
 
     const isNew = !globalSessions.has(sessionKey)
@@ -214,7 +216,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
 
     requestAnimationFrame(() => {
       session.fitAddon.fit()
-      connectSession(agentId, session)
+      connectSession(agentId, terminalId, session)
     })
   }
 
@@ -222,7 +224,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     if (activeTab !== "terminal") return
     const key = `${agent.id}:${activeTerminalId}`
     activeSessionKeyRef.current = key
-    activateSession(key, agent.id)
+    activateSession(key, agent.id, activeTerminalId)
     const session = globalSessions.get(key)
     setIsRunning(session?.isRunning ?? false)
     setDetectedPort(session?.port ?? null)
@@ -295,7 +297,12 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     const session = globalSessions.get(sessionKey)
     if (session) {
       session.div.parentElement?.removeChild(session.div)
-      try { session.ws?.close() } catch { /* ignore */ }
+      try {
+        if (session.ws?.readyState === WebSocket.OPEN) {
+          session.ws.send(JSON.stringify({ type: "kill" }))
+        }
+        session.ws?.close()
+      } catch { /* ignore */ }
       session.term.dispose()
       globalSessions.delete(sessionKey)
     }

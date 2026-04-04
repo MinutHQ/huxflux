@@ -7,6 +7,7 @@ import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
 import { generateTitle, deriveTitle } from "./messages.js"
+import { killAgentTerminals } from "../ws/pty.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
 import * as path from "node:path"
@@ -273,6 +274,15 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
     const now = new Date().toISOString()
+
+    // Kill all PTY processes for this agent and its children
+    killAgentTerminals(req.params.id)
+    const childRows = db.select({ id: agents.id }).from(agents)
+      .where(eq(agents.parentAgentId, req.params.id))
+      .all()
+    for (const child of childRows) {
+      killAgentTerminals(child.id)
+    }
 
     // Soft-delete child tabs too
     await db.update(agents)

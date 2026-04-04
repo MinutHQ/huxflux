@@ -2,7 +2,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useServerStatus, statusOrder, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
+import { useAgents, useServerStatus, statusOrder, statusConfig, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
 import { c, statusColors } from "../../theme"
 import { useState } from "react"
 
@@ -43,14 +43,22 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
   )
 }
 
-function SectionHeader({ title, count }: { title: string; count: number }) {
+function SectionHeader({ title, count, collapsed, onToggle }: { title: string; count: number; collapsed: boolean; onToggle: () => void }) {
   return (
-    <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <Pressable
+      onPress={onToggle}
+      style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
+    >
+      <Ionicons
+        name={collapsed ? "chevron-forward" : "chevron-down"}
+        size={12}
+        color={c.placeholder}
+      />
       <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8 }}>
         {title}
       </Text>
-      <Text style={{ color: c.placeholder, fontSize: 11 }}>{count}</Text>
-    </View>
+      <Text style={{ color: c.placeholder, fontSize: 11, marginLeft: "auto" }}>{count}</Text>
+    </Pressable>
   )
 }
 
@@ -59,6 +67,7 @@ export default function AgentsScreen() {
   const insets = useSafeAreaInsets()
   const { data: agents = [], isLoading, refetch } = useAgents()
   const [refreshing, setRefreshing] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<AgentStatus>>(new Set(["done", "cancelled"]))
   const server = getActiveServer()
   const serverStatuses = useServerStatus(server ? [server] : [])
   const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
@@ -70,16 +79,27 @@ export default function AgentsScreen() {
     setRefreshing(false)
   }
 
+  function toggleCollapsed(status: AgentStatus) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      return next
+    })
+  }
+
   type ListItem =
-    | { kind: "header"; status: AgentStatus }
+    | { kind: "header"; status: AgentStatus; count: number }
     | { kind: "agent"; agent: AgentSummary }
 
   const items: ListItem[] = []
   for (const status of statusOrder) {
     const group = agents.filter((a) => a.status === status)
     if (group.length === 0) continue
-    items.push({ kind: "header", status })
-    for (const agent of group) items.push({ kind: "agent", agent })
+    items.push({ kind: "header", status, count: group.length })
+    if (!collapsed.has(status)) {
+      for (const agent of group) items.push({ kind: "agent", agent })
+    }
   }
 
   if (isLoading) {
@@ -103,14 +123,6 @@ export default function AgentsScreen() {
         </TouchableOpacity>
       </View>
     )
-  }
-
-  const STATUS_LABEL: Record<AgentStatus, string> = {
-    "in-progress": "In progress",
-    "in-review": "In review",
-    backlog: "Backlog",
-    done: "Done",
-    cancelled: "Cancelled",
   }
 
   return (
@@ -159,8 +171,14 @@ export default function AgentsScreen() {
         keyExtractor={(item) => item.kind === "header" ? `h-${item.status}` : item.agent.id}
         renderItem={({ item }) => {
           if (item.kind === "header") {
-            const count = agents.filter((a) => a.status === item.status).length
-            return <SectionHeader title={STATUS_LABEL[item.status]} count={count} />
+            return (
+              <SectionHeader
+                title={statusConfig[item.status].label}
+                count={item.count}
+                collapsed={collapsed.has(item.status)}
+                onToggle={() => toggleCollapsed(item.status)}
+              />
+            )
           }
           return <AgentRow agent={item.agent} />
         }}

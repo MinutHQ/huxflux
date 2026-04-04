@@ -13,6 +13,7 @@ export const repos = sqliteTable("repos", {
   runScript: text("run_script"),
   archiveScript: text("archive_script"),
   preferences: text("preferences"), // JSON blob: Record<string, string>
+  icon: text("icon"),
   createdAt: text("created_at").notNull(),
 })
 

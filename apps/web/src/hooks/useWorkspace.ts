@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "@hive/shared"
@@ -29,13 +29,25 @@ export function useWorkspace(agents: AgentSummary[]) {
   const queryClient = useQueryClient()
 
   const [tabs, setTabs] = useState<ChatTab[]>([])
-  const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [activeTabId, setActiveTabId] = useState<string | null>(() => {
+    try { return localStorage.getItem("hive-active-agent") } catch { return null }
+  })
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
+  const [lastPrId, setLastPrId] = useState<string | null>(null)
+  const lastAgentId = useRef<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
   const [deletingAgent, setDeletingAgent] = useState<DeletingAgent | null>(null)
   const [justDeleted, setJustDeleted] = useState(false)
+
+  // Persist active agent across refreshes
+  useEffect(() => {
+    try {
+      if (activeTabId) localStorage.setItem("hive-active-agent", activeTabId)
+      else localStorage.removeItem("hive-active-agent")
+    } catch { /* ignore */ }
+  }, [activeTabId])
 
   // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -61,6 +73,7 @@ export function useWorkspace(agents: AgentSummary[]) {
   }, [agents])
 
   function selectAgent(id: string) {
+    lastAgentId.current = id
     const a = agents.find(ag => ag.id === id)
     const isAlreadyInTabs = tabs.some(t => t.agentId === id)
     if (isAlreadyInTabs) {
@@ -76,10 +89,26 @@ export function useWorkspace(agents: AgentSummary[]) {
   }
 
   function selectPr(id: string) {
+    if (activeTabId) lastAgentId.current = activeTabId
+    setLastPrId(id)
     setSelectedPrId(id)
     setTabs([])
     setActiveTabId(null)
     setOpenFileTab(null)
+  }
+
+  function switchToAgentView() {
+    const targetId = lastAgentId.current ?? agents[0]?.id
+    if (targetId) selectAgent(targetId)
+  }
+
+  function switchToReviewView() {
+    if (lastPrId) {
+      selectPr(lastPrId)
+    } else {
+      setActiveTabId(null)
+      setSelectedPrId(null)
+    }
   }
 
   function selectTab(agentId: string) {
@@ -168,6 +197,13 @@ export function useWorkspace(agents: AgentSummary[]) {
     setSelectedPrId(null)
   }
 
+  // Validate restored activeTabId against loaded agents — clear if it no longer exists
+  useEffect(() => {
+    if (activeTabId && agents.length > 0 && !agents.some(a => a.id === activeTabId)) {
+      setActiveTabId(null)
+    }
+  }, [agents, activeTabId])
+
   // Don't auto-select an agent during or right after a deletion
   const resolvedActiveId = (deletingAgent || justDeleted)
     ? null
@@ -190,6 +226,8 @@ export function useWorkspace(agents: AgentSummary[]) {
     setPendingComments,
     selectAgent,
     selectPr,
+    switchToAgentView,
+    switchToReviewView,
     selectTab,
     closeTab,
     createTab,

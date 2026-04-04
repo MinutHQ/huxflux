@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
+import * as TablerIcons from "@tabler/icons-react"
 import { ScrollArea } from "@hive/ui"
 import { Button } from "@hive/ui"
 import { cn } from "@hive/ui"
@@ -26,12 +27,18 @@ import {
   IconArrowUpRight,
   IconSparkles,
   IconGitPullRequest,
+  IconGitMerge,
+  IconGitPullRequestClosed,
   IconTrash,
   IconWorld,
   IconLayoutSidebarLeftCollapse,
   IconMessageCircle,
   IconFlask,
   IconTicket,
+  IconQuestionMark,
+  IconKeyboard,
+  IconBook,
+  IconX,
 } from "@tabler/icons-react"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
@@ -236,8 +243,12 @@ function NewAgentPopover({
                     onClick={() => handleSelectRepo(r.id)}
                     className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors hover:bg-accent/60 text-foreground"
                   >
-                    <span className="w-5 h-5 rounded bg-muted border border-border text-[10px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
-                      {r.name[0].toUpperCase()}
+                    <span className={cn("w-5 h-5 rounded border text-[10px] font-bold flex items-center justify-center shrink-0", repoColor(r.name))}>
+                      {(() => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const IconComp = r.icon ? (TablerIcons as any)[r.icon] as React.ComponentType<{ size?: number }> | undefined : undefined
+                        return IconComp ? <IconComp size={11} /> : r.name[0].toUpperCase()
+                      })()}
                     </span>
                     <span className="text-[12px] font-medium flex-1 truncate">
                       {r.name}
@@ -320,6 +331,18 @@ function StatusContextMenu({
 }) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+    const { offsetWidth: w, offsetHeight: h } = el
+    setPos({
+      x: Math.min(x, window.innerWidth - w - 8),
+      y: Math.min(y, window.innerHeight - h - 8),
+    })
+  }, [])
 
   async function handleSetStatus(status: AgentStatus) {
     onClose()
@@ -343,8 +366,9 @@ function StatusContextMenu({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
       <div
+        ref={menuRef}
         className="fixed z-50 w-44 bg-card border border-border rounded-lg shadow-xl overflow-hidden py-1"
-        style={{ top: y, left: x }}
+        style={{ top: pos?.y ?? y, left: pos?.x ?? x, visibility: pos ? "visible" : "hidden" }}
       >
         <div className="px-3 py-1.5 text-[10px] text-muted-foreground/50 uppercase tracking-wider font-medium">
           Set status
@@ -377,6 +401,26 @@ function StatusContextMenu({
   )
 }
 
+function PrIcon({ agent }: { agent: AgentSummary }) {
+  const pr = agent.prStatus
+  if (!pr) {
+    return <IconGitBranch size={11} className="text-muted-foreground/30 shrink-0" />
+  }
+  if (pr.merged) {
+    return <IconGitMerge size={11} className="text-purple-400/70 shrink-0" />
+  }
+  if (pr.state === "closed") {
+    return <IconGitPullRequestClosed size={11} className="text-red-400/70 shrink-0" />
+  }
+  if (pr.hasChangeRequests) {
+    return <IconGitPullRequest size={11} className="text-amber-400/80 shrink-0" />
+  }
+  if (pr.draft) {
+    return <IconGitPullRequest size={11} className="text-muted-foreground/30 shrink-0" />
+  }
+  return <IconGitPullRequest size={11} className="text-emerald-400/70 shrink-0" />
+}
+
 const AgentRow = React.memo(function AgentRow({
   agent,
   isSelected,
@@ -388,6 +432,7 @@ const AgentRow = React.memo(function AgentRow({
   onDelete,
   port,
   repoName,
+  repoIcon,
 }: {
   agent: AgentSummary
   isSelected: boolean
@@ -399,12 +444,15 @@ const AgentRow = React.memo(function AgentRow({
   onDelete: (agent: AgentSummary) => void
   port?: number | null
   repoName?: string
+  repoIcon?: string
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const avatarColor = repoName ? repoColor(repoName) : (modelColors[agent.model] ?? "bg-muted text-muted-foreground")
   const initials = (repoName ?? agent.title)[0].toUpperCase()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const RepoIconComp = repoIcon ? (TablerIcons as any)[repoIcon] as React.ComponentType<{ size?: number }> | undefined : undefined
   const isCancelled = agent.status === "cancelled"
   const shortcutNum = index < 9 ? index + 1 : null
   const [editing, setEditing] = useState(false)
@@ -468,13 +516,9 @@ const AgentRow = React.memo(function AgentRow({
         )}
       >
         <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>
-          {initials}
+          {RepoIconComp ? <RepoIconComp size={11} /> : initials}
         </div>
-        {isStreaming ? (
-          <StreamingDots />
-        ) : (
-          <IconGitBranch size={11} className="text-muted-foreground/40 shrink-0" />
-        )}
+        {isStreaming ? <StreamingDots /> : <PrIcon agent={agent} />}
         {editing ? (
           <input
             ref={inputRef}
@@ -500,16 +544,12 @@ const AgentRow = React.memo(function AgentRow({
             {agent.title}
           </span>
         )}
-        {port != null && !editing ? (
+        {port != null && !editing && (
           <span
             className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"
             title={`Running on :${port}`}
           />
-        ) : shortcutNum !== null && !isStreaming && !editing ? (
-          <span className="text-[10px] text-muted-foreground/40 font-mono shrink-0 tabular-nums">
-            {shortcutNum}
-          </span>
-        ) : null}
+        )}
       </button>
       {contextMenu && (
         <StatusContextMenu
@@ -559,6 +599,7 @@ function StatusGroup({
   onDelete,
   agentPorts,
   repoNames,
+  repoIcons,
 }: {
   status: AgentStatus
   agents: AgentSummary[]
@@ -571,6 +612,7 @@ function StatusGroup({
   onDelete: (agent: AgentSummary) => void
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
+  repoIcons?: Record<string, string | undefined>
 }) {
   const [collapsed, setCollapsed] = useState(status === "done")
   const config = statusConfig[status]
@@ -588,10 +630,9 @@ function StatusGroup({
         <span className={cn("text-[11px] font-semibold uppercase tracking-wider", config.color)}>
           {config.label}
         </span>
-        <span className="ml-auto text-[11px] text-muted-foreground/40 font-mono">{agents.length}</span>
       </button>
       {!collapsed && (
-        <div className="mt-0.5 space-y-0.5 px-1 overflow-hidden">
+        <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent, i) => (
             <AgentRow
               key={agent.id}
@@ -605,6 +646,7 @@ function StatusGroup({
               onDelete={onDelete}
               port={agentPorts?.[agent.id]}
               repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
+              repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
             />
           ))}
         </div>
@@ -660,7 +702,7 @@ function RepoGroup({
         )}
       </button>
       {!collapsed && (
-        <div className="mt-0.5 space-y-0.5 px-1 overflow-hidden">
+        <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent, i) => (
             <AgentRow
               key={agent.id}
@@ -790,48 +832,354 @@ function FilterPopover({
   )
 }
 
+// ── Help popover + keyboard shortcuts ────────────────────────────────────────
+
+const KEYBOARD_SHORTCUTS = [
+  { group: "General", label: "Toggle sidebar", keys: ["⌘", "B"] },
+  { group: "General", label: "Toggle terminal", keys: ["F1"] },
+]
+
+function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const [search, setSearch] = useState("")
+
+  const filtered = KEYBOARD_SHORTCUTS.filter((s) =>
+    !search || s.label.toLowerCase().includes(search.toLowerCase())
+  )
+  const groups = [...new Set(filtered.map((s) => s.group))]
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-[480px] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold text-foreground">Keyboard shortcuts</span>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <IconX size={14} />
+          </button>
+        </div>
+        <div className="px-3 py-2 border-b border-border">
+          <div className="flex items-center gap-2 bg-background rounded-lg border border-border px-3 py-1.5">
+            <IconFilter size={13} className="text-muted-foreground/50 shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search shortcuts..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/40"
+            />
+          </div>
+        </div>
+        <div className="max-h-96 overflow-y-auto">
+          {groups.length === 0 ? (
+            <div className="py-8 text-center text-[13px] text-muted-foreground/40">No shortcuts found</div>
+          ) : groups.map((group) => (
+            <div key={group}>
+              <div className="px-4 pt-3 pb-1">
+                <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">{group}</span>
+              </div>
+              {filtered.filter((s) => s.group === group).map((s, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors">
+                  <span className="text-[13px] text-foreground">{s.label}</span>
+                  <div className="flex items-center gap-1">
+                    {s.keys.map((key, ki) => (
+                      <kbd key={ki} className="px-1.5 py-0.5 rounded border border-border bg-background text-[11px] font-mono text-muted-foreground min-w-[24px] text-center">
+                        {key}
+                      </kbd>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function HelpPopover({ feedbackEnabled, onFeedback, onClose, anchorRef }: {
+  feedbackEnabled: boolean
+  onFeedback: () => void
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const pos = anchorRef.current?.getBoundingClientRect()
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-52 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+        style={{
+          bottom: pos ? window.innerHeight - pos.top + 6 : 100,
+          left: pos ? Math.max(8, pos.left - 8) : 100,
+        }}
+      >
+        <div className="p-1">
+          {feedbackEnabled && (
+            <button
+              onClick={() => { onClose(); onFeedback() }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left text-[12px] text-foreground"
+            >
+              <IconMessageCircle size={13} className="text-muted-foreground shrink-0" />
+              Send feedback
+            </button>
+          )}
+          <button
+            onClick={() => setShowShortcuts(true)}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left text-[12px] text-foreground"
+          >
+            <IconKeyboard size={13} className="text-muted-foreground shrink-0" />
+            Keyboard shortcuts
+          </button>
+          <button
+            onClick={() => { window.open("https://huxflux-docs.netlify.app/docs", "_blank"); onClose() }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left text-[12px] text-foreground"
+          >
+            <IconBook size={13} className="text-muted-foreground shrink-0" />
+            Documentation
+          </button>
+        </div>
+      </div>
+      {showShortcuts && (
+        <KeyboardShortcutsDialog onClose={() => { setShowShortcuts(false); onClose() }} />
+      )}
+    </>,
+    document.body
+  )
+}
+
 // ── PR row ────────────────────────────────────────────────────────────────────
 
-function PRRow({ pr, isSelected, onClick }: { pr: PullRequest; isSelected: boolean; onClick: () => void }) {
+function PRPopover({ pr, y, sidebarWidth }: { pr: PullRequest; y: number; sidebarWidth: number }) {
+  return createPortal(
+    <div
+      className="fixed z-50 w-72 bg-card border border-border rounded-xl shadow-xl p-3 pointer-events-none"
+      style={{ left: sidebarWidth + 4, top: Math.max(8, y - 8) }}
+    >
+      <div className="flex items-start gap-2 mb-2">
+        <IconGitPullRequest size={13} className="text-muted-foreground/50 mt-0.5 shrink-0" />
+        <span className="text-[13px] font-medium text-foreground leading-snug">
+          {pr.title}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <span className="font-mono text-muted-foreground/50">#{pr.number}</span>
+        <span className="text-muted-foreground/30">·</span>
+        <span>{pr.author}</span>
+        <span className="text-muted-foreground/30">·</span>
+        <span className="text-muted-foreground/60">{pr.requestedAt}</span>
+      </div>
+      {pr.branch && (
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground/50">
+          <IconGitBranch size={11} className="shrink-0" />
+          {pr.branch}
+        </div>
+      )}
+    </div>,
+    document.body
+  )
+}
+
+function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
+  pr: PullRequest
+  isSelected: boolean
+  onClick: () => void
+  onHover: (y: number) => void
+  onLeave: () => void
+}) {
+  const ref = useRef<HTMLButtonElement>(null)
+
+  function handleMouseEnter() {
+    const rect = ref.current?.getBoundingClientRect()
+    if (rect) onHover(rect.top)
+  }
+
+  const badge = (() => {
+    if (pr.reviewRequested && pr.userReviewed)
+      return <span className="flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0 font-medium uppercase tracking-wide">Re-requested</span>
+    if (pr.reviewStatus === "approved")
+      return <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium uppercase tracking-wide">Approved</span>
+    return null
+  })()
+
   return (
     <button
+      ref={ref}
       onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={onLeave}
       className={cn(
-        "w-full min-w-0 flex items-start gap-2 px-2.5 py-2 rounded-md text-left transition-all overflow-hidden",
+        "w-full min-w-0 flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-all",
         isSelected
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
       )}
     >
-      <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0 mt-0.5 w-8 text-right">#{pr.number}</span>
-      <div className="flex-1 min-w-0 overflow-hidden">
+      {/* Content */}
+      <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-center gap-1.5 min-w-0">
-          {pr.unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+          {pr.unread && <span className="w-1 h-1 rounded-full bg-primary shrink-0" />}
           <span className={cn(
-            "text-xs leading-snug truncate block min-w-0",
+            "text-xs leading-snug truncate min-w-0 flex-1",
             isSelected && "font-semibold",
             pr.unread && "text-foreground font-medium"
           )}>
             {pr.title}
           </span>
+          {(pr.additions > 0 || pr.deletions > 0) && (
+            <span className="text-[10px] font-mono shrink-0 text-muted-foreground/40">
+              <span className="text-emerald-500/70">+{pr.additions}</span>
+              <span className="text-muted-foreground/30">/</span>
+              <span className="text-red-500/70">-{pr.deletions}</span>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 mt-0.5 min-w-0">
-          <span className="text-[10px] text-muted-foreground/50 shrink-0">{pr.author}</span>
-          <span className="text-[10px] text-muted-foreground/30 shrink-0">·</span>
-          <span className="text-[10px] text-muted-foreground/40 shrink-0">{pr.requestedAt}</span>
-          {pr.reviewStatus === "changes-requested" && (
-            <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 shrink-0 font-medium uppercase tracking-wide">
-              Changes
-            </span>
-          )}
-          {pr.reviewStatus === "approved" && (
-            <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium uppercase tracking-wide">
-              Approved
-            </span>
-          )}
+          <span className="text-[10px] font-mono text-muted-foreground/30 shrink-0">#{pr.number}</span>
+          {pr.repo && <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>}
+          {pr.repo && <span className="text-[10px] text-muted-foreground/50 shrink-0 font-medium">{pr.repo}</span>}
+          <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
+          <span className="text-[10px] text-muted-foreground/50 shrink-0">{pr.requestedAt}</span>
+          {badge && <span className="text-muted-foreground/40 text-[10px] shrink-0">·</span>}
+          {badge}
         </div>
       </div>
     </button>
+  )
+}
+
+// ── PR list ───────────────────────────────────────────────────────────────────
+
+function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, onHover, onLeave }: {
+  prsLoading: boolean
+  prs: PullRequest[]
+  hideReviewedPrs: boolean
+  selectedPrId: string | null
+  onSelectPr: (id: string) => void
+  onHover: (pr: PullRequest, y: number) => void
+  onLeave: () => void
+}) {
+  if (prsLoading) {
+    return (
+      <div className="p-2 space-y-1">
+        {[72, 88, 64, 80].map((w, i) => (
+          <div key={i} className="px-2.5 py-1.5 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <div className="h-2.5 rounded bg-muted/50 animate-pulse" style={{ width: `${w}%` }} />
+              <div className="h-2 rounded bg-muted/30 animate-pulse w-10 ml-auto shrink-0" />
+            </div>
+            <div className="h-2 rounded bg-muted/30 animate-pulse w-2/5" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const visiblePrs = hideReviewedPrs ? prs.filter((p) => !p.isReadyToMerge) : prs
+  const reRequested = visiblePrs.filter((p) => p.reviewRequested && p.userReviewed)
+  const toReview = visiblePrs.filter((p) => !p.userReviewed)
+  const userReviewed = visiblePrs.filter((p) => p.userReviewed && !p.reviewRequested)
+
+  if (visiblePrs.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/40">
+        <IconGitPullRequest size={20} />
+        <span className="text-[12px]">No PRs to review</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-2 space-y-0.5">
+      <PRGroup label="Re-requested" labelColor="text-amber-400/80" prs={reRequested} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
+      <PRGroup label="Review requested" labelColor="text-muted-foreground/50" prs={toReview} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
+      <PRGroup label="Reviewed" labelColor="text-muted-foreground/40" prs={userReviewed} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} defaultCollapsed />
+    </div>
+  )
+}
+
+// ── PR group (accordion) ─────────────────────────────────────────────────────
+
+function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, onLeave, defaultCollapsed = false }: {
+  label: string
+  labelColor: string
+  prs: PullRequest[]
+  selectedPrId: string | null
+  onSelectPr: (id: string) => void
+  onHover: (pr: PullRequest, y: number) => void
+  onLeave: () => void
+  defaultCollapsed?: boolean
+}) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  if (prs.length === 0) return null
+  return (
+    <div className="mb-0.5">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+      >
+        <IconChevronRight
+          size={12}
+          className={cn("text-muted-foreground/40 transition-transform duration-150", !collapsed && "rotate-90")}
+        />
+        <span className={cn("text-[11px] font-semibold uppercase tracking-wider", labelColor)}>{label}</span>
+      </button>
+      {!collapsed && (
+        <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
+          {prs.map((pr) => (
+            <PRRow
+              key={pr.id}
+              pr={pr}
+              isSelected={selectedPrId === pr.id}
+              onClick={() => onSelectPr(pr.id)}
+              onHover={(y) => onHover(pr, y)}
+              onLeave={onLeave}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── PR filter popover ────────────────────────────────────────────────────────
+
+function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRef }: {
+  hideReviewed: boolean
+  onToggleHideReviewed: () => void
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const pos = anchorRef.current?.getBoundingClientRect()
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-56 bg-card border border-border rounded-xl shadow-xl p-3"
+        style={{
+          top: pos ? pos.bottom + 6 : 100,
+          left: pos ? Math.max(8, pos.right - 224) : 100,
+        }}
+      >
+        <button
+          onClick={onToggleHideReviewed}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left"
+        >
+          <div className={cn(
+            "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+            hideReviewed ? "bg-primary border-primary" : "border-border bg-background"
+          )}>
+            {hideReviewed && <IconCheck size={10} className="text-primary-foreground" />}
+          </div>
+          <span className="text-[12px] text-foreground">Hide PRs ready to merge</span>
+        </button>
+      </div>
+    </>,
+    document.body
   )
 }
 
@@ -850,8 +1198,11 @@ interface SidebarProps {
   onAgentDeleting: (agentId: string, info: { title: string; branch: string; repoName: string }) => void
   clearDeletingAgent: () => void
   prs: PullRequest[]
+  prsLoading?: boolean
   selectedPrId: string | null
   onSelectPr: (id: string) => void
+  onSwitchToAgents?: () => void
+  onSwitchToReview?: () => void
   refineSessions?: RefineSession[]
   selectedRefineId?: string | null
   onSelectRefine?: (id: string) => void
@@ -861,19 +1212,25 @@ interface SidebarProps {
   feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, selectedPrId, onSelectPr, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
+  const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [groupBy, setGroupBy] = useState<GroupByMode>("status")
   const [repoFilter, setRepoFilter] = useState("all")
   const [tab, setTab] = useState<"agents" | "review" | "refine">("agents")
   const [newRefineInput, setNewRefineInput] = useState("")
   const [showNewRefine, setShowNewRefine] = useState(false)
+  const [hideReviewedPrs, setHideReviewedPrs] = useState(false)
+  const [showPrFilter, setShowPrFilter] = useState(false)
+  const prFilterBtnRef = useRef<HTMLButtonElement>(null)
   const filterBtnRef = useRef<HTMLButtonElement>(null)
   const newAgentBtnRef = useRef<HTMLButtonElement>(null)
+  const helpBtnRef = useRef<HTMLButtonElement>(null)
   const sidebarContainerRef = useRef<HTMLDivElement>(null)
   const { data: repos = [] } = useRepos()
   const queryClient = useQueryClient()
@@ -912,6 +1269,12 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   // Repo name lookup map (repoId → name)
   const repoNames = useMemo(
     () => Object.fromEntries(repos.map((r) => [r.id, r.name])),
+    [repos]
+  )
+
+  // Repo icon lookup map (repoId → icon name)
+  const repoIcons = useMemo(
+    () => Object.fromEntries(repos.map((r) => [r.id, r.icon])),
     [repos]
   )
 
@@ -980,33 +1343,29 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
         <TitleBar />
-        {/* Server switcher */}
-        <div className="border-b border-sidebar-border shrink-0">
-          <ServerSwitcher />
-        </div>
 
         {/* Tabs */}
         {(prReviewEnabled || refineEnabled) && (
-          <div className="flex border-b border-sidebar-border shrink-0">
+          <div className="px-2 pt-2 pb-1.5 flex gap-1 shrink-0">
             <button
-              onClick={() => setTab("agents")}
+              onClick={() => { setTab("agents"); onSwitchToAgents?.() }}
               className={cn(
-                "flex-1 py-2 text-[12px] font-medium transition-colors",
+                "flex-1 py-1 rounded-md text-[12px] font-medium transition-colors",
                 tab === "agents"
-                  ? "text-foreground border-b-2 border-primary -mb-px"
-                  : "text-muted-foreground/60 hover:text-muted-foreground"
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-sidebar-accent/50"
               )}
             >
               Agents
             </button>
             {prReviewEnabled && (
               <button
-                onClick={() => setTab("review")}
+                onClick={() => { setTab("review"); onSwitchToReview?.() }}
                 className={cn(
-                  "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
+                  "flex-1 py-1 rounded-md text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
                   tab === "review"
-                    ? "text-foreground border-b-2 border-primary -mb-px"
-                    : "text-muted-foreground/60 hover:text-muted-foreground"
+                    ? "bg-sidebar-accent text-foreground"
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-sidebar-accent/50"
                 )}
               >
                 Review
@@ -1021,10 +1380,10 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
               <button
                 onClick={() => setTab("refine")}
                 className={cn(
-                  "flex-1 py-2 text-[12px] font-medium transition-colors flex items-center justify-center gap-1",
+                  "flex-1 py-1 rounded-md text-[12px] font-medium transition-colors flex items-center justify-center gap-1",
                   tab === "refine"
-                    ? "text-foreground border-b-2 border-primary -mb-px"
-                    : "text-muted-foreground/60 hover:text-muted-foreground"
+                    ? "bg-sidebar-accent text-foreground"
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-sidebar-accent/50"
                 )}
               >
                 <IconFlask size={11} />
@@ -1134,9 +1493,8 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             </div>
 
             {/* Agent list */}
-            <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-              <ScrollArea className="h-full w-full">
-                <div className="p-2 pt-2.5 space-y-0.5 w-full overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <div className="p-2 pt-2.5 space-y-0.5">
                   {pendingAgent && (
                     <PendingAgentRow title={pendingAgent.title} repoName={pendingAgent.repoName} />
                   )}
@@ -1163,6 +1521,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         onDelete={handleDeleteAgent}
                         agentPorts={agentPorts}
                         repoNames={repoNames}
+                        repoIcons={repoIcons}
                       />
                     ))
                   ) : (
@@ -1183,7 +1542,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                     ))
                   )}
                 </div>
-              </ScrollArea>
             </div>
           </>
         ) : (
@@ -1192,53 +1550,65 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pull Requests</span>
-                <span className="text-[11px] font-mono text-muted-foreground/40">{prs.length}</span>
+                <Button
+                  ref={prFilterBtnRef}
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setShowPrFilter((v) => !v)}
+                  className={hideReviewedPrs ? "text-primary" : ""}
+                  title="Filter"
+                >
+                  <IconFilter size={13} />
+                </Button>
+                {showPrFilter && (
+                  <PRFilterPopover
+                    hideReviewed={hideReviewedPrs}
+                    onToggleHideReviewed={() => setHideReviewedPrs((v) => !v)}
+                    onClose={() => setShowPrFilter(false)}
+                    anchorRef={prFilterBtnRef}
+                  />
+                )}
               </div>
             </div>
 
             {/* PR list */}
-            <div className="flex-1 min-h-0">
-              <ScrollArea className="h-full">
-                <div className="p-2 space-y-0.5">
-                  {prs.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/40">
-                      <IconGitPullRequest size={20} />
-                      <span className="text-[12px]">No PRs to review</span>
-                    </div>
-                  ) : (
-                    prs.map((pr) => (
-                      <PRRow
-                        key={pr.id}
-                        pr={pr}
-                        isSelected={selectedPrId === pr.id}
-                        onClick={() => onSelectPr(pr.id)}
-                      />
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+              <PRList
+                prsLoading={prsLoading}
+                prs={prs}
+                hideReviewedPrs={hideReviewedPrs}
+                selectedPrId={selectedPrId}
+                onSelectPr={onSelectPr}
+                onHover={(pr, y) => setHoveredPr({ pr, y })}
+                onLeave={() => setHoveredPr(null)}
+              />
             </div>
           </>
         )}
 
         {/* Footer */}
-        <div className="px-3 py-2.5 border-t border-sidebar-border flex items-center justify-between shrink-0">
-          <div />
-          <div className="flex items-center gap-1">
-            {feedbackEnabled && (
-              <Button variant="ghost" size="icon-xs" onClick={() => setShowFeedback(true)} title="Send feedback">
-                <IconMessageCircle size={13} />
-              </Button>
-            )}
-            <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
-              <IconSettings size={13} />
-            </Button>
-            {onToggle && (
-              <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
-                <IconLayoutSidebarLeftCollapse size={13} />
-              </Button>
-            )}
+        <div className="border-t border-sidebar-border shrink-0 flex items-center gap-1 pr-1">
+          <div className="flex-1 min-w-0">
+            <ServerSwitcher />
           </div>
+          <Button
+            ref={helpBtnRef}
+            variant="ghost"
+            size="icon-xs"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setShowHelp((v) => !v)}
+            title="Help"
+          >
+            <IconQuestionMark size={13} />
+          </Button>
+          <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
+            <IconSettings size={13} />
+          </Button>
+          {onToggle && (
+            <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
+              <IconLayoutSidebarLeftCollapse size={13} />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1247,6 +1617,13 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
           agent={hoveredAgent.agent}
           y={hoveredAgent.y}
           port={agentPorts[hoveredAgent.agent.id]}
+          sidebarWidth={sidebarContainerRef.current.getBoundingClientRect().width}
+        />
+      )}
+      {hoveredPr && sidebarContainerRef.current && (
+        <PRPopover
+          pr={hoveredPr.pr}
+          y={hoveredPr.y}
           sidebarWidth={sidebarContainerRef.current.getBoundingClientRect().width}
         />
       )}
@@ -1259,6 +1636,14 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
       )}
       {showFeedback && (
         <FeedbackDialog onClose={() => setShowFeedback(false)} />
+      )}
+      {showHelp && (
+        <HelpPopover
+          feedbackEnabled={feedbackEnabled}
+          onFeedback={() => setShowFeedback(true)}
+          onClose={() => setShowHelp(false)}
+          anchorRef={helpBtnRef}
+        />
       )}
       {showFilter && (
         <FilterPopover

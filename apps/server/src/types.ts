@@ -29,6 +29,7 @@ export interface PRCheck {
 
 export interface PRComment {
   id: string
+  databaseId?: number
   author: string
   avatarUrl?: string
   body: string
@@ -64,10 +65,38 @@ export interface PRDetails extends PRStatus {
   author: string
   avatarUrl?: string
   createdAt: string
+  branch: string
+  baseBranch: string
   reviews: PRReview[]
   checks: PRCheck[]
   threads: PRThread[]
   issueComments: PRIssueComment[]
+}
+
+export interface OpenPR {
+  number: number
+  title: string
+  author: string
+  authorAvatar?: string
+  branch: string
+  baseBranch: string
+  createdAt: string
+  hasChangeRequests: boolean
+  draft: boolean
+  url: string
+}
+
+export interface OpenPRWithRepo extends OpenPR {
+  repoId: string
+  repoName: string
+}
+
+export interface PRFileDiff {
+  path: string
+  additions: number
+  deletions: number
+  status: "added" | "modified" | "deleted" | "renamed"
+  patch?: string
 }
 
 export interface FileChange {
@@ -139,5 +168,6 @@ export interface Repo {
   runScript?: string
   archiveScript?: string
   preferences?: string
+  icon?: string
   createdAt: string
 }

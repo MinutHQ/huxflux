@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef } from "react"
+import * as TablerIcons from "@tabler/icons-react"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, setColorTheme, type ColorTheme } from "@/lib/colorThemes"
 import { createPortal } from "react-dom"
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@hive/ui"
 import { cn } from "@hive/ui"
 import { useRepos, api } from "@hive/shared"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient, useQuery } from "@tanstack/react-query"
 import type { Repo } from "@/data/mock"
 import {
   IconArrowLeft,
@@ -55,10 +56,25 @@ type Section =
   | "providers"
   | "appearance"
   | "git"
+  | "review"
   | "servers"
   | "experimental"
   | "advanced"
   | "updates"
+
+// ── Curated icon set for repo icon picker ─────────────────────────────────────
+const ICON_CATEGORIES = [
+  { label: "Dev", icons: ["IconCode", "IconBrandGithub", "IconBrandGit", "IconTerminal", "IconApi", "IconDatabase", "IconServer", "IconBug", "IconTestPipe", "IconBraces", "IconJson"] },
+  { label: "Cloud", icons: ["IconCloud", "IconCloudUpload", "IconContainer", "IconBrandDocker", "IconServerBolt", "IconNetwork"] },
+  { label: "Data", icons: ["IconChartBar", "IconTable", "IconChartLine", "IconReport", "IconDashboard", "IconChartPie"] },
+  { label: "UI", icons: ["IconLayout", "IconComponents", "IconPalette", "IconBrush", "IconPhoto", "IconDeviceDesktop"] },
+  { label: "Misc", icons: ["IconBrain", "IconRocket", "IconStar", "IconHeart", "IconBolt", "IconKey", "IconShield", "IconGlobe", "IconMail", "IconHome", "IconBook", "IconCamera", "IconMic", "IconPackage", "IconBox", "IconCoin", "IconLeaf", "IconPaw", "IconFlask", "IconSparkles"] },
+]
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getTablerIcon(name: string): React.ComponentType<{ size?: number }> | undefined {
+  return (TablerIcons as any)[name]
+}
 
 const repoColors = [
   "bg-amber-500/20 text-amber-400 border-amber-500/30",
@@ -83,6 +99,7 @@ const navMain = [
   { id: "providers" as Section, label: "Providers", icon: IconPlug },
   { id: "appearance" as Section, label: "Appearance", icon: IconPalette },
   { id: "git" as Section, label: "Git", icon: IconGitBranch },
+  { id: "review" as Section, label: "Review", icon: IconSparkles },
   { id: "servers" as Section, label: "Servers", icon: IconCloud },
 ]
 
@@ -91,6 +108,93 @@ const navMore = [
   { id: "advanced" as Section, label: "Advanced", icon: IconAdjustments },
   { id: "updates" as Section, label: "Check for updates", icon: IconRefresh },
 ]
+
+// ── Icon picker popover ────────────────────────────────────────────────────────
+
+function IconPickerPopover({ selectedIcon, onSelect, onClose, anchorRef }: {
+  selectedIcon: string
+  onSelect: (icon: string) => void
+  onClose: () => void
+  anchorRef: React.RefObject<HTMLButtonElement | null>
+}) {
+  const [search, setSearch] = useState("")
+  const pos = anchorRef.current?.getBoundingClientRect()
+
+  const filtered = ICON_CATEGORIES.map((cat) => ({
+    ...cat,
+    icons: cat.icons.filter((name) => !search || name.toLowerCase().includes(search.toLowerCase())),
+  })).filter((cat) => cat.icons.length > 0)
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 w-72 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+        style={{
+          top: pos ? pos.bottom + 8 : 100,
+          left: pos ? Math.max(8, pos.left) : 100,
+        }}
+      >
+        <div className="p-2 border-b border-border">
+          <div className="flex items-center gap-2 bg-background rounded-lg border border-border px-2.5 py-1.5">
+            <IconSearch size={12} className="text-muted-foreground/50 shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search icons..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-muted-foreground/40"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-2 space-y-3">
+          {filtered.map((cat) => (
+            <div key={cat.label}>
+              <div className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider px-1 mb-1.5">{cat.label}</div>
+              <div className="grid grid-cols-9 gap-1">
+                {cat.icons.map((iconName) => {
+                  const IconComp = getTablerIcon(iconName)
+                  if (!IconComp) return null
+                  const isSelected = selectedIcon === iconName
+                  return (
+                    <button
+                      key={iconName}
+                      title={iconName.replace(/^Icon/, "")}
+                      onClick={() => { onSelect(isSelected ? "" : iconName); onClose() }}
+                      className={cn(
+                        "w-7 h-7 rounded-lg flex items-center justify-center transition-colors",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <IconComp size={14} />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="py-4 text-center text-[12px] text-muted-foreground/40">No icons found</div>
+          )}
+        </div>
+        {selectedIcon && (
+          <div className="border-t border-border p-2">
+            <button
+              onClick={() => { onSelect(""); onClose() }}
+              className="w-full text-[12px] text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+              Remove icon
+            </button>
+          </div>
+        )}
+      </div>
+    </>,
+    document.body
+  )
+}
 
 // ── Setting row primitives ────────────────────────────────────────────────────
 
@@ -431,6 +535,8 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   const [setupScript, setSetupScript] = useState(repo.setupScript ?? "")
   const [runScript, setRunScript] = useState(repo.runScript ?? "")
   const [archiveScript, setArchiveScript] = useState(repo.archiveScript ?? "")
+  const [icon, setIcon] = useState(repo.icon ?? "")
+  const [showIconPicker, setShowIconPicker] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [openPref, setOpenPref] = useState<string | null>(null)
   const [prefValues, setPrefValues] = useState<Record<string, string>>(() => {
@@ -439,6 +545,9 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   const [showSaved, setShowSaved] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
   const isFirstRender = useRef(true)
+  const iconBtnRef = useRef<HTMLButtonElement>(null)
+
+  const RepoIconComp = icon ? getTablerIcon(icon) : undefined
 
   // Auto-save on any field change (debounced 800ms)
   useEffect(() => {
@@ -453,6 +562,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         runScript,
         archiveScript,
         preferences: JSON.stringify(prefValues),
+        icon: icon || undefined,
       })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
       setShowSaved(true)
@@ -460,7 +570,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
     }, 800)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branch, branchPrefix, remote, previewUrl, setupScript, runScript, archiveScript, prefValues])
+  }, [branch, branchPrefix, remote, previewUrl, setupScript, runScript, archiveScript, prefValues, icon])
 
   async function handleRemove() {
     if (!confirm(`Remove repository "${repo.name}"? This cannot be undone.`)) return
@@ -479,11 +589,27 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <span className={cn("w-9 h-9 rounded-lg border text-sm font-bold flex items-center justify-center shrink-0", color)}>
-          {repoName[0].toUpperCase()}
-        </span>
-        <h1 className="text-2xl font-semibold text-foreground">{repoName}</h1>
+      <div>
+        <div className="flex items-center gap-3">
+          <button
+            ref={iconBtnRef}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setShowIconPicker((v) => !v)}
+            title="Change icon"
+            className={cn("w-9 h-9 rounded-lg border text-sm font-bold flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity cursor-pointer", color)}
+          >
+            {RepoIconComp ? <RepoIconComp size={16} /> : repoName[0].toUpperCase()}
+          </button>
+          <h1 className="text-2xl font-semibold text-foreground">{repoName}</h1>
+        </div>
+        {showIconPicker && (
+          <IconPickerPopover
+            selectedIcon={icon}
+            onSelect={setIcon}
+            onClose={() => setShowIconPicker(false)}
+            anchorRef={iconBtnRef}
+          />
+        )}
       </div>
 
       {/* Paths */}
@@ -999,12 +1125,129 @@ function ExperimentalSettings() {
   )
 }
 
+function ReviewSettings() {
+  const [prompt, setPrompt] = useState("")
+  const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    api.getSettings().then((s) => {
+      setPrompt(s.reviewPrompt ?? "")
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
+
+  const { data: slashCommands = [] } = useQuery({
+    queryKey: ["slash-commands", slashQuery],
+    queryFn: () => api.getSlashCommands(undefined, slashQuery ?? undefined),
+    enabled: slashQuery !== null,
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  })
+
+  function handleChange(value: string) {
+    setPrompt(value)
+    setSaved(false)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      api.updateSettings({ reviewPrompt: value }).then(() => setSaved(true))
+    }, 800)
+    // Detect /command on the current line
+    const lastLine = value.split("\n").pop() ?? ""
+    if (lastLine.startsWith("/")) {
+      setSlashQuery(lastLine.slice(1))
+      setSlashIndex(0)
+    } else {
+      setSlashQuery(null)
+    }
+  }
+
+  function applySlashCommand(name: string) {
+    setPrompt((prev) => {
+      const lines = prev.split("\n")
+      lines[lines.length - 1] = `/${name} `
+      return lines.join("\n")
+    })
+    setSlashQuery(null)
+    setSaved(false)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      api.updateSettings({ reviewPrompt: prompt }).then(() => setSaved(true))
+    }, 800)
+    textareaRef.current?.focus()
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashQuery === null || slashCommands.length === 0) return
+    if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % slashCommands.length) }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex((i) => (i - 1 + slashCommands.length) % slashCommands.length) }
+    else if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); applySlashCommand(slashCommands[slashIndex].name) }
+    else if (e.key === "Escape") setSlashQuery(null)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="text-sm font-medium text-foreground mb-1">Review prompt</div>
+        <div className="text-[13px] text-muted-foreground mb-3 leading-snug">
+          Custom instructions injected into every AI code review. Type <code className="text-xs bg-muted px-1 py-0.5 rounded">/</code> to insert a skill inline.
+        </div>
+        <div className="relative">
+          {slashQuery !== null && slashCommands.length > 0 && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-10">
+              <div className="px-3 py-1.5 border-b border-border/60">
+                <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Skills</span>
+              </div>
+              <div className="max-h-52 overflow-y-auto">
+                {slashCommands.map((cmd, i) => (
+                  <button
+                    key={cmd.name}
+                    onMouseDown={(e) => { e.preventDefault(); applySlashCommand(cmd.name) }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+                      i === slashIndex ? "bg-accent" : "hover:bg-accent/50"
+                    )}
+                  >
+                    <span className="text-[12px] font-mono font-semibold text-foreground/80 shrink-0 w-28 truncate">/{cmd.name}</span>
+                    <span className="text-[11px] text-muted-foreground/60 flex-1 truncate">{cmd.description}</span>
+                    {cmd.source === "skill" && (
+                      <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">skill</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={loading ? "" : prompt}
+            onChange={(e) => handleChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+            placeholder={"Focus on security and performance.\nAlways check for missing error handling.\n\n/my-review-checklist"}
+            rows={10}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 font-mono resize-y focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          />
+        </div>
+        <div className="text-[11px] text-muted-foreground/60 mt-1.5 h-4">
+          {saved ? "Saved" : ""}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const sectionContent: Record<Section, React.ReactNode> = {
   general: <GeneralSettings />,
   models: <ModelsSettings />,
   providers: <ProvidersSettings />,
   appearance: <AppearanceSettings />,
   git: <GitSettings />,
+  review: <ReviewSettings />,
   servers: <ServersSettings />,
   experimental: <ExperimentalSettings />,
   advanced: <PlaceholderSettings title="Advanced" />,
@@ -1017,6 +1260,7 @@ const sectionTitles: Record<Section, string> = {
   providers: "Providers",
   appearance: "Appearance",
   git: "Git",
+  review: "Review",
   servers: "Servers",
   experimental: "Experimental",
   advanced: "Advanced",

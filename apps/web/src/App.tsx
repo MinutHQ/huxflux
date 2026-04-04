@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react"
-import { type PanelImperativeHandle } from "react-resizable-panels"
+import { type PanelImperativeHandle, useDefaultLayout } from "react-resizable-panels"
 import { getTheme, type Theme } from "@/lib/theme"
 import { toast, Toaster } from "sonner"
 import { Sidebar } from "@/components/Sidebar"
@@ -18,7 +18,7 @@ import { useServers } from "@/hooks/useServers"
 import { useWorkspace } from "@/hooks/useWorkspace"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
-import { mockPRs } from "@/data/mockReviews"
+import { usePRs } from "@/hooks/usePRs"
 import { getFlag } from "@/lib/flags"
 import { isTauri } from "@/lib/platform"
 import { useUpdater } from "@/hooks/useUpdater"
@@ -44,6 +44,10 @@ export default function App() {
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  const sidebarLayout = useDefaultLayout({ id: "hive-sidebar", panelIds: ["hive-sidebar-panel", "hive-content-panel"] })
+  const mainLayout = useDefaultLayout({ id: "hive-main", panelIds: ["hive-main-chat", "hive-main-right"] })
+  const rightLayout = useDefaultLayout({ id: "hive-right", panelIds: ["hive-right-files", "hive-right-terminal"] })
 
   const toggleSidebar = useCallback(() => {
     if (sidebarRef.current?.isCollapsed()) {
@@ -118,6 +122,12 @@ export default function App() {
 
   const prReviewEnabled = getFlag("prReview")
   const { githubEnabled, feedbackEnabled } = useServerConfig()
+  const { prs, isLoading: prsLoading } = usePRs()
+  const [reviewedPrIds, setReviewedPrIds] = useState<Set<string>>(new Set())
+  const [userReviewedPrIds, setUserReviewedPrIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("hive:user-reviewed") ?? "[]")) }
+    catch { return new Set() }
+  })
 
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore } = useAgent(workspace.resolvedActiveId)
@@ -127,7 +137,7 @@ export default function App() {
   const streamingAgentId = useStreamingAgentId(lastMsgDurationMs)
 
   const selectedPr = prReviewEnabled && workspace.selectedPrId
-    ? mockPRs.find((p) => p.id === workspace.selectedPrId) ?? null
+    ? prs.find((p) => p.id === workspace.selectedPrId) ?? null
     : null
 
   // Show onboarding if no servers configured
@@ -186,9 +196,16 @@ export default function App() {
     pendingAgent: workspace.pendingAgent,
     onAgentDeleting: workspace.onAgentDeleting,
     clearDeletingAgent: workspace.clearDeletingAgent,
-    prs: prReviewEnabled ? mockPRs : [],
+    prs: prReviewEnabled ? prs.map((p) => ({
+      ...p,
+      reviewReady: reviewedPrIds.has(p.id) || !!(p.repoId && localStorage.getItem(`hive:review:${p.repoId}:${p.number}`)),
+      userReviewed: p.userReviewed || userReviewedPrIds.has(p.id),
+    })) : [],
     selectedPrId: workspace.selectedPrId,
     onSelectPr: workspace.selectPr,
+    onSwitchToAgents: workspace.switchToAgentView,
+    onSwitchToReview: workspace.switchToReviewView,
+    prsLoading,
     refineSessions,
     selectedRefineId,
     onSelectRefine: setSelectedRefineId,
@@ -218,7 +235,16 @@ export default function App() {
     </div>
   ) : selectedPr ? (
     <div className="flex-1 min-w-0 overflow-hidden">
-      <PRView key={selectedPr.id} pr={selectedPr} />
+      <PRView
+        key={selectedPr.id}
+        pr={selectedPr}
+        onReviewDone={() => setReviewedPrIds((prev) => new Set([...prev, selectedPr.id]))}
+        onUserReviewed={() => {
+          const next = new Set([...userReviewedPrIds, selectedPr.id])
+          setUserReviewedPrIds(next)
+          localStorage.setItem("hive:user-reviewed", JSON.stringify([...next]))
+        }}
+      />
     </div>
   ) : workspace.deletingAgent ? (
     <div className="flex-1 min-w-0 overflow-hidden">
@@ -237,8 +263,8 @@ export default function App() {
       {terminalPanel}
     </div>
   ) : (
-    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0">
-      <ResizablePanel defaultSize="72" minSize="30">
+    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0" defaultLayout={mainLayout.defaultLayout} onLayoutChanged={mainLayout.onLayoutChanged}>
+      <ResizablePanel id="hive-main-chat" order={1} defaultSize="72" minSize="30">
         <ChatView
           agent={activeAgent}
           isStreaming={activeIsStreaming}
@@ -262,9 +288,9 @@ export default function App() {
 
       <ResizableHandle />
 
-      <ResizablePanel defaultSize="28" minSize="15">
-        <ResizablePanelGroup orientation="vertical">
-          <ResizablePanel defaultSize="50" minSize="20">
+      <ResizablePanel id="hive-main-right" order={2} defaultSize="28" minSize="15">
+        <ResizablePanelGroup orientation="vertical" defaultLayout={rightLayout.defaultLayout} onLayoutChanged={rightLayout.onLayoutChanged}>
+          <ResizablePanel id="hive-right-files" order={1} defaultSize="50" minSize="20">
             <FileChangesView
               agent={activeAgent}
               selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
@@ -278,7 +304,7 @@ export default function App() {
 
           <ResizableHandle />
 
-          <ResizablePanel defaultSize="50" minSize="15">
+          <ResizablePanel id="hive-right-terminal" order={2} defaultSize="50" minSize="15">
             {terminalPanel}
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -299,8 +325,10 @@ export default function App() {
         />
       )}
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full">
+      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
         <ResizablePanel
+          id="hive-sidebar-panel"
+          order={1}
           panelRef={sidebarRef}
           defaultSize="18"
           minSize="12"
@@ -315,7 +343,7 @@ export default function App() {
 
         <ResizableHandle />
 
-        <ResizablePanel defaultSize="82" minSize="50" className="flex min-w-0 relative">
+        <ResizablePanel id="hive-content-panel" order={2} defaultSize="82" minSize="50" className="flex min-w-0 relative">
           {/* Expand button shown when sidebar is collapsed */}
           {sidebarCollapsed && (
             <button

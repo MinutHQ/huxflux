@@ -105,6 +105,31 @@ function ResultBlock({ result }: { result: string }) {
   )
 }
 
+// ── Agent prompt block ────────────────────────────────────────────────────────
+
+function AgentPromptBlock({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-0.5">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5"
+      >
+        <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/40", open && "rotate-90")} />
+        <IconFileText size={12} className="text-muted-foreground/50 shrink-0" />
+        <span className="text-muted-foreground/70">Prompt</span>
+      </button>
+      {open && (
+        <div className="mt-1 rounded-lg overflow-hidden border border-border/60">
+          <div className="bg-card/60 px-3 py-2.5 overflow-x-auto">
+            <pre className="text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre-wrap break-words">{prompt}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Tool call row ─────────────────────────────────────────────────────────────
 
 function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolean }) {
@@ -113,6 +138,15 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
   const isRead = call.tool === "Read"
 
   if (isAgent) {
+    let description = ""
+    let prompt = ""
+    if (call.args) {
+      try {
+        const parsed = JSON.parse(call.args)
+        description = parsed.description ?? ""
+        prompt = parsed.prompt ?? ""
+      } catch { /* raw string fallback */ }
+    }
     return (
       <div className={cn("mt-1", indent && "ml-4")}>
         <button
@@ -122,11 +156,12 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
           <IconChevronRight size={12} className={cn("transition-transform shrink-0", open && "rotate-90")} />
           <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />
           <span className="font-medium text-foreground/80">Agent</span>
-          {call.args && <span className="text-muted-foreground/60 ml-1">{call.args}</span>}
+          {description && <span className="text-muted-foreground/60 ml-1 truncate">{description}</span>}
         </button>
-        {open && call.subCalls && (
+        {open && (
           <div className="ml-3 mt-0.5 border-l border-border/50 pl-3 space-y-0.5">
-            {call.subCalls.map((sub) => (
+            {prompt && <AgentPromptBlock prompt={prompt} />}
+            {call.subCalls?.map((sub) => (
               <ToolCallRow key={sub.id} call={sub} />
             ))}
           </div>

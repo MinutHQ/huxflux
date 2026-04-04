@@ -235,6 +235,10 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status, deleted_at);
     `,
   },
+  {
+    version: 11,
+    sql: `ALTER TABLE repos ADD COLUMN icon TEXT;`,
+  },
 ]
 
 export function runMigrations() {

@@ -3,6 +3,7 @@ export interface PRFile {
   additions: number
   deletions: number
   status: "added" | "modified" | "deleted" | "renamed"
+  patch?: string
 }
 
 export interface CodeLine {
@@ -20,10 +21,12 @@ export interface ReviewComment {
   codeContext?: CodeLine[]
   body: string
   status: "pending" | "dismissed" | "sent"
+  resolved?: boolean
 }
 
 export interface PullRequest {
   id: string
+  repoId: string
   number: number
   title: string
   repo: string
@@ -33,10 +36,15 @@ export interface PullRequest {
   requestedAt: string
   reviewStatus: "awaiting" | "changes-requested" | "approved"
   unread: boolean
+  reviewReady?: boolean
+  reviewRequested?: boolean
+  userReviewed?: boolean
+  isReadyToMerge?: boolean
   additions: number
   deletions: number
   files: PRFile[]
   description: string
+  url?: string
 }
 
 export const mockFileDiffs: Record<string, string> = {
@@ -144,6 +152,7 @@ export const mockFileDiffs: Record<string, string> = {
 export const mockPRs: PullRequest[] = [
   {
     id: "pr-1",
+    repoId: "",
     number: 247,
     title: "Add CSV import to devices table",
     repo: "minut/platform",
@@ -165,6 +174,7 @@ export const mockPRs: PullRequest[] = [
   },
   {
     id: "pr-2",
+    repoId: "",
     number: 243,
     title: "Fix null pointer in sensor data aggregation",
     repo: "minut/platform",
@@ -184,6 +194,7 @@ export const mockPRs: PullRequest[] = [
   },
   {
     id: "pr-3",
+    repoId: "",
     number: 238,
     title: "Refactor authentication middleware",
     repo: "minut/platform",

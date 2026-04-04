@@ -32,7 +32,7 @@ function InlineText({ text }: { text: string }) {
     <Text style={{ color: c.fgBright, fontSize: 14, lineHeight: 21 }}>
       {parts.map((part, i) => {
         if (part.startsWith("`") && part.endsWith("`")) {
-          return <Text key={i} style={{ color: "#a78bfa", fontSize: 13 }}>`{part.slice(1, -1)}`</Text>
+          return <Text key={i} style={{ color: c.fgSub, fontSize: 13 }}>`{part.slice(1, -1)}`</Text>
         }
         if (part.startsWith("**") && part.endsWith("**")) {
           return <Text key={i} style={{ fontWeight: "700" }}>{part.slice(2, -2)}</Text>
@@ -230,8 +230,8 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
       style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, marginBottom: 6 }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Text style={{ color: "#a78bfa", fontSize: 11 }}>✦</Text>
-        <Text style={{ color: "#a78bfa", fontSize: 11, fontWeight: "600", flex: 1 }}>Thinking</Text>
+        <Text style={{ color: c.fgSub, fontSize: 11 }}>✦</Text>
+        <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", flex: 1 }}>Thinking</Text>
         <Text style={{ color: c.fgSub, fontSize: 10 }}>{expanded ? "▲" : "▼"}</Text>
       </View>
       {expanded ? (
@@ -903,7 +903,7 @@ export default function AgentChatScreen() {
               style={{
                 flexDirection: "row", alignItems: "center", gap: 4,
                 paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
-                backgroundColor: thinking ? c.accent : "transparent",
+                backgroundColor: thinking ? c.secondary : "transparent",
               }}
             >
               <Ionicons name="bulb-outline" size={13} color={thinking ? "#fff" : c.fgSub} />
@@ -916,7 +916,7 @@ export default function AgentChatScreen() {
               style={{
                 flexDirection: "row", alignItems: "center", gap: 4,
                 paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
-                backgroundColor: planMode ? c.accent : "transparent",
+                backgroundColor: planMode ? c.secondary : "transparent",
               }}
             >
               <Ionicons name="map-outline" size={13} color={planMode ? "#fff" : c.fgSub} />

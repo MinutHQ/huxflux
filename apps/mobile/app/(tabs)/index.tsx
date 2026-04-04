@@ -86,8 +86,8 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
             {agent.title}
           </Text>
           {!!agent.unread && (
-            <View style={{ backgroundColor: c.accent, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
-              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{agent.unread}</Text>
+            <View style={{ backgroundColor: c.secondary, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
+              <Text style={{ color: c.fg, fontSize: 10, fontWeight: "700" }}>{agent.unread}</Text>
             </View>
           )}
         </View>
@@ -136,7 +136,7 @@ function RepoSectionHeader({ name, count, collapsed, onToggle }: { name: string;
     >
       <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={c.fgSub} />
       <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: c.accent, fontSize: 11 }}>⟨/⟩</Text>
+        <Text style={{ color: c.fgSub, fontSize: 11 }}>⟨/⟩</Text>
       </View>
       <Text style={{ color: c.fg, fontSize: 12, fontWeight: "600", flex: 1 }}>{name}</Text>
       <Text style={{ color: c.placeholder, fontSize: 11 }}>{count}</Text>
@@ -250,7 +250,7 @@ export default function AgentsScreen() {
   if (!hydrated) {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={c.accent} />
+        <ActivityIndicator color={c.fgSub} />
       </View>
     )
   }
@@ -258,7 +258,7 @@ export default function AgentsScreen() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={c.accent} />
+        <ActivityIndicator color={c.fgSub} />
       </View>
     )
   }
@@ -270,9 +270,9 @@ export default function AgentsScreen() {
         <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center", marginBottom: 24 }}>Add a Huxflux server to get started</Text>
         <TouchableOpacity
           onPress={() => router.push("/servers")}
-          style={{ backgroundColor: c.accent, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
+          style={{ backgroundColor: c.fgBright, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Add Server</Text>
+          <Text style={{ color: c.fgBrightFg, fontWeight: "600", fontSize: 14 }}>Add Server</Text>
         </TouchableOpacity>
       </View>
     )
@@ -300,10 +300,10 @@ export default function AgentsScreen() {
           </Pressable>
           <Pressable
             onPress={() => router.push("/new-agent")}
-            style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4, marginLeft: 12 }}
+            style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.fgBright, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4, marginLeft: 12 }}
           >
-            <Ionicons name="add" size={17} color="#fff" />
-            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
+            <Ionicons name="add" size={17} color={c.fgBrightFg} />
+            <Text style={{ color: c.fgBrightFg, fontSize: 13, fontWeight: "600" }}>New</Text>
           </Pressable>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -317,15 +317,15 @@ export default function AgentsScreen() {
             onPress={showRepoFilter}
             style={{
               height: 34, borderRadius: 8, borderWidth: 1,
-              borderColor: repoFilter !== "all" ? c.accent : c.border,
-              backgroundColor: repoFilter !== "all" ? `${c.accent}22` : "transparent",
+              borderColor: repoFilter !== "all" ? c.fg : c.border,
+              backgroundColor: repoFilter !== "all" ? c.secondary : "transparent",
               alignItems: "center", justifyContent: "center",
               flexDirection: "row", gap: 4, paddingHorizontal: 10,
             }}
           >
-            <Ionicons name="filter-outline" size={14} color={repoFilter !== "all" ? c.accent : c.fgSub} />
+            <Ionicons name="filter-outline" size={14} color={repoFilter !== "all" ? c.fg : c.fgSub} />
             {activeRepoName && (
-              <Text style={{ color: c.accent, fontSize: 12, fontWeight: "500" }} numberOfLines={1}>
+              <Text style={{ color: c.fg, fontSize: 12, fontWeight: "500" }} numberOfLines={1}>
                 {activeRepoName}
               </Text>
             )}
@@ -392,7 +392,7 @@ export default function AgentsScreen() {
           }
           return <AgentRow agent={item.agent} />
         }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.fgSub} />}
         contentContainerStyle={{ paddingBottom: 32 }}
       />
     </View>

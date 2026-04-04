@@ -29,6 +29,7 @@ interface Session {
 interface TerminalTab {
   id: string
   num: number
+  label?: string
 }
 
 // Module-level session store — survives component unmount/remount
@@ -89,6 +90,9 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const [activeTerminalId, setActiveTerminalId] = useState<string>(() => getInitialTabState().activeId)
   const [isRunning, setIsRunning] = useState(false)
   const [detectedPort, setDetectedPort] = useState<number | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Restore terminal tabs when agent changes
   useEffect(() => {
@@ -255,6 +259,21 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     globalTabState.set(agent.id, { tabs: [...terminalTabs, { id, num }], activeId: id, nextNum: nextTerminalNumRef.current })
   }
 
+  function startRename(tab: TerminalTab) {
+    setRenamingId(tab.id)
+    setRenameValue(tab.label ?? `Terminal ${tab.num}`)
+    setTimeout(() => { renameInputRef.current?.select() }, 0)
+  }
+
+  function commitRename() {
+    if (!renamingId) return
+    const trimmed = renameValue.trim()
+    setTerminalTabs((prev) => prev.map((t) =>
+      t.id === renamingId ? { ...t, label: trimmed || undefined } : t
+    ))
+    setRenamingId(null)
+  }
+
   function closeTerminal(id: string) {
     if (terminalTabs.length <= 1) return
     const sessionKey = `${agent.id}:${id}`
@@ -332,6 +351,8 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
           {/* Terminal tabs */}
           {terminalTabs.map((tab) => {
             const isActive = activeTab === "terminal" && activeTerminalId === tab.id
+            const isRenaming = renamingId === tab.id
+            const displayLabel = tab.label ?? `Terminal ${tab.num}`
             return (
               <div
                 key={tab.id}
@@ -342,13 +363,31 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
               >
                 <button
                   onClick={() => { onTabChange("terminal"); setActiveTerminalId(tab.id) }}
+                  onDoubleClick={(e) => { e.preventDefault(); startRename(tab) }}
                   className={cn(
                     "flex items-center gap-1.5 pl-3 pr-1.5 py-2 text-xs font-medium transition-colors",
                     isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <IconTerminal2 size={12} />
-                  {terminalTabs.length > 1 ? tab.num : "Terminal"}
+                  <IconTerminal2 size={12} className="shrink-0" />
+                  {isRenaming ? (
+                    <input
+                      ref={renameInputRef}
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitRename()
+                        if (e.key === "Escape") setRenamingId(null)
+                        e.stopPropagation()
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-transparent outline-none border-none text-xs font-medium w-20 min-w-0"
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="max-w-[100px] truncate">{displayLabel}</span>
+                  )}
                 </button>
                 {terminalTabs.length > 1 && (
                   <button

@@ -145,7 +145,7 @@ function Particles() {
   )
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
       {particles.map((p) => (
         <div
           key={p.id}
@@ -196,7 +196,7 @@ function OrbitDots({ color, size = 40 }: { color: string; size?: number }) {
 function MorphBlob({ color, className }: { color: string; className?: string }) {
   return (
     <div
-      className={cn("absolute pointer-events-none", className)}
+      className={cn("fixed pointer-events-none", className)}
       style={{
         background: color,
         animation: "homeMorph 8s ease-in-out infinite, homeGlow 3s ease-in-out infinite",
@@ -222,11 +222,12 @@ function ConstellationBackground() {
 
     const resize = () => {
       const dpr = window.devicePixelRatio || 1
-      const rect = canvas.parentElement!.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
-      canvas.style.width = `${rect.width}px`
-      canvas.style.height = `${rect.height}px`
+      const w = window.innerWidth
+      const h = window.innerHeight
+      canvas.width = w * dpr
+      canvas.height = h * dpr
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     resize()
@@ -234,8 +235,8 @@ function ConstellationBackground() {
 
     // Init nodes
     if (nodesRef.current.length === 0) {
-      const w = canvas.parentElement!.clientWidth
-      const h = canvas.parentElement!.clientHeight
+      const w = window.innerWidth
+      const h = window.innerHeight
       for (let i = 0; i < 160; i++) {
         nodesRef.current.push({
           x: Math.random() * w,
@@ -249,14 +250,13 @@ function ConstellationBackground() {
     }
 
     const handleMouse = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      mouseRef.current = { x: e.clientX, y: e.clientY }
     }
     window.addEventListener("mousemove", handleMouse, { passive: true })
 
     const draw = () => {
-      const w = canvas.parentElement!.clientWidth
-      const h = canvas.parentElement!.clientHeight
+      const w = window.innerWidth
+      const h = window.innerHeight
       ctx.clearRect(0, 0, w, h)
 
       const nodes = nodesRef.current
@@ -354,14 +354,14 @@ function ConstellationBackground() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" />
 }
 
 // ── Aurora waves ─────────────────────────────────────────────────────────────
 
 function AuroraBackground() {
   return (
-    <div className="absolute inset-x-0 top-0 h-[600px] pointer-events-none overflow-hidden">
+    <div className="fixed inset-x-0 top-0 h-[600px] pointer-events-none overflow-hidden">
       <div
         className="absolute inset-x-0 -top-1/3 h-full"
         style={{
@@ -453,7 +453,7 @@ export function HomeView() {
   }, [stats])
 
   return (
-    <div className="flex-1 h-full overflow-y-auto relative">
+    <div className="flex-1 h-full overflow-y-auto overflow-x-hidden relative">
       <ConstellationBackground />
       <AuroraBackground />
       <Particles />

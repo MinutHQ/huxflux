@@ -14,6 +14,17 @@ if ! command -v pnpm &>/dev/null; then
   exit 1
 fi
 
+# Kill anything already on the default dev ports (but not browsers)
+for port in 5173 3002; do
+  for pid in $(lsof -ti :"$port" 2>/dev/null); do
+    cmd=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+    case "$cmd" in
+      *firefox*|*Firefox*) ;;
+      *) kill -9 "$pid" 2>/dev/null || true ;;
+    esac
+  done
+done
+
 echo "Installing dependencies..."
 pnpm install --silent
 

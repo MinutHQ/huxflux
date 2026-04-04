@@ -39,6 +39,7 @@ import {
   IconKeyboard,
   IconBook,
   IconX,
+  IconHome,
 } from "@tabler/icons-react"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
@@ -1228,11 +1229,13 @@ interface SidebarProps {
   onSelectRefine?: (id: string) => void
   onNewRefine?: (ticketId: string) => void
   agentPorts?: Record<string, number | null>
+  onHome?: () => void
+  showHome?: boolean
   onToggle?: () => void
   feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1362,6 +1365,24 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar border-r border-sidebar-border w-full overflow-hidden">
         <TitleBar />
+
+        {/* Home button */}
+        {onHome && (
+          <div className="px-2 pt-2 shrink-0">
+            <button
+              onClick={onHome}
+              className={cn(
+                "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                showHome
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-accent/50"
+              )}
+            >
+              <IconHome size={14} />
+              Home
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         {(prReviewEnabled || refineEnabled) && (

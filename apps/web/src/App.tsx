@@ -9,6 +9,7 @@ import { TerminalView } from "@/components/TerminalView"
 import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
+import { HomeView } from "@/components/HomeView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
 import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig } from "@hive/shared"
@@ -41,6 +42,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
   const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
+  const [showHome, setShowHome] = useState(false)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -188,7 +190,7 @@ export default function App() {
     agents,
     selectedId: workspace.sidebarSelectedId,
     streamingAgentId,
-    onSelect: workspace.selectAgent,
+    onSelect: (id: string) => { setShowHome(false); workspace.selectAgent(id) },
     onOpenSettings: () => setView("settings"),
     onAgentCreating: workspace.onAgentCreating,
     onAgentCreated: workspace.onAgentCreated,
@@ -202,15 +204,17 @@ export default function App() {
       userReviewed: p.userReviewed || userReviewedPrIds.has(p.id),
     })) : [],
     selectedPrId: workspace.selectedPrId,
-    onSelectPr: workspace.selectPr,
+    onSelectPr: (id: string) => { setShowHome(false); workspace.selectPr(id) },
     onSwitchToAgents: workspace.switchToAgentView,
     onSwitchToReview: workspace.switchToReviewView,
     prsLoading,
     refineSessions,
     selectedRefineId,
-    onSelectRefine: setSelectedRefineId,
+    onSelectRefine: (id: string) => { setShowHome(false); setSelectedRefineId(id) },
     onNewRefine: handleNewRefine,
     agentPorts,
+    onHome: () => setShowHome(true),
+    showHome,
     onToggle: toggleSidebar,
     feedbackEnabled,
   }
@@ -225,7 +229,9 @@ export default function App() {
     />
   )
 
-  const mainContent = selectedRefineId ? (
+  const mainContent = showHome ? (
+    <HomeView />
+  ) : selectedRefineId ? (
     <div className="flex-1 min-w-0 h-full overflow-hidden flex">
       <RefineView
         sessionId={selectedRefineId}

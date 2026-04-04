@@ -1,8 +1,8 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Alert } from "react-native"
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Alert, ActionSheetIOS, Platform } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useServerStatus, statusOrder, statusConfig, api, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
+import { useAgents, useRepos, useServerStatus, statusOrder, statusConfig, api, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
 import { c, statusColors } from "../../theme"
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -15,56 +15,72 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
   const dotColor = statusColors[agent.status]?.color ?? c.fgSub
 
   function handleLongPress() {
-    const renameOption = "Rename"
-    const statusOption = "Change status"
-    const deleteOption = "Delete"
-    const cancelOption = "Cancel"
-    Alert.alert(agent.title, undefined, [
-      {
-        text: renameOption,
-        onPress: () => {
-          Alert.prompt("Rename agent", undefined, (newTitle) => {
-            if (!newTitle?.trim() || newTitle.trim() === agent.title) return
-            api.updateAgent(agent.id, { title: newTitle.trim() })
-            queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-              old ? old.map((a) => a.id === agent.id ? { ...a, title: newTitle.trim() } : a) : old
-            )
-          }, "plain-text", agent.title)
-        },
-      },
-      {
-        text: statusOption,
-        onPress: () => {
-          Alert.alert("Change status", undefined, [
-            ...STATUS_OPTIONS.map((s) => ({
-              text: statusConfig[s].label,
-              onPress: () => {
-                api.updateAgent(agent.id, { status: s })
-                queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-                  old ? old.map((a) => a.id === agent.id ? { ...a, status: s } : a) : old
-                )
-              },
-            })),
-            { text: cancelOption, style: "cancel" as const },
-          ])
-        },
-      },
-      { text: deleteOption, style: "destructive" as const, onPress: () => {
-        Alert.alert("Delete agent", `Delete "${agent.title}"?`, [
-          { text: "Delete", style: "destructive", onPress: () => {
-            api.deleteAgent(agent.id)
-            queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
-              old ? old.filter((a) => a.id !== agent.id) : old
-            )
-          }},
-          { text: "Cancel", style: "cancel" },
-        ])
+    const options = ["Rename", "Change status", "Delete", "Cancel"]
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: 3, destructiveButtonIndex: 2, title: agent.title },
+        (idx) => {
+          if (idx === 0) promptRename()
+          if (idx === 1) promptStatus()
+          if (idx === 2) promptDelete()
+        }
+      )
+    } else {
+      Alert.alert(agent.title, undefined, [
+        { text: "Rename", onPress: promptRename },
+        { text: "Change status", onPress: promptStatus },
+        { text: "Delete", style: "destructive", onPress: promptDelete },
+        { text: "Cancel", style: "cancel" },
+      ])
+    }
+  }
+
+  function promptRename() {
+    Alert.prompt("Rename agent", undefined, (newTitle) => {
+      if (!newTitle?.trim() || newTitle.trim() === agent.title) return
+      api.updateAgent(agent.id, { title: newTitle.trim() })
+      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+        old ? old.map((a) => a.id === agent.id ? { ...a, title: newTitle.trim() } : a) : old
+      )
+    }, "plain-text", agent.title)
+  }
+
+  function promptStatus() {
+    const labels = STATUS_OPTIONS.map((s) => statusConfig[s].label)
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: [...labels, "Cancel"], cancelButtonIndex: labels.length, title: "Change status" },
+        (idx) => {
+          if (idx < STATUS_OPTIONS.length) applyStatus(STATUS_OPTIONS[idx])
+        }
+      )
+    } else {
+      Alert.alert("Change status", undefined, [
+        ...STATUS_OPTIONS.map((s) => ({ text: statusConfig[s].label, onPress: () => applyStatus(s) })),
+        { text: "Cancel", style: "cancel" },
+      ])
+    }
+  }
+
+  function applyStatus(s: AgentStatus) {
+    api.updateAgent(agent.id, { status: s })
+    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+      old ? old.map((a) => a.id === agent.id ? { ...a, status: s } : a) : old
+    )
+  }
+
+  function promptDelete() {
+    Alert.alert("Delete agent", `Delete "${agent.title}"? This cannot be undone.`, [
+      { text: "Delete", style: "destructive", onPress: () => {
+        api.deleteAgent(agent.id)
+        queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+          old ? old.filter((a) => a.id !== agent.id) : old
+        )
       }},
-      { text: cancelOption, style: "cancel" },
+      { text: "Cancel", style: "cancel" },
     ])
   }
 
-  // PR state color
   const prColor = agent.prStatus
     ? agent.prStatus.merged ? "#34d399"
     : agent.prStatus.state === "closed" ? "#f87171"
@@ -134,8 +150,10 @@ export default function AgentsScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { data: agents = [], isLoading, refetch } = useAgents()
+  const { data: repos = [] } = useRepos()
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<AgentStatus>>(new Set(["done", "cancelled"]))
+  const [repoFilter, setRepoFilter] = useState<string>("all")
   const server = getActiveServer()
   const serverStatuses = useServerStatus(server ? [server] : [])
   const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
@@ -156,14 +174,37 @@ export default function AgentsScreen() {
     })
   }
 
+  function showRepoFilter() {
+    const options = ["All repos", ...repos.map((r) => r.name), "Cancel"]
+    const cancelIdx = options.length - 1
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: cancelIdx, title: "Filter by repo" },
+        (idx) => {
+          if (idx === 0) setRepoFilter("all")
+          else if (idx < cancelIdx) setRepoFilter(repos[idx - 1].id)
+        }
+      )
+    } else {
+      Alert.alert("Filter by repo", undefined, [
+        { text: "All repos", onPress: () => setRepoFilter("all") },
+        ...repos.map((r) => ({ text: r.name, onPress: () => setRepoFilter(r.id) })),
+        { text: "Cancel", style: "cancel" as const },
+      ])
+    }
+  }
+
+  const filteredAgents = repoFilter === "all" ? agents : agents.filter((a) => a.repoId === repoFilter)
+  const activeRepoName = repoFilter !== "all" ? repos.find((r) => r.id === repoFilter)?.name : null
+
   type ListItem =
     | { kind: "header"; status: AgentStatus; count: number }
     | { kind: "agent"; agent: AgentSummary }
 
   const items: ListItem[] = []
   for (const status of statusOrder) {
-    const group = agents.filter((a) => a.status === status)
-    if (group.length === 0) continue
+    const group = filteredAgents.filter((a) => a.status === status)
+    // Always show all status groups (even empty), like web
     items.push({ kind: "header", status, count: group.length })
     if (!collapsed.has(status)) {
       for (const agent of group) items.push({ kind: "agent", agent })
@@ -195,7 +236,7 @@ export default function AgentsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      {/* Header — clears Dynamic Island / status bar */}
+      {/* Header */}
       <View style={{
         paddingTop: insets.top + 10,
         paddingBottom: 12,
@@ -214,13 +255,41 @@ export default function AgentsScreen() {
             <Text style={{ color: isUnauthorized ? c.warning : c.fgSub, fontSize: 12 }}>{server.name}</Text>
           </View>
         </View>
-        <Pressable
-          onPress={() => router.push("/new-agent")}
-          style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
-        >
-          <Ionicons name="add" size={17} color="#fff" />
-          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {/* Add repo */}
+          <Pressable
+            onPress={() => router.push("/add-repo")}
+            style={{ width: 34, height: 34, borderRadius: 8, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="folder-open-outline" size={16} color={c.fgSub} />
+          </Pressable>
+          {/* Filter */}
+          <Pressable
+            onPress={showRepoFilter}
+            style={{
+              height: 34, borderRadius: 8, borderWidth: 1,
+              borderColor: repoFilter !== "all" ? c.accent : c.border,
+              backgroundColor: repoFilter !== "all" ? `${c.accent}22` : "transparent",
+              alignItems: "center", justifyContent: "center",
+              flexDirection: "row", gap: 4, paddingHorizontal: 10,
+            }}
+          >
+            <Ionicons name="filter-outline" size={14} color={repoFilter !== "all" ? c.accent : c.fgSub} />
+            {activeRepoName && (
+              <Text style={{ color: c.accent, fontSize: 12, fontWeight: "500" }} numberOfLines={1}>
+                {activeRepoName}
+              </Text>
+            )}
+          </Pressable>
+          {/* New agent */}
+          <Pressable
+            onPress={() => router.push("/new-agent")}
+            style={{ paddingHorizontal: 13, height: 34, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 }}
+          >
+            <Ionicons name="add" size={17} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>New</Text>
+          </Pressable>
+        </View>
       </View>
 
       {isUnauthorized && (
@@ -251,11 +320,6 @@ export default function AgentsScreen() {
           return <AgentRow agent={item.agent} />
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
-        ListEmptyComponent={
-          <View style={{ padding: 32, alignItems: "center" }}>
-            <Text style={{ color: c.fgSub, fontSize: 14 }}>No agents yet</Text>
-          </View>
-        }
         contentContainerStyle={{ paddingBottom: 32 }}
       />
     </View>

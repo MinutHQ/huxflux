@@ -90,6 +90,7 @@ export default function RootLayout() {
         <Stack.Screen name="agent/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="servers" options={{ title: "Servers", presentation: "modal" }} />
         <Stack.Screen name="new-agent" options={{ title: "New Agent", presentation: "modal" }} />
+        <Stack.Screen name="add-repo" options={{ title: "Add Repo", presentation: "modal" }} />
       </Stack>
     </QueryClientProvider>
   )

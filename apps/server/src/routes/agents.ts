@@ -348,4 +348,68 @@ export async function agentsRoutes(app: FastifyInstance) {
 
     return { diffSummary: summary }
   })
+
+  // POST /api/agents/:id/open-in — open worktree in a local application
+  app.post<{ Params: { id: string }; Body: { app: string } }>("/api/agents/:id/open-in", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent || !agent.repoId) return reply.code(404).send({ error: "Not found or no repo" })
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+    const worktreePath = agent.noWorktree
+      ? repo.path
+      : path.join(repo.workspacesPath, agent.location)
+
+    if (!existsSync(worktreePath)) {
+      return reply.code(404).send({ error: "Worktree path does not exist on disk" })
+    }
+
+    const appName = req.body.app
+
+    // Map app keys to their bundle names and optional CLI launchers.
+    // We always use osascript to activate after a short delay so the target app
+    // steals focus from the browser (the click event otherwise keeps it in front).
+    const apps: Record<string, { bundle: string; cli?: string[] }> = {
+      finder:   { bundle: "Finder" },
+      vscode:   { bundle: "Visual Studio Code", cli: ["code", worktreePath] },
+      cursor:   { bundle: "Cursor", cli: ["cursor", worktreePath] },
+      iterm:    { bundle: "iTerm" },
+      terminal: { bundle: "Terminal" },
+      datagrip: { bundle: "DataGrip" },
+    }
+
+    const app = apps[appName]
+    if (!app) return reply.code(400).send({ error: `Unknown app: ${appName}` })
+
+    if (app.cli) {
+      spawn(app.cli[0], app.cli.slice(1), { detached: true, stdio: "ignore" }).unref()
+    } else {
+      spawn("open", ["-a", app.bundle, worktreePath], { detached: true, stdio: "ignore" }).unref()
+    }
+
+    // Activate after a delay so the app window is ready and we steal focus
+    // back from the browser that just processed the click.
+    setTimeout(() => {
+      const script = `tell application "${app.bundle}" to activate`
+      spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" }).unref()
+    }, 600)
+
+    return { ok: true }
+  })
+
+  // GET /api/agents/:id/worktree-path — get the resolved worktree path
+  app.get<{ Params: { id: string } }>("/api/agents/:id/worktree-path", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent || !agent.repoId) return reply.code(404).send({ error: "Not found or no repo" })
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+    const worktreePath = agent.noWorktree
+      ? repo.path
+      : path.join(repo.workspacesPath, agent.location)
+
+    return { path: worktreePath }
+  })
 }

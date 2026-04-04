@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
-import { useAgents, useRepos } from "@hive/shared"
-import { Button } from "@hive/ui"
-import { cn } from "@hive/ui"
+import { useAgents, useRepos } from "@huxflux/shared"
+import { Button } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
-import { api, getApiBase } from "@hive/shared"
+import { api, getApiBase } from "@huxflux/shared"
 import { DiffView } from "@/components/DiffView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
@@ -43,11 +43,27 @@ import {
   IconUsers,
   IconLoader2,
   IconCheck,
+  IconFolder,
+  IconCode,
+  IconTerminal,
+  IconDatabase,
+  IconClipboard,
 } from "@tabler/icons-react"
 import type { AgentSummary } from "@/data/mock"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@hive/ui"
-import { Popover, PopoverContent, PopoverTrigger } from "@hive/ui"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
+import { Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
 import { getSendWith, getAutoConvert, getStripYoureRight, getAlwaysContext } from "@/lib/notificationPrefs"
+
+const OPEN_IN_APPS = [
+  { key: "finder",   label: "Finder",   Icon: IconFolder,    shortcut: "1" },
+  { key: "vscode",   label: "VS Code",  Icon: IconCode,      shortcut: "2" },
+  { key: "cursor",   label: "Cursor",   Icon: IconCode,      shortcut: "3" },
+  { key: "iterm",    label: "iTerm",    Icon: IconTerminal,  shortcut: "4" },
+  { key: "terminal", label: "Terminal", Icon: IconTerminal2, shortcut: "5" },
+  { key: "datagrip", label: "DataGrip", Icon: IconDatabase,  shortcut: "6" },
+] as const
+
+const OPEN_IN_KEY = "huxflux:open-in-last"
 
 const MODELS = [
   { id: "claude-opus-4-6",           label: "Opus 4.6" },
@@ -1615,6 +1631,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounterRef = useRef(0)
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
+  const [lastOpenInApp, setLastOpenInApp] = useState(() => localStorage.getItem(OPEN_IN_KEY) ?? "finder")
+  const [openInOpen, setOpenInOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: allAgents = [] } = useAgents()
   const { data: repos = [] } = useRepos()
@@ -1632,6 +1650,24 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       titleInputRef.current?.select()
     }
   }, [editingTitle])
+
+  // "Open in" keyboard shortcut: Cmd/Ctrl+O reopens last-used app
+  useEffect(() => {
+    function handleOpenIn(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "o" && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        void api.openIn(agent.id, lastOpenInApp)
+      }
+    }
+    window.addEventListener("keydown", handleOpenIn)
+    return () => window.removeEventListener("keydown", handleOpenIn)
+  }, [agent.id, lastOpenInApp])
+
+  function handleOpenIn(appKey: string) {
+    localStorage.setItem(OPEN_IN_KEY, appKey)
+    setLastOpenInApp(appKey)
+    void api.openIn(agent.id, appKey)
+  }
 
 
   async function commitTitle() {
@@ -1937,9 +1973,45 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           {githubEnabled && agent.prStatus && (
             <PRStatusPill prStatus={agent.prStatus} agentId={agent.id} />
           )}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border">
-            <span className="text-[11px] text-muted-foreground font-mono">/{agent.location}</span>
-          </div>
+          <Popover open={openInOpen} onOpenChange={setOpenInOpen}>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors">
+                {(() => {
+                  const LastIcon = OPEN_IN_APPS.find((a) => a.key === lastOpenInApp)?.Icon ?? IconFolder
+                  return <LastIcon size={12} className="text-muted-foreground/60" />
+                })()}
+                <span className="text-[11px] text-muted-foreground font-mono">/{agent.location}</span>
+                <IconChevronDown size={10} className="text-muted-foreground/50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-1" sideOffset={4}>
+              {OPEN_IN_APPS.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => { handleOpenIn(item.key); setOpenInOpen(false) }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded hover:bg-accent transition-colors"
+                >
+                  <item.Icon size={14} className="text-muted-foreground" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <span className="text-[10px] text-muted-foreground/40">{item.shortcut}</span>
+                </button>
+              ))}
+              <div className="border-t border-border my-1" />
+              <button
+                onClick={async () => {
+                  setOpenInOpen(false)
+                  const res = await api.getWorktreePath(agent.id)
+                  await navigator.clipboard.writeText(res.path)
+                  toast.success("Path copied")
+                }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded hover:bg-accent transition-colors"
+              >
+                <IconClipboard size={14} className="text-muted-foreground" />
+                <span className="flex-1 text-left">Copy path</span>
+                <span className="text-[10px] text-muted-foreground/40">⌘⇧C</span>
+              </button>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

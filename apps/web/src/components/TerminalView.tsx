@@ -35,6 +35,10 @@ interface TerminalTab {
 // Key: `${agentId}:${terminalId}`
 const globalSessions = new Map<string, Session>()
 
+// Per-agent tab state — persists across agent switches
+interface AgentTabState { tabs: TerminalTab[]; activeId: string; nextNum: number }
+const globalTabState = new Map<string, AgentTabState>()
+
 function getPtyWsUrl(agentId: string): string {
   const server = getActiveServer()
   const base = server?.url ?? "http://localhost:3001"
@@ -77,18 +81,28 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const activeSessionKeyRef = useRef(`${agent.id}:t1`)
   const nextTerminalNumRef = useRef(2)
 
-  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([{ id: "t1", num: 1 }])
-  const [activeTerminalId, setActiveTerminalId] = useState("t1")
+  function getInitialTabState(): AgentTabState {
+    return globalTabState.get(agent.id) ?? { tabs: [{ id: "t1", num: 1 }], activeId: "t1", nextNum: 2 }
+  }
+
+  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>(() => getInitialTabState().tabs)
+  const [activeTerminalId, setActiveTerminalId] = useState<string>(() => getInitialTabState().activeId)
   const [isRunning, setIsRunning] = useState(false)
   const [detectedPort, setDetectedPort] = useState<number | null>(null)
 
-  // Reset terminal tabs when agent changes
+  // Restore terminal tabs when agent changes
   useEffect(() => {
-    nextTerminalNumRef.current = 2
-    setTerminalTabs([{ id: "t1", num: 1 }])
-    setActiveTerminalId("t1")
-    activeSessionKeyRef.current = `${agent.id}:t1`
+    const state = globalTabState.get(agent.id) ?? { tabs: [{ id: "t1", num: 1 }], activeId: "t1", nextNum: 2 }
+    nextTerminalNumRef.current = state.nextNum
+    setTerminalTabs(state.tabs)
+    setActiveTerminalId(state.activeId)
+    activeSessionKeyRef.current = `${agent.id}:${state.activeId}`
   }, [agent.id])
+
+  // Persist tab state whenever it changes
+  useEffect(() => {
+    globalTabState.set(agent.id, { tabs: terminalTabs, activeId: activeTerminalId, nextNum: nextTerminalNumRef.current })
+  }, [agent.id, terminalTabs, activeTerminalId])
 
   function getOrCreateSession(sessionKey: string): Session {
     const existing = globalSessions.get(sessionKey)
@@ -237,6 +251,8 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     const id = `t${num}`
     setTerminalTabs((prev) => [...prev, { id, num }])
     setActiveTerminalId(id)
+    // Persist updated nextNum immediately so it survives agent switches
+    globalTabState.set(agent.id, { tabs: [...terminalTabs, { id, num }], activeId: id, nextNum: nextTerminalNumRef.current })
   }
 
   function closeTerminal(id: string) {

@@ -239,6 +239,23 @@ const MIGRATIONS: Migration[] = [
     version: 11,
     sql: `ALTER TABLE repos ADD COLUMN icon TEXT;`,
   },
+  {
+    version: 12,
+    sql: `
+      CREATE TABLE IF NOT EXISTS terminal_tabs (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        terminal_id TEXT NOT NULL,
+        label TEXT,
+        order_idx INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(agent_id, terminal_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_terminal_tabs_agent_id ON terminal_tabs(agent_id);
+      INSERT OR IGNORE INTO terminal_tabs (id, agent_id, terminal_id, label, order_idx)
+        SELECT id || '-t1', id, 't1', NULL, 0
+        FROM agents WHERE parent_agent_id IS NULL AND deleted_at IS NULL;
+    `,
+  },
 ]
 
 export function runMigrations() {

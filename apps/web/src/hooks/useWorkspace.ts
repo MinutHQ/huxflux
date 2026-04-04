@@ -34,8 +34,13 @@ export function useWorkspace(agents: AgentSummary[]) {
   })
   // The root (worktree-owning) agent for the current view — never changes when
   // switching between child chat sessions, so the terminal stays stable.
+  // Persisted under a SEPARATE key from activeTabId so that creating a child
+  // session (which updates activeTabId) never corrupts rootAgentId on refresh.
   const [rootAgentId, setRootAgentId] = useState<string | null>(() => {
-    try { return localStorage.getItem("hive-active-agent") } catch { return null }
+    try {
+      return localStorage.getItem("hive-root-agent-id")
+          ?? localStorage.getItem("hive-active-agent")
+    } catch { return null }
   })
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [lastPrId, setLastPrId] = useState<string | null>(null)
@@ -46,13 +51,21 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [deletingAgent, setDeletingAgent] = useState<DeletingAgent | null>(null)
   const [justDeleted, setJustDeleted] = useState(false)
 
-  // Persist active agent across refreshes
+  // Persist active tab across refreshes
   useEffect(() => {
     try {
       if (activeTabId) localStorage.setItem("hive-active-agent", activeTabId)
       else localStorage.removeItem("hive-active-agent")
     } catch { /* ignore */ }
   }, [activeTabId])
+
+  // Persist root agent separately so child-session tab switches don't corrupt it
+  useEffect(() => {
+    try {
+      if (rootAgentId) localStorage.setItem("hive-root-agent-id", rootAgentId)
+      else localStorage.removeItem("hive-root-agent-id")
+    } catch { /* ignore */ }
+  }, [rootAgentId])
 
   // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones
   // eslint-disable-next-line react-hooks/exhaustive-deps

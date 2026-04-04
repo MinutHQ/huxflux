@@ -14,6 +14,7 @@ import { agentsRoutes } from "./routes/agents.js"
 import { messagesRoutes } from "./routes/messages.js"
 import { filesRoutes } from "./routes/files.js"
 import { terminalRoutes } from "./routes/terminal.js"
+import { terminalTabsRoutes } from "./routes/terminalTabs.js"
 import { slashCommandsRoutes } from "./routes/slashCommands.js"
 import { fsRoutes } from "./routes/fs.js"
 import { githubRoutes } from "./routes/github.js"
@@ -51,9 +52,11 @@ app.register(async (instance) => {
   instance.get("/ws", { websocket: true }, (socket) => {
     registerSocket(socket)
   })
-  instance.get<{ Params: { agentId: string }; Querystring: { terminalId?: string } }>("/ws/pty/:agentId", { websocket: true }, (socket, req) => {
-    const terminalId = (req.query as { terminalId?: string }).terminalId ?? "t1"
-    registerPtySocket(socket, req.params.agentId, terminalId)
+  instance.get<{ Params: { agentId: string }; Querystring: { terminalId?: string; fresh?: string } }>("/ws/pty/:agentId", { websocket: true }, (socket, req) => {
+    const q = req.query as { terminalId?: string; fresh?: string }
+    const terminalId = q.terminalId ?? "t1"
+    const fresh = q.fresh === "1"
+    registerPtySocket(socket, req.params.agentId, terminalId, fresh)
   })
 })
 
@@ -63,6 +66,7 @@ await app.register(agentsRoutes)
 await app.register(messagesRoutes)
 await app.register(filesRoutes)
 await app.register(terminalRoutes)
+await app.register(terminalTabsRoutes)
 await app.register(slashCommandsRoutes)
 await app.register(fsRoutes)
 await app.register(githubRoutes)

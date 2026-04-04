@@ -125,6 +125,23 @@ export const api = {
   // Terminal
   getTerminal: (agentId: string) => req<string[]>(`/api/agents/${agentId}/terminal`),
 
+  // Terminal Tabs
+  getTerminalTabs: (agentId: string) =>
+    req<{ id: string; terminalId: string; label: string | null; orderIdx: number }[]>(
+      `/api/agents/${agentId}/terminal-tabs`
+    ),
+  createTerminalTab: (agentId: string) =>
+    req<{ id: string; terminalId: string; label: string | null; orderIdx: number }>(
+      `/api/agents/${agentId}/terminal-tabs`, { method: "POST" }
+    ),
+  updateTerminalTab: (agentId: string, terminalId: string, body: { label: string | null }) =>
+    req<{ id: string; terminalId: string; label: string | null; orderIdx: number }>(
+      `/api/agents/${agentId}/terminal-tabs/${encodeURIComponent(terminalId)}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
+  deleteTerminalTab: (agentId: string, terminalId: string) =>
+    req<void>(`/api/agents/${agentId}/terminal-tabs/${encodeURIComponent(terminalId)}`, { method: "DELETE" }),
+
   // Repos
   getRepos: () => req<Repo[]>("/api/repos"),
   createRepo: (body: Omit<Repo, "id" | "createdAt">) =>

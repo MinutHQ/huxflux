@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState, useCallback } from "react"
 import { Terminal } from "@xterm/xterm"
+import type { IDisposable } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { cn } from "@hive/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
-import { getActiveServer, useRepos } from "@hive/shared"
+import { getActiveServer, useRepos, api } from "@hive/shared"
 import { colorThemes, getColorTheme } from "@/lib/colorThemes"
 import "@xterm/xterm/css/xterm.css"
 
@@ -24,11 +25,13 @@ interface Session {
   port: number | null
   isRunning: boolean
   outputBuf: string
+  onDataDisposable: IDisposable | null
 }
 
 interface TerminalTab {
-  id: string
-  num: number
+  id: string        // row id from DB
+  terminalId: string // PTY key suffix
+  orderIdx: number
   label?: string
 }
 
@@ -36,15 +39,11 @@ interface TerminalTab {
 // Key: `${agentId}:${terminalId}`
 const globalSessions = new Map<string, Session>()
 
-// Per-agent tab state — persists across agent switches
-interface AgentTabState { tabs: TerminalTab[]; activeId: string; nextNum: number }
-const globalTabState = new Map<string, AgentTabState>()
-
-function getPtyWsUrl(agentId: string, terminalId: string): string {
+function getPtyWsUrl(agentId: string, terminalId: string, fresh: boolean): string {
   const server = getActiveServer()
   const base = server?.url ?? "http://localhost:3001"
   const wsBase = base.replace(/^http/, "ws")
-  const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}`
+  const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}${fresh ? "&fresh=1" : ""}`
   return server?.token ? `${url}&token=${server.token}` : url
 }
 
@@ -73,6 +72,14 @@ function getTerminalTheme() {
   return theme?.terminal ?? colorThemes[0].terminal
 }
 
+function getStoredActiveTabId(agentId: string): string | null {
+  try { return localStorage.getItem(`hive-terminal-active-${agentId}`) } catch { return null }
+}
+
+function setStoredActiveTabId(agentId: string, terminalId: string) {
+  try { localStorage.setItem(`hive-terminal-active-${agentId}`, terminalId) } catch { /* ignore */ }
+}
+
 export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, onPortChange }: TerminalViewProps) {
   const { data: repos = [] } = useRepos()
   const repo = repos.find((r) => r.id === agent.repoId)
@@ -80,6 +87,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const wrapperRef = useRef<HTMLDivElement>(null)
   const resizeObsRef = useRef<ResizeObserver | null>(null)
   const activeSessionKeyRef = useRef(`${agent.id}:t1`)
+
   // Re-attach the terminal session div when the wrapper DOM node changes
   // (e.g. when the component remounts due to maximize toggle)
   const wrapperCallbackRef = useCallback((node: HTMLDivElement | null) => {
@@ -95,33 +103,42 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       })
     }
   }, [])
-  const nextTerminalNumRef = useRef(2)
 
-  function getInitialTabState(): AgentTabState {
-    return globalTabState.get(agent.id) ?? { tabs: [{ id: "t1", num: 1 }], activeId: "t1", nextNum: 2 }
-  }
-
-  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>(() => getInitialTabState().tabs)
-  const [activeTerminalId, setActiveTerminalId] = useState<string>(() => getInitialTabState().activeId)
+  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
+  const [activeTerminalId, setActiveTerminalId] = useState<string>("t1")
+  const [tabsLoaded, setTabsLoaded] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [detectedPort, setDetectedPort] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const renameInputRef = useRef<HTMLInputElement>(null)
 
-  // Restore terminal tabs when agent changes
+  // Load tabs from server when agent changes
   useEffect(() => {
-    const state = globalTabState.get(agent.id) ?? { tabs: [{ id: "t1", num: 1 }], activeId: "t1", nextNum: 2 }
-    nextTerminalNumRef.current = state.nextNum
-    setTerminalTabs(state.tabs)
-    setActiveTerminalId(state.activeId)
-    activeSessionKeyRef.current = `${agent.id}:${state.activeId}`
-  }, [agent.id])
+    setTabsLoaded(false)
+    api.getTerminalTabs(agent.id).then((rows) => {
+      const tabs: TerminalTab[] = rows
+        .sort((a, b) => a.orderIdx - b.orderIdx)
+        .map((r) => ({ id: r.id, terminalId: r.terminalId, orderIdx: r.orderIdx, label: r.label ?? undefined }))
 
-  // Persist tab state whenever it changes
-  useEffect(() => {
-    globalTabState.set(agent.id, { tabs: terminalTabs, activeId: activeTerminalId, nextNum: nextTerminalNumRef.current })
-  }, [agent.id, terminalTabs, activeTerminalId])
+      // Fall back to a single default tab if server returned nothing
+      const resolved = tabs.length > 0 ? tabs : [{ id: "default", terminalId: "t1", orderIdx: 0 }]
+      setTerminalTabs(resolved)
+
+      // Restore last-active tab from localStorage, defaulting to first tab
+      const storedActive = getStoredActiveTabId(agent.id)
+      const activeExists = resolved.some((t) => t.terminalId === storedActive)
+      const activeId = activeExists ? storedActive! : resolved[0].terminalId
+      setActiveTerminalId(activeId)
+      activeSessionKeyRef.current = `${agent.id}:${activeId}`
+      setTabsLoaded(true)
+    }).catch(() => {
+      setTerminalTabs([{ id: "default", terminalId: "t1", orderIdx: 0 }])
+      setActiveTerminalId("t1")
+      activeSessionKeyRef.current = `${agent.id}:t1`
+      setTabsLoaded(true)
+    })
+  }, [agent.id])
 
   function getOrCreateSession(sessionKey: string): Session {
     const existing = globalSessions.get(sessionKey)
@@ -144,16 +161,16 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
 
-    const session: Session = { term, fitAddon, ws: null, div, port: null, isRunning: false, outputBuf: "" }
+    const session: Session = { term, fitAddon, ws: null, div, port: null, isRunning: false, outputBuf: "", onDataDisposable: null }
     globalSessions.set(sessionKey, session)
     return session
   }
 
-  function connectSession(agentId: string, terminalId: string, session: Session) {
+  function connectSession(agentId: string, terminalId: string, session: Session, fresh = false) {
     // Allow reconnect if WS is closed/closing; skip only if connecting or open
     if (session.ws && session.ws.readyState <= WebSocket.OPEN) return
 
-    const ws = new WebSocket(getPtyWsUrl(agentId, terminalId))
+    const ws = new WebSocket(getPtyWsUrl(agentId, terminalId, fresh))
     session.ws = ws
 
     ws.onopen = () => {
@@ -192,7 +209,9 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       session.term.writeln("\r\n\x1b[2m[connection closed]\x1b[0m")
     }
 
-    session.term.onData((data) => {
+    // Dispose any previous onData listener before registering a new one
+    session.onDataDisposable?.dispose()
+    session.onDataDisposable = session.term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }))
     })
   }
@@ -216,12 +235,13 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
 
     requestAnimationFrame(() => {
       session.fitAddon.fit()
-      connectSession(agentId, terminalId, session)
+      // fresh=true when the xterm was just created — server should replay output buffer
+      connectSession(agentId, terminalId, session, isNew)
     })
   }
 
   useEffect(() => {
-    if (activeTab !== "terminal") return
+    if (activeTab !== "terminal" || !tabsLoaded) return
     const key = `${agent.id}:${activeTerminalId}`
     activeSessionKeyRef.current = key
     activateSession(key, agent.id, activeTerminalId)
@@ -229,7 +249,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     setIsRunning(session?.isRunning ?? false)
     setDetectedPort(session?.port ?? null)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, agent.id, activeTerminalId])
+  }, [activeTab, agent.id, activeTerminalId, tabsLoaded])
 
   // Update all terminal themes when color theme changes
   useEffect(() => {
@@ -267,53 +287,77 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     }
   }, [])
 
-  function addTerminal() {
-    const num = nextTerminalNumRef.current++
-    const id = `t${num}`
-    setTerminalTabs((prev) => [...prev, { id, num }])
-    setActiveTerminalId(id)
-    // Persist updated nextNum immediately so it survives agent switches
-    globalTabState.set(agent.id, { tabs: [...terminalTabs, { id, num }], activeId: id, nextNum: nextTerminalNumRef.current })
+  async function addTerminal() {
+    try {
+      const created = await api.createTerminalTab(agent.id)
+      const newTab: TerminalTab = {
+        id: created.id,
+        terminalId: created.terminalId,
+        orderIdx: created.orderIdx,
+        label: created.label ?? undefined,
+      }
+      setTerminalTabs((prev) => [...prev, newTab])
+      setActiveTerminalId(created.terminalId)
+      setStoredActiveTabId(agent.id, created.terminalId)
+      onTabChange("terminal")
+    } catch { /* ignore — user can retry */ }
   }
 
   function startRename(tab: TerminalTab) {
-    setRenamingId(tab.id)
-    setRenameValue(tab.label ?? `Terminal ${tab.num}`)
+    const displayNum = terminalTabs.findIndex((t) => t.terminalId === tab.terminalId) + 1
+    setRenamingId(tab.terminalId)
+    setRenameValue(tab.label ?? `Terminal ${displayNum}`)
     setTimeout(() => { renameInputRef.current?.select() }, 0)
   }
 
   function commitRename() {
     if (!renamingId) return
     const trimmed = renameValue.trim()
+    const newLabel = trimmed || null
     setTerminalTabs((prev) => prev.map((t) =>
-      t.id === renamingId ? { ...t, label: trimmed || undefined } : t
+      t.terminalId === renamingId ? { ...t, label: newLabel ?? undefined } : t
     ))
     setRenamingId(null)
+    // Persist to server (fire-and-forget)
+    api.updateTerminalTab(agent.id, renamingId, { label: newLabel }).catch(() => { /* ignore */ })
   }
 
-  function closeTerminal(id: string) {
+  function closeTerminal(terminalId: string) {
     if (terminalTabs.length <= 1) return
-    const sessionKey = `${agent.id}:${id}`
+
+    // Update local state immediately for responsiveness
+    setTerminalTabs((prev) => {
+      const next = prev.filter((t) => t.terminalId !== terminalId)
+      if (terminalId === activeTerminalId) {
+        const idx = prev.findIndex((t) => t.terminalId === terminalId)
+        const nextActive = next[Math.min(idx, next.length - 1)].terminalId
+        setActiveTerminalId(nextActive)
+        setStoredActiveTabId(agent.id, nextActive)
+      }
+      return next
+    })
+
+    // Clean up local session
+    const sessionKey = `${agent.id}:${terminalId}`
     const session = globalSessions.get(sessionKey)
     if (session) {
       session.div.parentElement?.removeChild(session.div)
       try {
-        if (session.ws?.readyState === WebSocket.OPEN) {
-          session.ws.send(JSON.stringify({ type: "kill" }))
-        }
         session.ws?.close()
       } catch { /* ignore */ }
+      session.onDataDisposable?.dispose()
       session.term.dispose()
       globalSessions.delete(sessionKey)
     }
-    setTerminalTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id)
-      if (id === activeTerminalId) {
-        const idx = prev.findIndex((t) => t.id === id)
-        setActiveTerminalId(next[Math.min(idx, next.length - 1)].id)
-      }
-      return next
-    })
+
+    // Delete from server (also kills PTY process on server)
+    api.deleteTerminalTab(agent.id, terminalId).catch(() => { /* ignore */ })
+  }
+
+  function handleTabSelect(terminalId: string) {
+    onTabChange("terminal")
+    setActiveTerminalId(terminalId)
+    setStoredActiveTabId(agent.id, terminalId)
   }
 
   function handleRun() {
@@ -371,20 +415,20 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
           ))}
 
           {/* Terminal tabs */}
-          {terminalTabs.map((tab) => {
-            const isActive = activeTab === "terminal" && activeTerminalId === tab.id
-            const isRenaming = renamingId === tab.id
-            const displayLabel = tab.label ?? `Terminal ${tab.num}`
+          {terminalTabs.map((tab, idx) => {
+            const isActive = activeTab === "terminal" && activeTerminalId === tab.terminalId
+            const isRenaming = renamingId === tab.terminalId
+            const displayLabel = tab.label ?? `Terminal ${idx + 1}`
             return (
               <div
-                key={tab.id}
+                key={tab.terminalId}
                 className={cn(
                   "flex items-center border-b-2 -mb-px transition-colors",
                   isActive ? "border-foreground" : "border-transparent"
                 )}
               >
                 <button
-                  onClick={() => { onTabChange("terminal"); setActiveTerminalId(tab.id) }}
+                  onClick={() => handleTabSelect(tab.terminalId)}
                   onDoubleClick={(e) => { e.preventDefault(); startRename(tab) }}
                   className={cn(
                     "flex items-center gap-1.5 pl-3 pr-1.5 py-2 text-xs font-medium transition-colors",
@@ -413,7 +457,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
                 </button>
                 {terminalTabs.length > 1 && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id) }}
+                    onClick={(e) => { e.stopPropagation(); closeTerminal(tab.terminalId) }}
                     className="pr-2 py-2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
                   >
                     <IconX size={10} />
@@ -425,7 +469,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
 
           {/* Add terminal button */}
           <button
-            onClick={() => { onTabChange("terminal"); addTerminal() }}
+            onClick={addTerminal}
             className="flex items-center justify-center w-7 h-7 ml-0.5 text-muted-foreground/50 hover:text-foreground transition-colors shrink-0"
             title="New terminal"
           >

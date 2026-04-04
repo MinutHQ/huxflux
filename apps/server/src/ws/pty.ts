@@ -75,17 +75,17 @@ function attachClientHandlers(socket: WebSocket, entry: PtyEntry, key: string): 
   })
 }
 
-export function registerPtySocket(socket: WebSocket, agentId: string, terminalId: string) {
+export function registerPtySocket(socket: WebSocket, agentId: string, terminalId: string, fresh: boolean) {
   const key = `${agentId}:${terminalId}`
 
   // Reconnect to an existing PTY process
   const existing = globalPtyMap.get(key)
   if (existing) {
-    // Only replay the output buffer when there are no currently connected clients
-    // (i.e. page refresh scenario where the xterm is fresh). If clients exist, the
-    // new connection is from another device/tab whose xterm already has the history —
-    // sending the buffer again would produce duplicate content.
-    if (existing.clients.size === 0 && existing.outputBuf) {
+    // Replay the output buffer when the client signals a fresh xterm (page refresh
+    // or first connect). We rely on the client's declaration rather than clients.size
+    // because on fast refreshes the old socket's close event may not have fired yet,
+    // making clients.size unreliable.
+    if (fresh && existing.outputBuf) {
       socket.send(JSON.stringify({ type: "output", data: existing.outputBuf }))
     }
     existing.clients.add(socket)

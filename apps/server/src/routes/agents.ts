@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify"
 import { v4 as uuid } from "uuid"
 import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "../db/schema.js"
+import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
@@ -164,6 +164,22 @@ export async function agentsRoutes(app: FastifyInstance) {
       }
     }
 
+    // Resolve location collisions — if the name is already taken (in DB or on disk),
+    // append an incrementing suffix: workspace-abc → workspace-abc-2 → workspace-abc-3
+    if (!skipWorktreeCreation) {
+      const repo = agentRepoId ? db.select().from(repos).where(eq(repos.id, agentRepoId)).get() : null
+      const base = agentLocation
+      let suffix = 2
+      while (true) {
+        const takenInDb = db.select({ id: agents.id }).from(agents)
+          .where(and(eq(agents.location, agentLocation), isNull(agents.deletedAt)))
+          .get()
+        const takenOnDisk = repo ? existsSync(path.join(repo.workspacesPath, agentLocation)) : false
+        if (!takenInDb && !takenOnDisk) break
+        agentLocation = `${base}-${suffix++}`
+      }
+    }
+
     await db.insert(agents).values({
       id,
       repoId: agentRepoId,
@@ -208,6 +224,18 @@ export async function agentsRoutes(app: FastifyInstance) {
 
     const created = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!created) return reply.code(500).send({ error: "Failed to create agent" })
+
+    // Auto-create the default t1 terminal tab for root agents (not child sessions)
+    if (!shareWorktreeWith) {
+      db.insert(terminalTabs).values({
+        id: uuid(),
+        agentId: id,
+        terminalId: "t1",
+        label: null,
+        orderIdx: 0,
+      }).run()
+    }
+
     broadcast({ type: "agent:updated", agent: created as any })
     reply.code(201)
     return created

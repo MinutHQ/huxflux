@@ -362,6 +362,11 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "agent:updated") {
+      // Guard: only apply updates for the agent this hook is watching.
+      // agent:updated events are broadcast for ALL agents and the useAgentEvents
+      // filter doesn't catch them (no top-level agentId field), so without this
+      // check a newly-created agent B would overwrite agent A's cache entry.
+      if (event.agent.id !== id) return
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
         return { ...old, ...event.agent }

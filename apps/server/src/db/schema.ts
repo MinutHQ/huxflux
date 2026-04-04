@@ -80,3 +80,11 @@ export const terminalLines = sqliteTable("terminal_lines", {
   line: text("line").notNull(),
   createdAt: text("created_at").notNull(),
 })
+
+export const terminalTabs = sqliteTable("terminal_tabs", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  terminalId: text("terminal_id").notNull(), // PTY key suffix e.g. "t1" or short UUID
+  label: text("label"),                      // null = use default "Terminal N" display label
+  orderIdx: integer("order_idx").notNull().default(0),
+})

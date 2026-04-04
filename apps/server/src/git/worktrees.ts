@@ -1,5 +1,6 @@
 import { simpleGit } from "simple-git"
 import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import * as path from "node:path"
 import type { FileChange } from "../types.js"
 
@@ -17,6 +18,9 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
   const git = simpleGit(repoPath)
   await mkdir(path.dirname(worktreePath), { recursive: true })
 
+  // Worktree directory already exists — assume it was created successfully before.
+  if (existsSync(worktreePath)) return
+
   const branches = await git.branch(["-a"])
 
   // Check if a LOCAL branch with this name already exists
@@ -25,14 +29,29 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     return normalized === branch
   })
 
-  if (localBranchExists) {
-    // Check out the existing local branch into the new worktree
-    await git.raw(["worktree", "add", worktreePath, branch])
-  } else if (startPoint) {
-    // Create a new local branch from the specified start point (e.g. origin/main)
-    await git.raw(["worktree", "add", "-b", branch, worktreePath, startPoint])
-  } else {
-    await git.raw(["worktree", "add", "-b", branch, worktreePath])
+  async function doAdd(): Promise<void> {
+    if (localBranchExists) {
+      await git.raw(["worktree", "add", worktreePath, branch])
+    } else if (startPoint) {
+      await git.raw(["worktree", "add", "-b", branch, worktreePath, startPoint])
+    } else {
+      await git.raw(["worktree", "add", "-b", branch, worktreePath])
+    }
+  }
+
+  try {
+    await doAdd()
+  } catch (err) {
+    // Branch is locked to a stale worktree entry (e.g. from a previously deleted
+    // agent whose directory was removed but git metadata wasn't pruned).
+    // Prune stale entries and retry once.
+    const msg = String((err as Error).message ?? err)
+    if (msg.includes("is already used by worktree") || msg.includes("already checked out")) {
+      await git.raw(["worktree", "prune"])
+      await doAdd()
+    } else {
+      throw err
+    }
   }
 }
 

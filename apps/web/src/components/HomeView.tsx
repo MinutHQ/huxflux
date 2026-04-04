@@ -131,15 +131,15 @@ function Sparkline({ data, color, height = 32 }: { data: number[]; color: string
 
 function Particles() {
   const particles = useMemo(() =>
-    Array.from({ length: 30 }, (_, i) => ({
+    Array.from({ length: 40 }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
       y: Math.random() * 100,
-      size: Math.random() * 3 + 1,
-      duration: Math.random() * 20 + 12,
+      size: Math.random() * 4 + 1.5,
+      duration: Math.random() * 18 + 10,
       delay: Math.random() * -20,
-      opacity: Math.random() * 0.2 + 0.05,
-      hue: Math.random() * 60 + 200, // blue-violet range
+      opacity: Math.random() * 0.35 + 0.1,
+      hue: Math.random() * 80 + 200, // blue-violet-teal range
     })),
     []
   )
@@ -157,7 +157,7 @@ function Particles() {
             height: `${p.size}px`,
             opacity: p.opacity,
             background: `hsl(${p.hue}, 70%, 60%)`,
-            boxShadow: `0 0 ${p.size * 3}px hsl(${p.hue}, 70%, 60%)`,
+            boxShadow: `0 0 ${p.size * 4}px hsl(${p.hue}, 80%, 65%), 0 0 ${p.size * 8}px hsl(${p.hue}, 70%, 60%)`,
             animation: `homeFloat ${p.duration}s ease-in-out ${p.delay}s infinite`,
           }}
         />
@@ -199,8 +199,8 @@ function MorphBlob({ color, className }: { color: string; className?: string }) 
       className={cn("absolute pointer-events-none", className)}
       style={{
         background: color,
-        animation: "homeMorph 8s ease-in-out infinite, homeGlow 4s ease-in-out infinite",
-        filter: "blur(60px)",
+        animation: "homeMorph 8s ease-in-out infinite, homeGlow 3s ease-in-out infinite",
+        filter: "blur(80px)",
       }}
     />
   )
@@ -236,14 +236,14 @@ function ConstellationBackground() {
     if (nodesRef.current.length === 0) {
       const w = canvas.parentElement!.clientWidth
       const h = canvas.parentElement!.clientHeight
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 80; i++) {
         nodesRef.current.push({
           x: Math.random() * w,
           y: Math.random() * h,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: (Math.random() - 0.5) * 0.3,
-          r: Math.random() * 1.5 + 0.5,
-          hue: Math.random() * 60 + 210, // blue-violet
+          vx: (Math.random() - 0.5) * 0.5,
+          vy: (Math.random() - 0.5) * 0.5,
+          r: Math.random() * 2.5 + 1,
+          hue: Math.random() * 80 + 200, // blue-violet-teal
         })
       }
     }
@@ -265,12 +265,12 @@ function ConstellationBackground() {
 
       // Move nodes
       for (const n of nodes) {
-        // Gentle mouse repulsion
+        // Mouse repulsion
         const dx = n.x - mx
         const dy = n.y - my
         const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < 150 && dist > 0) {
-          const force = (150 - dist) / 150 * 0.15
+        if (dist < 200 && dist > 0) {
+          const force = (200 - dist) / 200 * 0.3
           n.vx += (dx / dist) * force
           n.vy += (dy / dist) * force
         }
@@ -290,20 +290,20 @@ function ConstellationBackground() {
       }
 
       // Draw connections
-      const maxDist = 140
+      const maxDist = 180
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[i].x - nodes[j].x
           const dy = nodes[i].y - nodes[j].y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < maxDist) {
-            const alpha = (1 - dist / maxDist) * 0.12
+            const alpha = (1 - dist / maxDist) * 0.3
             const hue = (nodes[i].hue + nodes[j].hue) / 2
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)
-            ctx.strokeStyle = `hsla(${hue}, 60%, 60%, ${alpha})`
-            ctx.lineWidth = 0.5
+            ctx.strokeStyle = `hsla(${hue}, 70%, 65%, ${alpha})`
+            ctx.lineWidth = 0.8
             ctx.stroke()
           }
         }
@@ -311,16 +311,19 @@ function ConstellationBackground() {
 
       // Draw nodes
       for (const n of nodes) {
-        // Glow
+        // Outer glow
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 8)
+        grad.addColorStop(0, `hsla(${n.hue}, 80%, 65%, 0.15)`)
+        grad.addColorStop(1, `hsla(${n.hue}, 80%, 65%, 0)`)
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 4, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 70%, 60%, 0.04)`
+        ctx.arc(n.x, n.y, n.r * 8, 0, Math.PI * 2)
+        ctx.fillStyle = grad
         ctx.fill()
 
-        // Dot
+        // Core dot
         ctx.beginPath()
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 70%, 65%, 0.25)`
+        ctx.fillStyle = `hsla(${n.hue}, 80%, 75%, 0.6)`
         ctx.fill()
       }
 
@@ -329,13 +332,13 @@ function ConstellationBackground() {
         const dx = n.x - mx
         const dy = n.y - my
         const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < 180) {
-          const alpha = (1 - dist / 180) * 0.15
+        if (dist < 250) {
+          const alpha = (1 - dist / 250) * 0.4
           ctx.beginPath()
           ctx.moveTo(n.x, n.y)
           ctx.lineTo(mx, my)
-          ctx.strokeStyle = `hsla(${n.hue}, 80%, 70%, ${alpha})`
-          ctx.lineWidth = 0.6
+          ctx.strokeStyle = `hsla(${n.hue}, 90%, 75%, ${alpha})`
+          ctx.lineWidth = 1
           ctx.stroke()
         }
       }
@@ -358,29 +361,37 @@ function ConstellationBackground() {
 
 function AuroraBackground() {
   return (
-    <div className="absolute inset-x-0 top-0 h-[400px] pointer-events-none overflow-hidden">
-      <div
-        className="absolute inset-x-0 -top-1/2 h-full"
-        style={{
-          background: "linear-gradient(180deg, rgba(96, 165, 250, 0.06) 0%, transparent 100%)",
-          animation: "homeAurora1 12s ease-in-out infinite",
-          filter: "blur(40px)",
-        }}
-      />
+    <div className="absolute inset-x-0 top-0 h-[600px] pointer-events-none overflow-hidden">
       <div
         className="absolute inset-x-0 -top-1/3 h-full"
         style={{
-          background: "linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 100%)",
-          animation: "homeAurora2 15s ease-in-out infinite",
+          background: "linear-gradient(180deg, rgba(96, 165, 250, 0.15) 0%, rgba(96, 165, 250, 0.04) 50%, transparent 100%)",
+          animation: "homeAurora1 10s ease-in-out infinite",
           filter: "blur(50px)",
         }}
       />
       <div
         className="absolute inset-x-0 -top-1/4 h-full"
         style={{
-          background: "linear-gradient(180deg, rgba(52, 211, 153, 0.04) 0%, transparent 100%)",
-          animation: "homeAurora3 18s ease-in-out infinite",
-          filter: "blur(45px)",
+          background: "linear-gradient(180deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.03) 50%, transparent 100%)",
+          animation: "homeAurora2 13s ease-in-out infinite",
+          filter: "blur(60px)",
+        }}
+      />
+      <div
+        className="absolute inset-x-0 -top-1/5 h-full"
+        style={{
+          background: "linear-gradient(180deg, rgba(52, 211, 153, 0.1) 0%, rgba(52, 211, 153, 0.02) 50%, transparent 100%)",
+          animation: "homeAurora3 16s ease-in-out infinite",
+          filter: "blur(55px)",
+        }}
+      />
+      <div
+        className="absolute inset-x-0 top-0 h-full"
+        style={{
+          background: "linear-gradient(180deg, rgba(251, 191, 36, 0.06) 0%, transparent 40%)",
+          animation: "homeAurora2 20s ease-in-out infinite reverse",
+          filter: "blur(70px)",
         }}
       />
     </div>
@@ -448,17 +459,18 @@ export function HomeView() {
       <Particles />
 
       {/* Morphing ambient blobs */}
-      <MorphBlob color="rgba(59, 130, 246, 0.04)" className="w-[500px] h-[500px] -top-40 -left-20" />
-      <MorphBlob color="rgba(139, 92, 246, 0.04)" className="w-[400px] h-[400px] top-1/3 -right-20" />
-      <MorphBlob color="rgba(16, 185, 129, 0.03)" className="w-[350px] h-[350px] bottom-20 left-1/4" />
+      <MorphBlob color="rgba(59, 130, 246, 0.1)" className="w-[600px] h-[600px] -top-40 -left-20" />
+      <MorphBlob color="rgba(139, 92, 246, 0.08)" className="w-[500px] h-[500px] top-1/3 -right-20" />
+      <MorphBlob color="rgba(16, 185, 129, 0.07)" className="w-[450px] h-[450px] bottom-20 left-1/4" />
+      <MorphBlob color="rgba(251, 191, 36, 0.05)" className="w-[400px] h-[400px] top-2/3 right-1/3" />
 
       {/* Mouse-following spotlight */}
       <div
-        className="fixed w-[600px] h-[600px] rounded-full pointer-events-none z-0 transition-transform duration-[2000ms] ease-out"
+        className="fixed w-[800px] h-[800px] rounded-full pointer-events-none z-0 transition-all duration-[1500ms] ease-out"
         style={{
-          left: mouse.x - 300,
-          top: mouse.y - 300,
-          background: "radial-gradient(circle, rgba(139, 92, 246, 0.03) 0%, transparent 70%)",
+          left: mouse.x - 400,
+          top: mouse.y - 400,
+          background: "radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, rgba(96, 165, 250, 0.04) 40%, transparent 70%)",
         }}
       />
 

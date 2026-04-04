@@ -160,6 +160,10 @@ export const api = {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""
     return req<{ name: string; path: string }[]>(`/api/fs/repos${qs}`)
   },
+  browseFs: (path?: string) => {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : ""
+    return req<{ path: string; dirs: { name: string; path: string }[] }>(`/api/fs/browse${qs}`)
+  },
   getDefaultBranch: (repoPath: string) =>
     req<{ branch: string }>(`/api/fs/default-branch?path=${encodeURIComponent(repoPath)}`),
 

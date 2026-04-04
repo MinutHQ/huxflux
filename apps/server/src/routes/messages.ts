@@ -1,16 +1,50 @@
 import type { FastifyInstance } from "fastify"
+import { execFileSync, spawn } from "node:child_process"
 import { eq, inArray, lt, and } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, repos } from "../db/schema.js"
 import { runClaude, isAgentRunning } from "../claude/runner.js"
 import * as path from "node:path"
 
-/** Derive a short human-readable title from the first user message. */
+let _claudeBin: string | null = null
+function getClaudeBin(): string {
+  if (_claudeBin) return _claudeBin
+  if (process.env.CLAUDE_BIN) { _claudeBin = process.env.CLAUDE_BIN; return _claudeBin }
+  try { _claudeBin = execFileSync("which", ["claude"], { encoding: "utf8" }).trim() }
+  catch { _claudeBin = "claude" }
+  return _claudeBin
+}
+
+/** Use an LLM to generate a short, descriptive title for a conversation. */
+async function generateTitle(content: string): Promise<string> {
+  const prompt = `Generate a short title (max 6 words) for a coding conversation that starts with this message. Return ONLY the title, nothing else. No quotes, no punctuation at the end.\n\nMessage: ${content.slice(0, 500)}`
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(getClaudeBin(), [
+      "--print",
+      "--output-format", "text",
+      "--model", "claude-haiku-4-5",
+      "--max-turns", "1",
+      prompt,
+    ], { stdio: ["ignore", "pipe", "pipe"] })
+
+    let output = ""
+    proc.stdout.on("data", (chunk: Buffer) => { output += chunk.toString() })
+    proc.on("close", (code) => {
+      if (code === 0 && output.trim()) {
+        resolve(output.trim().slice(0, 60))
+      } else {
+        reject(new Error(`Title generation failed (exit ${code})`))
+      }
+    })
+    proc.on("error", reject)
+  })
+}
+
+/** Fallback: derive a short title from the first user message. */
 function deriveTitle(content: string): string {
-  // Collapse whitespace and take the first sentence or line
   const first = content.replace(/\s+/g, " ").trim().split(/[.\n!?]/)[0].trim()
   if (first.length <= 52) return first
-  // Truncate at the last word boundary before 52 chars
   const cut = first.slice(0, 52)
   const lastSpace = cut.lastIndexOf(" ")
   return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…"
@@ -112,18 +146,22 @@ export async function messagesRoutes(app: FastifyInstance) {
       return { status: "queued" }
     }
 
-    // Auto-name the agent from the first user message if it still has the
-    // default bee-style name (adj-noun) or has never had a message before.
+    // Auto-name the agent from the first user message using an LLM.
     const existingMessages = db.select().from(messages).where(eq(messages.agentId, id)).all()
     if (existingMessages.length === 0) {
-      const autoTitle = deriveTitle(content)
-      const now = new Date().toISOString()
-      db.update(agents).set({ title: autoTitle, updatedAt: now }).where(eq(agents.id, id)).run()
-      const updated = db.select().from(agents).where(eq(agents.id, id)).get()
-      if (updated) {
-        const { emit } = await import("../ws/handler.js")
-        emit(id, { type: "agent:updated", agent: updated as any })
-      }
+      // Fire-and-forget: generate title in background, fall back to simple derivation
+      generateTitle(content)
+        .catch(() => deriveTitle(content))
+        .then(async (autoTitle) => {
+          const now = new Date().toISOString()
+          db.update(agents).set({ title: autoTitle, updatedAt: now }).where(eq(agents.id, id)).run()
+          const updated = db.select().from(agents).where(eq(agents.id, id)).get()
+          if (updated) {
+            const { emit } = await import("../ws/handler.js")
+            emit(id, { type: "agent:updated", agent: updated as any })
+          }
+        })
+        .catch(() => { /* title generation is best-effort */ })
     }
 
     // Fire and forget — streaming happens over WebSocket; drain queue when done

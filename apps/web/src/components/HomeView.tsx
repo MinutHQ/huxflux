@@ -312,18 +312,19 @@ function ConstellationBackground() {
       // Draw nodes
       for (const n of nodes) {
         // Outer glow
-        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 8)
-        grad.addColorStop(0, `hsla(${n.hue}, 80%, 65%, 0.15)`)
-        grad.addColorStop(1, `hsla(${n.hue}, 80%, 65%, 0)`)
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 12)
+        grad.addColorStop(0, `hsla(${n.hue}, 85%, 70%, 0.35)`)
+        grad.addColorStop(0.4, `hsla(${n.hue}, 85%, 65%, 0.1)`)
+        grad.addColorStop(1, `hsla(${n.hue}, 85%, 65%, 0)`)
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 8, 0, Math.PI * 2)
+        ctx.arc(n.x, n.y, n.r * 12, 0, Math.PI * 2)
         ctx.fillStyle = grad
         ctx.fill()
 
         // Core dot
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 80%, 75%, 0.6)`
+        ctx.arc(n.x, n.y, n.r * 1.3, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 90%, 80%, 0.85)`
         ctx.fill()
       }
 
@@ -532,7 +533,6 @@ export function HomeView() {
         {stats && stats.dailyAgents.length > 0 && (
           <AnimatedSection delay={350}>
             <div className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
-              <div className="home-shimmer absolute inset-0 pointer-events-none" />
               <div className="relative flex items-center justify-between mb-4">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Agent activity (30 days)</h2>
                 <span className="text-[11px] text-muted-foreground/40 tabular-nums">

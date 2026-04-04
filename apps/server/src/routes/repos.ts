@@ -20,18 +20,28 @@ function resolvePath(p: string): string {
 }
 
 async function detectBranchFrom(repoPath: string): Promise<string> {
+  // 1. Remote HEAD (e.g. origin/main)
   try {
     const { stdout } = await execFileAsync("git", ["-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { timeout: 5000 })
-    return stdout.trim()
-  } catch {
-    for (const b of ["origin/main", "origin/master"]) {
-      try {
-        await execFileAsync("git", ["-C", repoPath, "rev-parse", "--verify", b], { timeout: 5000 })
-        return b
-      } catch { /* try next */ }
-    }
-    return "origin/main"
+    if (stdout.trim()) return stdout.trim()
+  } catch { /* no remote HEAD */ }
+
+  // 2. Known remote branch names
+  for (const b of ["origin/main", "origin/master"]) {
+    try {
+      await execFileAsync("git", ["-C", repoPath, "rev-parse", "--verify", b], { timeout: 5000 })
+      return b
+    } catch { /* try next */ }
   }
+
+  // 3. Local HEAD branch (local-only repo)
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", repoPath, "symbolic-ref", "--short", "HEAD"], { timeout: 5000 })
+    const localBranch = stdout.trim()
+    if (localBranch) return localBranch
+  } catch { /* detached HEAD or bare repo */ }
+
+  return "main"
 }
 
 export async function reposRoutes(app: FastifyInstance) {

@@ -94,23 +94,31 @@ export async function fsRoutes(app: FastifyInstance) {
     return { path: dirPath, dirs }
   })
 
-  // GET /api/fs/default-branch?path= — detect default remote branch for a local git repo
+  // GET /api/fs/default-branch?path= — detect default branch for a local git repo (remote or local-only)
   app.get<{ Querystring: { path?: string } }>("/api/fs/default-branch", async (req, reply) => {
     const repoPath = req.query.path
     if (!repoPath) return reply.code(400).send({ error: "path required" })
 
+    // 1. Remote HEAD
     try {
       const { stdout } = await execFileAsync("git", ["-C", repoPath, "symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { timeout: 5000 })
-      return { branch: stdout.trim() }
-    } catch {
-      // Fall back to checking which of main/master exists
-      for (const branch of ["origin/main", "origin/master"]) {
-        try {
-          await execFileAsync("git", ["-C", repoPath, "rev-parse", "--verify", branch], { timeout: 5000 })
-          return { branch }
-        } catch { /* try next */ }
-      }
-      return { branch: "origin/main" }
+      if (stdout.trim()) return { branch: stdout.trim() }
+    } catch { /* no remote HEAD */ }
+
+    // 2. Known remote branch names
+    for (const branch of ["origin/main", "origin/master"]) {
+      try {
+        await execFileAsync("git", ["-C", repoPath, "rev-parse", "--verify", branch], { timeout: 5000 })
+        return { branch }
+      } catch { /* try next */ }
     }
+
+    // 3. Local HEAD branch (local-only repo)
+    try {
+      const { stdout } = await execFileAsync("git", ["-C", repoPath, "symbolic-ref", "--short", "HEAD"], { timeout: 5000 })
+      if (stdout.trim()) return { branch: stdout.trim() }
+    } catch { /* detached HEAD */ }
+
+    return { branch: "main" }
   })
 }

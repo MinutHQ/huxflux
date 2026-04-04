@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, ActivityIndicator } from "react-native"
 import { useLocalSearchParams } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { api, parseUnifiedDiff, tokenize, type DiffLine } from "@hive/shared"
+import { api, parseUnifiedDiff, tokenize, type DiffLine } from "@huxflux/shared"
 import { FlashList } from "@shopify/flash-list"
 import { c } from "../../../theme"
 

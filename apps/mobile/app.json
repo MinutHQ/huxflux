@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Hive",
-    "slug": "hive-mobile",
+    "name": "Huxflux",
+    "slug": "huxflux-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "scheme": "hive",
+    "scheme": "huxflux",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hive.mobile"
+      "bundleIdentifier": "com.huxflux.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +23,7 @@
         "backgroundColor": "#0a0a0a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.hive.mobile"
+      "package": "com.huxflux.mobile"
     },
     "plugins": [
       "expo-router"

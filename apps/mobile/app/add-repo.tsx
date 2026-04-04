@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react"
-import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator, Alert } from "react-native"
+import { View, Text, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from "react-native"
 import { useRouter } from "expo-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { api } from "@hive/shared"
+import { api } from "@huxflux/shared"
 import { c } from "../theme"
 import { Ionicons } from "@expo/vector-icons"
+import { useModal } from "../components/Modal"
 
 interface FoundRepo { name: string; path: string }
 
 export default function AddRepoScreen() {
   const router = useRouter()
+  const modal = useModal()
   const queryClient = useQueryClient()
 
   const [discovered, setDiscovered] = useState<FoundRepo[]>([])
@@ -48,7 +50,7 @@ export default function AddRepoScreen() {
       queryClient.invalidateQueries({ queryKey: ["repos"] })
       router.back()
     } catch (e) {
-      Alert.alert("Error", (e as Error).message ?? "Failed to add repo")
+      modal.showAlert("Error", (e as Error).message ?? "Failed to add repo")
     } finally {
       setSubmitting(false)
     }

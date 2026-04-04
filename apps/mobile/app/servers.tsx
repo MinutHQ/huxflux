@@ -1,17 +1,18 @@
 import { useState } from "react"
 import {
   View, Text, TextInput, TouchableOpacity,
-  Alert, KeyboardAvoidingView, Platform, ScrollView, Modal,
+  KeyboardAvoidingView, Platform, ScrollView, Modal,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { Stack } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { CameraView, useCameraPermissions } from "expo-camera"
+import { useModal } from "../components/Modal"
 import {
   getServers, addServer, removeServer, updateServer, setActiveServerId,
-  getActiveServerId, parseConnectionString, type HiveServer,
-} from "@hive/shared"
-import { useServerStatus } from "@hive/shared"
+  getActiveServerId, parseConnectionString, type HuxfluxServer,
+} from "@huxflux/shared"
+import { useServerStatus } from "@huxflux/shared"
 import { c } from "../theme"
 
 async function validateAuth(url: string, token?: string): Promise<"ok" | "unauthorized" | "unreachable"> {
@@ -43,7 +44,8 @@ function StatusDot({ status }: { status: "online" | "offline" | "checking" | "un
 
 export default function ServersScreen() {
   const router = useRouter()
-  const [servers, setServers] = useState<HiveServer[]>(getServers)
+  const modal = useModal()
+  const [servers, setServers] = useState<HuxfluxServer[]>(getServers)
   const [activeId, setActiveId] = useState<string | null>(getActiveServerId)
   const statuses = useServerStatus(servers)
 
@@ -78,7 +80,7 @@ export default function ServersScreen() {
     if (!trimmed || addLoading) return
     const parsed = parseConnectionString(trimmed)
     if (!parsed) {
-      Alert.alert("Invalid URL", "Enter a valid http(s):// or huxflux:// URL")
+      modal.showAlert("Invalid URL", "Enter a valid http(s):// or huxflux:// URL")
       return
     }
     const token = addToken.trim() || parsed.token
@@ -101,7 +103,7 @@ export default function ServersScreen() {
     }
   }
 
-  function handleStartEdit(server: HiveServer) {
+  function handleStartEdit(server: HuxfluxServer) {
     setEditingId(server.id)
     setEditName(server.name)
     setEditUrl(server.url)
@@ -138,22 +140,17 @@ export default function ServersScreen() {
   }
 
   function handleRemove(id: string) {
-    Alert.alert("Remove server", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove", style: "destructive", onPress: () => {
-          removeServer(id)
-          refresh()
-        },
-      },
-    ])
+    modal.showConfirm("Remove server", "Are you sure?", "Remove", () => {
+      removeServer(id)
+      refresh()
+    }, true)
   }
 
   async function openScanner() {
     if (!permission?.granted) {
       const result = await requestPermission()
       if (!result.granted) {
-        Alert.alert("Camera access required", "Allow camera access to scan QR codes.")
+        modal.showAlert("Camera access required", "Allow camera access to scan QR codes.")
         return
       }
     }
@@ -168,19 +165,19 @@ export default function ServersScreen() {
 
     const parsed = parseConnectionString(data)
     if (!parsed) {
-      Alert.alert("Invalid QR code", "This QR code doesn't contain a valid server connection.")
+      modal.showAlert("Invalid QR code", "This QR code doesn't contain a valid server connection.")
       return
     }
 
     const token = parsed.token ?? ""
     if (!token) {
-      Alert.alert("No token", "QR code doesn't include an auth token.")
+      modal.showAlert("No token", "QR code doesn't include an auth token.")
       return
     }
 
     const result = await validateAuth(parsed.url, token)
-    if (result === "unreachable") { Alert.alert("Unreachable", "Could not reach server."); return }
-    if (result === "unauthorized") { Alert.alert("Unauthorized", "Invalid auth token."); return }
+    if (result === "unreachable") { modal.showAlert("Unreachable", "Could not reach server."); return }
+    if (result === "unauthorized") { modal.showAlert("Unauthorized", "Invalid auth token."); return }
 
     const serverName = new URL(parsed.url).hostname
     const server = addServer({ name: serverName, url: parsed.url, token })

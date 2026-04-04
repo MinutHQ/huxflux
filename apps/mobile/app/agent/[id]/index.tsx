@@ -1,13 +1,18 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator,
 } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgent, api, type Message, type Agent, type AgentSummary, type ToolCall } from "@hive/shared"
+import { useAgent, api, getActiveServer, type Message, type Agent, type AgentSummary, type ToolCall } from "@huxflux/shared"
+import { WebView } from "react-native-webview"
+import { Ionicons } from "@expo/vector-icons"
 import { c } from "../../../theme"
+import { useModal } from "../../../components/Modal"
+import FilesPane from "./files"
+import PRPane from "./pr"
 
 const MODELS = [
   { id: "claude-sonnet-4-6",        label: "Sonnet 4.6" },
@@ -27,11 +32,7 @@ function InlineText({ text }: { text: string }) {
     <Text style={{ color: c.fgBright, fontSize: 14, lineHeight: 21 }}>
       {parts.map((part, i) => {
         if (part.startsWith("`") && part.endsWith("`")) {
-          return (
-            <Text key={i} style={{ fontFamily: "monospace", backgroundColor: c.secondary, color: "#a78bfa", fontSize: 13 }}>
-              {" "}{part.slice(1, -1)}{" "}
-            </Text>
-          )
+          return <Text key={i} style={{ color: "#a78bfa", fontSize: 13 }}>`{part.slice(1, -1)}`</Text>
         }
         if (part.startsWith("**") && part.endsWith("**")) {
           return <Text key={i} style={{ fontWeight: "700" }}>{part.slice(2, -2)}</Text>
@@ -46,7 +47,7 @@ function InlineText({ text }: { text: string }) {
 }
 
 function MessageContent({ text }: { text: string }) {
-  const segments = text.split(/(```[\s\S]*?```|`[^`\n]+`)/g)
+  const segments = text.split(/(```[\s\S]*?```)/g)
   return (
     <View style={{ gap: 4 }}>
       {segments.map((seg, i) => {
@@ -90,9 +91,18 @@ function MessageContent({ text }: { text: string }) {
           listItems = []
         }
 
+        let paraLines: string[] = []
+        function flushPara() {
+          if (paraLines.length === 0) return
+          const text = paraLines.map((l) => l.trim()).join(" ")
+          elements.push(<InlineText key={`p-${elements.length}`} text={text} />)
+          paraLines = []
+        }
+
         for (let li = 0; li < lines.length; li++) {
           const line = lines[li]
           if (!line.trim()) {
+            flushPara()
             flushList()
             continue
           }
@@ -104,37 +114,40 @@ function MessageContent({ text }: { text: string }) {
           const blockquote = line.match(/^> (.+)/)
           const hr = line.match(/^---+$/)
           if (h1) {
-            flushList()
+            flushPara(); flushList()
             elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 18, fontWeight: "700", lineHeight: 26, marginTop: 4 }}>{h1[1]}</Text>)
           } else if (h2) {
-            flushList()
+            flushPara(); flushList()
             elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 16, fontWeight: "700", lineHeight: 24, marginTop: 4 }}>{h2[1]}</Text>)
           } else if (h3) {
-            flushList()
+            flushPara(); flushList()
             elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 14, fontWeight: "700", lineHeight: 22 }}>{h3[1]}</Text>)
           } else if (ul) {
+            flushPara()
             if (listOrdered) { flushList(); listOrdered = false }
             listItems.push(ul[1])
           } else if (ol) {
+            flushPara()
             if (!listOrdered) { flushList(); listOrdered = true }
             listItems.push(ol[1])
           } else if (blockquote) {
-            flushList()
+            flushPara(); flushList()
             elements.push(
               <View key={li} style={{ borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: 10, opacity: 0.7 }}>
                 <InlineText text={blockquote[1]} />
               </View>
             )
           } else if (hr) {
-            flushList()
+            flushPara(); flushList()
             elements.push(<View key={li} style={{ height: 1, backgroundColor: c.border, marginVertical: 4 }} />)
           } else {
             flushList()
-            elements.push(<InlineText key={li} text={line} />)
+            paraLines.push(line)
           }
         }
+        flushPara()
         flushList()
-        return elements.length > 0 ? <View key={i} style={{ gap: 3 }}>{elements}</View> : null
+        return elements.length > 0 ? <View key={i} style={{ gap: 6 }}>{elements}</View> : null
       })}
     </View>
   )
@@ -167,6 +180,41 @@ function ToolCallRow({ call }: { call: ToolCall }) {
         )}
       </View>
     </TouchableOpacity>
+  )
+}
+
+function ToolCallsList({ calls, hasContent }: { calls: ToolCall[]; hasContent: boolean }) {
+  const [expanded, setExpanded] = useState(false)
+  const COLLAPSED_MAX = 3
+  const showToggle = calls.length > COLLAPSED_MAX
+  const visible = expanded ? calls : calls.slice(0, COLLAPSED_MAX)
+  const doneCount = calls.filter((tc) => tc.result != null).length
+  const pendingCount = calls.length - doneCount
+
+  return (
+    <View style={{ marginBottom: hasContent ? 8 : 0 }}>
+      {/* Summary header */}
+      {showToggle && (
+        <TouchableOpacity
+          onPress={() => setExpanded((v) => !v)}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, marginBottom: 2 }}
+        >
+          <Text style={{ color: c.fgSub, fontSize: 11 }}>
+            {expanded ? "▾" : "▸"} {calls.length} tool calls
+          </Text>
+          {doneCount > 0 && <Text style={{ color: "#34d399", fontSize: 10 }}>✓{doneCount}</Text>}
+          {pendingCount > 0 && <Text style={{ color: "#f59e0b", fontSize: 10 }}>○{pendingCount}</Text>}
+        </TouchableOpacity>
+      )}
+      <View style={{ gap: 2 }}>
+        {visible.map((tc) => <ToolCallRow key={tc.id} call={tc} />)}
+      </View>
+      {showToggle && !expanded && (
+        <TouchableOpacity onPress={() => setExpanded(true)} style={{ paddingVertical: 4 }}>
+          <Text style={{ color: c.link, fontSize: 11 }}>Show {calls.length - COLLAPSED_MAX} more…</Text>
+        </TouchableOpacity>
+      )}
+    </View>
   )
 }
 
@@ -219,9 +267,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
 
           {/* Tool calls */}
           {toolCalls.length > 0 && (
-            <View style={{ marginBottom: hasContent ? 8 : 0, gap: 2 }}>
-              {toolCalls.map((tc) => <ToolCallRow key={tc.id} call={tc} />)}
-            </View>
+            <ToolCallsList calls={toolCalls} hasContent={hasContent} />
           )}
 
           {/* Content */}
@@ -240,12 +286,297 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
   )
 })
 
+// ── Team agents ──────────────────────────────────────────────────────────────
+
+interface TeamAgent {
+  id: string
+  description: string
+  status: "running" | "done"
+  subCalls?: ToolCall[]
+  outputText?: string
+  result?: string
+}
+
+function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgent[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role !== "assistant" || !msg.toolCalls) continue
+    const agentCalls = msg.toolCalls.filter((tc) => tc.tool === "Agent")
+    if (agentCalls.length === 0) continue
+
+    return agentCalls.map((tc) => {
+      let description = "Agent"
+      if (tc.args) {
+        try {
+          const parsed = JSON.parse(tc.args)
+          description = parsed.description || parsed.prompt?.slice(0, 40) || "Agent"
+        } catch {
+          description = tc.args.length > 40 ? tc.args.slice(0, 40) + "…" : tc.args
+        }
+      }
+      return {
+        id: tc.id,
+        description,
+        status: (!isStreaming || tc.result != null) ? "done" as const : "running" as const,
+        subCalls: tc.subCalls,
+        outputText: tc.outputText,
+        result: tc.result,
+      }
+    })
+  }
+  return []
+}
+
+function TeamAgentDetail({ agent, onClose }: { agent: TeamAgent; onClose: () => void }) {
+  const output = agent.outputText || agent.result || ""
+  return (
+    <View style={{ maxHeight: 260, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.card }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
+        <Text style={{ color: c.fg, fontSize: 12, fontWeight: "600", flex: 1 }} numberOfLines={1}>{agent.description}</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={8}>
+          <Text style={{ color: c.fgSub, fontSize: 14 }}>✕</Text>
+        </TouchableOpacity>
+      </View>
+      <ScrollView style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+        {agent.subCalls && agent.subCalls.length > 0 && (
+          <View style={{ marginBottom: 8, gap: 2 }}>
+            {agent.subCalls.map((sc) => (
+              <View key={sc.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 }}>
+                <Text style={{ color: sc.result != null ? "#34d399" : "#f59e0b", fontSize: 9 }}>
+                  {sc.result != null ? "✓" : "○"}
+                </Text>
+                <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace" }} numberOfLines={1}>
+                  {sc.tool}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+        {output ? (
+          <MessageContent text={output} />
+        ) : (
+          <Text style={{ color: c.fgSub, fontSize: 12, fontStyle: "italic" }}>No output yet</Text>
+        )}
+      </ScrollView>
+    </View>
+  )
+}
+
+function TeamBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreaming?: boolean }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState(false)
+  const runningCount = agents.filter((a) => a.status === "running").length
+  const doneCount = agents.filter((a) => a.status === "done").length
+  const selected = agents.find((a) => a.id === selectedId) ?? null
+
+  if (dismissed || agents.length === 0) return null
+
+  return (
+    <View>
+      {/* Detail panel */}
+      {selected && <TeamAgentDetail agent={selected} onClose={() => setSelectedId(null)} />}
+
+      {/* Bar */}
+      <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.card }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 6, gap: 4, flexDirection: "row", alignItems: "center" }}
+        >
+          {/* Team label */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6 }}>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600" }}>Team</Text>
+            <Text style={{ color: c.placeholder, fontSize: 10, fontFamily: "monospace" }}>
+              {runningCount > 0 ? `${runningCount} running` : ""}{runningCount > 0 && doneCount > 0 ? ", " : ""}{doneCount > 0 ? `${doneCount} done` : ""}
+            </Text>
+          </View>
+
+          {/* Agent tabs */}
+          {agents.map((a) => {
+            const isSelected = selectedId === a.id
+            const isDone = a.status === "done"
+            return (
+              <TouchableOpacity
+                key={a.id}
+                onPress={() => setSelectedId(isSelected ? null : a.id)}
+                style={{
+                  flexDirection: "row", alignItems: "center", gap: 5,
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+                  backgroundColor: isSelected ? c.secondary : "transparent",
+                  borderWidth: 1, borderColor: isSelected ? c.border : "transparent",
+                }}
+              >
+                <Text style={{ color: isDone ? "#34d399" : "#f59e0b", fontSize: 9 }}>{isDone ? "✓" : "●"}</Text>
+                <Text style={{ color: isSelected ? c.fg : c.fgSub, fontSize: 11, fontWeight: "500" }} numberOfLines={1}>
+                  {a.description}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+
+          {/* Dismiss */}
+          <TouchableOpacity onPress={() => setDismissed(true)} style={{ paddingHorizontal: 6 }}>
+            <Text style={{ color: c.placeholder, fontSize: 12 }}>✕</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </View>
+  )
+}
+
+// ── Inline terminal pane (xterm.js via WebView) ─────────────────────────────
+
+function buildTerminalHtml(wsUrl: string) {
+  return `<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#0d0d0d; }
+  #terminal { height:100%; }
+  .xterm { height:100%; padding:4px; }
+  .xterm-viewport::-webkit-scrollbar { width:6px; }
+  .xterm-viewport::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:3px; }
+</style>
+</head><body>
+<div id="terminal"></div>
+<script>
+  const term = new window.Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: 'Menlo, "Courier New", monospace',
+    lineHeight: 1.2,
+    theme: {
+      background: '#0d0d0d',
+      foreground: '#e4e4e7',
+      cursor: '#e4e4e7',
+      selectionBackground: 'rgba(99,102,241,0.3)',
+      black: '#1c1917', red: '#f87171', green: '#34d399', yellow: '#fbbf24',
+      blue: '#60a5fa', magenta: '#a78bfa', cyan: '#22d3ee', white: '#e7e5e4',
+      brightBlack: '#57534e', brightRed: '#fca5a5', brightGreen: '#6ee7b7',
+      brightYellow: '#fde68a', brightBlue: '#93c5fd', brightMagenta: '#c4b5fd',
+      brightCyan: '#67e8f9', brightWhite: '#fafaf9',
+    },
+  });
+  const fitAddon = new window.FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+  term.open(document.getElementById('terminal'));
+  fitAddon.fit();
+
+  let ws;
+  function connect() {
+    ws = new WebSocket(${JSON.stringify(wsUrl)});
+    ws.onopen = () => {
+      const dims = fitAddon.proposeDimensions();
+      if (dims) ws.send(JSON.stringify({ type:'resize', cols:dims.cols, rows:dims.rows }));
+    };
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === 'output') term.write(msg.data);
+        else if (msg.type === 'error') term.writeln('\\r\\n\\x1b[31m' + msg.message + '\\x1b[0m');
+        else if (msg.type === 'exit') term.writeln('\\r\\n\\x1b[2m[exited ' + msg.exitCode + ']\\x1b[0m');
+      } catch {}
+    };
+    ws.onclose = () => setTimeout(connect, 2000);
+  }
+  connect();
+
+  term.onData((data) => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'input', data }));
+  });
+
+  window.addEventListener('resize', () => {
+    fitAddon.fit();
+    const dims = fitAddon.proposeDimensions();
+    if (dims && ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'resize', cols:dims.cols, rows:dims.rows }));
+  });
+
+  new ResizeObserver(() => {
+    fitAddon.fit();
+    const dims = fitAddon.proposeDimensions();
+    if (dims && ws && ws.readyState === 1) ws.send(JSON.stringify({ type:'resize', cols:dims.cols, rows:dims.rows }));
+  }).observe(document.getElementById('terminal'));
+</script>
+</body></html>`
+}
+
+function TerminalPane({ agentId }: { agentId: string }) {
+  const { data: tabs = [] } = useQuery<{ id: string; terminalId: string; label: string | null; orderIdx: number }[]>({
+    queryKey: ["terminal-tabs", agentId],
+    queryFn: () => api.getTerminalTabs(agentId),
+    enabled: !!agentId,
+    staleTime: 15_000,
+  })
+
+  const [activeTermTab, setActiveTermTab] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (tabs.length > 0 && !activeTermTab) setActiveTermTab(tabs[0].id)
+  }, [tabs])
+
+  const activeTerminal = tabs.find((t) => t.id === activeTermTab)
+  const terminalId = activeTerminal?.terminalId ?? "t1"
+
+  const server = getActiveServer()
+  const base = server?.url ?? "http://localhost:3001"
+  const wsBase = base.replace(/^http/, "ws")
+  const wsUrl = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}&fresh=1${server?.token ? `&token=${server.token}` : ""}`
+
+  const html = useMemo(() => buildTerminalHtml(wsUrl), [wsUrl])
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Terminal tabs */}
+      {tabs.length > 1 && (
+        <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 12, paddingVertical: 6, gap: 4 }}>
+          {tabs
+            .sort((a, b) => a.orderIdx - b.orderIdx)
+            .map((tab) => {
+              const isActive = tab.id === activeTermTab
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTermTab(tab.id)}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+                    backgroundColor: isActive ? c.secondary : "transparent",
+                  }}
+                >
+                  <Text style={{ color: isActive ? c.fg : c.fgSub, fontSize: 12, fontWeight: isActive ? "600" : "400" }}>
+                    {tab.label || `Terminal ${tab.orderIdx + 1}`}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+        </View>
+      )}
+
+      {/* xterm.js WebView */}
+      <WebView
+        key={wsUrl}
+        source={{ html }}
+        style={{ flex: 1, backgroundColor: "#0d0d0d" }}
+        javaScriptEnabled
+        originWhitelist={["*"]}
+        scrollEnabled={false}
+      />
+    </View>
+  )
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function AgentChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const modal = useModal()
   const insets = useSafeAreaInsets()
 
   // Active session — starts as the root agent, can switch to child sessions
@@ -263,10 +594,15 @@ export default function AgentChatScreen() {
     staleTime: 30_000,
   })
 
-  const { data: agent, isLoading, isError, refetch, isStreaming } = useAgent(activeSessionId)
+  const { data: agent, isLoading, isError, refetch, isStreaming, loadMore, hasMore, isLoadingMore } = useAgent(activeSessionId)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const [thinking, setThinking] = useState(false)
+  const [planMode, setPlanMode] = useState(false)
+  const [activeTab, setActiveTab] = useState<"chat" | "files" | "pr" | "terminal">("chat")
+  // Reset to chat when switching agents
+  useEffect(() => { setActiveTab("chat") }, [id])
   const listRef = useRef<FlatList>(null)
 
   // Deduplicate by ID — prevents FlatList key errors when setQueryData (streaming)
@@ -279,6 +615,8 @@ export default function AgentChatScreen() {
       return true
     })
   }, [agent?.messages])
+
+  const teamAgents = useMemo(() => extractTeamAgents(messages, isStreaming), [messages, isStreaming])
 
   // Scroll to bottom when a new message is added (not during streaming content updates)
   useEffect(() => {
@@ -323,39 +661,22 @@ export default function AgentChatScreen() {
       queryClient.invalidateQueries({ queryKey: ["agent-sessions", id] })
       setActiveSessionId(created.id)
     } catch {
-      Alert.alert("Error", "Failed to create session")
+      modal.showAlert("Error", "Failed to create session")
     } finally {
       setCreatingSession(false)
     }
   }
 
   function handleModelPress() {
-    const options = [...MODELS.map((m) => m.label), "Cancel"]
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: options.length - 1, title: "Select model" },
-        (idx) => {
-          if (idx < MODELS.length && agent) {
-            const model = MODELS[idx].id
-            ;(api.updateAgent as any)(agent.id, { model })
-            queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model } : old)
-          }
+    modal.showActionSheet("Select model", MODELS.map((m) => ({
+      label: m.label,
+      onPress: () => {
+        if (agent) {
+          ;(api.updateAgent as any)(agent.id, { model: m.id })
+          queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model: m.id } : old)
         }
-      )
-    } else {
-      Alert.alert("Select model", undefined, [
-        ...MODELS.map((m) => ({
-          text: m.label,
-          onPress: () => {
-            if (agent) {
-              ;(api.updateAgent as any)(agent.id, { model: m.id })
-              queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model } : old)
-            }
-          },
-        })),
-        { text: "Cancel", style: "cancel" },
-      ])
-    }
+      },
+    })))
   }
 
   async function doSend(content: string) {
@@ -476,43 +797,65 @@ export default function AgentChatScreen() {
 
       {/* Sub-nav */}
       <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 16, gap: 4, paddingTop: 4 }}>
-        {[
-          { label: "Chat", route: null },
-          { label: `Files${agent.fileChanges.length ? ` (${agent.fileChanges.length})` : ""}`, route: "files" },
-          { label: "PR", route: "pr" },
-        ].map(({ label, route }) => (
+        {([
+          { label: "Chat", tab: "chat" as const },
+          { label: `Files${agent.fileChanges.length ? ` (${agent.fileChanges.length})` : ""}`, tab: "files" as const },
+          { label: "PR", tab: "pr" as const },
+          { label: "Terminal", tab: "terminal" as const },
+        ]).map(({ label, tab }) => (
           <TouchableOpacity
-            key={label}
-            onPress={() => route ? router.push(`/agent/${activeSessionId ?? id}/${route}`) : undefined}
-            style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: route === null ? 2 : 0, borderBottomColor: c.fg }}
+            key={tab}
+            onPress={() => {
+              setActiveTab(tab)
+              if (tab === "chat") setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50)
+            }}
+            style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: activeTab === tab ? 2 : 0, borderBottomColor: c.fg }}
           >
-            <Text style={{ color: route === null ? c.fg : c.fgSub, fontSize: 13, fontWeight: route === null ? "600" : "400" }}>
+            <Text style={{ color: activeTab === tab ? c.fg : c.fgSub, fontSize: 13, fontWeight: activeTab === tab ? "600" : "400" }}>
               {label}
             </Text>
           </TouchableOpacity>
         ))}
-
         <View style={{ flex: 1 }} />
       </View>
 
-      {/* Messages */}
-      <FlatList
-        ref={listRef}
-        style={{ flex: 1 }}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => <MessageBubble message={item} />}
-        contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
-        ListEmptyComponent={
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-            <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
-          </View>
-        }
-        ListFooterComponent={null}
-      />
+      {activeTab === "chat" && (
+        <>
+          <FlatList
+            ref={listRef}
+            style={{ flex: 1 }}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={({ item }) => <MessageBubble message={item} />}
+            contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+            ListHeaderComponent={hasMore ? (
+              <TouchableOpacity
+                onPress={loadMore}
+                disabled={isLoadingMore}
+                style={{ alignItems: "center", paddingVertical: 12 }}
+              >
+                {isLoadingMore
+                  ? <ActivityIndicator size="small" color={c.fgSub} />
+                  : <Text style={{ color: c.link, fontSize: 13 }}>Load earlier messages</Text>
+                }
+              </TouchableOpacity>
+            ) : null}
+            ListEmptyComponent={
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+                <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
+              </View>
+            }
+            ListFooterComponent={null}
+          />
+          {teamAgents.length > 1 && <TeamBar agents={teamAgents} isStreaming={isStreaming} />}
+        </>
+      )}
+      {activeTab === "files" && <FilesPane />}
+      {activeTab === "pr" && <PRPane />}
+      {activeTab === "terminal" && <TerminalPane agentId={id!} />}
 
-      {/* Input bar */}
-      <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + insets.bottom }}>
+      {/* Input bar — chat only */}
+      {activeTab === "chat" && <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + insets.bottom }}>
         {/* Queued message preview */}
         {queuedMessage && (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
@@ -554,6 +897,32 @@ export default function AgentChatScreen() {
               <Text style={{ color: c.placeholder, fontSize: 9 }}>▾</Text>
             </TouchableOpacity>
 
+            {/* Thinking toggle */}
+            <TouchableOpacity
+              onPress={() => setThinking((v) => !v)}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 4,
+                paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+                backgroundColor: thinking ? c.accent : "transparent",
+              }}
+            >
+              <Ionicons name="bulb-outline" size={13} color={thinking ? "#fff" : c.fgSub} />
+              <Text style={{ color: thinking ? "#fff" : c.fgSub, fontSize: 11, fontWeight: "500" }}>Thinking</Text>
+            </TouchableOpacity>
+
+            {/* Plan toggle */}
+            <TouchableOpacity
+              onPress={() => setPlanMode((v) => !v)}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 4,
+                paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+                backgroundColor: planMode ? c.accent : "transparent",
+              }}
+            >
+              <Ionicons name="map-outline" size={13} color={planMode ? "#fff" : c.fgSub} />
+              <Text style={{ color: planMode ? "#fff" : c.fgSub, fontSize: 11, fontWeight: "500" }}>Plan</Text>
+            </TouchableOpacity>
+
             <View style={{ flex: 1 }} />
 
             {/* Stop / send */}
@@ -582,7 +951,7 @@ export default function AgentChatScreen() {
             )}
           </View>
         </View>
-      </View>
+      </View>}
     </KeyboardAvoidingView>
   )
 }

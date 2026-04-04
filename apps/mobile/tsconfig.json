@@ -3,7 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@hive/shared": ["../../packages/shared/src/index.ts"]
+      "@huxflux/shared": ["../../packages/shared/src/index.ts"]
     }
   }
 }

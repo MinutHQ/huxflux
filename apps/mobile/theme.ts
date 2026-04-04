@@ -1,10 +1,10 @@
-import { dark, statusColors, diffColors, prColors } from "@hive/tokens"
+import { dark, statusColors, diffColors, prColors } from "@huxflux/tokens"
 
 export { statusColors, diffColors, prColors }
 
 /**
  * Shorthand color constants for use in React Native inline styles.
- * All values come from @hive/tokens — the single source of truth.
+ * All values come from @huxflux/tokens — the single source of truth.
  */
 export const c = {
   // Base

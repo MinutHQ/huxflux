@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react"
+import { createContext, useState, useEffect, useContext } from "react"
 import { Stack } from "expo-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
-import { Alert } from "react-native"
+import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
+import { ModalProvider, useModal } from "../components/Modal"
 
 // Synchronous in-memory store backed by AsyncStorage.
 const cache = new Map<string, string>()
@@ -20,63 +20,32 @@ configureStorage({
   },
 })
 
-configureAgentErrorHandler((message) => {
-  Alert.alert("Agent error", message)
-})
-
 const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server"]
 
-// QueryClient is created inside the component so we can disable queries until hydration is done.
+const HydrationContext = createContext(false)
+export function useHydrated() { return useContext(HydrationContext) }
+
+// Deferred — set once ModalProvider mounts
+let _showAlert: ((title: string, message?: string) => void) | null = null
+export function setGlobalAlert(fn: typeof _showAlert) { _showAlert = fn }
+
+configureAgentErrorHandler((message) => {
+  if (_showAlert) _showAlert("Agent error", message)
+})
+
 let queryClient: QueryClient
 
-export default function RootLayout() {
-  const [hydrated, setHydrated] = useState(false)
+function AppContent({ hydrated }: { hydrated: boolean }) {
+  const modal = useModal()
 
-  // Create QueryClient once, with queries disabled until hydration is done.
-  // This prevents React Query from fetching with a stale/default server URL
-  // before AsyncStorage has populated the cache.
-  if (!queryClient) {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: 1, refetchOnWindowFocus: false },
-      },
-    })
-  }
-
+  // Register global alert for configureAgentErrorHandler
   useEffect(() => {
-    AsyncStorage.multiGet(STORAGE_KEYS).then((pairs) => {
-      for (const [key, value] of pairs) {
-        if (value !== null) cache.set(key, value)
-      }
-      setHydrated(true)
-      // Now that storage is hydrated, invalidate any queries that may have
-      // been initiated before the correct server URL was available.
-      queryClient.invalidateQueries()
-    })
-  }, [])
-
-  // Always render the navigator — Expo Router requires it.
-  // Block data-fetching children until storage is hydrated.
-  if (!hydrated) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: "#1c1917" },
-            headerTintColor: "#fafaf9",
-            headerTitleStyle: { fontWeight: "600", fontSize: 16 },
-            contentStyle: { backgroundColor: "#1c1917" },
-            animation: "fade",
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
-      </QueryClientProvider>
-    )
-  }
+    setGlobalAlert((title, message) => modal.showAlert(title, message))
+    return () => setGlobalAlert(null)
+  }, [modal])
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <HydrationContext.Provider value={hydrated}>
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: "#1c1917" },
@@ -92,6 +61,36 @@ export default function RootLayout() {
         <Stack.Screen name="new-agent" options={{ title: "New Agent", presentation: "modal" }} />
         <Stack.Screen name="add-repo" options={{ title: "Add Repo", presentation: "modal" }} />
       </Stack>
+    </HydrationContext.Provider>
+  )
+}
+
+export default function RootLayout() {
+  const [hydrated, setHydrated] = useState(false)
+
+  if (!queryClient) {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: 1, refetchOnWindowFocus: false },
+      },
+    })
+  }
+
+  useEffect(() => {
+    AsyncStorage.multiGet(STORAGE_KEYS).then((pairs) => {
+      for (const [key, value] of pairs) {
+        if (value !== null) cache.set(key, value)
+      }
+      setHydrated(true)
+      queryClient.invalidateQueries()
+    })
+  }, [])
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ModalProvider>
+        <AppContent hydrated={hydrated} />
+      </ModalProvider>
     </QueryClientProvider>
   )
 }

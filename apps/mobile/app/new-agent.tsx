@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react"
 import {
   View, Text, TouchableOpacity,
-  ActivityIndicator, Alert, Animated, Easing, StyleSheet,
+  ActivityIndicator, Animated, Easing, StyleSheet,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { useRepos, api, type Repo } from "@hive/shared"
+import { useRepos, api, type Repo } from "@huxflux/shared"
+import { useModal } from "../components/Modal"
 import { FlashList } from "@shopify/flash-list"
 import { c } from "../theme"
 
@@ -415,6 +416,7 @@ const styles = StyleSheet.create({
 
 export default function NewAgentScreen() {
   const router = useRouter()
+  const modal = useModal()
   const queryClient = useQueryClient()
   const { data: repos = [], isLoading } = useRepos()
   const [creating, setCreating] = useState<CreatingState | null>(null)
@@ -437,7 +439,7 @@ export default function NewAgentScreen() {
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       router.replace(`/agent/${agent.id}`)
     } catch (e: any) {
-      Alert.alert("Error", e.message)
+      modal.showAlert("Error", e.message)
       setCreating(null)
     }
   }

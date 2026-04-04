@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@hive/shared"
+import { api } from "@huxflux/shared"
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { c } from "../../../theme"
 
@@ -46,6 +46,7 @@ export default function AgentLayout() {
       <Stack.Screen name="files" options={{ title: "Files" }} />
       <Stack.Screen name="pr" options={{ title: "Pull Request" }} />
       <Stack.Screen name="diff" options={{ title: "Diff" }} />
+      <Stack.Screen name="file-content" options={{ title: "File" }} />
     </Stack>
   )
 }

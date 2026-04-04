@@ -354,7 +354,7 @@ function ConstellationBackground() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-[1]" />
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
 }
 
 // ── Aurora waves ─────────────────────────────────────────────────────────────

@@ -436,6 +436,59 @@ function ReviewingView({ pr, currentStep }: { pr: PullRequest; currentStep: numb
   )
 }
 
+// ── Initial loading screen (shown while PR details are being fetched) ────────
+
+function PRLoadingView({ pr }: { pr: PullRequest }) {
+  const particles = Array.from({ length: 16 }, (_, i) => ({
+    id: i, x: ((i * 41 + 17) % 100), y: ((i * 59 + 11) % 100),
+    size: 1 + (i % 3) * 0.5, duration: 3 + (i % 4) * 1.2,
+    delay: (i % 7) * 0.4, opacity: 0.05 + (i % 3) * 0.04,
+  }))
+
+  return (
+    <div className="relative flex flex-col items-center justify-center flex-1 gap-5 px-8 overflow-hidden">
+      <style>{`
+        @keyframes prl-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes prl-particle { 0%,100%{transform:translateY(0) scale(1);opacity:var(--p-op)} 50%{transform:translateY(-16px) scale(1.2);opacity:calc(var(--p-op)*1.8)} }
+        @keyframes prl-fade-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes prl-glow { 0%,100%{box-shadow:0 0 16px rgba(96,165,250,0.05)} 50%{box-shadow:0 0 24px rgba(96,165,250,0.14)} }
+        @keyframes prl-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes prl-pulse { 0%,100%{opacity:0.3} 50%{opacity:0.7} }
+        @keyframes prl-shimmer { 0%{opacity:0.4} 50%{opacity:0.8} 100%{opacity:0.4} }
+      `}</style>
+
+      {particles.map((p) => (
+        <div key={p.id} className="absolute rounded-full pointer-events-none" style={{
+          left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size,
+          backgroundColor: p.id % 3 === 0 ? "rgb(96,165,250)" : p.id % 3 === 1 ? "rgb(167,139,250)" : "rgb(52,211,153)",
+          ["--p-op" as string]: p.opacity, opacity: p.opacity,
+          animation: `prl-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+        }} />
+      ))}
+
+      <div className="relative z-10" style={{ animation: "prl-float 3.5s ease-in-out infinite" }}>
+        <div className="w-16 h-16 rounded-2xl bg-card border border-blue-400/15 flex items-center justify-center relative overflow-hidden" style={{ animation: "prl-glow 2.5s ease-in-out infinite" }}>
+          <svg width="28" height="28" viewBox="0 0 28 28" className="text-blue-400/70" style={{ animation: "prl-spin 2s linear infinite" }}>
+            <circle cx="14" cy="14" r="10" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 42" strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="text-center z-10" style={{ animation: "prl-fade-up 0.5s ease-out 0.1s both" }}>
+        <p className="text-sm font-medium text-foreground/70" style={{ animation: "prl-shimmer 2s ease-in-out infinite" }}>
+          {pr.title}
+        </p>
+        <p className="text-[11px] text-muted-foreground/40 mt-1 font-mono">{pr.branch || pr.repo}</p>
+      </div>
+
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground/40 font-mono z-10" style={{ animation: "prl-fade-up 0.5s ease-out 0.3s both" }}>
+        <span style={{ animation: "prl-pulse 1.4s ease-in-out infinite" }}>◌</span>
+        <span>Loading…</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Inline reviewing indicator (shown during re-runs when messages already exist) ──
 
 function ReviewingInlineView({ currentStep }: { currentStep: number }) {
@@ -1567,14 +1620,11 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
               </div>
             )}
 
-            {/* Empty state */}
+            {/* Loading / empty state */}
             {messages.length === 0 && !reviewing && !pr.unread && (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-muted-foreground/20 space-y-2">
-                  <IconEye size={24} className="mx-auto" />
-                  <p className="text-[12px]">Starting review…</p>
-                </div>
-              </div>
+              loadingDetails
+                ? <PRLoadingView pr={pr} />
+                : null
             )}
 
             {/* Reviewing animation — full panel for first review, inline for re-runs */}

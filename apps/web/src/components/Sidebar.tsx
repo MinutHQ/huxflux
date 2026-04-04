@@ -40,7 +40,7 @@ import {
   IconBook,
   IconX,
   IconHome,
-  IconZap,
+  IconBolt,
 } from "@tabler/icons-react"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
@@ -766,7 +766,7 @@ function AddWorkspacePopover({
   const items = [
     { icon: IconFolder, label: "Open project", onClick: onOpenProject },
     { icon: IconWorld, label: "Clone from URL", onClick: onClone },
-    { icon: IconZap, label: "Quick start", onClick: onQuickStart },
+    { icon: IconBolt, label: "Quick start", onClick: onQuickStart },
   ]
 
   return createPortal(

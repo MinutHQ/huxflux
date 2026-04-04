@@ -44,8 +44,6 @@ import {
   IconCheck,
   IconSearch,
   IconFolder,
-  IconWorld,
-  IconZap,
 } from "@tabler/icons-react"
 import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"

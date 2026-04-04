@@ -182,14 +182,14 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [onClose])
 
-  const top = anchorRect.bottom + 6
+  const bottom = window.innerHeight - anchorRect.top + 6
   const left = anchorRect.left
 
   return createPortal(
     <div
       ref={ref}
       className="fixed z-50 w-64 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
-      style={{ top, left }}
+      style={{ bottom, left }}
     >
       <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
         {servers.map((server) => {
@@ -302,7 +302,7 @@ export function ServerSwitcher() {
     <>
       <button
         ref={triggerRef}
-        onClick={() => setOpen((o) => !o)}
+        onMouseDown={(e) => { e.stopPropagation(); setOpen((o) => !o) }}
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-sidebar-accent/60 transition-colors text-left"
       >
         <div className="w-5 h-5 rounded-sm bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">

@@ -1,11 +1,12 @@
 import { useState } from "react"
 import {
   View, Text, TextInput, TouchableOpacity,
-  Alert, KeyboardAvoidingView, Platform, ScrollView,
+  Alert, KeyboardAvoidingView, Platform, ScrollView, Modal,
 } from "react-native"
 import { useRouter } from "expo-router"
 import { Stack } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
+import { CameraView, useCameraPermissions } from "expo-camera"
 import {
   getServers, addServer, removeServer, updateServer, setActiveServerId,
   getActiveServerId, parseConnectionString, type HiveServer,
@@ -61,6 +62,11 @@ export default function ServersScreen() {
   const [editName, setEditName] = useState("")
   const [editUrl, setEditUrl] = useState("")
   const [editToken, setEditToken] = useState("")
+
+  // QR scanner
+  const [scanning, setScanning] = useState(false)
+  const [scanned, setScanned] = useState(false)
+  const [permission, requestPermission] = useCameraPermissions()
 
   function refresh() {
     setServers(getServers())
@@ -141,6 +147,45 @@ export default function ServersScreen() {
         },
       },
     ])
+  }
+
+  async function openScanner() {
+    if (!permission?.granted) {
+      const result = await requestPermission()
+      if (!result.granted) {
+        Alert.alert("Camera access required", "Allow camera access to scan QR codes.")
+        return
+      }
+    }
+    setScanned(false)
+    setScanning(true)
+  }
+
+  async function handleBarcodeScan({ data }: { data: string }) {
+    if (scanned) return
+    setScanned(true)
+    setScanning(false)
+
+    const parsed = parseConnectionString(data)
+    if (!parsed) {
+      Alert.alert("Invalid QR code", "This QR code doesn't contain a valid server connection.")
+      return
+    }
+
+    const token = parsed.token ?? ""
+    if (!token) {
+      Alert.alert("No token", "QR code doesn't include an auth token.")
+      return
+    }
+
+    const result = await validateAuth(parsed.url, token)
+    if (result === "unreachable") { Alert.alert("Unreachable", "Could not reach server."); return }
+    if (result === "unauthorized") { Alert.alert("Unauthorized", "Invalid auth token."); return }
+
+    const serverName = new URL(parsed.url).hostname
+    const server = addServer({ name: serverName, url: parsed.url, token })
+    if (servers.length === 0) setActiveServerId(server.id)
+    refresh()
   }
 
   return (
@@ -306,14 +351,46 @@ export default function ServersScreen() {
             </View>
           </View>
         ) : (
-          <TouchableOpacity
-            onPress={() => setAdding(true)}
-            style={{ borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center", marginTop: 4 }}
-          >
-            <Text style={{ color: c.fgSub, fontSize: 14 }}>+ Add Server</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+            <TouchableOpacity
+              onPress={() => setAdding(true)}
+              style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center" }}
+            >
+              <Text style={{ color: c.fgSub, fontSize: 14 }}>+ Add Server</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={openScanner}
+              style={{ borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, paddingHorizontal: 18, alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons name="qr-code-outline" size={20} color={c.fgSub} />
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
+
+      {/* QR Scanner Modal */}
+      <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+            onBarcodeScanned={scanned ? undefined : handleBarcodeScan}
+          />
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <View style={{ width: 220, height: 220, borderRadius: 16, borderWidth: 2, borderColor: "rgba(255,255,255,0.6)" }} />
+            <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 16, textAlign: "center" }}>Point at server QR code</Text>
+          </View>
+          <View style={{ position: "absolute", top: 56, right: 20 }}>
+            <TouchableOpacity
+              onPress={() => setScanning(false)}
+              style={{ backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 20, padding: 8 }}
+            >
+              <Ionicons name="close" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }

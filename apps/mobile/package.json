@@ -9,14 +9,15 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@hive/shared": "../../packages/shared",
     "@hive/tokens": "../../packages/tokens",
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@shopify/flash-list": "^2.3.1",
     "@tanstack/react-query": "^5.96.0",
     "babel-preset-expo": "^55.0.13",
-    "@expo/vector-icons": "^15.1.1",
     "expo": "~54.0.33",
+    "expo-camera": "^55.0.12",
     "expo-constants": "~18.0.13",
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",

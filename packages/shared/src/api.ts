@@ -8,6 +8,8 @@ import type {
   SlashCommand,
   PRStatus,
   PRDetails,
+  OpenPRWithRepo,
+  PRFileDiff,
 } from "./types"
 
 function getBase(): string {
@@ -25,14 +27,22 @@ export function getApiBase(): string {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body !== undefined
-  const res = await fetch(`${getBase()}${path}`, {
-    headers: {
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...authHeaders(),
-      ...init?.headers,
-    },
-    ...init,
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15_000)
+  let res: Response
+  try {
+    res = await fetch(`${getBase()}${path}`, {
+      headers: {
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        ...authHeaders(),
+        ...init?.headers,
+      },
+      signal: init?.signal ?? controller.signal,
+      ...init,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string }
     throw new Error(body.error ?? `${init?.method ?? "GET"} ${path} → ${res.status}`)
@@ -41,9 +51,17 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
+export interface HiveSettings {
+  reviewPrompt?: string
+}
+
 export const api = {
   // Server config / feature flags
   getServerConfig: () => req<{ githubEnabled: boolean; feedbackEnabled: boolean }>("/api/config"),
+
+  // Settings
+  getSettings: () => req<HiveSettings>("/api/settings"),
+  updateSettings: (body: Partial<HiveSettings>) => req<HiveSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
 
   // Agents
   getAgents: () => req<AgentSummary[]>("/api/agents"),
@@ -110,7 +128,52 @@ export const api = {
   getDefaultBranch: (repoPath: string) =>
     req<{ branch: string }>(`/api/fs/default-branch?path=${encodeURIComponent(repoPath)}`),
 
-  // GitHub / PR
+  // GitHub / PR (repo-scoped, repoId is "owner/repo")
+  listPRs: () => req<OpenPRWithRepo[]>("/api/prs"),
+  getPRFiles: (repoId: string, number: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<PRFileDiff[]>(`/api/prs/${owner}/${repo}/${number}/files`)
+  },
+  getPRDetailsForRepo: (repoId: string, number: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<PRDetails>(`/api/prs/${owner}/${repo}/${number}/details`)
+  },
+  resolveThread: (threadId: string) =>
+    req<{ ok: boolean }>(`/api/prs/threads/${encodeURIComponent(threadId)}/resolve`, { method: "POST" }),
+  replyToPRComment: (repoId: string, prNumber: number, commentId: number, body: string) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/comments/${commentId}/reply`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    })
+  },
+  submitPRReview: (
+    repoId: string,
+    prNumber: number,
+    body: { event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string; comments: Array<{ path: string; line: number; body: string }> }
+  ) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/submit-review`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  },
+  sendSingleComment: (repoId: string, prNumber: number, body: string, path?: string, line?: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/comment`, {
+      method: "POST",
+      body: JSON.stringify({ body, path, line }),
+    })
+  },
+  streamPRReview: (repoId: string, prNumber: number) => {
+    const [owner, repo] = repoId.split("/")
+    return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/review`, {
+      method: "POST",
+      headers: authHeaders(),
+    })
+  },
+
+  // GitHub / PR (agent-scoped)
   getPRDetails: (agentId: string) => req<PRDetails>(`/api/agents/${agentId}/pr/details`),
   createPR: (agentId: string, body: { title: string; body?: string; draft?: boolean }) =>
     req<PRStatus>(`/api/agents/${agentId}/pr`, { method: "POST", body: JSON.stringify(body) }),

@@ -12,6 +12,7 @@ import * as readline from "node:readline"
 import { fileURLToPath } from "node:url"
 import { isFirejailAvailable, sandboxStatus } from "./sandbox.js"
 import type { SandboxConfig } from "./sandbox.js"
+import { toString as qrToString } from "qrcode"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -100,9 +101,30 @@ function connectionString(cfg: Config, host = "localhost"): string {
   return `huxflux://${host}:${getActualPort(cfg.port)}?token=${cfg.token}`
 }
 
-function printConnectInfo(cfg: Config, pid?: number) {
+function getOutboundIp(): string {
+  const allIpv4 = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((i): i is os.NetworkInterfaceInfo =>
+      i != null && !i.internal && (i.family === "IPv4" || (i.family as unknown) === 4)
+    )
+    .map((i) => i.address)
+  // Prefer Tailscale CGNAT range (100.64.0.0/10) — works on macOS and Linux
+  const tailscale = allIpv4.find((ip) => {
+    const [a, b] = ip.split(".").map(Number)
+    return a === 100 && b >= 64 && b <= 127
+  })
+  return tailscale ?? allIpv4[0] ?? "localhost"
+}
+
+async function printConnectInfo(cfg: Config, pid?: number) {
+  const connStr = connectionString(cfg, getOutboundIp())
   console.log(`  Connection string (paste into Huxflux web app):`)
-  console.log(`\n    ${connectionString(cfg)}\n`)
+  console.log(`\n    ${connStr}\n`)
+  try {
+    const qr = await qrToString(connStr, { type: "terminal", small: true } as any)
+    console.log(`  Scan to connect on mobile:\n`)
+    console.log(qr)
+  } catch { /* non-fatal */ }
   if (pid) console.log(`  PID:     ${pid}`)
   console.log(`  Logs:    ${LOG_FILE}`)
   console.log(`  Sandbox: ${sandboxStatus(cfg.sandbox)}`)
@@ -287,7 +309,7 @@ async function cmdSandboxSetup(cfg: Config) {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-function cmdStart() {
+async function cmdStart() {
   const existing = getRunningPid()
   if (existing) {
     console.log(`huxflux is already running  (PID ${existing})`)
@@ -330,7 +352,7 @@ function cmdStart() {
   }
 
   console.log(`\nhuxflux started\n`)
-  printConnectInfo(cfg, child.pid)
+  await printConnectInfo(cfg, child.pid)
   console.log(`\n  huxflux logs   — tail the server log`)
   console.log(`  huxflux stop   — stop the server`)
   if (!cfg.sandbox?.enabled && os.platform() === "linux") {
@@ -351,7 +373,7 @@ function cmdStop() {
   console.log(`huxflux stopped  (PID ${pid})`)
 }
 
-function cmdStatus() {
+async function cmdStatus() {
   const pid = getRunningPid()
   const cfg = loadConfig()
 
@@ -362,7 +384,7 @@ function cmdStatus() {
   }
 
   console.log(`huxflux  running  (PID ${pid})\n`)
-  printConnectInfo(cfg)
+  await printConnectInfo(cfg)
 }
 
 function cmdLogs() {
@@ -518,10 +540,10 @@ Usage:
 const [,, cmd = "start", ...cmdArgs] = process.argv
 
 switch (cmd) {
-  case "start":    cmdStart(); break
+  case "start":    cmdStart().catch(console.error); break
   case "open":     cmdOpen(cmdArgs[0]); break
   case "stop":     cmdStop(); break
-  case "status":   cmdStatus(); break
+  case "status":   cmdStatus().catch(console.error); break
   case "logs":     cmdLogs(); break
   case "run":      cmdRun(); break
   case "token":    cmdToken(cmdArgs[0]); break

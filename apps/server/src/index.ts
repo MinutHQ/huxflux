@@ -4,9 +4,10 @@ import fastifyWebsocket from "@fastify/websocket"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { config } from "./config.js"
+import { config, isDev } from "./config.js"
+import { toString as qrToString } from "qrcode"
 
-const PORT_FILE = path.join(os.homedir(), "huxflux", "server.port")
+const PORT_FILE = path.join(os.homedir(), "huxflux", isDev ? "server-dev.port" : "server.port")
 import { runMigrations } from "./db/index.js"
 import { reposRoutes } from "./routes/repos.js"
 import { agentsRoutes } from "./routes/agents.js"
@@ -18,6 +19,7 @@ import { fsRoutes } from "./routes/fs.js"
 import { githubRoutes } from "./routes/github.js"
 import { uploadRoutes } from "./routes/upload.js"
 import { feedbackRoutes } from "./routes/feedback.js"
+import { settingsRoutes } from "./routes/settings.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -64,6 +66,7 @@ await app.register(fsRoutes)
 await app.register(githubRoutes)
 await app.register(uploadRoutes)
 await app.register(feedbackRoutes)
+await app.register(settingsRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
@@ -108,10 +111,22 @@ process.on("SIGINT", () => { cleanupPortFile(); process.exit(0) })
 
 startPoller()
 console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
-console.log(`WebSocket: ws://0.0.0.0:${boundPort}/ws`)
-if (config.authToken) {
-  console.log(`\n  Connect: http://localhost:${boundPort}?token=${config.authToken}\n`)
-}
 if (boundPort !== config.port) {
   console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)
+}
+if (config.authToken) {
+  // Prefer Tailscale CGNAT range (100.64.0.0/10) — works on macOS and Linux
+  const allIpv4 = Object.values(os.networkInterfaces()).flat()
+    .filter((i): i is os.NetworkInterfaceInfo =>
+      i != null && !i.internal && (i.family === "IPv4" || (i.family as unknown) === 4)
+    ).map((i) => i.address)
+  const lanIp = allIpv4.find((ip) => { const [a, b] = ip.split(".").map(Number); return a === 100 && b >= 64 && b <= 127 })
+    ?? allIpv4[0] ?? "localhost"
+  const connStr = `huxflux://${lanIp}:${boundPort}?token=${config.authToken}`
+  console.log(`\n  Connect: ${connStr}\n`)
+  try {
+    const qr = await qrToString(connStr, { type: "terminal", small: true } as any)
+    console.log(`  Scan to connect on mobile:\n`)
+    console.log(qr)
+  } catch { /* non-fatal */ }
 }

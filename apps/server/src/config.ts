@@ -17,7 +17,7 @@ export const DATA_DIR = path.join(os.homedir(), "huxflux")
 // Dev mode is determined by NODE_ENV, not by the presence of AUTH_TOKEN.
 // Dev gets its own DB and workspaces so migrations during development
 // never touch the production database.
-const isDev = process.env.NODE_ENV !== "production"
+export const isDev = process.env.NODE_ENV !== "production"
 
 export const config = {
   port: parseInt(process.env.PORT ?? (isDev ? "3002" : "3001"), 10),

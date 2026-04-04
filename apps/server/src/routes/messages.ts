@@ -16,6 +16,24 @@ function deriveTitle(content: string): string {
   return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…"
 }
 
+type QueuedMessage = { content: string; worktreePath: string; model: string }
+const agentQueues = new Map<string, QueuedMessage[]>()
+
+function enqueue(agentId: string, msg: QueuedMessage) {
+  if (!agentQueues.has(agentId)) agentQueues.set(agentId, [])
+  agentQueues.get(agentId)!.push(msg)
+}
+
+function drainQueue(agentId: string, app: FastifyInstance) {
+  const queue = agentQueues.get(agentId)
+  if (!queue || queue.length === 0) return
+  if (isAgentRunning(agentId)) return
+  const next = queue.shift()!
+  runClaude(next.content, { agentId, worktreePath: next.worktreePath, model: next.model })
+    .catch((err) => app.log.error(`Claude runner error for agent ${agentId}: ${err}`))
+    .finally(() => drainQueue(agentId, app))
+}
+
 export async function messagesRoutes(app: FastifyInstance) {
   // GET /api/agents/:id/messages — paginated
   app.get<{ Params: { id: string }; Querystring: { limit?: string; before?: string } }>(
@@ -75,7 +93,6 @@ export async function messagesRoutes(app: FastifyInstance) {
 
     const agent = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
-    if (isAgentRunning(id)) return reply.code(409).send({ error: "Agent already has a running process" })
 
     // Determine worktree path
     let worktreePath: string | undefined
@@ -84,6 +101,15 @@ export async function messagesRoutes(app: FastifyInstance) {
       if (repo) {
         worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       }
+    }
+
+    const opts: QueuedMessage = { content, worktreePath: worktreePath ?? process.cwd(), model: agent.model }
+
+    // If agent is busy, queue the message and return immediately
+    if (isAgentRunning(id)) {
+      enqueue(id, opts)
+      reply.code(202)
+      return { status: "queued" }
     }
 
     // Auto-name the agent from the first user message if it still has the
@@ -100,14 +126,10 @@ export async function messagesRoutes(app: FastifyInstance) {
       }
     }
 
-    // Fire and forget — streaming happens over WebSocket
-    runClaude(content, {
-      agentId: id,
-      worktreePath: worktreePath ?? process.cwd(),
-      model: agent.model,
-    }).catch((err) => {
-      app.log.error(`Claude runner error for agent ${id}: ${err}`)
-    })
+    // Fire and forget — streaming happens over WebSocket; drain queue when done
+    runClaude(content, { agentId: id, worktreePath: opts.worktreePath, model: opts.model })
+      .catch((err) => app.log.error(`Claude runner error for agent ${id}: ${err}`))
+      .finally(() => drainQueue(id, app))
 
     reply.code(202)
     return { status: "running" }

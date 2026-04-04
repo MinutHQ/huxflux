@@ -26,7 +26,7 @@ const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
 
 // Resolve claude binary once at startup instead of on every message
 let _claudeBin: string | null = null
-function getClaudeBin(): string {
+export function getClaudeBin(): string {
   if (_claudeBin) return _claudeBin
   if (process.env.CLAUDE_BIN) { _claudeBin = process.env.CLAUDE_BIN; return _claudeBin }
   try { _claudeBin = execFileSync("which", ["claude"], { encoding: "utf8" }).trim() }

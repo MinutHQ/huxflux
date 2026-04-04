@@ -109,7 +109,7 @@ export default function AgentChatScreen() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const insets = useSafeAreaInsets()
-  const { data: agent, isLoading, isStreaming } = useAgent(id ?? null)
+  const { data: agent, isLoading, isError, refetch, isStreaming } = useAgent(id ?? null)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const listRef = useRef<FlatList>(null)
@@ -188,9 +188,30 @@ export default function AgentChatScreen() {
 
     try {
       await api.sendMessage(id, content)
+      // 202 = running or queued — both are fine
+    } catch {
+      // Remove optimistic message on failure
+      queryClient.setQueryData<Agent>(["agent", id], (old) => {
+        if (!old) return old
+        return { ...old, messages: old.messages.filter((m) => m.id !== optimisticId) }
+      })
     } finally {
       setSending(false)
     }
+  }
+
+  if (isError && !agent) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center", gap: 12 }}>
+        <Text style={{ color: c.fgSub, fontSize: 14 }}>Could not load agent</Text>
+        <TouchableOpacity
+          onPress={() => refetch()}
+          style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: c.secondary }}
+        >
+          <Text style={{ color: c.fg, fontSize: 14 }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    )
   }
 
   if (isLoading || !agent) {
@@ -241,6 +262,22 @@ export default function AgentChatScreen() {
             <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
           </View>
         }
+        ListFooterComponent={
+          isStreaming ? (
+            <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: "row", gap: 4 }}>
+              {[0, 1, 2].map((i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: 6, height: 6, borderRadius: 3,
+                    backgroundColor: c.fgSub,
+                    opacity: 0.4 + i * 0.2,
+                  }}
+                />
+              ))}
+            </View>
+          ) : null
+        }
       />
 
       {/* Input bar */}
@@ -284,21 +321,27 @@ export default function AgentChatScreen() {
 
             <View style={{ flex: 1 }} />
 
-            {/* Send */}
-            <TouchableOpacity
-              onPress={handleSend}
-              disabled={!input.trim() || sending}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                backgroundColor: input.trim() ? c.fgBright : c.secondary,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ color: input.trim() ? c.bg : c.fgSub, fontSize: 15, fontWeight: "600", lineHeight: 20 }}>↑</Text>
-            </TouchableOpacity>
+            {/* Send / queued indicator */}
+            {isStreaming && !sending ? (
+              <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator size="small" color={c.fgSub} />
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSend}
+                disabled={!input.trim() || sending}
+                style={{
+                  width: 28, height: 28, borderRadius: 6,
+                  backgroundColor: input.trim() && !sending ? c.fgBright : c.secondary,
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {sending
+                  ? <ActivityIndicator size="small" color={c.fgSub} />
+                  : <Text style={{ color: input.trim() ? c.bg : c.fgSub, fontSize: 15, fontWeight: "600", lineHeight: 20 }}>↑</Text>
+                }
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>

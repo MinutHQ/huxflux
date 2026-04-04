@@ -242,7 +242,7 @@ function ConstellationBackground() {
           y: Math.random() * h,
           vx: (Math.random() - 0.5) * 0.5,
           vy: (Math.random() - 0.5) * 0.5,
-          r: Math.random() * 4 + 3,
+          r: Math.random() * 1.5 + 1,
           hue: Math.random() * 80 + 200, // blue-violet-teal
         })
       }
@@ -297,13 +297,13 @@ function ConstellationBackground() {
           const dy = nodes[i].y - nodes[j].y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < maxDist) {
-            const alpha = (1 - dist / maxDist) * 0.45
+            const alpha = (1 - dist / maxDist) * 0.2
             const hue = (nodes[i].hue + nodes[j].hue) / 2
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)
-            ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${alpha})`
-            ctx.lineWidth = 1
+            ctx.strokeStyle = `hsla(${hue}, 70%, 65%, ${alpha})`
+            ctx.lineWidth = 0.6
             ctx.stroke()
           }
         }
@@ -311,27 +311,19 @@ function ConstellationBackground() {
 
       // Draw nodes
       for (const n of nodes) {
-        // Wide glow halo
-        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 8)
-        grad.addColorStop(0, `hsla(${n.hue}, 100%, 80%, 0.7)`)
-        grad.addColorStop(0.25, `hsla(${n.hue}, 90%, 70%, 0.25)`)
-        grad.addColorStop(0.6, `hsla(${n.hue}, 85%, 65%, 0.06)`)
-        grad.addColorStop(1, `hsla(${n.hue}, 85%, 65%, 0)`)
+        // Soft glow
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 6)
+        grad.addColorStop(0, `hsla(${n.hue}, 80%, 70%, 0.2)`)
+        grad.addColorStop(1, `hsla(${n.hue}, 80%, 65%, 0)`)
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 8, 0, Math.PI * 2)
+        ctx.arc(n.x, n.y, n.r * 6, 0, Math.PI * 2)
         ctx.fillStyle = grad
         ctx.fill()
 
-        // Bright core
+        // Core dot
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 1.2, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 100%, 90%, 1)`
-        ctx.fill()
-
-        // White-hot center
-        ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 0.5, 0, Math.PI * 2)
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 90%, 80%, 0.7)`
         ctx.fill()
       }
 
@@ -340,13 +332,13 @@ function ConstellationBackground() {
         const dx = n.x - mx
         const dy = n.y - my
         const dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < 250) {
-          const alpha = (1 - dist / 250) * 0.4
+        if (dist < 200) {
+          const alpha = (1 - dist / 200) * 0.25
           ctx.beginPath()
           ctx.moveTo(n.x, n.y)
           ctx.lineTo(mx, my)
-          ctx.strokeStyle = `hsla(${n.hue}, 90%, 75%, ${alpha})`
-          ctx.lineWidth = 1
+          ctx.strokeStyle = `hsla(${n.hue}, 80%, 70%, ${alpha})`
+          ctx.lineWidth = 0.6
           ctx.stroke()
         }
       }

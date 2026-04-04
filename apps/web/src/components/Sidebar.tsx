@@ -353,6 +353,18 @@ function StatusContextMenu({
     )
   }
 
+  async function handleGenerateTitle() {
+    onClose()
+    try {
+      const updated = await api.generateTitle(agent.id)
+      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+        old ? old.map((a) => a.id === agent.id ? { ...a, title: updated.title } : a) : old
+      )
+    } catch {
+      toast.error("Failed to generate title")
+    }
+  }
+
   function handleDelete() {
     if (!confirmDelete) {
       setConfirmDelete(true)
@@ -387,6 +399,14 @@ function StatusContextMenu({
             </button>
           )
         })}
+        <div className="border-t border-border my-1" />
+        <button
+          onClick={handleGenerateTitle}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
+        >
+          <IconSparkles size={13} className="text-muted-foreground/60 shrink-0" />
+          <span className="flex-1 text-left">Generate title</span>
+        </button>
         <div className="border-t border-border my-1" />
         <button
           onClick={handleDelete}

@@ -6,6 +6,7 @@ import { agents, messages, toolCalls, fileChanges, terminalLines, repos } from "
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
+import { generateTitle, deriveTitle } from "./messages.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
 import * as path from "node:path"
@@ -243,6 +244,27 @@ export async function agentsRoutes(app: FastifyInstance) {
     const killed = stopAgent(req.params.id)
     if (!killed) return reply.code(404).send({ error: "No running process for this agent" })
     return { stopped: true }
+  })
+
+  // POST /api/agents/:id/generate-title — regenerate title from first user message
+  app.post<{ Params: { id: string } }>("/api/agents/:id/generate-title", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+
+    const firstUserMsg = db.select().from(messages)
+      .where(eq(messages.agentId, req.params.id))
+      .all()
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .find((m) => m.role === "user")
+    if (!firstUserMsg) return reply.code(400).send({ error: "No user messages" })
+
+    const title = await generateTitle(firstUserMsg.content).catch(() => deriveTitle(firstUserMsg.content))
+    const now = new Date().toISOString()
+    db.update(agents).set({ title, updatedAt: now }).where(eq(agents.id, req.params.id)).run()
+
+    const updated = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+    return updated
   })
 
   // DELETE /api/agents/:id — soft delete: marks deleted_at, removes worktree, never hard-deletes DB rows

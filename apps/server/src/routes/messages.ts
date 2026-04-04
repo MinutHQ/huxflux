@@ -16,7 +16,7 @@ function getClaudeBin(): string {
 }
 
 /** Use an LLM to generate a short, descriptive title for a conversation. */
-async function generateTitle(content: string): Promise<string> {
+export async function generateTitle(content: string): Promise<string> {
   const prompt = `Generate a short title (max 6 words) for a coding conversation that starts with this message. Return ONLY the title, nothing else. No quotes, no punctuation at the end.\n\nMessage: ${content.slice(0, 500)}`
 
   return new Promise((resolve, reject) => {
@@ -42,7 +42,7 @@ async function generateTitle(content: string): Promise<string> {
 }
 
 /** Fallback: derive a short title from the first user message. */
-function deriveTitle(content: string): string {
+export function deriveTitle(content: string): string {
   const first = content.replace(/\s+/g, " ").trim().split(/[.\n!?]/)[0].trim()
   if (first.length <= 52) return first
   const cut = first.slice(0, 52)

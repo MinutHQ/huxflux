@@ -82,6 +82,7 @@ export const api = {
     body: Partial<Pick<Agent, "title" | "status" | "branch" | "pr" | "description" | "unread" | "baseBranch">>
   ) => req<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
+  generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
 
   // Messages

@@ -594,6 +594,8 @@ function TypingBubble() {
 
 const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
   const isUser = msg.role === "user"
+  // A non-streaming message with only tool calls and no text/thinking is not shown —
+  // the tool calls accordion only renders alongside actual content (see below).
   const isEmpty = !msg.content && !msg.thinking && (!msg.toolCalls || msg.toolCalls.length === 0)
 
   if (isUser) {
@@ -644,8 +646,8 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { 
       {/* Thinking */}
       {msg.thinking && <ThinkingBlock text={msg.thinking} />}
 
-      {/* Tool calls */}
-      {msg.toolCalls && msg.toolCalls.length > 0 && (
+      {/* Tool calls — show live during streaming, or only when there's an answer to associate with */}
+      {msg.toolCalls && msg.toolCalls.length > 0 && (isStreaming || !!msg.content) && (
         <ToolCallsAccordion calls={msg.toolCalls} hasContent={!!msg.content} isStreaming={isStreaming} />
       )}
 

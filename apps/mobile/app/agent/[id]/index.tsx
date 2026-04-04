@@ -1,12 +1,12 @@
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
 } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgent, api, type Message, type Agent, type ToolCall } from "@hive/shared"
+import { useAgent, api, type Message, type Agent, type AgentSummary, type ToolCall } from "@hive/shared"
 import { c } from "../../../theme"
 
 const MODELS = [
@@ -247,7 +247,23 @@ export default function AgentChatScreen() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const insets = useSafeAreaInsets()
-  const { data: agent, isLoading, isError, refetch, isStreaming } = useAgent(id ?? null)
+
+  // Active session — starts as the root agent, can switch to child sessions
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(id ?? null)
+  const [creatingSession, setCreatingSession] = useState(false)
+
+  // Reset active session when navigating to a different agent
+  useEffect(() => { setActiveSessionId(id ?? null) }, [id])
+
+  // Fetch child sessions for this agent
+  const { data: sessions = [], refetch: refetchSessions } = useQuery<AgentSummary[]>({
+    queryKey: ["agent-sessions", id],
+    queryFn: () => api.getAgentSessions(id!),
+    enabled: !!id,
+    staleTime: 30_000,
+  })
+
+  const { data: agent, isLoading, isError, refetch, isStreaming } = useAgent(activeSessionId)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
@@ -288,6 +304,31 @@ export default function AgentChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming])
 
+  async function createSession() {
+    if (!agent || creatingSession) return
+    setCreatingSession(true)
+    try {
+      const created = await api.createAgent({
+        title: "Untitled",
+        branch: agent.branch,
+        model: agent.model,
+        shareWorktreeWith: id!,  // always share with root agent
+      })
+      queryClient.setQueryData(["agent", created.id], {
+        ...created,
+        messages: created.messages ?? [],
+        fileChanges: created.fileChanges ?? [],
+        terminalOutput: created.terminalOutput ?? [],
+      })
+      queryClient.invalidateQueries({ queryKey: ["agent-sessions", id] })
+      setActiveSessionId(created.id)
+    } catch {
+      Alert.alert("Error", "Failed to create session")
+    } finally {
+      setCreatingSession(false)
+    }
+  }
+
   function handleModelPress() {
     const options = [...MODELS.map((m) => m.label), "Cancel"]
     if (Platform.OS === "ios") {
@@ -318,10 +359,10 @@ export default function AgentChatScreen() {
   }
 
   async function doSend(content: string) {
-    if (!id || !content.trim()) return
+    if (!activeSessionId || !content.trim()) return
     setSending(true)
     const optimisticId = `optimistic-${Date.now()}`
-    queryClient.setQueryData<Agent>(["agent", id], (old) => {
+    queryClient.setQueryData<Agent>(["agent", activeSessionId], (old) => {
       if (!old) return old
       return {
         ...old,
@@ -332,9 +373,9 @@ export default function AgentChatScreen() {
       }
     })
     try {
-      await api.sendMessage(id, content)
+      await api.sendMessage(activeSessionId, content)
     } catch {
-      queryClient.setQueryData<Agent>(["agent", id], (old) => {
+      queryClient.setQueryData<Agent>(["agent", activeSessionId], (old) => {
         if (!old) return old
         return { ...old, messages: old.messages.filter((m) => m.id !== optimisticId) }
       })
@@ -383,6 +424,56 @@ export default function AgentChatScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
+      {/* Sessions strip — shown when there are (or could be) multiple sessions */}
+      <View style={{ borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center" }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 4, paddingVertical: 6, flexDirection: "row" }}>
+          {/* Root session tab */}
+          <TouchableOpacity
+            onPress={() => setActiveSessionId(id ?? null)}
+            style={{
+              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+              backgroundColor: activeSessionId === id ? c.secondary : "transparent",
+            }}
+          >
+            <Text style={{ color: activeSessionId === id ? c.fg : c.fgSub, fontSize: 12, fontWeight: "500" }}>
+              {agent?.title ?? "Session 1"}
+            </Text>
+          </TouchableOpacity>
+          {/* Child session tabs */}
+          {sessions.map((s, i) => (
+            <TouchableOpacity
+              key={s.id}
+              onPress={() => {
+                // Pre-fill cache if not already there
+                queryClient.setQueryData(["agent", s.id], (old: Agent | undefined) =>
+                  old ?? { ...s, messages: [], fileChanges: [], terminalOutput: [] }
+                )
+                setActiveSessionId(s.id)
+              }}
+              style={{
+                paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+                backgroundColor: activeSessionId === s.id ? c.secondary : "transparent",
+              }}
+            >
+              <Text style={{ color: activeSessionId === s.id ? c.fg : c.fgSub, fontSize: 12, fontWeight: "500" }}>
+                {s.title === "Untitled" ? `Session ${i + 2}` : s.title}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {/* New session button */}
+        <TouchableOpacity
+          onPress={createSession}
+          disabled={creatingSession}
+          style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+        >
+          {creatingSession
+            ? <ActivityIndicator size="small" color={c.fgSub} />
+            : <Text style={{ color: c.fgSub, fontSize: 18, lineHeight: 20 }}>+</Text>
+          }
+        </TouchableOpacity>
+      </View>
+
       {/* Sub-nav */}
       <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 16, gap: 4, paddingTop: 4 }}>
         {[
@@ -392,7 +483,7 @@ export default function AgentChatScreen() {
         ].map(({ label, route }) => (
           <TouchableOpacity
             key={label}
-            onPress={() => route ? router.push(`/agent/${id}/${route}`) : undefined}
+            onPress={() => route ? router.push(`/agent/${activeSessionId ?? id}/${route}`) : undefined}
             style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: route === null ? 2 : 0, borderBottomColor: c.fg }}
           >
             <Text style={{ color: route === null ? c.fg : c.fgSub, fontSize: 13, fontWeight: route === null ? "600" : "400" }}>
@@ -468,7 +559,7 @@ export default function AgentChatScreen() {
             {/* Stop / send */}
             {isStreaming && !queuedMessage ? (
               <TouchableOpacity
-                onPress={() => api.stopAgent(id!).catch(() => {})}
+                onPress={() => api.stopAgent(activeSessionId!).catch(() => {})}
                 style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center" }}
               >
                 <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>■</Text>

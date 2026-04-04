@@ -12,6 +12,15 @@ import type {
   PRFileDiff,
 } from "./types"
 
+export interface WorkspaceStats {
+  agents: { total: number; active: number; deleted: number }
+  messages: { total: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
+  toolCalls: number
+  fileChanges: { total: number; additions: number; deletions: number }
+  repos: number
+  dailyAgents: { date: string; count: number }[]
+}
+
 function getBase(): string {
   return getActiveServer()?.url ?? "http://localhost:3001"
 }
@@ -84,6 +93,9 @@ export const api = {
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
   generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
+
+  // Stats
+  getStats: () => req<WorkspaceStats>("/api/stats"),
 
   // Messages
   getMessages: (agentId: string) => req<Message[]>(`/api/agents/${agentId}/messages`),

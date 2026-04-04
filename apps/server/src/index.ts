@@ -20,6 +20,7 @@ import { githubRoutes } from "./routes/github.js"
 import { uploadRoutes } from "./routes/upload.js"
 import { feedbackRoutes } from "./routes/feedback.js"
 import { settingsRoutes } from "./routes/settings.js"
+import { statsRoutes } from "./routes/stats.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -68,6 +69,7 @@ await app.register(githubRoutes)
 await app.register(uploadRoutes)
 await app.register(feedbackRoutes)
 await app.register(settingsRoutes)
+await app.register(statsRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))

@@ -20,6 +20,7 @@ export type { HiveServer } from "./serverStore"
 
 // API
 export { api, getApiBase } from "./api"
+export type { WorkspaceStats } from "./api"
 
 // WebSocket
 export { useAgentEvents, connectBackgroundServer } from "./ws"

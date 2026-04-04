@@ -242,7 +242,7 @@ function ConstellationBackground() {
           y: Math.random() * h,
           vx: (Math.random() - 0.5) * 0.5,
           vy: (Math.random() - 0.5) * 0.5,
-          r: Math.random() * 3 + 2,
+          r: Math.random() * 4 + 3,
           hue: Math.random() * 80 + 200, // blue-violet-teal
         })
       }
@@ -311,20 +311,27 @@ function ConstellationBackground() {
 
       // Draw nodes
       for (const n of nodes) {
-        // Outer glow
-        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 10)
-        grad.addColorStop(0, `hsla(${n.hue}, 90%, 75%, 0.5)`)
-        grad.addColorStop(0.3, `hsla(${n.hue}, 85%, 70%, 0.15)`)
+        // Wide glow halo
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 8)
+        grad.addColorStop(0, `hsla(${n.hue}, 100%, 80%, 0.7)`)
+        grad.addColorStop(0.25, `hsla(${n.hue}, 90%, 70%, 0.25)`)
+        grad.addColorStop(0.6, `hsla(${n.hue}, 85%, 65%, 0.06)`)
         grad.addColorStop(1, `hsla(${n.hue}, 85%, 65%, 0)`)
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 10, 0, Math.PI * 2)
+        ctx.arc(n.x, n.y, n.r * 8, 0, Math.PI * 2)
         ctx.fillStyle = grad
         ctx.fill()
 
-        // Core dot — solid bright
+        // Bright core
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 100%, 88%, 1)`
+        ctx.arc(n.x, n.y, n.r * 1.2, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 100%, 90%, 1)`
+        ctx.fill()
+
+        // White-hot center
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, n.r * 0.5, 0, Math.PI * 2)
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)"
         ctx.fill()
       }
 

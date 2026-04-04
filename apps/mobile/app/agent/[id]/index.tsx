@@ -267,7 +267,9 @@ export default function AgentChatScreen() {
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const listRef = useRef<FlatList>(null)
+  const isNearBottom = useRef(true)
 
   // Deduplicate by ID — prevents FlatList key errors when setQueryData (streaming)
   // and invalidateQueries (refetch) briefly produce the same ID twice
@@ -280,18 +282,34 @@ export default function AgentChatScreen() {
     })
   }, [agent?.messages])
 
-  // Scroll to bottom when a new message is added (not during streaming content updates)
+  function scrollToBottom(animated = true) {
+    listRef.current?.scrollToEnd({ animated })
+    setShowScrollBtn(false)
+    isNearBottom.current = true
+  }
+
+  function handleScroll(event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height
+    const near = distanceFromBottom < 100
+    isNearBottom.current = near
+    setShowScrollBtn(!near)
+  }
+
+  // Auto-scroll when a new message arrives — only if user is near the bottom
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50)
+    if (messages.length > 0 && isNearBottom.current) {
+      setTimeout(() => scrollToBottom(true), 50)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length])
 
-  // Scroll to bottom when streaming ends
+  // Auto-scroll when streaming ends and user is near bottom
   useEffect(() => {
-    if (!isStreaming) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50)
+    if (!isStreaming && isNearBottom.current) {
+      setTimeout(() => scrollToBottom(true), 50)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming])
 
   // Auto-send queued message when streaming ends
@@ -386,10 +404,12 @@ export default function AgentChatScreen() {
 
   function handleSend() {
     const content = input.trim()
-    if (!content || !id || sending) return
+    if (!content || !activeSessionId || sending) return
     setInput("")
+    // Always scroll to bottom when user sends — they want to see the response
+    isNearBottom.current = true
+    scrollToBottom(true)
     if (isStreaming) {
-      // Queue for after streaming ends
       setQueuedMessage(content)
       return
     }
@@ -496,20 +516,37 @@ export default function AgentChatScreen() {
       </View>
 
       {/* Messages */}
-      <FlatList
-        ref={listRef}
-        style={{ flex: 1 }}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => <MessageBubble message={item} />}
-        contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
-        ListEmptyComponent={
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-            <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
-          </View>
-        }
-        ListFooterComponent={null}
-      />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          ref={listRef}
+          style={{ flex: 1 }}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          renderItem={({ item }) => <MessageBubble message={item} />}
+          contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+          onScroll={handleScroll}
+          scrollEventThrottle={100}
+          ListEmptyComponent={
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+              <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
+            </View>
+          }
+        />
+        {showScrollBtn && (
+          <TouchableOpacity
+            onPress={() => scrollToBottom(true)}
+            style={{
+              position: "absolute", bottom: 12, alignSelf: "center",
+              backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
+              borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+              flexDirection: "row", alignItems: "center", gap: 5,
+            }}
+          >
+            <Text style={{ color: c.fgSub, fontSize: 12 }}>↓</Text>
+            <Text style={{ color: c.fgSub, fontSize: 12 }}>Scroll to bottom</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Input bar */}
       <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + insets.bottom }}>

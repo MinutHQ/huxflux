@@ -206,20 +206,181 @@ function MorphBlob({ color, className }: { color: string; className?: string }) 
   )
 }
 
-// ── Animated grid background ─────────────────────────────────────────────────
+// ── Constellation canvas background ──────────────────────────────────────────
 
-function GridBackground() {
+function ConstellationBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const nodesRef = useRef<{ x: number; y: number; vx: number; vy: number; r: number; hue: number }[]>([])
+  const rafRef = useRef(0)
+  const mouseRef = useRef({ x: -1000, y: -1000 })
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.parentElement!.getBoundingClientRect()
+      canvas.width = rect.width * dpr
+      canvas.height = rect.height * dpr
+      canvas.style.width = `${rect.width}px`
+      canvas.style.height = `${rect.height}px`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    resize()
+    window.addEventListener("resize", resize)
+
+    // Init nodes
+    if (nodesRef.current.length === 0) {
+      const w = canvas.parentElement!.clientWidth
+      const h = canvas.parentElement!.clientHeight
+      for (let i = 0; i < 50; i++) {
+        nodesRef.current.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          r: Math.random() * 1.5 + 0.5,
+          hue: Math.random() * 60 + 210, // blue-violet
+        })
+      }
+    }
+
+    const handleMouse = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    }
+    window.addEventListener("mousemove", handleMouse, { passive: true })
+
+    const draw = () => {
+      const w = canvas.parentElement!.clientWidth
+      const h = canvas.parentElement!.clientHeight
+      ctx.clearRect(0, 0, w, h)
+
+      const nodes = nodesRef.current
+      const mx = mouseRef.current.x
+      const my = mouseRef.current.y
+
+      // Move nodes
+      for (const n of nodes) {
+        // Gentle mouse repulsion
+        const dx = n.x - mx
+        const dy = n.y - my
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < 150 && dist > 0) {
+          const force = (150 - dist) / 150 * 0.15
+          n.vx += (dx / dist) * force
+          n.vy += (dy / dist) * force
+        }
+
+        n.x += n.vx
+        n.y += n.vy
+
+        // Dampen
+        n.vx *= 0.998
+        n.vy *= 0.998
+
+        // Wrap
+        if (n.x < -20) n.x = w + 20
+        if (n.x > w + 20) n.x = -20
+        if (n.y < -20) n.y = h + 20
+        if (n.y > h + 20) n.y = -20
+      }
+
+      // Draw connections
+      const maxDist = 140
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x
+          const dy = nodes[i].y - nodes[j].y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < maxDist) {
+            const alpha = (1 - dist / maxDist) * 0.12
+            const hue = (nodes[i].hue + nodes[j].hue) / 2
+            ctx.beginPath()
+            ctx.moveTo(nodes[i].x, nodes[i].y)
+            ctx.lineTo(nodes[j].x, nodes[j].y)
+            ctx.strokeStyle = `hsla(${hue}, 60%, 60%, ${alpha})`
+            ctx.lineWidth = 0.5
+            ctx.stroke()
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        // Glow
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, n.r * 4, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 70%, 60%, 0.04)`
+        ctx.fill()
+
+        // Dot
+        ctx.beginPath()
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 70%, 65%, 0.25)`
+        ctx.fill()
+      }
+
+      // Lines to nearby mouse
+      for (const n of nodes) {
+        const dx = n.x - mx
+        const dy = n.y - my
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (dist < 180) {
+          const alpha = (1 - dist / 180) * 0.15
+          ctx.beginPath()
+          ctx.moveTo(n.x, n.y)
+          ctx.lineTo(mx, my)
+          ctx.strokeStyle = `hsla(${n.hue}, 80%, 70%, ${alpha})`
+          ctx.lineWidth = 0.6
+          ctx.stroke()
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(draw)
+    }
+    rafRef.current = requestAnimationFrame(draw)
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      window.removeEventListener("resize", resize)
+      window.removeEventListener("mousemove", handleMouse)
+    }
+  }, [])
+
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+}
+
+// ── Aurora waves ─────────────────────────────────────────────────────────────
+
+function AuroraBackground() {
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-[0.03]">
+    <div className="absolute inset-x-0 top-0 h-[400px] pointer-events-none overflow-hidden">
       <div
-        className="absolute inset-0"
+        className="absolute inset-x-0 -top-1/2 h-full"
         style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: "60px 60px",
-          animation: "homeRainbow 20s linear infinite",
+          background: "linear-gradient(180deg, rgba(96, 165, 250, 0.06) 0%, transparent 100%)",
+          animation: "homeAurora1 12s ease-in-out infinite",
+          filter: "blur(40px)",
+        }}
+      />
+      <div
+        className="absolute inset-x-0 -top-1/3 h-full"
+        style={{
+          background: "linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 100%)",
+          animation: "homeAurora2 15s ease-in-out infinite",
+          filter: "blur(50px)",
+        }}
+      />
+      <div
+        className="absolute inset-x-0 -top-1/4 h-full"
+        style={{
+          background: "linear-gradient(180deg, rgba(52, 211, 153, 0.04) 0%, transparent 100%)",
+          animation: "homeAurora3 18s ease-in-out infinite",
+          filter: "blur(45px)",
         }}
       />
     </div>
@@ -282,7 +443,8 @@ export function HomeView() {
 
   return (
     <div className="flex-1 h-full overflow-y-auto relative">
-      <GridBackground />
+      <ConstellationBackground />
+      <AuroraBackground />
       <Particles />
 
       {/* Morphing ambient blobs */}

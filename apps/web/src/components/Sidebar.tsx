@@ -617,8 +617,6 @@ function StatusGroup({
   const [collapsed, setCollapsed] = useState(status === "done")
   const config = statusConfig[status]
 
-  if (agents.length === 0) return null
-
   return (
     <div className="mb-0.5">
       <button

@@ -236,7 +236,7 @@ function ConstellationBackground() {
     if (nodesRef.current.length === 0) {
       const w = canvas.parentElement!.clientWidth
       const h = canvas.parentElement!.clientHeight
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 160; i++) {
         nodesRef.current.push({
           x: Math.random() * w,
           y: Math.random() * h,

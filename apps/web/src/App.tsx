@@ -43,7 +43,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
   const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
-  const [showHome, setShowHome] = useState(false)
+  const [showHome, setShowHome] = useState(true)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -280,9 +280,7 @@ export default function App() {
       <SetupView pending={workspace.pendingAgent} />
     </div>
   ) : !workspace.resolvedActiveId || !activeAgent ? (
-    <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-      {agents.length === 0 ? "No agents yet — create one to get started" : "Select an agent"}
-    </div>
+    <HomeView />
   ) : terminalMaximized ? (
     <div className="flex-1 min-w-0 h-full">
       {terminalPanel}

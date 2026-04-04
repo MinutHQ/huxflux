@@ -1243,12 +1243,22 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const [showFeedback, setShowFeedback] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
-  const [groupBy, setGroupBy] = useState<GroupByMode>("status")
-  const [repoFilter, setRepoFilter] = useState("all")
-  const [tab, setTab] = useState<"agents" | "review" | "refine">("agents")
+  const [groupBy, setGroupByRaw] = useState<GroupByMode>(() => (localStorage.getItem("hive:sidebar:groupBy") as GroupByMode) || "status")
+  const setGroupBy = (v: GroupByMode) => { setGroupByRaw(v); localStorage.setItem("hive:sidebar:groupBy", v) }
+  const [repoFilter, setRepoFilterRaw] = useState(() => localStorage.getItem("hive:sidebar:repoFilter") || "all")
+  const setRepoFilter = (v: string) => { setRepoFilterRaw(v); localStorage.setItem("hive:sidebar:repoFilter", v) }
+  const [tab, setTabRaw] = useState<"agents" | "review" | "refine">(() => (localStorage.getItem("hive:sidebar:tab") as "agents" | "review" | "refine") || "agents")
+  const setTab = (v: "agents" | "review" | "refine") => { setTabRaw(v); localStorage.setItem("hive:sidebar:tab", v) }
   const [newRefineInput, setNewRefineInput] = useState("")
   const [showNewRefine, setShowNewRefine] = useState(false)
-  const [hideReviewedPrs, setHideReviewedPrs] = useState(false)
+  const [hideReviewedPrs, setHideReviewedPrsRaw] = useState(() => localStorage.getItem("hive:sidebar:hideReviewedPrs") === "true")
+  const setHideReviewedPrs = (v: boolean | ((prev: boolean) => boolean)) => {
+    setHideReviewedPrsRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v
+      localStorage.setItem("hive:sidebar:hideReviewedPrs", String(next))
+      return next
+    })
+  }
   const [showPrFilter, setShowPrFilter] = useState(false)
   const prFilterBtnRef = useRef<HTMLButtonElement>(null)
   const filterBtnRef = useRef<HTMLButtonElement>(null)

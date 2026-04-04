@@ -262,22 +262,7 @@ export default function AgentChatScreen() {
             <Text style={{ color: c.fgSub, fontSize: 14 }}>Start the conversation</Text>
           </View>
         }
-        ListFooterComponent={
-          isStreaming ? (
-            <View style={{ paddingHorizontal: 16, paddingVertical: 8, flexDirection: "row", gap: 4 }}>
-              {[0, 1, 2].map((i) => (
-                <View
-                  key={i}
-                  style={{
-                    width: 6, height: 6, borderRadius: 3,
-                    backgroundColor: c.fgSub,
-                    opacity: 0.4 + i * 0.2,
-                  }}
-                />
-              ))}
-            </View>
-          ) : null
-        }
+        ListFooterComponent={null}
       />
 
       {/* Input bar */}
@@ -321,11 +306,14 @@ export default function AgentChatScreen() {
 
             <View style={{ flex: 1 }} />
 
-            {/* Send / queued indicator */}
+            {/* Stop / send */}
             {isStreaming && !sending ? (
-              <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-                <ActivityIndicator size="small" color={c.fgSub} />
-              </View>
+              <TouchableOpacity
+                onPress={() => api.stopAgent(id!).catch(() => {})}
+                style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center" }}
+              >
+                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>■</Text>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={handleSend}

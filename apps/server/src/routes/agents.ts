@@ -56,6 +56,14 @@ export async function agentsRoutes(app: FastifyInstance) {
     })
   })
 
+  // GET /api/agents/:id/sessions — list child chat sessions (same worktree, different Claude sessions)
+  app.get<{ Params: { id: string } }>("/api/agents/:id/sessions", async (req, reply) => {
+    const rows = db.select().from(agents)
+      .where(and(eq(agents.parentAgentId, req.params.id), isNull(agents.deletedAt)))
+      .all()
+    return rows
+  })
+
   // GET /api/agents/:id — full agent with messages + files + terminal
   app.get<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
     const agent = db.select().from(agents).where(and(eq(agents.id, req.params.id), isNull(agents.deletedAt))).get()

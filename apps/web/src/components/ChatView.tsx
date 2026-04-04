@@ -1642,6 +1642,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (!title || title === agent.title) return
     await api.updateAgent(agent.id, { title })
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, title } : old)
+    queryClient.invalidateQueries({ queryKey: ["agents"] })
     onTabTitleChange?.(agent.id, title)
   }
 

@@ -81,6 +81,24 @@ export function useWorkspace(agents: AgentSummary[]) {
     } else {
       setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
       setActiveTabId(id)
+      // Fetch persisted child sessions from server and restore as tabs
+      api.getAgentSessions(id).then(sessions => {
+        if (sessions.length === 0) return
+        // Pre-fill cache for each session so switching tabs doesn't flash the
+        // parent agent's messages via placeholderData while the child loads.
+        for (const s of sessions) {
+          queryClient.setQueryData(["agent", s.id], (old: Agent | undefined) =>
+            old ?? { ...s, messages: [], fileChanges: [], terminalOutput: [] }
+          )
+        }
+        const childTabs: ChatTab[] = sessions.map(s => ({ agentId: s.id, title: s.title, isChild: true }))
+        setTabs(prev => {
+          if (prev[0]?.agentId !== id) return prev // user switched away
+          const existingIds = new Set(prev.map(t => t.agentId))
+          const newTabs = childTabs.filter(t => !existingIds.has(t.agentId))
+          return newTabs.length > 0 ? [...prev, ...newTabs] : prev
+        })
+      }).catch(() => {})
     }
     setJustDeleted(false)
     setSelectedPrId(null)
@@ -133,14 +151,23 @@ export function useWorkspace(agents: AgentSummary[]) {
   }
 
   const createTab = useCallback(async (agent: Agent) => {
-    const suffix = Math.random().toString(36).slice(2, 6)
-    const title = `${agent.title}-${suffix}`
+    // Always share with the root agent (first tab) so all sessions are siblings,
+    // not grandchildren when a child tab is active.
+    const rootAgentId = tabs[0]?.agentId ?? agent.id
     try {
       const created = await api.createAgent({
-        title,
+        title: "Untitled",
         branch: agent.branch,
         model: agent.model,
-        shareWorktreeWith: agent.id,
+        shareWorktreeWith: rootAgentId,
+      })
+      // Pre-fill the cache with the new empty agent so useAgent doesn't flash
+      // the parent agent's messages via placeholderData while the fetch loads.
+      queryClient.setQueryData(["agent", created.id], {
+        ...created,
+        messages: created.messages ?? [],
+        fileChanges: created.fileChanges ?? [],
+        terminalOutput: created.terminalOutput ?? [],
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
       const newTab: ChatTab = { agentId: created.id, title: created.title, isChild: true }
@@ -155,7 +182,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     } catch (err) {
       toast.error(`Failed to create tab: ${err instanceof Error ? err.message : "unknown"}`)
     }
-  }, [queryClient])
+  }, [queryClient, tabs])
 
   function renameTab(agentId: string, newTitle: string) {
     setTabs(prev => prev.map(t => t.agentId === agentId ? { ...t, title: newTitle } : t))
@@ -197,12 +224,15 @@ export function useWorkspace(agents: AgentSummary[]) {
     setSelectedPrId(null)
   }
 
-  // Validate restored activeTabId against loaded agents — clear if it no longer exists
+  // Validate restored activeTabId — clear if it no longer exists in agents OR current tabs.
+  // Child session tabs are not in the agents list, so we must check tabs too.
   useEffect(() => {
-    if (activeTabId && agents.length > 0 && !agents.some(a => a.id === activeTabId)) {
+    if (activeTabId && agents.length > 0 &&
+        !agents.some(a => a.id === activeTabId) &&
+        !tabs.some(t => t.agentId === activeTabId)) {
       setActiveTabId(null)
     }
-  }, [agents, activeTabId])
+  }, [agents, activeTabId, tabs])
 
   // Don't auto-select an agent during or right after a deletion
   const resolvedActiveId = (deletingAgent || justDeleted)

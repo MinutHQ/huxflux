@@ -1,14 +1,22 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router"
-import { useAgent } from "@hive/shared"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@hive/shared"
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { c } from "../../../theme"
 
 export default function AgentLayout() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { data: agent, isLoading } = useAgent(id ?? null)
+  // Use a plain query (no WS subscription) — index.tsx handles streaming via useAgent.
+  // This avoids double-processing WS events.
+  const { data: agent, isLoading } = useQuery({
+    queryKey: ["agent", id],
+    queryFn: () => api.getAgent(id!),
+    enabled: !!id,
+    staleTime: 10_000,
+  })
 
-  if (isLoading) {
+  if (isLoading && !agent) {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color={c.link} />

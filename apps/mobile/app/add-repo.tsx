@@ -40,7 +40,7 @@ export default function AddRepoScreen() {
 
   async function handleSubmit() {
     const repoPath = selected?.path ?? path.trim()
-    const repoName = name.trim() || repoPath.split("/").pop() ?? "repo"
+    const repoName = name.trim() || (repoPath.split("/").pop() ?? "repo")
     if (!repoPath || submitting) return
     setSubmitting(true)
     try {

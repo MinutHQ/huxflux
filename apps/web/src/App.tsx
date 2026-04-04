@@ -135,13 +135,12 @@ export default function App() {
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore } = useAgent(workspace.resolvedActiveId)
 
-  // Terminal always uses the root agent (first tab) so switching chat sessions
-  // doesn't restart the PTY connection.
-  // Use plain useQuery (no placeholderData) to avoid brief wrong-agent flash
-  // when switching agents: useAgent's placeholderData returns the previous
-  // agent's data while re-fetching, which would cause TerminalView to briefly
-  // open a PTY for the wrong worktree.
-  const terminalAgentId = workspace.tabs[0]?.agentId ?? workspace.resolvedActiveId ?? null
+  // Terminal is always keyed to the ROOT agent (not the active chat session).
+  // rootAgentId is explicitly maintained in useWorkspace and never changes when
+  // switching between child chat sessions — only when selecting a different root
+  // agent or creating a new one. Using plain useQuery (no placeholderData) so
+  // the terminal never briefly renders with a stale/wrong agent.
+  const terminalAgentId = workspace.rootAgentId
   const { data: terminalAgentData } = useQuery({
     queryKey: ["agent", terminalAgentId],
     queryFn: () => api.getAgent(terminalAgentId!),
@@ -234,8 +233,13 @@ export default function App() {
     feedbackEnabled,
   }
 
+  // key={terminalAgentId} ensures TerminalView is a distinct instance per root
+  // agent, preventing stale session state when switching between agents whose
+  // data is already cached (no null interlude to force a remount).
+  // globalSessions (module-level) preserves terminal divs & WS across remounts.
   const terminalPanel = terminalAgentData && (
     <TerminalView
+      key={terminalAgentId!}
       agent={terminalAgentData}
       activeTab={terminalTab}
       onTabChange={setTerminalTab}

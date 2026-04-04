@@ -32,6 +32,11 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [activeTabId, setActiveTabId] = useState<string | null>(() => {
     try { return localStorage.getItem("hive-active-agent") } catch { return null }
   })
+  // The root (worktree-owning) agent for the current view — never changes when
+  // switching between child chat sessions, so the terminal stays stable.
+  const [rootAgentId, setRootAgentId] = useState<string | null>(() => {
+    try { return localStorage.getItem("hive-active-agent") } catch { return null }
+  })
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
   const [lastPrId, setLastPrId] = useState<string | null>(null)
   const lastAgentId = useRef<string | null>(null)
@@ -76,6 +81,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     lastAgentId.current = id
     const a = agents.find(ag => ag.id === id)
     const isAlreadyInTabs = tabs.some(t => t.agentId === id)
+    setRootAgentId(id)
     if (isAlreadyInTabs) {
       setActiveTabId(id)
     } else {
@@ -198,6 +204,7 @@ export function useWorkspace(agents: AgentSummary[]) {
       setOpenFileTab(null)
       setPendingComments([])
     }
+    if (rootAgentId === agentId) setRootAgentId(null)
     // Evict cached agent data so useAgent doesn't return stale data
     queryClient.removeQueries({ queryKey: ["agent", agentId] })
   }
@@ -221,6 +228,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     const a = agents.find(ag => ag.id === id)
     setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
     setActiveTabId(id)
+    setRootAgentId(id)
     setSelectedPrId(null)
   }
 
@@ -243,6 +251,7 @@ export function useWorkspace(agents: AgentSummary[]) {
   return {
     tabs,
     activeTabId,
+    rootAgentId,
     resolvedActiveId,
     sidebarSelectedId,
     selectedPrId,

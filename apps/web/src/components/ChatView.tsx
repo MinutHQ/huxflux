@@ -190,16 +190,14 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
 // ── Tool calls accordion ──────────────────────────────────────────────────────
 
 function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasContent?: boolean; isStreaming?: boolean }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
 
-  // Collapse as soon as streaming ends, regardless of whether there's text content
-  useEffect(() => {
-    if (!isStreaming) setOpen(false)
-  }, [isStreaming])
-
-  const distinctTools = [...new Set(calls.map((c) => c.tool))]
+  const lastCall = calls[calls.length - 1]
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
-  const summary = distinctTools.slice(0, 4).join(", ") + (distinctTools.length > 4 ? ", …" : "")
+  // When collapsed and streaming, show the last tool call; otherwise show distinct tool names
+  const summary = isStreaming && lastCall
+    ? `${lastCall.tool}${lastCall.args ? ` ${truncateArgs(lastCall.args)}` : ""}`
+    : [...new Set(calls.map((c) => c.tool))].slice(0, 4).join(", ") + ([...new Set(calls.map((c) => c.tool))].length > 4 ? ", …" : "")
 
   return (
     <div className="mb-3">
@@ -1851,11 +1849,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   }, [agent.id])
 
   // Auto-scroll to bottom when streaming, but only if the user is already at the bottom
+  const lastMessage = agent.messages[agent.messages.length - 1]
+  const streamingContentLen = lastMessage?.content?.length ?? 0
+  const streamingToolCallsLen = lastMessage?.toolCalls?.length ?? 0
   useEffect(() => {
     if (isStreaming && isAtBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-  }, [isStreaming, isAtBottom, agent.messages.length])
+  }, [isStreaming, isAtBottom, agent.messages.length, streamingContentLen, streamingToolCallsLen])
 
   const closeFileTab = () => {
     setActiveTab("chat")

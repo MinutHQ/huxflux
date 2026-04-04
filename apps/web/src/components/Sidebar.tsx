@@ -23,6 +23,7 @@ import {
   IconCheck,
   IconSettings,
   IconGitBranch,
+  IconFolder,
   IconFolderPlus,
   IconArrowUpRight,
   IconSparkles,

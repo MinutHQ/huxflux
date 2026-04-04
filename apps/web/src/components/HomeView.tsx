@@ -242,7 +242,7 @@ function ConstellationBackground() {
           y: Math.random() * h,
           vx: (Math.random() - 0.5) * 0.5,
           vy: (Math.random() - 0.5) * 0.5,
-          r: Math.random() * 2.5 + 1,
+          r: Math.random() * 3 + 2,
           hue: Math.random() * 80 + 200, // blue-violet-teal
         })
       }
@@ -297,13 +297,13 @@ function ConstellationBackground() {
           const dy = nodes[i].y - nodes[j].y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < maxDist) {
-            const alpha = (1 - dist / maxDist) * 0.3
+            const alpha = (1 - dist / maxDist) * 0.45
             const hue = (nodes[i].hue + nodes[j].hue) / 2
             ctx.beginPath()
             ctx.moveTo(nodes[i].x, nodes[i].y)
             ctx.lineTo(nodes[j].x, nodes[j].y)
-            ctx.strokeStyle = `hsla(${hue}, 70%, 65%, ${alpha})`
-            ctx.lineWidth = 0.8
+            ctx.strokeStyle = `hsla(${hue}, 80%, 70%, ${alpha})`
+            ctx.lineWidth = 1
             ctx.stroke()
           }
         }
@@ -312,19 +312,19 @@ function ConstellationBackground() {
       // Draw nodes
       for (const n of nodes) {
         // Outer glow
-        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 12)
-        grad.addColorStop(0, `hsla(${n.hue}, 85%, 70%, 0.35)`)
-        grad.addColorStop(0.4, `hsla(${n.hue}, 85%, 65%, 0.1)`)
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 10)
+        grad.addColorStop(0, `hsla(${n.hue}, 90%, 75%, 0.5)`)
+        grad.addColorStop(0.3, `hsla(${n.hue}, 85%, 70%, 0.15)`)
         grad.addColorStop(1, `hsla(${n.hue}, 85%, 65%, 0)`)
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 12, 0, Math.PI * 2)
+        ctx.arc(n.x, n.y, n.r * 10, 0, Math.PI * 2)
         ctx.fillStyle = grad
         ctx.fill()
 
-        // Core dot
+        // Core dot — solid bright
         ctx.beginPath()
-        ctx.arc(n.x, n.y, n.r * 1.3, 0, Math.PI * 2)
-        ctx.fillStyle = `hsla(${n.hue}, 90%, 80%, 0.85)`
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${n.hue}, 100%, 88%, 1)`
         ctx.fill()
       }
 
@@ -355,7 +355,7 @@ function ConstellationBackground() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-[1]" />
 }
 
 // ── Aurora waves ─────────────────────────────────────────────────────────────

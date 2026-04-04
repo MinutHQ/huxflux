@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { cn } from "@hive/ui"
@@ -80,6 +80,21 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const wrapperRef = useRef<HTMLDivElement>(null)
   const resizeObsRef = useRef<ResizeObserver | null>(null)
   const activeSessionKeyRef = useRef(`${agent.id}:t1`)
+  // Re-attach the terminal session div when the wrapper DOM node changes
+  // (e.g. when the component remounts due to maximize toggle)
+  const wrapperCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    wrapperRef.current = node
+    if (!node) return
+    const key = activeSessionKeyRef.current
+    const session = globalSessions.get(key)
+    if (session && !session.div.parentElement) {
+      node.appendChild(session.div)
+      requestAnimationFrame(() => {
+        session.fitAddon.fit()
+        session.term.focus()
+      })
+    }
+  }, [])
   const nextTerminalNumRef = useRef(2)
 
   function getInitialTabState(): AgentTabState {
@@ -453,7 +468,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       {/* Terminal area */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <div
-          ref={wrapperRef}
+          ref={wrapperCallbackRef}
           className="absolute inset-0"
         />
 

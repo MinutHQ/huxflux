@@ -240,27 +240,42 @@ export function useAgent(id: string | null) {
     if (event.type === "message:done") {
       updateMessages((msgs) => {
         const map = subAgentDataRef.current
-        const exists = msgs.some((m) => m.id === event.messageId)
-        if (exists) {
-          return msgs.map((m) => {
-            if (m.id !== event.messageId) return m
-            // Re-apply client-side subCalls onto the final server message
-            return { ...event.message, toolCalls: (event.message.toolCalls ?? []).map((tc) => {
-              const sd = map.get(tc.id)
-              return sd ? { ...tc, subCalls: sd.subCalls, outputText: sd.outputText } : tc
-            })}
-          })
-        }
         const incoming = event.message as unknown as Message
+        const mergedToolCalls = (incoming.toolCalls ?? []).map((tc) => {
+          const sd = map.get(tc.id)
+          return sd ? { ...tc, subCalls: sd.subCalls, outputText: sd.outputText } : tc
+        })
+        const merged = { ...incoming, toolCalls: mergedToolCalls }
+
+        // 1. Replace by exact ID (normal case)
+        if (msgs.some((m) => m.id === event.messageId)) {
+          return msgs.map((m) => m.id === event.messageId ? merged : m)
+        }
+
+        // 2. Replace the last in-progress assistant message if ID not found.
+        //    This handles the case where the cache was refreshed (background
+        //    refetch / reconnect) and the streaming skeleton has a different
+        //    reference, preventing a duplicate message from being appended.
+        const inProgressIdx = msgs.findLastIndex(
+          (m) => m.role === "assistant" && m.durationMs == null
+        )
+        if (inProgressIdx !== -1) {
+          const next = [...msgs]
+          next[inProgressIdx] = merged
+          return next
+        }
+
+        // 3. Replace an optimistic placeholder
         const optimisticIdx = msgs.findLastIndex(
           (m: Message) => m.id.startsWith("optimistic-") && m.role === incoming.role
         )
         if (optimisticIdx !== -1) {
           const next = [...msgs]
-          next[optimisticIdx] = incoming
+          next[optimisticIdx] = merged
           return next
         }
-        return [...msgs, incoming]
+
+        return [...msgs, merged]
       })
       setIsStreaming(false)
     }

@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgent, api, type Message, type Agent } from "@hive/shared"
+import { useAgent, api, type Message, type Agent, type ToolCall } from "@hive/shared"
 import { c } from "../../../theme"
 
 const MODELS = [
@@ -19,20 +19,25 @@ function shortModel(modelId: string) {
   return MODELS.find((m) => m.id === modelId)?.label ?? modelId.split("-").slice(-2).join(" ")
 }
 
+// ── Markdown-ish renderer ─────────────────────────────────────────────────────
+
 function InlineText({ text }: { text: string }) {
-  const parts = text.split(/(`[^`\n]+`|\*\*[^*]+\*\*)/g)
+  const parts = text.split(/(`[^`\n]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g)
   return (
     <Text style={{ color: c.fgBright, fontSize: 14, lineHeight: 21 }}>
       {parts.map((part, i) => {
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
-            <Text key={i} style={{ fontFamily: "monospace", backgroundColor: c.secondary, color: "#a78bfa", fontSize: 13, borderRadius: 3 }}>
+            <Text key={i} style={{ fontFamily: "monospace", backgroundColor: c.secondary, color: "#a78bfa", fontSize: 13 }}>
               {" "}{part.slice(1, -1)}{" "}
             </Text>
           )
         }
         if (part.startsWith("**") && part.endsWith("**")) {
-          return <Text key={i} style={{ fontWeight: "700", color: c.fg }}>{part.slice(2, -2)}</Text>
+          return <Text key={i} style={{ fontWeight: "700" }}>{part.slice(2, -2)}</Text>
+        }
+        if (part.startsWith("*") && part.endsWith("*")) {
+          return <Text key={i} style={{ fontStyle: "italic" }}>{part.slice(1, -1)}</Text>
         }
         return <Text key={i}>{part}</Text>
       })}
@@ -41,22 +46,19 @@ function InlineText({ text }: { text: string }) {
 }
 
 function MessageContent({ text }: { text: string }) {
-  // Split on fenced code blocks, preserving the delimiter
-  const segments = text.split(/(```[\s\S]*?```)/g)
-
+  const segments = text.split(/(```[\s\S]*?```|`[^`\n]+`)/g)
   return (
     <View style={{ gap: 4 }}>
       {segments.map((seg, i) => {
         if (seg.startsWith("```")) {
-          const inner = seg.slice(3, -3)  // strip opening/closing ```
-          const newline = inner.indexOf("\n")
-          const lang = newline !== -1 ? inner.slice(0, newline).trim() : ""
-          const code = newline !== -1 ? inner.slice(newline + 1) : inner
+          const firstNewline = seg.indexOf("\n")
+          const lang = firstNewline > 3 ? seg.slice(3, firstNewline).trim() : ""
+          const code = firstNewline > 0 ? seg.slice(firstNewline + 1, -3) : seg.slice(3, -3)
           return (
-            <View key={i} style={{ backgroundColor: c.card, borderRadius: 10, borderWidth: 1, borderColor: c.border, overflow: "hidden", marginVertical: 4 }}>
+            <View key={i} style={{ backgroundColor: c.card, borderRadius: 8, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}>
               {lang ? (
-                <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: c.border }}>
-                  <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace" }}>{lang}</Text>
+                <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}>
+                  <Text style={{ color: c.fgSub, fontSize: 10, fontFamily: "monospace" }}>{lang}</Text>
                 </View>
               ) : null}
               <Text style={{ color: c.fgBright, fontSize: 12, fontFamily: "monospace", lineHeight: 19, padding: 12 }}>
@@ -65,44 +67,180 @@ function MessageContent({ text }: { text: string }) {
             </View>
           )
         }
-        if (!seg.trim()) return null
-        return <InlineText key={i} text={seg} />
+        // Parse block-level elements
+        const lines = seg.split("\n")
+        const elements: React.ReactNode[] = []
+        let listItems: string[] = []
+        let listOrdered = false
+
+        function flushList() {
+          if (listItems.length === 0) return
+          elements.push(
+            <View key={`list-${elements.length}`} style={{ gap: 2, paddingLeft: 4 }}>
+              {listItems.map((item, li) => (
+                <View key={li} style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
+                  <Text style={{ color: c.fgSub, fontSize: 14, lineHeight: 21, minWidth: 14 }}>
+                    {listOrdered ? `${li + 1}.` : "•"}
+                  </Text>
+                  <InlineText text={item} />
+                </View>
+              ))}
+            </View>
+          )
+          listItems = []
+        }
+
+        for (let li = 0; li < lines.length; li++) {
+          const line = lines[li]
+          if (!line.trim()) {
+            flushList()
+            continue
+          }
+          const h1 = line.match(/^# (.+)/)
+          const h2 = line.match(/^## (.+)/)
+          const h3 = line.match(/^### (.+)/)
+          const ul = line.match(/^[-*] (.+)/)
+          const ol = line.match(/^\d+\. (.+)/)
+          const blockquote = line.match(/^> (.+)/)
+          const hr = line.match(/^---+$/)
+          if (h1) {
+            flushList()
+            elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 18, fontWeight: "700", lineHeight: 26, marginTop: 4 }}>{h1[1]}</Text>)
+          } else if (h2) {
+            flushList()
+            elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 16, fontWeight: "700", lineHeight: 24, marginTop: 4 }}>{h2[1]}</Text>)
+          } else if (h3) {
+            flushList()
+            elements.push(<Text key={li} style={{ color: c.fgBright, fontSize: 14, fontWeight: "700", lineHeight: 22 }}>{h3[1]}</Text>)
+          } else if (ul) {
+            if (listOrdered) { flushList(); listOrdered = false }
+            listItems.push(ul[1])
+          } else if (ol) {
+            if (!listOrdered) { flushList(); listOrdered = true }
+            listItems.push(ol[1])
+          } else if (blockquote) {
+            flushList()
+            elements.push(
+              <View key={li} style={{ borderLeftWidth: 2, borderLeftColor: c.border, paddingLeft: 10, opacity: 0.7 }}>
+                <InlineText text={blockquote[1]} />
+              </View>
+            )
+          } else if (hr) {
+            flushList()
+            elements.push(<View key={li} style={{ height: 1, backgroundColor: c.border, marginVertical: 4 }} />)
+          } else {
+            flushList()
+            elements.push(<InlineText key={li} text={line} />)
+          }
+        }
+        flushList()
+        return elements.length > 0 ? <View key={i} style={{ gap: 3 }}>{elements}</View> : null
       })}
     </View>
   )
 }
 
-const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user"
-  const toolCount = message.toolCalls?.length ?? 0
+// ── Tool calls ────────────────────────────────────────────────────────────────
+
+function ToolCallRow({ call }: { call: ToolCall }) {
+  const [expanded, setExpanded] = useState(false)
+  const isDone = call.result != null
+  const name = call.tool === "Agent"
+    ? (() => { try { return JSON.parse(call.args ?? "{}").description ?? call.tool } catch { return call.tool } })()
+    : call.tool
 
   return (
-    <View style={{ paddingHorizontal: 16, paddingVertical: 8, alignItems: isUser ? "flex-end" : "flex-start" }}>
+    <TouchableOpacity
+      onPress={() => setExpanded(v => !v)}
+      activeOpacity={0.7}
+      style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, paddingVertical: 3 }}
+    >
+      <Text style={{ color: isDone ? "#34d399" : "#f59e0b", fontSize: 10, marginTop: 3 }}>
+        {isDone ? "✓" : "○"}
+      </Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace" }}>{name}</Text>
+        {expanded && call.args && call.tool !== "Agent" && (
+          <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", opacity: 0.6, marginTop: 2 }} numberOfLines={3}>
+            {(() => { try { return JSON.stringify(JSON.parse(call.args), null, 2) } catch { return call.args } })()}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+// ── Thinking block ────────────────────────────────────────────────────────────
+
+function ThinkingBlock({ thinking }: { thinking: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const preview = thinking.slice(0, 120).replace(/\n/g, " ")
+  return (
+    <TouchableOpacity
+      onPress={() => setExpanded(v => !v)}
+      activeOpacity={0.8}
+      style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, marginBottom: 6 }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Text style={{ color: "#a78bfa", fontSize: 11 }}>✦</Text>
+        <Text style={{ color: "#a78bfa", fontSize: 11, fontWeight: "600", flex: 1 }}>Thinking</Text>
+        <Text style={{ color: c.fgSub, fontSize: 10 }}>{expanded ? "▲" : "▼"}</Text>
+      </View>
+      {expanded ? (
+        <Text style={{ color: c.fgSub, fontSize: 12, lineHeight: 18, marginTop: 6, fontStyle: "italic" }}>
+          {thinking}
+        </Text>
+      ) : (
+        <Text style={{ color: c.fgSub, fontSize: 12, lineHeight: 18, marginTop: 4, fontStyle: "italic" }} numberOfLines={2}>
+          {preview}{thinking.length > 120 ? "…" : ""}
+        </Text>
+      )}
+    </TouchableOpacity>
+  )
+}
+
+// ── Message bubble ────────────────────────────────────────────────────────────
+
+const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
+  const isUser = message.role === "user"
+  const toolCalls = message.toolCalls ?? []
+  const hasContent = !!message.content
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingVertical: 6, alignItems: isUser ? "flex-end" : "flex-start" }}>
       {isUser ? (
         <View style={{ backgroundColor: c.secondary, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: "80%" }}>
           <Text style={{ color: c.fg, fontSize: 14, lineHeight: 20 }}>{message.content}</Text>
         </View>
       ) : (
-        <View style={{ maxWidth: "92%" }}>
-          {toolCount > 0 && (
-            <Text style={{ color: c.fgSub, fontSize: 11, marginBottom: 4 }}>
-              {toolCount} tool call{toolCount !== 1 ? "s" : ""}
-            </Text>
+        <View style={{ maxWidth: "94%" }}>
+          {/* Thinking block */}
+          {message.thinking ? <ThinkingBlock thinking={message.thinking} /> : null}
+
+          {/* Tool calls */}
+          {toolCalls.length > 0 && (
+            <View style={{ marginBottom: hasContent ? 8 : 0, gap: 2 }}>
+              {toolCalls.map((tc) => <ToolCallRow key={tc.id} call={tc} />)}
+            </View>
           )}
-          {message.content ? (
+
+          {/* Content */}
+          {hasContent ? (
             <MessageContent text={message.content} />
-          ) : toolCount > 0 ? null : (
+          ) : toolCalls.length === 0 ? (
             <View style={{ flexDirection: "row", gap: 4, paddingVertical: 4 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.secondary }} />
               ))}
             </View>
-          )}
+          ) : null}
         </View>
       )}
     </View>
   )
 })
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function AgentChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -112,6 +250,7 @@ export default function AgentChatScreen() {
   const { data: agent, isLoading, isError, refetch, isStreaming } = useAgent(id ?? null)
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
   const listRef = useRef<FlatList>(null)
 
   // Deduplicate by ID — prevents FlatList key errors when setQueryData (streaming)
@@ -139,6 +278,16 @@ export default function AgentChatScreen() {
     }
   }, [isStreaming])
 
+  // Auto-send queued message when streaming ends
+  useEffect(() => {
+    if (!isStreaming && queuedMessage !== null) {
+      const msg = queuedMessage
+      setQueuedMessage(null)
+      doSend(msg)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming])
+
   function handleModelPress() {
     const options = [...MODELS.map((m) => m.label), "Cancel"]
     if (Platform.OS === "ios") {
@@ -159,7 +308,7 @@ export default function AgentChatScreen() {
           onPress: () => {
             if (agent) {
               ;(api.updateAgent as any)(agent.id, { model: m.id })
-              queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model: m.id } : old)
+              queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model } : old)
             }
           },
         })),
@@ -168,12 +317,9 @@ export default function AgentChatScreen() {
     }
   }
 
-  async function handleSend() {
-    if (!input.trim() || !id || sending) return
-    const content = input.trim()
-    setInput("")
+  async function doSend(content: string) {
+    if (!id || !content.trim()) return
     setSending(true)
-
     const optimisticId = `optimistic-${Date.now()}`
     queryClient.setQueryData<Agent>(["agent", id], (old) => {
       if (!old) return old
@@ -185,12 +331,9 @@ export default function AgentChatScreen() {
         ],
       }
     })
-
     try {
       await api.sendMessage(id, content)
-      // 202 = running or queued — both are fine
     } catch {
-      // Remove optimistic message on failure
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
         return { ...old, messages: old.messages.filter((m) => m.id !== optimisticId) }
@@ -198,6 +341,18 @@ export default function AgentChatScreen() {
     } finally {
       setSending(false)
     }
+  }
+
+  function handleSend() {
+    const content = input.trim()
+    if (!content || !id || sending) return
+    setInput("")
+    if (isStreaming) {
+      // Queue for after streaming ends
+      setQueuedMessage(content)
+      return
+    }
+    doSend(content)
   }
 
   if (isError && !agent) {
@@ -267,11 +422,23 @@ export default function AgentChatScreen() {
 
       {/* Input bar */}
       <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + insets.bottom }}>
+        {/* Queued message preview */}
+        {queuedMessage && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
+            <Text style={{ color: c.fgSub, fontSize: 11, flex: 1 }} numberOfLines={1}>
+              ⏱ Queued: {queuedMessage}
+            </Text>
+            <TouchableOpacity onPress={() => setQueuedMessage(null)}>
+              <Text style={{ color: c.fgSub, fontSize: 12 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12 }}>
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder={messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
+            placeholder={isStreaming ? (queuedMessage ? "Replace queued message…" : "Queue a follow-up…") : messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
             placeholderTextColor={c.placeholder}
             multiline
             style={{
@@ -284,16 +451,8 @@ export default function AgentChatScreen() {
               maxHeight: 120,
             }}
           />
-          {/* Bottom toolbar — mirrors web: left=file+model, right=send */}
+          {/* Bottom toolbar */}
           <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingBottom: 8, gap: 4 }}>
-            {/* File attachment */}
-            <TouchableOpacity
-              onPress={() => Alert.alert("Attachments", "File uploads coming soon.")}
-              style={{ width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
-            >
-              <Text style={{ color: c.fgSub, fontSize: 16 }}>⊕</Text>
-            </TouchableOpacity>
-
             {/* Model selector */}
             <TouchableOpacity
               onPress={handleModelPress}
@@ -307,7 +466,7 @@ export default function AgentChatScreen() {
             <View style={{ flex: 1 }} />
 
             {/* Stop / send */}
-            {isStreaming && !sending ? (
+            {isStreaming && !queuedMessage ? (
               <TouchableOpacity
                 onPress={() => api.stopAgent(id!).catch(() => {})}
                 style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center" }}

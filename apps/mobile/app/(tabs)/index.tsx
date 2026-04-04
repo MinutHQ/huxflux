@@ -1,18 +1,83 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Alert } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useServerStatus, statusOrder, statusConfig, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
+import { useAgents, useServerStatus, statusOrder, statusConfig, api, type AgentSummary, type AgentStatus, getActiveServer } from "@hive/shared"
 import { c, statusColors } from "../../theme"
 import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+
+const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "in-review", "done", "backlog", "cancelled"]
 
 function AgentRow({ agent }: { agent: AgentSummary }) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const dotColor = statusColors[agent.status]?.color ?? c.fgSub
+
+  function handleLongPress() {
+    const renameOption = "Rename"
+    const statusOption = "Change status"
+    const deleteOption = "Delete"
+    const cancelOption = "Cancel"
+    Alert.alert(agent.title, undefined, [
+      {
+        text: renameOption,
+        onPress: () => {
+          Alert.prompt("Rename agent", undefined, (newTitle) => {
+            if (!newTitle?.trim() || newTitle.trim() === agent.title) return
+            api.updateAgent(agent.id, { title: newTitle.trim() })
+            queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+              old ? old.map((a) => a.id === agent.id ? { ...a, title: newTitle.trim() } : a) : old
+            )
+          }, "plain-text", agent.title)
+        },
+      },
+      {
+        text: statusOption,
+        onPress: () => {
+          Alert.alert("Change status", undefined, [
+            ...STATUS_OPTIONS.map((s) => ({
+              text: statusConfig[s].label,
+              onPress: () => {
+                api.updateAgent(agent.id, { status: s })
+                queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+                  old ? old.map((a) => a.id === agent.id ? { ...a, status: s } : a) : old
+                )
+              },
+            })),
+            { text: cancelOption, style: "cancel" as const },
+          ])
+        },
+      },
+      { text: deleteOption, style: "destructive" as const, onPress: () => {
+        Alert.alert("Delete agent", `Delete "${agent.title}"?`, [
+          { text: "Delete", style: "destructive", onPress: () => {
+            api.deleteAgent(agent.id)
+            queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+              old ? old.filter((a) => a.id !== agent.id) : old
+            )
+          }},
+          { text: "Cancel", style: "cancel" },
+        ])
+      }},
+      { text: cancelOption, style: "cancel" },
+    ])
+  }
+
+  // PR state color
+  const prColor = agent.prStatus
+    ? agent.prStatus.merged ? "#34d399"
+    : agent.prStatus.state === "closed" ? "#f87171"
+    : agent.prStatus.hasChangeRequests ? "#f59e0b"
+    : agent.prStatus.draft ? c.fgSub
+    : "#60a5fa"
+    : null
 
   return (
     <TouchableOpacity
       onPress={() => router.push(`/agent/${agent.id}`)}
+      onLongPress={handleLongPress}
+      delayLongPress={400}
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, flexShrink: 0 }} />
@@ -33,7 +98,10 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
             {agent.branch}
           </Text>
           {agent.prStatus && (
-            <Text style={{ color: c.fgSub, fontSize: 11 }}>· PR #{agent.prStatus.number}</Text>
+            <Text style={{ color: prColor ?? c.fgSub, fontSize: 11 }}>
+              · PR #{agent.prStatus.number}
+              {agent.prStatus.merged ? " ✓" : agent.prStatus.state === "closed" ? " ✕" : agent.prStatus.hasChangeRequests ? " ⚠" : ""}
+            </Text>
           )}
         </View>
       </View>

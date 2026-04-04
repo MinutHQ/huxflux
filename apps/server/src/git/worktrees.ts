@@ -14,6 +14,15 @@ export async function getRemoteUrl(repoPath: string, remote = "origin"): Promise
   }
 }
 
+async function refExists(git: ReturnType<typeof simpleGit>, ref: string): Promise<boolean> {
+  try {
+    await git.raw(["rev-parse", "--verify", `${ref}^{commit}`])
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function createWorktree(repoPath: string, branch: string, worktreePath: string, startPoint?: string): Promise<void> {
   const git = simpleGit(repoPath)
   await mkdir(path.dirname(worktreePath), { recursive: true })
@@ -29,11 +38,15 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     return normalized === branch
   })
 
+  // Resolve the effective start point: verify the ref actually exists (a local branch
+  // name like "master" on a repo with no commits yet is not a valid ref).
+  const effectiveStart = startPoint && await refExists(git, startPoint) ? startPoint : undefined
+
   async function doAdd(): Promise<void> {
     if (localBranchExists) {
       await git.raw(["worktree", "add", worktreePath, branch])
-    } else if (startPoint) {
-      await git.raw(["worktree", "add", "-b", branch, worktreePath, startPoint])
+    } else if (effectiveStart) {
+      await git.raw(["worktree", "add", "-b", branch, worktreePath, effectiveStart])
     } else {
       await git.raw(["worktree", "add", "-b", branch, worktreePath])
     }

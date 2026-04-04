@@ -103,7 +103,7 @@ export const mockFileDiffs: Record<string, string> = {
 +}`,
   "src/components/DevicesTable.tsx": `@@ -145,12 +145,24 @@
 +import { useDeviceImport } from '@/hooks/useDeviceImport'
-+import { Button } from '@hive/ui'
++import { Button } from '@huxflux/ui'
 +
 -export function DevicesTable({ devices }: { devices: Device[] }) {
 +export function DevicesTable({ devices, onImport }: Props) {

@@ -2,10 +2,10 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { Terminal } from "@xterm/xterm"
 import type { IDisposable } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
-import { cn } from "@hive/ui"
+import { cn } from "@huxflux/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
-import { getActiveServer, useRepos, api } from "@hive/shared"
+import { getActiveServer, useRepos, api } from "@huxflux/shared"
 import { colorThemes, getColorTheme } from "@/lib/colorThemes"
 import "@xterm/xterm/css/xterm.css"
 
@@ -73,11 +73,11 @@ function getTerminalTheme() {
 }
 
 function getStoredActiveTabId(agentId: string): string | null {
-  try { return localStorage.getItem(`hive-terminal-active-${agentId}`) } catch { return null }
+  try { return localStorage.getItem(`huxflux-terminal-active-${agentId}`) } catch { return null }
 }
 
 function setStoredActiveTabId(agentId: string, terminalId: string) {
-  try { localStorage.setItem(`hive-terminal-active-${agentId}`, terminalId) } catch { /* ignore */ }
+  try { localStorage.setItem(`huxflux-terminal-active-${agentId}`, terminalId) } catch { /* ignore */ }
 }
 
 export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, onPortChange }: TerminalViewProps) {
@@ -259,8 +259,8 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         session.term.options.theme = theme
       }
     }
-    window.addEventListener("hive:color-theme-change", handleThemeChange)
-    return () => window.removeEventListener("hive:color-theme-change", handleThemeChange)
+    window.addEventListener("huxflux:color-theme-change", handleThemeChange)
+    return () => window.removeEventListener("huxflux:color-theme-change", handleThemeChange)
   }, [])
 
   useEffect(() => {

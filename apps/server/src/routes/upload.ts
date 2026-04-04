@@ -22,7 +22,7 @@ export async function uploadRoutes(app: FastifyInstance) {
       worktreePath = process.cwd()
     }
 
-    const attachmentsDir = path.join(worktreePath, ".hive_attachments")
+    const attachmentsDir = path.join(worktreePath, ".huxflux_attachments")
     await fs.mkdir(attachmentsDir, { recursive: true })
 
     // Sanitise filename — reject traversal attempts

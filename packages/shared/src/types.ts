@@ -184,7 +184,7 @@ export interface SlashCommand {
   source: "builtin" | "skill"
 }
 
-import { statusColors } from "@hive/tokens"
+import { statusColors } from "@huxflux/tokens"
 
 function sc(key: keyof typeof statusColors, label: string) {
   const t = statusColors[key]

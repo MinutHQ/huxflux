@@ -16,7 +16,7 @@ export {
   getActiveServer,
   parseConnectionString,
 } from "./serverStore"
-export type { HiveServer } from "./serverStore"
+export type { HuxfluxServer } from "./serverStore"
 
 // API
 export { api, getApiBase } from "./api"

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { api } from "@hive/shared"
-import type { Agent, AgentSummary, FileChange, PRComment } from "@hive/shared"
+import { api } from "@huxflux/shared"
+import type { Agent, AgentSummary, FileChange, PRComment } from "@huxflux/shared"
 
 export interface ChatTab {
   agentId: string
@@ -30,7 +30,7 @@ export function useWorkspace(agents: AgentSummary[]) {
 
   const [tabs, setTabs] = useState<ChatTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(() => {
-    try { return localStorage.getItem("hive-active-agent") } catch { return null }
+    try { return localStorage.getItem("huxflux-active-agent") } catch { return null }
   })
   // The root (worktree-owning) agent for the current view — never changes when
   // switching between child chat sessions, so the terminal stays stable.
@@ -38,8 +38,8 @@ export function useWorkspace(agents: AgentSummary[]) {
   // session (which updates activeTabId) never corrupts rootAgentId on refresh.
   const [rootAgentId, setRootAgentId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem("hive-root-agent-id")
-          ?? localStorage.getItem("hive-active-agent")
+      return localStorage.getItem("huxflux-root-agent-id")
+          ?? localStorage.getItem("huxflux-active-agent")
     } catch { return null }
   })
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
@@ -54,16 +54,16 @@ export function useWorkspace(agents: AgentSummary[]) {
   // Persist active tab across refreshes
   useEffect(() => {
     try {
-      if (activeTabId) localStorage.setItem("hive-active-agent", activeTabId)
-      else localStorage.removeItem("hive-active-agent")
+      if (activeTabId) localStorage.setItem("huxflux-active-agent", activeTabId)
+      else localStorage.removeItem("huxflux-active-agent")
     } catch { /* ignore */ }
   }, [activeTabId])
 
   // Persist root agent separately so child-session tab switches don't corrupt it
   useEffect(() => {
     try {
-      if (rootAgentId) localStorage.setItem("hive-root-agent-id", rootAgentId)
-      else localStorage.removeItem("hive-root-agent-id")
+      if (rootAgentId) localStorage.setItem("huxflux-root-agent-id", rootAgentId)
+      else localStorage.removeItem("huxflux-root-agent-id")
     } catch { /* ignore */ }
   }, [rootAgentId])
 

@@ -60,7 +60,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export interface HiveSettings {
+export interface HuxfluxSettings {
   reviewPrompt?: string
 }
 
@@ -69,8 +69,8 @@ export const api = {
   getServerConfig: () => req<{ githubEnabled: boolean; feedbackEnabled: boolean }>("/api/config"),
 
   // Settings
-  getSettings: () => req<HiveSettings>("/api/settings"),
-  updateSettings: (body: Partial<HiveSettings>) => req<HiveSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
+  getSettings: () => req<HuxfluxSettings>("/api/settings"),
+  updateSettings: (body: Partial<HuxfluxSettings>) => req<HuxfluxSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
 
   // Agents
   getAgents: () => req<AgentSummary[]>("/api/agents"),
@@ -121,6 +121,10 @@ export const api = {
     req<{ ok: boolean }>(`/api/agents/${agentId}/files/content`, { method: "PUT", body: JSON.stringify({ path, content }) }),
   refreshFiles: (agentId: string) =>
     req<FileChange[]>(`/api/agents/${agentId}/files/refresh`, { method: "POST" }),
+  openIn: (agentId: string, app: string) =>
+    req<{ ok: boolean }>(`/api/agents/${agentId}/open-in`, { method: "POST", body: JSON.stringify({ app }) }),
+  getWorktreePath: (agentId: string) =>
+    req<{ path: string }>(`/api/agents/${agentId}/worktree-path`),
 
   // Terminal
   getTerminal: (agentId: string) => req<string[]>(`/api/agents/${agentId}/terminal`),

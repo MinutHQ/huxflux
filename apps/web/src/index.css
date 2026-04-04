@@ -137,7 +137,7 @@ textarea:focus {
 }
 
 /* Dark mode tokens — imported after :root so .dark wins the cascade */
-@import "@hive/tokens/tokens.css";
+@import "@huxflux/tokens/tokens.css";
 
 /* Web-specific dark vars not in tokens */
 .dark {

@@ -2,7 +2,7 @@ import { applyColorTheme, getColorTheme } from "./colorThemes"
 
 export type Theme = "dark" | "light" | "system"
 
-const KEY = "hive:theme"
+const KEY = "huxflux:theme"
 
 export function getTheme(): Theme {
   return (localStorage.getItem(KEY) as Theme) ?? "dark"
@@ -11,7 +11,7 @@ export function getTheme(): Theme {
 export function setTheme(theme: Theme) {
   localStorage.setItem(KEY, theme)
   applyTheme(theme)
-  window.dispatchEvent(new CustomEvent("hive:theme-change", { detail: theme }))
+  window.dispatchEvent(new CustomEvent("huxflux:theme-change", { detail: theme }))
 }
 
 export function applyTheme(theme: Theme) {

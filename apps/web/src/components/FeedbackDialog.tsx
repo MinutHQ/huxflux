@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { createPortal } from "react-dom"
-import { Button } from "@hive/ui"
-import { api } from "@hive/shared"
+import { Button } from "@huxflux/ui"
+import { api } from "@huxflux/shared"
 import { IconX, IconMessageCircle, IconExternalLink } from "@tabler/icons-react"
 import { toast } from "sonner"
 

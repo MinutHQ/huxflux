@@ -3,7 +3,7 @@ import * as TablerIcons from "@tabler/icons-react"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, setColorTheme, type ColorTheme } from "@/lib/colorThemes"
 import { createPortal } from "react-dom"
-import { Switch } from "@hive/ui"
+import { Switch } from "@huxflux/ui"
 import { SOUNDS, playSound } from "@/lib/sounds"
 import {
   getSoundPref, setSoundPref, getSoundEnabled, setSoundEnabled,
@@ -13,10 +13,10 @@ import {
   type SendWith,
 } from "@/lib/notificationPrefs"
 import type { SoundId } from "@/lib/sounds"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@hive/ui"
-import { Button } from "@hive/ui"
-import { cn } from "@hive/ui"
-import { useRepos, api } from "@hive/shared"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
+import { Button } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
+import { useRepos, api } from "@huxflux/shared"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import type { Repo } from "@/data/mock"
 import {
@@ -48,7 +48,7 @@ import {
 import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
-import { parseConnectionString, type HiveServer } from "@hive/shared"
+import { parseConnectionString, type HuxfluxServer } from "@huxflux/shared"
 
 type Section =
   | "general"
@@ -823,11 +823,11 @@ function ServerRow({
   onUpdate,
   onRemove,
 }: {
-  server: HiveServer
+  server: HuxfluxServer
   status: "online" | "offline" | "checking"
   isActive: boolean
   onSetActive: () => void
-  onUpdate: (patch: Partial<Pick<HiveServer, "name" | "url" | "token">>) => void
+  onUpdate: (patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>) => void
   onRemove: () => void
 }) {
   const [editing, setEditing] = useState(false)

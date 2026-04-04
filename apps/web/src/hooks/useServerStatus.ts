@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import type { HiveServer } from "@hive/shared"
+import type { HuxfluxServer } from "@huxflux/shared"
 
 export type ServerStatus = "online" | "offline" | "checking"
 
@@ -17,7 +17,7 @@ async function checkHealth(url: string): Promise<boolean> {
 }
 
 export function useServerStatus(
-  servers: HiveServer[]
+  servers: HuxfluxServer[]
 ): Record<string, ServerStatus> {
   const [statuses, setStatuses] = useState<Record<string, ServerStatus>>(() =>
     Object.fromEntries(servers.map((s) => [s.id, "checking" as ServerStatus]))

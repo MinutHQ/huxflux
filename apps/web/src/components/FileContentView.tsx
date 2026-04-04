@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ScrollArea } from "@hive/ui"
-import { cn } from "@hive/ui"
-import { api } from "@hive/shared"
+import { ScrollArea } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
+import { api } from "@huxflux/shared"
 import { IconCopy, IconPencil, IconDeviceFloppy, IconX } from "@tabler/icons-react"
 
 // ── Syntax tokenizer (same as DiffView) ─────────────────────────────────────

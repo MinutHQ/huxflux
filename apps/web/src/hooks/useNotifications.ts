@@ -1,5 +1,5 @@
 import { toast } from "sonner"
-import { useAgentEvents } from "@hive/shared"
+import { useAgentEvents } from "@huxflux/shared"
 import { playSound } from "@/lib/sounds"
 import { getSoundPref, getSoundEnabled, getDesktopNotif } from "@/lib/notificationPrefs"
 import type { AgentSummary } from "@/data/mock"

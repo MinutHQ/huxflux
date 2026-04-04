@@ -18,7 +18,7 @@ export function configureStorage(adapter: StorageAdapter): void {
 export function getStorage(): StorageAdapter {
   if (!_adapter) {
     throw new Error(
-      "@hive/shared: storage not configured — call configureStorage() before using the shared library"
+      "@huxflux/shared: storage not configured — call configureStorage() before using the shared library"
     )
   }
   return _adapter

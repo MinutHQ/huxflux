@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ScrollArea } from "@hive/ui"
-import { Button } from "@hive/ui"
-import { cn } from "@hive/ui"
+import { ScrollArea } from "@huxflux/ui"
+import { Button } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
 import type { Agent, FileChange, PRDetails, PRReview, PRCheck, PRComment, PRThread } from "@/data/mock"
-import { api } from "@hive/shared"
+import { api } from "@huxflux/shared"
 import {
   IconFileText,
   IconChevronDown,

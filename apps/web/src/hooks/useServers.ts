@@ -6,11 +6,11 @@ import {
   removeServer,
   getActiveServerId,
   setActiveServerId,
-  type HiveServer,
-} from "@hive/shared"
+  type HuxfluxServer,
+} from "@huxflux/shared"
 
 export function useServers() {
-  const [servers, setServers] = useState<HiveServer[]>(getServers)
+  const [servers, setServers] = useState<HuxfluxServer[]>(getServers)
   const [activeId, setActiveIdState] = useState<string | null>(getActiveServerId)
 
   const refresh = useCallback(() => {
@@ -19,7 +19,7 @@ export function useServers() {
   }, [])
 
   const add = useCallback(
-    (s: Omit<HiveServer, "id" | "addedAt">): HiveServer => {
+    (s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer => {
       const server = addServer(s)
       refresh()
       return server
@@ -28,7 +28,7 @@ export function useServers() {
   )
 
   const update = useCallback(
-    (id: string, patch: Partial<Pick<HiveServer, "name" | "url" | "token">>) => {
+    (id: string, patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>) => {
       updateServer(id, patch)
       // Reload if connection details changed so WS reconnects with new settings
       if (patch.url !== undefined || patch.token !== undefined) {

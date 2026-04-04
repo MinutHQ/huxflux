@@ -1,5 +1,5 @@
 {
-  "name": "@hive/shared",
+  "name": "@huxflux/shared",
   "version": "0.0.0",
   "private": true,
   "main": "./src/index.ts",
@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hive/tokens": "workspace:*"
+    "@huxflux/tokens": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18",

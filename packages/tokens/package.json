@@ -1,5 +1,5 @@
 {
-  "name": "@hive/tokens",
+  "name": "@huxflux/tokens",
   "version": "0.0.1",
   "type": "module",
   "main": "./src/tokens.ts",

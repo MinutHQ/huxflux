@@ -19,7 +19,7 @@ export interface ColorTheme {
   terminal: TerminalColors
 }
 
-const KEY = "hive:color-theme"
+const KEY = "huxflux:color-theme"
 
 export function getColorTheme(): string {
   return localStorage.getItem(KEY) ?? "stone"
@@ -28,7 +28,7 @@ export function getColorTheme(): string {
 export function setColorTheme(id: string) {
   localStorage.setItem(KEY, id)
   applyColorTheme(id)
-  window.dispatchEvent(new CustomEvent("hive:color-theme-change", { detail: id }))
+  window.dispatchEvent(new CustomEvent("huxflux:color-theme-change", { detail: id }))
 }
 
 export function applyColorTheme(id: string) {

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react"
-import type { HiveServer } from "../serverStore"
+import type { HuxfluxServer } from "../serverStore"
 
 export type ServerStatus = "online" | "offline" | "checking" | "unauthorized"
 
-async function checkStatus(server: HiveServer): Promise<ServerStatus> {
+async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
@@ -22,7 +22,7 @@ async function checkStatus(server: HiveServer): Promise<ServerStatus> {
   }
 }
 
-export function useServerStatus(servers: HiveServer[]): Record<string, ServerStatus> {
+export function useServerStatus(servers: HuxfluxServer[]): Record<string, ServerStatus> {
   const [statuses, setStatuses] = useState<Record<string, ServerStatus>>(() =>
     Object.fromEntries(servers.map((s) => [s.id, "checking" as ServerStatus]))
   )

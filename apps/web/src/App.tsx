@@ -11,8 +11,8 @@ import { Onboarding } from "@/components/Onboarding"
 import { PRView } from "@/components/PRView"
 import { HomeView } from "@/components/HomeView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig, api } from "@hive/shared"
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
+import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig, api } from "@huxflux/shared"
 import { useQuery } from "@tanstack/react-query"
 import { useNotifications } from "@/hooks/useNotifications"
 import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
@@ -28,7 +28,7 @@ import { UpdateBanner } from "@/components/UpdateBanner"
 
 function useCurrentTheme(): Theme {
   return useSyncExternalStore(
-    (cb) => { window.addEventListener("hive:theme-change", cb); return () => window.removeEventListener("hive:theme-change", cb) },
+    (cb) => { window.addEventListener("huxflux:theme-change", cb); return () => window.removeEventListener("huxflux:theme-change", cb) },
     getTheme,
     () => "dark"
   )
@@ -48,9 +48,9 @@ export default function App() {
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
-  const sidebarLayout = useDefaultLayout({ id: "hive-sidebar", panelIds: ["hive-sidebar-panel", "hive-content-panel"] })
-  const mainLayout = useDefaultLayout({ id: "hive-main", panelIds: ["hive-main-chat", "hive-main-right"] })
-  const rightLayout = useDefaultLayout({ id: "hive-right", panelIds: ["hive-right-files", "hive-right-terminal"] })
+  const sidebarLayout = useDefaultLayout({ id: "huxflux-sidebar", panelIds: ["huxflux-sidebar-panel", "huxflux-content-panel"] })
+  const mainLayout = useDefaultLayout({ id: "huxflux-main", panelIds: ["huxflux-main-chat", "huxflux-main-right"] })
+  const rightLayout = useDefaultLayout({ id: "huxflux-right", panelIds: ["huxflux-right-files", "huxflux-right-terminal"] })
 
   const toggleSidebar = useCallback(() => {
     if (sidebarRef.current?.isCollapsed()) {
@@ -128,7 +128,7 @@ export default function App() {
   const { prs, isLoading: prsLoading } = usePRs()
   const [reviewedPrIds, setReviewedPrIds] = useState<Set<string>>(new Set())
   const [userReviewedPrIds, setUserReviewedPrIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("hive:user-reviewed") ?? "[]")) }
+    try { return new Set(JSON.parse(localStorage.getItem("huxflux:user-reviewed") ?? "[]")) }
     catch { return new Set() }
   })
 
@@ -214,7 +214,7 @@ export default function App() {
     clearDeletingAgent: workspace.clearDeletingAgent,
     prs: prReviewEnabled ? prs.map((p) => ({
       ...p,
-      reviewReady: reviewedPrIds.has(p.id) || !!(p.repoId && localStorage.getItem(`hive:review:${p.repoId}:${p.number}`)),
+      reviewReady: reviewedPrIds.has(p.id) || !!(p.repoId && localStorage.getItem(`huxflux:review:${p.repoId}:${p.number}`)),
       userReviewed: p.userReviewed || userReviewedPrIds.has(p.id),
     })) : [],
     selectedPrId: workspace.selectedPrId,
@@ -267,7 +267,7 @@ export default function App() {
         onUserReviewed={() => {
           const next = new Set([...userReviewedPrIds, selectedPr.id])
           setUserReviewedPrIds(next)
-          localStorage.setItem("hive:user-reviewed", JSON.stringify([...next]))
+          localStorage.setItem("huxflux:user-reviewed", JSON.stringify([...next]))
         }}
       />
     </div>
@@ -287,7 +287,7 @@ export default function App() {
     </div>
   ) : (
     <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0" defaultLayout={mainLayout.defaultLayout} onLayoutChanged={mainLayout.onLayoutChanged}>
-      <ResizablePanel id="hive-main-chat" order={1} defaultSize="72" minSize="30">
+      <ResizablePanel id="huxflux-main-chat" order={1} defaultSize="72" minSize="30">
         <ChatView
           agent={activeAgent}
           isStreaming={activeIsStreaming}
@@ -311,9 +311,9 @@ export default function App() {
 
       <ResizableHandle />
 
-      <ResizablePanel id="hive-main-right" order={2} defaultSize="28" minSize="15">
+      <ResizablePanel id="huxflux-main-right" order={2} defaultSize="28" minSize="15">
         <ResizablePanelGroup orientation="vertical" defaultLayout={rightLayout.defaultLayout} onLayoutChanged={rightLayout.onLayoutChanged}>
-          <ResizablePanel id="hive-right-files" order={1} defaultSize="50" minSize="20">
+          <ResizablePanel id="huxflux-right-files" order={1} defaultSize="50" minSize="20">
             <FileChangesView
               agent={activeAgent}
               selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
@@ -327,7 +327,7 @@ export default function App() {
 
           <ResizableHandle />
 
-          <ResizablePanel id="hive-right-terminal" order={2} defaultSize="50" minSize="15">
+          <ResizablePanel id="huxflux-right-terminal" order={2} defaultSize="50" minSize="15">
             {terminalPanel}
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -350,7 +350,7 @@ export default function App() {
 
       <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
         <ResizablePanel
-          id="hive-sidebar-panel"
+          id="huxflux-sidebar-panel"
           order={1}
           panelRef={sidebarRef}
           defaultSize="18"
@@ -366,7 +366,7 @@ export default function App() {
 
         <ResizableHandle />
 
-        <ResizablePanel id="hive-content-panel" order={2} defaultSize="82" minSize="50" className="flex min-w-0 relative">
+        <ResizablePanel id="huxflux-content-panel" order={2} defaultSize="82" minSize="50" className="flex min-w-0 relative">
           {/* Expand button shown when sidebar is collapsed */}
           {sidebarCollapsed && (
             <button

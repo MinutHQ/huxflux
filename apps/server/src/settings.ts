@@ -4,19 +4,19 @@ import { DATA_DIR } from "./config.js"
 
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json")
 
-export interface HiveSettings {
+export interface HuxfluxSettings {
   reviewPrompt?: string
 }
 
-export function getSettings(): HiveSettings {
+export function getSettings(): HuxfluxSettings {
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) as HiveSettings
+    return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) as HuxfluxSettings
   } catch {
     return {}
   }
 }
 
-export function saveSettings(settings: HiveSettings): void {
+export function saveSettings(settings: HuxfluxSettings): void {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }) } catch { /* exists */ }
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2))
 }

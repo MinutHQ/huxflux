@@ -1,4 +1,4 @@
-// Re-export everything from @hive/shared so existing component imports keep working.
+// Re-export everything from @huxflux/shared so existing component imports keep working.
 export type {
   AgentStatus,
   PRStatus,
@@ -15,6 +15,6 @@ export type {
   AgentSummary,
   Repo,
   SlashCommand,
-} from "@hive/shared"
+} from "@huxflux/shared"
 
-export { statusConfig, statusOrder } from "@hive/shared"
+export { statusConfig, statusOrder } from "@huxflux/shared"

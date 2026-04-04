@@ -7,7 +7,7 @@ function uuid(): string {
   })
 }
 
-export interface HiveServer {
+export interface HuxfluxServer {
   id: string
   name: string
   url: string
@@ -18,25 +18,25 @@ export interface HiveServer {
 const SERVERS_KEY = "huxflux:servers"
 const ACTIVE_KEY = "huxflux:active-server"
 
-function getServersRaw(): HiveServer[] {
+function getServersRaw(): HuxfluxServer[] {
   try {
     const raw = getStorage().getItem(SERVERS_KEY)
     if (!raw) return []
-    return JSON.parse(raw) as HiveServer[]
+    return JSON.parse(raw) as HuxfluxServer[]
   } catch {
     return []
   }
 }
 
-export function getServers(): HiveServer[] {
+export function getServers(): HuxfluxServer[] {
   return getServersRaw()
 }
 
-function saveServers(servers: HiveServer[]): void {
+function saveServers(servers: HuxfluxServer[]): void {
   getStorage().setItem(SERVERS_KEY, JSON.stringify(servers))
 }
 
-export function addServer(s: Omit<HiveServer, "id" | "addedAt">): HiveServer {
+export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer {
   const existing = getServers()
   const normalizedUrl = s.url.replace(/\/$/, "")
   const duplicate = existing.find((srv) => srv.url.replace(/\/$/, "") === normalizedUrl)
@@ -48,7 +48,7 @@ export function addServer(s: Omit<HiveServer, "id" | "addedAt">): HiveServer {
     }
     return duplicate
   }
-  const server: HiveServer = {
+  const server: HuxfluxServer = {
     ...s,
     url: normalizedUrl,
     id: uuid(),
@@ -60,7 +60,7 @@ export function addServer(s: Omit<HiveServer, "id" | "addedAt">): HiveServer {
 
 export function updateServer(
   id: string,
-  patch: Partial<Pick<HiveServer, "name" | "url" | "token">>
+  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>
 ): void {
   saveServers(getServers().map((s) => (s.id === id ? { ...s, ...patch } : s)))
 }
@@ -85,7 +85,7 @@ export function setActiveServerId(id: string): void {
   getStorage().setItem(ACTIVE_KEY, id)
 }
 
-export function getActiveServer(): HiveServer | null {
+export function getActiveServer(): HuxfluxServer | null {
   const servers = getServers()
   const activeId = getActiveServerId()
   return servers.find((s) => s.id === activeId) ?? servers[0] ?? null

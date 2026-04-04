@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
-    "@hive/shared": "workspace:*",
-    "@hive/tokens": "workspace:*",
-    "@hive/ui": "workspace:*",
+    "@huxflux/shared": "workspace:*",
+    "@huxflux/tokens": "workspace:*",
+    "@huxflux/ui": "workspace:*",
     "@tabler/icons-react": "^3.41.1",
     "@tanstack/react-query": "^5.95.2",
     "@tanstack/react-router": "^1.168.8",

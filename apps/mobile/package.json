@@ -1,17 +1,17 @@
 {
-  "name": "hive-mobile",
+  "name": "huxflux-mobile",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
-    "@hive/shared": "../../packages/shared",
-    "@hive/tokens": "../../packages/tokens",
+    "@huxflux/shared": "../../packages/shared",
+    "@huxflux/tokens": "../../packages/tokens",
     "@react-native-async-storage/async-storage": "^1.24.0",
     "@shopify/flash-list": "^2.3.1",
     "@tanstack/react-query": "^5.96.0",
@@ -28,6 +28,7 @@
     "react-native-mmkv": "^4.3.0",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
+    "react-native-webview": "13.15.0",
     "tailwindcss": "^3.4.19"
   },
   "devDependencies": {

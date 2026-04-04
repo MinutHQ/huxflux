@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import { ScrollArea, Button, cn, ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { useRepos } from "@hive/shared"
-import type { Repo } from "@hive/shared"
+import { ScrollArea, Button, cn, ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
+import { useRepos } from "@huxflux/shared"
+import type { Repo } from "@huxflux/shared"
 import {
   IconSend,
   IconFlask,

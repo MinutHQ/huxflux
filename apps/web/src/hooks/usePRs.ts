@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { api, useServerConfig } from "@hive/shared"
+import { api, useServerConfig } from "@huxflux/shared"
 import type { PullRequest } from "@/data/mockReviews"
 
 function relativeTime(iso: string): string {

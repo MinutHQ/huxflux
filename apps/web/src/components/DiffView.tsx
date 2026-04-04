@@ -1,9 +1,9 @@
 import { useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ScrollArea } from "@hive/ui"
-import { cn } from "@hive/ui"
+import { ScrollArea } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
 import type { FileChange } from "@/data/mock"
-import { api } from "@hive/shared"
+import { api } from "@huxflux/shared"
 import { IconCopy, IconEye } from "@tabler/icons-react"
 
 // ── Diff parsing ──────────────────────────────────────────────────────────────

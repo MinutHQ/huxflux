@@ -1,7 +1,7 @@
 import { useState } from "react"
-import { Button } from "@hive/ui"
+import { Button } from "@huxflux/ui"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId, parseConnectionString } from "@hive/shared"
+import { setActiveServerId, parseConnectionString } from "@huxflux/shared"
 import { IconServer, IconLoader2, IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react"
 
 interface OnboardingProps {

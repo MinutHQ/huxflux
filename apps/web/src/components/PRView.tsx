@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { ScrollArea } from "@hive/ui"
-import { Button } from "@hive/ui"
-import { cn } from "@hive/ui"
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@hive/ui"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@hive/ui"
+import { ScrollArea } from "@huxflux/ui"
+import { Button } from "@huxflux/ui"
+import { cn } from "@huxflux/ui"
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
 import type { PullRequest, ReviewComment, PRFile } from "@/data/mockReviews"
 import { mockReviewResults } from "@/data/mockReviews"
-import { api } from "@hive/shared"
+import { api } from "@huxflux/shared"
 import { toast } from "sonner"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref, getDesktopNotif } from "@/lib/notificationPrefs"
-import type { PRThread } from "@hive/shared"
+import type { PRThread } from "@huxflux/shared"
 import {
   IconSend,
   IconPlus,
@@ -1097,7 +1097,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const initRef = useRef(false)
 
-  const reviewCacheKey = pr.repoId ? `hive:review:${pr.repoId}:${pr.number}` : null
+  const reviewCacheKey = pr.repoId ? `huxflux:review:${pr.repoId}:${pr.number}` : null
 
   function loadCachedReviews(): ChatMessage[] {
     if (!reviewCacheKey) return []
@@ -1359,7 +1359,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
     } catch (err) {
       const errMsg = (err as Error).message
       const fallback = errMsg.startsWith("not_configured")
-        ? `This repo isn't configured locally in Hive. Add it in Settings to enable AI review.${errMsg.includes("\n") ? "\n\n" + errMsg.slice(errMsg.indexOf("\n") + 1) : ""}`
+        ? `This repo isn't configured locally in Huxflux. Add it in Settings to enable AI review.${errMsg.includes("\n") ? "\n\n" + errMsg.slice(errMsg.indexOf("\n") + 1) : ""}`
         : `Review failed: ${errMsg}`
       setMessages((prev) =>
         prev.map((m) =>

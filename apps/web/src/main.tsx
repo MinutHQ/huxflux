@@ -2,7 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { configureStorage, configureAgentErrorHandler } from "@hive/shared"
+import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
 import "./index.css"
 

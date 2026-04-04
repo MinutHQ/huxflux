@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react"
-import { api, useAgents, useRepos, type WorkspaceStats } from "@hive/shared"
+import { api, useAgents, useRepos, type WorkspaceStats } from "@huxflux/shared"
 import { statusConfig, type AgentStatus } from "@/data/mock"
-import { cn } from "@hive/ui"
+import { cn } from "@huxflux/ui"
 import {
   IconGitBranch,
   IconDatabase,

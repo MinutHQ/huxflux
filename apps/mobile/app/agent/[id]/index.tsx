@@ -14,6 +14,7 @@ import * as ImagePicker from "expo-image-picker"
 import { File as ExpoFile } from "expo-file-system"
 import { c } from "../../../theme"
 import { useModal } from "../../../components/Modal"
+import { prefs } from "../../../lib/prefs"
 import FilesPane from "./files"
 import PRPane from "./pr"
 
@@ -49,8 +50,32 @@ function InlineText({ text }: { text: string }) {
   )
 }
 
+const CLAUDE_CONTEXT_TOKENS = 200_000
+
+function ContextIndicator({ messages }: { messages: Message[] }) {
+  const latest = [...messages].reverse().find((m) => m.role === "assistant" && m.inputTokens != null)
+  const tokens = latest?.inputTokens ?? 0
+  const pct = Math.min(tokens / CLAUDE_CONTEXT_TOKENS, 1)
+  const alwaysShow = prefs.getAlwaysContext()
+  if (tokens === 0 || (!alwaysShow && pct < 0.7)) return null
+  const color = pct >= 0.9 ? "#f87171" : pct >= 0.7 ? "#facc15" : "#60a5fa"
+  return (
+    <View style={{ paddingHorizontal: 12, paddingBottom: 8, justifyContent: "flex-end" }}>
+      <Text style={{ color, fontSize: 10, fontWeight: "600" }}>{Math.round(pct * 100)}%</Text>
+    </View>
+  )
+}
+
+const STRIP_PATTERN = /^(You'?re? absolutely right[!.]?\s*|I apologize[,.]?\s*you'?re? (absolutely |completely |entirely )?right[!.]?\s*)/i
+
+function stripSycophancy(text: string): string {
+  if (!prefs.getStripYoureRight()) return text
+  return text.replace(STRIP_PATTERN, "")
+}
+
 function MessageContent({ text }: { text: string }) {
-  const segments = text.split(/(```[\s\S]*?```)/g)
+  const processed = stripSycophancy(text)
+  const segments = processed.split(/(```[\s\S]*?```)/g)
   return (
     <View style={{ gap: 4 }}>
       {segments.map((seg, i) => {
@@ -854,6 +879,7 @@ export default function AgentChatScreen() {
           </TouchableOpacity>
         ))}
         <View style={{ flex: 1 }} />
+        <ContextIndicator messages={messages} />
       </View>
 
       {activeTab === "chat" && (

@@ -7,6 +7,7 @@ import { ModalProvider, useModal } from "../components/Modal"
 import { KeyboardProvider } from "react-native-keyboard-controller"
 import { StatusBar } from "expo-status-bar"
 import { ThemeContext, applyTheme, themes, c } from "../theme"
+import { PREF_KEYS } from "../lib/prefs"
 
 // Synchronous in-memory store backed by AsyncStorage.
 const cache = new Map<string, string>()
@@ -23,7 +24,7 @@ configureStorage({
   },
 })
 
-const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server", "huxflux:mobile-theme"]
+const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server", "huxflux:mobile-theme", ...PREF_KEYS]
 
 const HydrationContext = createContext(false)
 export function useHydrated() { return useContext(HydrationContext) }

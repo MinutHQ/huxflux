@@ -2,7 +2,7 @@
 export * from "./types"
 
 // Storage
-export { configureStorage } from "./storage"
+export { configureStorage, getStorage } from "./storage"
 export type { StorageAdapter } from "./storage"
 
 // Server store

@@ -1,11 +1,12 @@
-import { View, Text, TouchableOpacity, Modal, TextInput, ActivityIndicator, Linking, ScrollView } from "react-native"
+import { View, Text, TouchableOpacity, Modal, TextInput, ActivityIndicator, Linking, ScrollView, Switch } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { getActiveServer, getServers, useServerConfig, api } from "@huxflux/shared"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { c, themes, useTheme } from "../../theme"
 import { useModal } from "../../components/Modal"
+import { prefs } from "../../lib/prefs"
 
 function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [title, setTitle] = useState("")
@@ -91,6 +92,39 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
   )
 }
 
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+      {label}
+    </Text>
+  )
+}
+
+function SettingRow({ label, description, value, onValueChange }: {
+  label: string
+  description?: string
+  value: boolean
+  onValueChange: (v: boolean) => void
+}) {
+  return (
+    <View style={{
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border,
+    }}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>{label}</Text>
+        {description ? <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2, lineHeight: 16 }}>{description}</Text> : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: c.border, true: c.fgBright }}
+        thumbColor={c.bg}
+      />
+    </View>
+  )
+}
+
 export default function SettingsScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
@@ -99,6 +133,36 @@ export default function SettingsScreen() {
   const { feedbackEnabled } = useServerConfig()
   const [feedbackVisible, setFeedbackVisible] = useState(false)
   const { themeId, setThemeId } = useTheme()
+
+  // General prefs
+  const [stripYoureRight, setStripYoureRightState] = useState(() => prefs.getStripYoureRight())
+  const [alwaysContext, setAlwaysContextState] = useState(() => prefs.getAlwaysContext())
+  const [autoConvert, setAutoConvertState] = useState(() => prefs.getAutoConvert())
+
+  // Git prefs
+  const [gitAutoPush, setGitAutoPushState] = useState(() => prefs.getGitAutoPush())
+  const [gitDeleteBranch, setGitDeleteBranchState] = useState(() => prefs.getGitDeleteBranch())
+  const [gitArchiveOnMerge, setGitArchiveOnMergeState] = useState(() => prefs.getGitArchiveOnMerge())
+
+  // Review prompt
+  const [reviewPrompt, setReviewPromptState] = useState("")
+  const [reviewSaved, setReviewSaved] = useState(false)
+  const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    api.getSettings().then((s) => {
+      setReviewPromptState(s.reviewPrompt ?? "")
+    }).catch(() => {})
+  }, [])
+
+  function handleReviewPromptChange(text: string) {
+    setReviewPromptState(text)
+    setReviewSaved(false)
+    if (reviewTimerRef.current) clearTimeout(reviewTimerRef.current)
+    reviewTimerRef.current = setTimeout(() => {
+      api.updateSettings({ reviewPrompt: text }).then(() => setReviewSaved(true))
+    }, 800)
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -117,9 +181,7 @@ export default function SettingsScreen() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 20 }}>
         {/* Server */}
         <View>
-          <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
-            Server
-          </Text>
+          <SectionLabel label="Server" />
           <TouchableOpacity
             onPress={() => router.push("/servers")}
             style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
@@ -135,15 +197,105 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* General */}
+        <View>
+          <SectionLabel label="General" />
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14 }}>
+            <SettingRow
+              label="Auto-convert long text"
+              description="Convert pasted text over 5000 characters into text attachments"
+              value={autoConvert}
+              onValueChange={(v) => { setAutoConvertState(v); prefs.setAutoConvert(v) }}
+            />
+            <SettingRow
+              label="I'm not absolutely right, thank you very much"
+              description={'Strip "You\'re absolutely right!" from AI messages'}
+              value={stripYoureRight}
+              onValueChange={(v) => { setStripYoureRightState(v); prefs.setStripYoureRight(v) }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12 }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>Always show context usage</Text>
+                <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
+                  Always show context percent used. By default shown only when &gt;70% used.
+                </Text>
+              </View>
+              <Switch
+                value={alwaysContext}
+                onValueChange={(v) => { setAlwaysContextState(v); prefs.setAlwaysContext(v) }}
+                trackColor={{ false: c.border, true: c.fgBright }}
+                thumbColor={c.bg}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Git */}
+        <View>
+          <SectionLabel label="Git" />
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingHorizontal: 14 }}>
+            <SettingRow
+              label="Auto-push after commit"
+              description="Automatically push to remote after each commit"
+              value={gitAutoPush}
+              onValueChange={(v) => { setGitAutoPushState(v); prefs.setGitAutoPush(v) }}
+            />
+            <SettingRow
+              label="Delete branch on archive"
+              description="Delete the git branch when an agent is archived"
+              value={gitDeleteBranch}
+              onValueChange={(v) => { setGitDeleteBranchState(v); prefs.setGitDeleteBranch(v) }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12 }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>Archive on merge</Text>
+                <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
+                  Automatically archive agents when their PR is merged
+                </Text>
+              </View>
+              <Switch
+                value={gitArchiveOnMerge}
+                onValueChange={(v) => { setGitArchiveOnMergeState(v); prefs.setGitArchiveOnMerge(v) }}
+                trackColor={{ false: c.border, true: c.fgBright }}
+                thumbColor={c.bg}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Review */}
+        <View>
+          <SectionLabel label="Review" />
+          <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>Review prompt</Text>
+              {reviewSaved && <Text style={{ color: c.fgSub, fontSize: 11 }}>Saved</Text>}
+            </View>
+            <Text style={{ color: c.fgSub, fontSize: 12, marginBottom: 8, lineHeight: 16 }}>
+              Custom instructions injected into every AI code review.
+            </Text>
+            <TextInput
+              value={reviewPrompt}
+              onChangeText={handleReviewPromptChange}
+              placeholder="e.g. Focus on security and performance issues..."
+              placeholderTextColor={c.placeholder}
+              multiline
+              style={{
+                backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8,
+                padding: 12, color: c.fg, fontSize: 13, minHeight: 100, textAlignVertical: "top",
+                lineHeight: 18,
+              }}
+            />
+          </View>
+        </View>
+
         {/* Theme */}
         {[
           { label: "Dark Themes", items: themes.filter((t) => !t.light) },
           { label: "Light Themes", items: themes.filter((t) => t.light) },
         ].map((section) => (
           <View key={section.label}>
-            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
-              {section.label}
-            </Text>
+            <SectionLabel label={section.label} />
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {section.items.map((t) => {
                 const active = t.id === themeId
@@ -186,9 +338,7 @@ export default function SettingsScreen() {
         {/* Feedback */}
         {feedbackEnabled && (
           <View>
-            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
-              Feedback
-            </Text>
+            <SectionLabel label="Feedback" />
             <TouchableOpacity
               onPress={() => setFeedbackVisible(true)}
               style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}

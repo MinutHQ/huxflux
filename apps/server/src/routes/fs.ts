@@ -48,7 +48,7 @@ async function findGitRepos(rootPath: string, maxDepth: number, results: RepoRes
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
-    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue
+    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name) || entry.name === "conductor") continue
     const fullPath = path.join(rootPath, entry.name)
     if (await isGitRepo(fullPath)) {
       results.push({ name: entry.name, path: fullPath })

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { ModalProvider, useModal } from "../components/Modal"
+import { KeyboardProvider } from "react-native-keyboard-controller"
 
 // Synchronous in-memory store backed by AsyncStorage.
 const cache = new Map<string, string>()
@@ -87,10 +88,12 @@ export default function RootLayout() {
   }, [])
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ModalProvider>
-        <AppContent hydrated={hydrated} />
-      </ModalProvider>
-    </QueryClientProvider>
+    <KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <ModalProvider>
+          <AppContent hydrated={hydrated} />
+        </ModalProvider>
+      </QueryClientProvider>
+    </KeyboardProvider>
   )
 }

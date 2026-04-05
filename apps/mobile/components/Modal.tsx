@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, Modal, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView } from "react-native"
+import { View, Text, TouchableOpacity, Modal, TextInput, Pressable, Platform, ScrollView } from "react-native"
+import { KeyboardAvoidingView } from "react-native-keyboard-controller"
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react"
 import { c } from "../theme"
 
@@ -41,7 +42,7 @@ export function useModal() {
 function Backdrop({ onPress, children }: { onPress: () => void; children: React.ReactNode }) {
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <Pressable
           onPress={onPress}
           style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}

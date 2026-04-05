@@ -127,7 +127,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               autoFocus
               value={url}
               onChange={(e) => handleConnectionInput(e.target.value)}
-              placeholder="huxflux://100.64.0.5:3001?token=… or http://localhost:3001"
+              placeholder="huxflux://100.64.0.5:4321?token=… or http://localhost:4321"
               className="w-full text-sm font-mono bg-background border border-input rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
             />
           </div>

@@ -46,7 +46,7 @@ function loadConfig(): Config {
   }
   const cfg: Config = {
     token: crypto.randomBytes(32).toString("hex"),
-    port: 3001,
+    port: 4321,
   }
   saveConfig(cfg)
   return cfg

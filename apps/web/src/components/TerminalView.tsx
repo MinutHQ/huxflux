@@ -41,7 +41,7 @@ const globalSessions = new Map<string, Session>()
 
 function getPtyWsUrl(agentId: string, terminalId: string, fresh: boolean): string {
   const server = getActiveServer()
-  const base = server?.url ?? "http://localhost:3001"
+  const base = server?.url ?? "http://localhost:4321"
   const wsBase = base.replace(/^http/, "ws")
   const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}${fresh ? "&fresh=1" : ""}`
   return server?.token ? `${url}&token=${server.token}` : url

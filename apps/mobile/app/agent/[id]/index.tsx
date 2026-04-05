@@ -1,7 +1,8 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  Platform, ActivityIndicator,
 } from "react-native"
+import { KeyboardAvoidingView } from "react-native-keyboard-controller"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -524,7 +525,7 @@ function TerminalPane({ agentId }: { agentId: string }) {
   const terminalId = activeTerminal?.terminalId ?? "t1"
 
   const server = getActiveServer()
-  const base = server?.url ?? "http://localhost:3001"
+  const base = server?.url ?? "http://localhost:4321"
   const wsBase = base.replace(/^http/, "ws")
   const wsUrl = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}&fresh=1${server?.token ? `&token=${server.token}` : ""}`
 
@@ -604,6 +605,7 @@ export default function AgentChatScreen() {
   // Reset to chat when switching agents
   useEffect(() => { setActiveTab("chat") }, [id])
   const listRef = useRef<FlatList>(null)
+  const isAtBottom = useRef(true)
 
   // Deduplicate by ID — prevents FlatList key errors when setQueryData (streaming)
   // and invalidateQueries (refetch) briefly produce the same ID twice
@@ -618,19 +620,17 @@ export default function AgentChatScreen() {
 
   const teamAgents = useMemo(() => extractTeamAgents(messages, isStreaming), [messages, isStreaming])
 
-  // Scroll to bottom when a new message is added (not during streaming content updates)
-  useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50)
-    }
-  }, [messages.length])
+  // Track streaming content length so we can auto-scroll during streaming
+  const lastMessage = messages[messages.length - 1]
+  const streamingContentLen = lastMessage?.content?.length ?? 0
+  const streamingToolCallsLen = lastMessage?.toolCalls?.length ?? 0
 
-  // Scroll to bottom when streaming ends
+  // Scroll to bottom when new messages arrive, content streams, or streaming ends
   useEffect(() => {
-    if (!isStreaming) {
+    if (messages.length > 0 && isAtBottom.current) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50)
     }
-  }, [isStreaming])
+  }, [messages.length, streamingContentLen, streamingToolCallsLen, isStreaming])
 
   // Auto-send queued message when streaming ends
   useEffect(() => {
@@ -742,7 +742,7 @@ export default function AgentChatScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
       {/* Sessions strip — shown when there are (or could be) multiple sessions */}
@@ -828,6 +828,11 @@ export default function AgentChatScreen() {
             keyExtractor={(m) => m.id}
             renderItem={({ item }) => <MessageBubble message={item} />}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+            onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
+              const dist = contentSize.height - contentOffset.y - layoutMeasurement.height
+              isAtBottom.current = dist < 80
+            }}
+            scrollEventThrottle={100}
             ListHeaderComponent={hasMore ? (
               <TouchableOpacity
                 onPress={loadMore}

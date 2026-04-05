@@ -19,7 +19,7 @@ export const repos = sqliteTable("repos", {
 
 export const agents = sqliteTable("agents", {
   id: text("id").primaryKey(),
-  repoId: text("repo_id").references(() => repos.id),
+  repoId: text("repo_id").references(() => repos.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   status: text("status").notNull().default("backlog"),
   branch: text("branch").notNull(),

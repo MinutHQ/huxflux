@@ -103,7 +103,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
         type="url"
         value={url}
         onChange={(e) => { setUrl(e.target.value); setError(null) }}
-        placeholder="http://localhost:3001"
+        placeholder="http://localhost:4321"
         className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
       />
       <input

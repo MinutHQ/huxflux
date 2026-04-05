@@ -22,7 +22,7 @@ export interface WorkspaceStats {
 }
 
 function getBase(): string {
-  return getActiveServer()?.url ?? "http://localhost:3001"
+  return getActiveServer()?.url ?? "http://localhost:4321"
 }
 
 function authHeaders(): Record<string, string> {

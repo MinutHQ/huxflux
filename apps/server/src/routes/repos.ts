@@ -6,7 +6,7 @@ import * as fsSync from "node:fs"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { db } from "../db/index.js"
-import { repos } from "../db/schema.js"
+import { repos, agents } from "../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { Repo } from "../types.js"
 import { listBranches } from "../github/client.js"
@@ -94,7 +94,9 @@ export async function reposRoutes(app: FastifyInstance) {
   })
 
   app.delete<{ Params: { id: string } }>("/api/repos/:id", async (req, reply) => {
-    await db.delete(repos).where(eq(repos.id, req.params.id))
+    // Delete agents first — the FK constraint lacks ON DELETE CASCADE (SQLite can't alter it)
+    db.delete(agents).where(eq(agents.repoId, req.params.id)).run()
+    db.delete(repos).where(eq(repos.id, req.params.id)).run()
     reply.code(204).send()
   })
 

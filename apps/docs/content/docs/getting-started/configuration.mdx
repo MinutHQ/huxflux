@@ -8,7 +8,7 @@ description: Configure Huxflux after installation.
 After starting `huxflux`, open the web app and go to **Settings → Servers**. Paste the connection string shown by `huxflux status`:
 
 ```
-huxflux://100.x.x.x:3001?token=...
+huxflux://100.x.x.x:4321?token=...
 ```
 
 The token authenticates the web app to your server. Treat it like a password.
@@ -29,7 +29,7 @@ Point Huxflux at a local directory containing your Git repositories. Set the pat
 
 ## Network
 
-By default, `huxflux` listens on port **3001**. We recommend keeping this port off the public internet and accessing it via [Tailscale](https://tailscale.com) instead.
+By default, `huxflux` listens on port **4321**. We recommend keeping this port off the public internet and accessing it via [Tailscale](https://tailscale.com) instead.
 
 To use a custom port:
 

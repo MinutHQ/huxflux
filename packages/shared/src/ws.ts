@@ -30,7 +30,7 @@ let socketEverOpened = false  // true after the first successful open for the cu
 
 function getActiveWsUrl(): string {
   const server = getActiveServer()
-  const base = server?.url ?? "http://localhost:3001"
+  const base = server?.url ?? "http://localhost:4321"
   const wsUrl = base.replace(/^http/, "ws") + "/ws"
   return server?.token ? `${wsUrl}?token=${server.token}` : wsUrl
 }

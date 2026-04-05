@@ -20,7 +20,7 @@ export const DATA_DIR = path.join(os.homedir(), "huxflux")
 export const isDev = process.env.NODE_ENV !== "production"
 
 export const config = {
-  port: parseInt(process.env.PORT ?? (isDev ? "3002" : "3001"), 10),
+  port: parseInt(process.env.PORT ?? "4321", 10),
   dbPath: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
   githubToken: process.env.GITHUB_TOKEN ?? "",
   feedbackRepo: process.env.FEEDBACK_REPO ?? "",

@@ -15,7 +15,7 @@ if ! command -v pnpm &>/dev/null; then
 fi
 
 # Kill anything already on the default dev ports (but not browsers)
-for port in 5173 3002; do
+for port in 4321 5173 3002; do
   for pid in $(lsof -ti :"$port" 2>/dev/null); do
     cmd=$(ps -p "$pid" -o comm= 2>/dev/null || true)
     case "$cmd" in
@@ -29,7 +29,7 @@ echo "Installing dependencies..."
 pnpm install --silent
 
 # Build tokens once before starting
-pnpm --filter @hive/tokens build
+pnpm --filter @huxflux/tokens build
 
 # Start web (vite)
 pnpm dev:web 2>&1 | sed "s/^/[web] /" &
@@ -46,7 +46,7 @@ node -e "
     clearTimeout(timer);
     timer = setTimeout(() => {
       try {
-        const out = execSync('pnpm --filter @hive/tokens build', { encoding: 'utf8' });
+        const out = execSync('pnpm --filter @huxflux/tokens build', { encoding: 'utf8' });
         process.stdout.write(out.split('\n').map(l => '[tokens] ' + l).join('\n'));
       } catch (e) {
         process.stderr.write('[tokens] build failed\n');

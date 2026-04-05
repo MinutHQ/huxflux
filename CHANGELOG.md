@@ -112,7 +112,7 @@
 - Agent stays `in-review` when a follow-up message is sent — no longer downgraded to `in-progress`
 
 ### Other
-- Port conflict handling: server tries ports 3001–3010 on startup
+- Port conflict handling: server tries ports 4321–4330 on startup
 - Stop agent button kills the running Claude subprocess via SIGTERM
 - "Add repo" button in the sidebar now opens the add-repository dialog directly
 - Repository search excludes system folders, package manager caches, build output, and virtual envs

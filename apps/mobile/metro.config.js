@@ -1,13 +1,21 @@
 const { getDefaultConfig } = require("expo/metro-config")
 const path = require("path")
 
+// Prevent Expo from using the monorepo root as Metro's server root.
+// Without this, the Android client requests /index.bundle but Metro resolves
+// it from the workspace root (where no index.ts exists).
+process.env.EXPO_NO_METRO_WORKSPACE_ROOT = "1"
+
 const projectRoot = __dirname
 const workspaceRoot = path.resolve(projectRoot, "../..")
 
 const config = getDefaultConfig(projectRoot)
 
-// Watch the shared package
-config.watchFolders = [workspaceRoot]
+// Watch the shared packages and workspace node_modules
+config.watchFolders = [
+  path.resolve(workspaceRoot, "packages"),
+  path.resolve(workspaceRoot, "node_modules"),
+]
 
 // Resolve modules from workspace root as well as project root
 config.resolver.nodeModulesPaths = [
@@ -15,10 +23,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ]
 
-// Resolve @hive/shared source directly
+// Resolve @huxflux/shared source directly
 config.resolver.extraNodeModules = {
-  "@hive/shared": path.resolve(workspaceRoot, "packages/shared/src"),
-  "@hive/tokens": path.resolve(workspaceRoot, "packages/tokens/src/tokens"),
+  "@huxflux/shared": path.resolve(workspaceRoot, "packages/shared/src"),
+  "@huxflux/tokens": path.resolve(workspaceRoot, "packages/tokens/src/tokens"),
 }
 
 // Force singleton packages to always resolve from the app's own node_modules,

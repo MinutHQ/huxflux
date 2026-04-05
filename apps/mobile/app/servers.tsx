@@ -1,8 +1,9 @@
 import { useState } from "react"
 import {
   View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, Modal,
+  Platform, ScrollView, Modal,
 } from "react-native"
+import { KeyboardAvoidingView } from "react-native-keyboard-controller"
 import { useRouter } from "expo-router"
 import { Stack } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
@@ -188,7 +189,7 @@ export default function ServersScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
     >
       <Stack.Screen
         options={{
@@ -224,7 +225,7 @@ export default function ServersScreen() {
               <TextInput
                 value={editUrl}
                 onChangeText={setEditUrl}
-                placeholder="http://192.168.1.x:3001"
+                placeholder="http://192.168.1.x:4321"
                 placeholderTextColor={c.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -311,7 +312,7 @@ export default function ServersScreen() {
             <TextInput
               value={input}
               onChangeText={(v) => { setInput(v); setAddError(null) }}
-              placeholder="http://192.168.1.x:3001 or huxflux://..."
+              placeholder="http://192.168.1.x:4321 or huxflux://..."
               placeholderTextColor={c.placeholder}
               autoCapitalize="none"
               autoCorrect={false}

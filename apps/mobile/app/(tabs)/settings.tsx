@@ -1,10 +1,10 @@
-import { View, Text, TouchableOpacity, Modal, TextInput, ActivityIndicator, Linking } from "react-native"
+import { View, Text, TouchableOpacity, Modal, TextInput, ActivityIndicator, Linking, ScrollView } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { getActiveServer, getServers, useServerConfig, api } from "@huxflux/shared"
 import { useState } from "react"
-import { c } from "../../theme"
+import { c, themes, useTheme } from "../../theme"
 import { useModal } from "../../components/Modal"
 
 function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -98,6 +98,7 @@ export default function SettingsScreen() {
   const servers = getServers()
   const { feedbackEnabled } = useServerConfig()
   const [feedbackVisible, setFeedbackVisible] = useState(false)
+  const { themeId, setThemeId } = useTheme()
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -113,7 +114,7 @@ export default function SettingsScreen() {
         <Text style={{ color: c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4 }}>Settings</Text>
       </View>
 
-      <View style={{ padding: 16, gap: 20 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 20 }}>
         {/* Server */}
         <View>
           <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
@@ -134,6 +135,54 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Theme */}
+        {[
+          { label: "Dark Themes", items: themes.filter((t) => !t.light) },
+          { label: "Light Themes", items: themes.filter((t) => t.light) },
+        ].map((section) => (
+          <View key={section.label}>
+            <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+              {section.label}
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {section.items.map((t) => {
+                const active = t.id === themeId
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    onPress={() => setThemeId(t.id)}
+                    style={{ width: 72, alignItems: "center", gap: 6 }}
+                  >
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 12,
+                      backgroundColor: t.palette.bg,
+                      borderWidth: 2,
+                      borderColor: active ? t.palette.fgBright : t.light ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)",
+                      justifyContent: "center", alignItems: "center",
+                      overflow: "hidden",
+                    }}>
+                      <View style={{ flexDirection: "row", gap: 3 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.palette.fgBright }} />
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.palette.card }} />
+                      </View>
+                      <View style={{ width: 20, height: 3, borderRadius: 1.5, backgroundColor: t.palette.fg, marginTop: 4, opacity: 0.6 }} />
+                      <View style={{ width: 14, height: 3, borderRadius: 1.5, backgroundColor: t.palette.fgSub, marginTop: 2, opacity: 0.4 }} />
+                    </View>
+                    <Text style={{
+                      color: active ? c.fg : c.fgSub,
+                      fontSize: 11,
+                      fontWeight: active ? "600" : "400",
+                      textAlign: "center",
+                    }} numberOfLines={1}>
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+        ))}
+
         {/* Feedback */}
         {feedbackEnabled && (
           <View>
@@ -152,7 +201,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </ScrollView>
 
       <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
     </View>

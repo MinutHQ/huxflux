@@ -1,8 +1,9 @@
 import { Tabs } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { c } from "../../theme"
+import { c, useTheme } from "../../theme"
 
 export default function TabsLayout() {
+  useTheme() // subscribe to theme changes
   return (
     <Tabs
       screenOptions={{
@@ -12,7 +13,7 @@ export default function TabsLayout() {
           borderTopWidth: 1,
           borderTopColor: c.border,
         },
-        tabBarActiveTintColor: c.accent,
+        tabBarActiveTintColor: c.fgBright,
         tabBarInactiveTintColor: c.fgSub,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "500" },
       }}

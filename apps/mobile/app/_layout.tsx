@@ -1,10 +1,12 @@
-import { createContext, useState, useEffect, useContext } from "react"
+import { createContext, useState, useEffect, useContext, useMemo } from "react"
 import { Stack } from "expo-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { ModalProvider, useModal } from "../components/Modal"
 import { KeyboardProvider } from "react-native-keyboard-controller"
+import { StatusBar } from "expo-status-bar"
+import { ThemeContext, applyTheme, themes, c } from "../theme"
 
 // Synchronous in-memory store backed by AsyncStorage.
 const cache = new Map<string, string>()
@@ -21,7 +23,7 @@ configureStorage({
   },
 })
 
-const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server"]
+const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server", "huxflux:mobile-theme"]
 
 const HydrationContext = createContext(false)
 export function useHydrated() { return useContext(HydrationContext) }
@@ -38,6 +40,7 @@ let queryClient: QueryClient
 
 function AppContent({ hydrated }: { hydrated: boolean }) {
   const modal = useModal()
+  const { themeId } = useContext(ThemeContext)
 
   // Register global alert for configureAgentErrorHandler
   useEffect(() => {
@@ -48,11 +51,12 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
   return (
     <HydrationContext.Provider value={hydrated}>
       <Stack
+        key={themeId}
         screenOptions={{
-          headerStyle: { backgroundColor: "#1c1917" },
-          headerTintColor: "#fafaf9",
+          headerStyle: { backgroundColor: c.card },
+          headerTintColor: c.fg,
           headerTitleStyle: { fontWeight: "600", fontSize: 16 },
-          contentStyle: { backgroundColor: "#1c1917" },
+          contentStyle: { backgroundColor: c.bg },
           animation: "fade",
         }}
       >
@@ -68,6 +72,16 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
 
 export default function RootLayout() {
   const [hydrated, setHydrated] = useState(false)
+  const [themeId, setThemeIdState] = useState("stone")
+
+  function setThemeId(id: string) {
+    applyTheme(id)
+    setThemeIdState(id)
+    cache.set("huxflux:mobile-theme", id)
+    AsyncStorage.setItem("huxflux:mobile-theme", id)
+  }
+
+  const themeCtx = useMemo(() => ({ themeId, setThemeId }), [themeId])
 
   if (!queryClient) {
     queryClient = new QueryClient({
@@ -82,18 +96,29 @@ export default function RootLayout() {
       for (const [key, value] of pairs) {
         if (value !== null) cache.set(key, value)
       }
+      // Apply persisted theme before first render
+      const savedTheme = cache.get("huxflux:mobile-theme")
+      if (savedTheme) {
+        applyTheme(savedTheme)
+        setThemeIdState(savedTheme)
+      }
       setHydrated(true)
       queryClient.invalidateQueries()
     })
   }, [])
 
+  const isLight = themes.find((t) => t.id === themeId)?.light ?? false
+
   return (
-    <KeyboardProvider>
-      <QueryClientProvider client={queryClient}>
-        <ModalProvider>
-          <AppContent hydrated={hydrated} />
-        </ModalProvider>
-      </QueryClientProvider>
-    </KeyboardProvider>
+    <ThemeContext.Provider value={themeCtx}>
+      <StatusBar style={isLight ? "dark" : "light"} />
+      <KeyboardProvider>
+        <QueryClientProvider client={queryClient}>
+          <ModalProvider>
+            <AppContent hydrated={hydrated} />
+          </ModalProvider>
+        </QueryClientProvider>
+      </KeyboardProvider>
+    </ThemeContext.Provider>
   )
 }

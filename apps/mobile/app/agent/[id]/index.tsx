@@ -1,6 +1,6 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  Platform, ActivityIndicator,
+  Platform, ActivityIndicator, Image, Alert,
 } from "react-native"
 import { KeyboardAvoidingView } from "react-native-keyboard-controller"
 import { useLocalSearchParams, useRouter } from "expo-router"
@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useAgent, api, getActiveServer, type Message, type Agent, type AgentSummary, type ToolCall } from "@huxflux/shared"
 import { WebView } from "react-native-webview"
 import { Ionicons } from "@expo/vector-icons"
+import * as ImagePicker from "expo-image-picker"
+import { File as ExpoFile } from "expo-file-system"
 import { c } from "../../../theme"
 import { useModal } from "../../../components/Modal"
 import FilesPane from "./files"
@@ -601,6 +603,7 @@ export default function AgentChatScreen() {
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
   const [thinking, setThinking] = useState(false)
   const [planMode, setPlanMode] = useState(false)
+  const [attachments, setAttachments] = useState<{ name: string; path: string; mimeType: string; localUri: string }[]>([])
   const [activeTab, setActiveTab] = useState<"chat" | "files" | "pr" | "terminal">("chat")
   // Reset to chat when switching agents
   useEffect(() => { setActiveTab("chat") }, [id])
@@ -667,6 +670,33 @@ export default function AgentChatScreen() {
     }
   }
 
+  async function pickImage() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo access to attach images.")
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsMultipleSelection: true,
+    })
+    if (result.canceled || !result.assets.length) return
+    for (const asset of result.assets) {
+      try {
+        const file = new ExpoFile(asset.uri)
+        const base64 = await file.base64()
+        const mimeType = asset.mimeType ?? "image/jpeg"
+        const name = asset.fileName ?? `image-${Date.now()}.jpg`
+        const dataUrl = `data:${mimeType};base64,${base64}`
+        const uploaded = await api.uploadFile(activeSessionId!, name, dataUrl, mimeType)
+        setAttachments((prev) => [...prev, { ...uploaded, localUri: asset.uri }])
+      } catch {
+        Alert.alert("Upload failed", "Could not upload the selected image.")
+      }
+    }
+  }
+
   function handleModelPress() {
     modal.showActionSheet("Select model", MODELS.map((m) => ({
       label: m.label,
@@ -705,12 +735,19 @@ export default function AgentChatScreen() {
     }
   }
 
+  function buildContent(text: string) {
+    if (attachments.length === 0) return text
+    const fileBlock = attachments.map((f) => `- ${f.name}: ${f.path}`).join("\n")
+    return `Attached files:\n${fileBlock}\n\n---\n\n${text}`
+  }
+
   function handleSend() {
-    const content = input.trim()
-    if (!content || !id || sending) return
+    const text = input.trim()
+    if ((!text && attachments.length === 0) || !id || sending) return
+    const content = buildContent(text)
     setInput("")
+    setAttachments([])
     if (isStreaming) {
-      // Queue for after streaming ends
       setQueuedMessage(content)
       return
     }
@@ -742,8 +779,8 @@ export default function AgentChatScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: c.bg }}
-      behavior="padding"
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={insets.top + (Platform.OS === "ios" ? 44 : 56)}
     >
       {/* Sessions strip — shown when there are (or could be) multiple sessions */}
       <View style={{ borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center" }}>
@@ -873,6 +910,29 @@ export default function AgentChatScreen() {
           </View>
         )}
 
+        {/* Attachment previews */}
+        {attachments.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 8 }}>
+            {attachments.map((f) => (
+              <View key={f.path} style={{ position: "relative" }}>
+                {f.mimeType.startsWith("image/") ? (
+                  <Image source={{ uri: f.localUri }} style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: c.card }} />
+                ) : (
+                  <View style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="document-outline" size={24} color={c.fgSub} />
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={() => setAttachments((prev) => prev.filter((a) => a.path !== f.path))}
+                  style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: c.fg, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Text style={{ color: c.bg, fontSize: 11, fontWeight: "700", lineHeight: 13 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
         <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12 }}>
           <TextInput
             value={input}
@@ -892,6 +952,14 @@ export default function AgentChatScreen() {
           />
           {/* Bottom toolbar */}
           <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingBottom: 8, gap: 4 }}>
+            {/* Attach image */}
+            <TouchableOpacity
+              onPress={pickImage}
+              style={{ paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6 }}
+            >
+              <Ionicons name="image-outline" size={16} color={c.fgSub} />
+            </TouchableOpacity>
+
             {/* Model selector */}
             <TouchableOpacity
               onPress={handleModelPress}
@@ -941,16 +1009,16 @@ export default function AgentChatScreen() {
             ) : (
               <TouchableOpacity
                 onPress={handleSend}
-                disabled={!input.trim() || sending}
+                disabled={(!input.trim() && attachments.length === 0) || sending}
                 style={{
                   width: 28, height: 28, borderRadius: 6,
-                  backgroundColor: input.trim() && !sending ? c.fgBright : c.secondary,
+                  backgroundColor: (input.trim() || attachments.length > 0) && !sending ? c.fgBright : c.secondary,
                   alignItems: "center", justifyContent: "center",
                 }}
               >
                 {sending
                   ? <ActivityIndicator size="small" color={c.fgSub} />
-                  : <Text style={{ color: input.trim() ? c.bg : c.fgSub, fontSize: 15, fontWeight: "600", lineHeight: 20 }}>↑</Text>
+                  : <Text style={{ color: (input.trim() || attachments.length > 0) ? c.bg : c.fgSub, fontSize: 15, fontWeight: "600", lineHeight: 20 }}>↑</Text>
                 }
               </TouchableOpacity>
             )}

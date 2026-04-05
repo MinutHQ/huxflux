@@ -31,6 +31,9 @@ export function useAgents() {
         old ? old.filter((a) => a.id !== event.agentId) : old
       )
     }
+    if (event.type === "ws:reconnected") {
+      queryClient.invalidateQueries({ queryKey: ["agents", serverUrl] })
+    }
   })
 
   return query

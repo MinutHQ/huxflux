@@ -531,7 +531,7 @@ export function HomeView() {
         {/* Activity chart */}
         {stats && stats.dailyAgents.length > 0 && (
           <AnimatedSection delay={350}>
-            <div className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
+            <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
               <div className="relative flex items-center justify-between mb-4">
                 <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Agent activity (30 days)</h2>
                 <span className="text-[11px] text-muted-foreground/40 tabular-nums">
@@ -692,7 +692,7 @@ function TokenPanel({ stats }: { stats: WorkspaceStats }) {
   const totalTokens = tokens.reduce((s, t) => s + t.value, 0)
 
   return (
-    <div ref={ref} className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
+    <div ref={ref} className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
       <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
       <div className="relative flex items-center justify-between mb-5">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Token usage</h2>
@@ -745,7 +745,7 @@ function CodePanel({ stats }: { stats: WorkspaceStats }) {
   const addPct = total > 0 ? (stats.fileChanges.additions / total) * 100 : 50
 
   return (
-    <div ref={ref} className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
+    <div ref={ref} className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
       <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
       <h2 className="relative text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-4">Code changes</h2>
       <div className="relative flex items-end gap-6 mb-5">
@@ -807,7 +807,7 @@ function StatusPanel({ statusCounts, totalAgents }: { statusCounts: Record<strin
   const [ref, inView] = useInView<HTMLDivElement>()
 
   return (
-    <div ref={ref} className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
+    <div ref={ref} className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
       <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
       <h2 className="relative text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-4">By status</h2>
 
@@ -872,7 +872,7 @@ function RepoPanel({ repos, agents }: { repos: { id: string; name: string }[]; a
   const [ref, inView] = useInView<HTMLDivElement>()
 
   return (
-    <div ref={ref} className="relative bg-card/60 backdrop-blur-md border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
+    <div ref={ref} className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 hover:shadow-xl hover:shadow-black/5 transition-all duration-300">
       <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
       <h2 className="relative text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-4">Repositories</h2>
       {repos.length > 0 ? (

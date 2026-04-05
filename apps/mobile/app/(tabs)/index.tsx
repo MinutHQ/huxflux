@@ -2,9 +2,9 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, useServerStatus, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId } from "@huxflux/shared"
+import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId } from "@huxflux/shared"
 import { c, statusColors } from "../../theme"
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useHydrated } from "../_layout"
 import { useModal } from "../../components/Modal"
@@ -167,6 +167,10 @@ export default function AgentsScreen() {
   const serverStatuses = useServerStatus(server ? [server] : [])
   const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
   const isUnauthorized = serverStatus === "unauthorized"
+  const wsConnected = useWsConnected()
+  const [wsWasConnected, setWsWasConnected] = useState(false)
+  useEffect(() => { if (wsConnected) setWsWasConnected(true) }, [wsConnected])
+  const isDisconnected = wsWasConnected && !wsConnected
 
   function showServerSwitcher() {
     if (allServers.length <= 1) {
@@ -292,7 +296,7 @@ export default function AgentsScreen() {
       }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <Pressable onPress={showServerSwitcher} style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isUnauthorized ? c.warning : serverStatus === "offline" ? c.error : c.success }} />
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isUnauthorized ? c.warning : (serverStatus === "offline" || isDisconnected) ? c.error : c.success }} />
             <Text style={{ color: isUnauthorized ? c.warning : c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4, flex: 1 }} numberOfLines={1}>
               {server.name}
             </Text>
@@ -342,6 +346,13 @@ export default function AgentsScreen() {
           <Text style={{ color: c.warning, fontSize: 12, flex: 1 }}>Authentication failed — tap to update token</Text>
           <Ionicons name="chevron-forward" size={13} color={c.warning} />
         </Pressable>
+      )}
+
+      {isDisconnected && !isUnauthorized && (
+        <View style={{ backgroundColor: "rgba(239,68,68,0.12)", borderBottomWidth: 1, borderBottomColor: "rgba(239,68,68,0.25)", paddingHorizontal: 16, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Ionicons name="wifi-outline" size={15} color={c.error} />
+          <Text style={{ color: c.error, fontSize: 12, flex: 1 }}>Disconnected — reconnecting…</Text>
+        </View>
       )}
 
       {/* Group-by toggle */}

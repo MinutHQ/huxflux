@@ -23,7 +23,7 @@ export { api, getApiBase } from "./api"
 export type { WorkspaceStats } from "./api"
 
 // WebSocket
-export { useAgentEvents, connectBackgroundServer } from "./ws"
+export { useAgentEvents, connectBackgroundServer, useWsConnected } from "./ws"
 export type { ServerEvent } from "./ws"
 
 // Diff

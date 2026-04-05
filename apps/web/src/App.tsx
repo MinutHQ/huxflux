@@ -25,6 +25,7 @@ import { getFlag } from "@/lib/flags"
 import { isTauri } from "@/lib/platform"
 import { useUpdater } from "@/hooks/useUpdater"
 import { UpdateBanner } from "@/components/UpdateBanner"
+import { DisconnectedBanner } from "@/components/DisconnectedBanner"
 
 function useCurrentTheme(): Theme {
   return useSyncExternalStore(
@@ -338,6 +339,7 @@ export default function App() {
   return (
     <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
+      <DisconnectedBanner />
       {isTauri && update && (
         <UpdateBanner
           update={update}

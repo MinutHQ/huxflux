@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { getActiveServer } from "./serverStore"
 import type { AgentSummary, Message, ToolCall, FileChange } from "./types"
 
@@ -28,6 +28,18 @@ const subscriptions = new Set<string>()
 let connectedWsUrl: string | null = null
 let socketEverOpened = false  // true after the first successful open for the current URL
 
+// ── Connection state ──────────────────────────────────────────────────────────
+
+let wsConnected = false
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null
+const connectedListeners = new Set<(connected: boolean) => void>()
+
+function setWsConnected(value: boolean) {
+  if (wsConnected === value) return
+  wsConnected = value
+  for (const l of connectedListeners) l(value)
+}
+
 function getActiveWsUrl(): string {
   const server = getActiveServer()
   const base = server?.url ?? "http://localhost:4321"
@@ -41,6 +53,7 @@ function connect() {
   if (socket && socket.readyState <= WebSocket.OPEN && connectedWsUrl === wsUrl) return
 
   if (socket && connectedWsUrl !== wsUrl) {
+    if (disconnectTimer !== null) { clearTimeout(disconnectTimer); disconnectTimer = null }
     socket.onclose = null
     socket.close()
     socket = null
@@ -51,6 +64,8 @@ function connect() {
   socket = new WebSocket(wsUrl)
 
   socket.onopen = () => {
+    if (disconnectTimer !== null) { clearTimeout(disconnectTimer); disconnectTimer = null }
+    setWsConnected(true)
     for (const agentId of subscriptions) {
       socket!.send(JSON.stringify({ type: "subscribe", agentId }))
     }
@@ -69,6 +84,13 @@ function connect() {
   }
 
   socket.onclose = () => {
+    // Delay marking disconnected to avoid banner flicker on brief reconnects
+    if (disconnectTimer === null) {
+      disconnectTimer = setTimeout(() => {
+        disconnectTimer = null
+        setWsConnected(false)
+      }, 1500)
+    }
     setTimeout(connect, 2000)
   }
 }
@@ -148,6 +170,18 @@ function openConnection(wsUrl: string): ConnectionState {
   makeSocket()
   connections.set(wsUrl, state)
   return state
+}
+
+export function useWsConnected(): boolean {
+  const [connected, setConnected] = useState(wsConnected)
+  useEffect(() => {
+    connect()
+    setConnected(wsConnected)
+    const l = (v: boolean) => setConnected(v)
+    connectedListeners.add(l)
+    return () => { connectedListeners.delete(l) }
+  }, [])
+  return connected
 }
 
 export function connectBackgroundServer(wsUrl: string, onEvent: Handler): () => void {

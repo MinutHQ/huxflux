@@ -109,8 +109,9 @@ function handleStreamEvent(
   if (event.type === "assistant") {
     for (const block of event.message.content) {
       if (block.type === "text") {
-        state.fullContent += block.text
-        emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
+        const sep = state.fullContent && !state.fullContent.endsWith("\n") ? "\n" : ""
+        state.fullContent += sep + block.text
+        emit(agentId, { type: "message:chunk", agentId, messageId, delta: sep + block.text })
         scheduleFlush()
       } else if (block.type === "thinking") {
         state.fullThinking += block.thinking

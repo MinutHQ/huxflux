@@ -26,7 +26,8 @@
       "package": "com.huxflux.mobile"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugins/withCleartextTraffic"
     ]
   }
 }

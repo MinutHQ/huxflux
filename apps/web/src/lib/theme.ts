@@ -1,4 +1,4 @@
-import { applyColorTheme, getColorTheme } from "./colorThemes"
+import { applyColorTheme, getColorTheme, getLightColorTheme } from "./colorThemes"
 
 export type Theme = "dark" | "light" | "system"
 
@@ -19,10 +19,8 @@ export function applyTheme(theme: Theme) {
     theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
   document.documentElement.classList.toggle("dark", dark)
-  // Re-apply color theme vars after toggling dark class
-  if (dark) {
-    applyColorTheme(getColorTheme())
-  }
+  // Apply the appropriate color theme for the current mode
+  applyColorTheme(dark ? getColorTheme() : getLightColorTheme())
 }
 
 /** Call once at app startup. Re-applies theme when the OS preference changes. */

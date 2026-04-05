@@ -42,7 +42,10 @@ import {
   IconX,
   IconHome,
   IconBolt,
+  IconPalette,
 } from "@tabler/icons-react"
+import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme } from "@/lib/colorThemes"
+import { getTheme, setTheme as applyThemeChange, type Theme } from "@/lib/theme"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
 
@@ -1255,6 +1258,87 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
   )
 }
 
+// ── Quick theme picker ────────────────────────────────────────────────────────
+
+function ThemePicker() {
+  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<Theme>(getTheme)
+  const isLight = mode === "light" || (mode === "system" && typeof window !== "undefined" && !window.matchMedia("(prefers-color-scheme: dark)").matches)
+  const [activeId, setActiveId] = useState(isLight ? getLightColorTheme() : getColorTheme())
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    return () => document.removeEventListener("mousedown", onDown)
+  }, [open])
+
+  function handleModeChange(m: Theme) {
+    setMode(m)
+    applyThemeChange(m)
+    const newIsLight = m === "light" || (m === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches)
+    setActiveId(newIsLight ? getLightColorTheme() : getColorTheme())
+  }
+
+  function handlePick(id: string) {
+    setActiveId(id)
+    setColorTheme(id)
+  }
+
+  const themes = colorThemes.filter((t) => !!t.light === isLight)
+
+  return (
+    <div ref={ref} className="relative">
+      <Button variant="ghost" size="icon-xs" onClick={() => setOpen((v) => !v)} title="Theme">
+        <IconPalette size={13} />
+      </Button>
+      {open && (
+        <div className="absolute bottom-full right-0 mb-1.5 bg-popover border border-border rounded-xl shadow-xl p-3 w-52 z-50">
+          {/* Mode row */}
+          <div className="flex gap-1 mb-3">
+            {(["dark", "light", "system"] as Theme[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => handleModeChange(m)}
+                className={cn(
+                  "flex-1 text-[11px] py-1 rounded-md capitalize transition-colors",
+                  mode === m ? "bg-accent text-accent-foreground font-medium" : "text-muted-foreground hover:bg-accent/60"
+                )}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          {/* Color swatches */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {themes.map((t) => (
+              <button
+                key={t.id}
+                title={t.name}
+                onClick={() => handlePick(t.id)}
+                className={cn(
+                  "w-full aspect-square rounded-md border-2 transition-all",
+                  activeId === t.id ? "border-primary scale-110" : "border-transparent hover:border-muted-foreground/40"
+                )}
+                style={{ background: t.preview[0] }}
+              >
+                {activeId === t.id && (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: t.preview[2] }} />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -1706,6 +1790,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
           >
             <IconQuestionMark size={13} />
           </Button>
+          <ThemePicker />
           <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
             <IconSettings size={13} />
           </Button>

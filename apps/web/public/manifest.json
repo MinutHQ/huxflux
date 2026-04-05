@@ -1,0 +1,17 @@
+{
+  "name": "Huxflux",
+  "short_name": "Huxflux",
+  "description": "Run Claude agents on any machine",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

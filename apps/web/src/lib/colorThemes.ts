@@ -17,16 +17,28 @@ export interface ColorTheme {
   preview: [string, string, string, string]
   vars: Record<string, string>
   terminal: TerminalColors
+  /** If true, this theme is designed for light mode */
+  light?: boolean
 }
 
 const KEY = "huxflux:color-theme"
+const LIGHT_KEY = "huxflux:color-theme-light"
 
 export function getColorTheme(): string {
   return localStorage.getItem(KEY) ?? "stone"
 }
 
+export function getLightColorTheme(): string {
+  return localStorage.getItem(LIGHT_KEY) ?? "ivory"
+}
+
 export function setColorTheme(id: string) {
-  localStorage.setItem(KEY, id)
+  const theme = colorThemes.find((t) => t.id === id)
+  if (theme?.light) {
+    localStorage.setItem(LIGHT_KEY, id)
+  } else {
+    localStorage.setItem(KEY, id)
+  }
   applyColorTheme(id)
   window.dispatchEvent(new CustomEvent("huxflux:color-theme-change", { detail: id }))
 }
@@ -448,6 +460,100 @@ export const colorThemes: ColorTheme[] = [
       brightBlack: "#5a4878", brightRed: "#ff6090", brightGreen: "#35ffb1",
       brightYellow: "#f8f05b", brightBlue: "#5b8afb", brightMagenta: "#e07cf3",
       brightCyan: "#4ef8de", brightWhite: "#f0e8ff",
+    },
+  },
+
+  // ── Light themes ────────────────────────────────────────────────────────────
+  {
+    id: "ivory",
+    name: "Ivory",
+    light: true,
+    preview: ["#faf8f5", "#f0ebe4", "#292524", "#78716c"],
+    vars: {
+      "--background": "#faf8f5",
+      "--foreground": "#1c1917",
+      "--card": "#f5f0eb",
+      "--card-foreground": "#1c1917",
+      "--popover": "#f5f0eb",
+      "--popover-foreground": "#1c1917",
+      "--primary": "#292524",
+      "--primary-foreground": "#faf8f5",
+      "--secondary": "#e7e2db",
+      "--secondary-foreground": "#292524",
+      "--muted": "#e7e2db",
+      "--muted-foreground": "#78716c",
+      "--accent": "#e7e2db",
+      "--accent-foreground": "#292524",
+      "--placeholder": "#a8a29e",
+      "--destructive": "#dc2626",
+      "--border": "rgba(0, 0, 0, 0.10)",
+      "--input": "rgba(0, 0, 0, 0.08)",
+      "--ring": "#a8a29e",
+      "--sidebar": "#f0ebe4",
+      "--sidebar-foreground": "#1c1917",
+      "--sidebar-primary": "#292524",
+      "--sidebar-primary-foreground": "#faf8f5",
+      "--sidebar-accent": "#e7e2db",
+      "--sidebar-accent-foreground": "#292524",
+      "--sidebar-border": "rgba(0, 0, 0, 0.08)",
+      "--sidebar-ring": "#a8a29e",
+    },
+    terminal: {
+      background: "#faf8f5",
+      foreground: "#292524",
+      cursor: "#292524",
+      selectionBackground: "#e7e2db",
+      black: "#292524", red: "#dc2626", green: "#16a34a", yellow: "#ca8a04",
+      blue: "#2563eb", magenta: "#9333ea", cyan: "#0891b2", white: "#faf8f5",
+      brightBlack: "#78716c", brightRed: "#ef4444", brightGreen: "#22c55e",
+      brightYellow: "#eab308", brightBlue: "#3b82f6", brightMagenta: "#a855f7",
+      brightCyan: "#06b6d4", brightWhite: "#ffffff",
+    },
+  },
+  {
+    id: "sky",
+    name: "Sky",
+    light: true,
+    preview: ["#f0f6ff", "#e2ebf8", "#1d4ed8", "#94a3b8"],
+    vars: {
+      "--background": "#f0f6ff",
+      "--foreground": "#0f172a",
+      "--card": "#e8f0fb",
+      "--card-foreground": "#0f172a",
+      "--popover": "#e8f0fb",
+      "--popover-foreground": "#0f172a",
+      "--primary": "#1d4ed8",
+      "--primary-foreground": "#f0f6ff",
+      "--secondary": "#dbeafe",
+      "--secondary-foreground": "#1e3a8a",
+      "--muted": "#dbeafe",
+      "--muted-foreground": "#64748b",
+      "--accent": "#dbeafe",
+      "--accent-foreground": "#1e3a8a",
+      "--placeholder": "#94a3b8",
+      "--destructive": "#dc2626",
+      "--border": "rgba(29, 78, 216, 0.14)",
+      "--input": "rgba(29, 78, 216, 0.10)",
+      "--ring": "#93c5fd",
+      "--sidebar": "#e2ebf8",
+      "--sidebar-foreground": "#0f172a",
+      "--sidebar-primary": "#1d4ed8",
+      "--sidebar-primary-foreground": "#f0f6ff",
+      "--sidebar-accent": "#dbeafe",
+      "--sidebar-accent-foreground": "#1e3a8a",
+      "--sidebar-border": "rgba(29, 78, 216, 0.10)",
+      "--sidebar-ring": "#93c5fd",
+    },
+    terminal: {
+      background: "#f0f6ff",
+      foreground: "#0f172a",
+      cursor: "#1d4ed8",
+      selectionBackground: "#dbeafe",
+      black: "#0f172a", red: "#dc2626", green: "#16a34a", yellow: "#ca8a04",
+      blue: "#1d4ed8", magenta: "#7c3aed", cyan: "#0284c7", white: "#f0f6ff",
+      brightBlack: "#64748b", brightRed: "#ef4444", brightGreen: "#22c55e",
+      brightYellow: "#eab308", brightBlue: "#3b82f6", brightMagenta: "#8b5cf6",
+      brightCyan: "#0ea5e9", brightWhite: "#ffffff",
     },
   },
 ]

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import * as TablerIcons from "@tabler/icons-react"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
-import { colorThemes, getColorTheme, setColorTheme, type ColorTheme } from "@/lib/colorThemes"
+import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme, type ColorTheme } from "@/lib/colorThemes"
 import { createPortal } from "react-dom"
 import { Switch } from "@huxflux/ui"
 import { SOUNDS, playSound } from "@/lib/sounds"
@@ -286,8 +286,20 @@ function GeneralSettings() {
       </SettingRow>
 
       <SettingRow>
-        <SettingInfo label="Desktop notifications" description="Get notified when AI finishes working in a chat." />
-        <Switch checked={notifications} onCheckedChange={handleNotificationsChange} />
+        <div>
+          <SettingInfo label="Notifications" description="Get notified when an agent finishes, even in background tabs." />
+          {typeof Notification !== "undefined" && Notification.permission === "denied" && (
+            <p className="text-[11px] text-destructive mt-1">Blocked — allow notifications in your browser settings.</p>
+          )}
+          {typeof Notification === "undefined" && (
+            <p className="text-[11px] text-muted-foreground/60 mt-1">Not supported. On iOS, add to Home Screen first.</p>
+          )}
+        </div>
+        <Switch
+          checked={notifications}
+          disabled={typeof Notification !== "undefined" && Notification.permission === "denied"}
+          onCheckedChange={handleNotificationsChange}
+        />
       </SettingRow>
 
       <SettingRow>
@@ -419,6 +431,9 @@ function ThemeCard({ theme, active, onClick }: { theme: ColorTheme; active: bool
 function AppearanceSettings() {
   const [theme, setTheme] = useState<Theme>(getTheme)
   const [activeColorTheme, setActiveColorTheme] = useState(getColorTheme)
+  const [activeLightColorTheme, setActiveLightColorTheme] = useState(getLightColorTheme)
+
+  const isLight = theme === "light" || (theme === "system" && typeof window !== "undefined" && !window.matchMedia("(prefers-color-scheme: dark)").matches)
 
   function handleThemeChange(value: Theme) {
     setTheme(value)
@@ -426,9 +441,17 @@ function AppearanceSettings() {
   }
 
   function handleColorThemeChange(id: string) {
-    setActiveColorTheme(id)
+    const ct = colorThemes.find((t) => t.id === id)
+    if (ct?.light) {
+      setActiveLightColorTheme(id)
+    } else {
+      setActiveColorTheme(id)
+    }
     setColorTheme(id)
   }
+
+  const visibleThemes = colorThemes.filter((ct) => !!ct.light === isLight)
+  const currentActive = isLight ? activeLightColorTheme : activeColorTheme
 
   return (
     <div>
@@ -448,13 +471,15 @@ function AppearanceSettings() {
 
       <div className="py-5">
         <div className="text-sm font-medium text-foreground mb-1">Color theme</div>
-        <div className="text-[13px] text-muted-foreground mb-4 leading-snug">Pick a color palette for dark mode</div>
+        <div className="text-[13px] text-muted-foreground mb-4 leading-snug">
+          {isLight ? "Pick a color palette for light mode" : "Pick a color palette for dark mode"}
+        </div>
         <div className="grid grid-cols-3 gap-3">
-          {colorThemes.map((ct) => (
+          {visibleThemes.map((ct) => (
             <ThemeCard
               key={ct.id}
               theme={ct}
-              active={ct.id === activeColorTheme}
+              active={ct.id === currentActive}
               onClick={() => handleColorThemeChange(ct.id)}
             />
           ))}

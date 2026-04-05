@@ -1,12 +1,33 @@
 import { createContext, useState, useEffect, useContext, useMemo } from "react"
-import { Stack } from "expo-router"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { Platform } from "react-native"
+import { Stack, useRouter } from "expo-router"
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
+import { configureStorage, configureAgentErrorHandler, useAgentEvents, getActiveServer } from "@huxflux/shared"
+import type { AgentSummary } from "@huxflux/shared"
 import { ModalProvider, useModal } from "../components/Modal"
 import { StatusBar } from "expo-status-bar"
 import { ThemeContext, applyTheme, themes, c } from "../theme"
 import { PREF_KEYS } from "../lib/prefs"
+import * as Notifications from "expo-notifications"
+
+// Show notifications when app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+})
+
+// Android requires a notification channel
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "Agent notifications",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+  })
+}
 
 // Synchronous in-memory store backed by AsyncStorage.
 const cache = new Map<string, string>()
@@ -40,6 +61,8 @@ let queryClient: QueryClient
 
 function AppContent({ hydrated }: { hydrated: boolean }) {
   const modal = useModal()
+  const router = useRouter()
+  const queryClient = useQueryClient()
   const { themeId } = useContext(ThemeContext)
 
   // Register global alert for configureAgentErrorHandler
@@ -47,6 +70,47 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
     setGlobalAlert((title, message) => modal.showAlert(title, message))
     return () => setGlobalAlert(null)
   }, [modal])
+
+  // Request notification permission once after hydration
+  useEffect(() => {
+    if (!hydrated) return
+    Notifications.getPermissionsAsync().then(({ status }) => {
+      if (status !== "granted") Notifications.requestPermissionsAsync()
+    })
+
+    // Navigate to agent when tapped from a killed state (cold start only)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return
+      const receivedAt = response.notification.date * 1000
+      if (Date.now() - receivedAt > 30_000) return // stale — ignore
+      const agentId = response.notification.request.content.data?.agentId
+      if (agentId) router.push(`/agent/${agentId}`)
+    })
+
+    const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const agentId = response.notification.request.content.data?.agentId
+      if (agentId) router.push(`/agent/${agentId}`)
+    })
+
+    return () => tapSub.remove()
+  }, [hydrated, router])
+
+  // Fire a local notification whenever an agent finishes a turn
+  useAgentEvents(null, (event) => {
+    if (event.type !== "message:done") return
+    const serverUrl = getActiveServer()?.url ?? null
+    const agents = queryClient.getQueryData<AgentSummary[]>(["agents", serverUrl])
+    const agent = agents?.find((a) => a.id === event.agentId)
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title: agent?.title ?? "Agent",
+        body: "Finished",
+        data: { agentId: event.agentId },
+        sound: true,
+      },
+      trigger: null,
+    })
+  })
 
   return (
     <HydrationContext.Provider value={hydrated}>

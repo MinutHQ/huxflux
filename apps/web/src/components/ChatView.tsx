@@ -442,7 +442,9 @@ function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
 
       {/* Text output streamed by the sub-agent */}
       {hasOutput && (
-        <pre className="text-[11px] font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap">{selected.outputText}</pre>
+        <div className="text-[11px] text-foreground/80 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[10px] [&_pre]:text-[10px]">
+          <MarkdownContent content={selected.outputText ?? ""} />
+        </div>
       )}
 
       {/* Final result */}

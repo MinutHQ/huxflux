@@ -27,7 +27,15 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/withCleartextTraffic"
+      "./plugins/withCleartextTraffic",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0a0a0a",
+          "sounds": []
+        }
+      ]
     ]
   }
 }

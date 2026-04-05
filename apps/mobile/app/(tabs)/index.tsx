@@ -190,9 +190,6 @@ export default function AgentsScreen() {
   const insets = useSafeAreaInsets()
   const hydrated = useHydrated()
   const modal = useModal()
-  const [, setFocusCount] = useState(0)
-  useFocusEffect(useCallback(() => { setFocusCount((n) => n + 1) }, []))
-
   const { data: agents = [], isLoading, refetch } = useAgents()
   const { data: repos = [] } = useRepos()
   const streamingAgentId = useStreamingAgentId()
@@ -210,6 +207,12 @@ export default function AgentsScreen() {
   useEffect(() => { if (wsConnected) setWsWasConnected(true) }, [wsConnected])
   const isDisconnected = wsWasConnected && !wsConnected
 
+  const isFirstFocus = useRef(true)
+  useFocusEffect(useCallback(() => {
+    if (isFirstFocus.current) { isFirstFocus.current = false; return }
+    refetch()
+  }, [refetch]))
+
   function showServerSwitcher() {
     if (allServers.length <= 1) {
       router.push("/servers")
@@ -219,7 +222,7 @@ export default function AgentsScreen() {
       .filter((s) => s.id !== server?.id)
       .map((s) => ({
         label: s.name,
-        onPress: () => { setActiveServerId(s.id); setFocusCount((n) => n + 1) },
+        onPress: () => { setActiveServerId(s.id) },
       }))
     options.push({ label: "Manage servers…", onPress: () => router.push("/servers") })
     modal.showActionSheet("Switch server", options)

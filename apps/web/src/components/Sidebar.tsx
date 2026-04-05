@@ -641,18 +641,18 @@ function StatusGroup({
   const config = statusConfig[status]
 
   return (
-    <div className="mb-0.5">
+    <div className="mb-2.5">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
       >
-        <IconChevronRight
-          size={12}
-          className={cn("text-muted-foreground/40 transition-transform duration-150", !collapsed && "rotate-90")}
-        />
-        <span className={cn("text-[11px] font-semibold uppercase tracking-wider", config.color)}>
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: config.hex }} />
+        <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
           {config.label}
         </span>
+        {agents.length > 0 && (
+          <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
+        )}
       </button>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">

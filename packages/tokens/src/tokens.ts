@@ -92,7 +92,7 @@ export const statusColors = {
     color:  stone[400],
     bg:     'rgba(168, 162, 158, 0.10)',
     border: 'rgba(168, 162, 158, 0.25)',
-    tw: { color: 'text-stone-400', bg: 'bg-stone-500/10', border: 'border-stone-500/25', dot: 'bg-stone-500' },
+    tw: { color: 'text-stone-400', bg: 'bg-stone-500/10', border: 'border-stone-500/25', dot: 'bg-stone-400' },
   },
 } as const
 

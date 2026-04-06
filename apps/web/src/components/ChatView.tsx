@@ -2574,7 +2574,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               </button>
             )}
             <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
-            <div className="px-5 py-4 border-t border-border">
+            <div className="px-5 py-4">
             <TasksBar todos={extractLatestTodos(agent.messages)} />
             <div className="relative">
               {/* @ mention picker */}

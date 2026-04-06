@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   Platform, ScrollView, Modal,
 } from "react-native"
-import { KeyboardAvoidingView } from "react-native-keyboard-controller"
+import { KeyboardAvoidingView } from "react-native"
 import { useRouter } from "expo-router"
 import { Stack } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"

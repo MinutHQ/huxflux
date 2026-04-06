@@ -1,8 +1,7 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  Platform, ActivityIndicator, Image, Alert,
+  Platform, ActivityIndicator, Image, Alert, KeyboardAvoidingView,
 } from "react-native"
-import { KeyboardAvoidingView } from "react-native-keyboard-controller"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"

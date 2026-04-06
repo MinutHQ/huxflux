@@ -474,61 +474,56 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
   const doneCount = agents.filter((a) => a.status === "done").length
 
   return (
-    <div className="border-t border-border bg-card/50 shrink-0">
+    <div className="mx-2 mb-2 rounded-xl border border-border bg-card overflow-hidden">
       {/* Tab bar */}
-      <div className="border-b border-border/60">
-        <div className="px-5">
-          <div className="flex items-center gap-1 py-1.5 overflow-x-auto">
+      <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
+        >
+          <IconUsers size={12} className="text-muted-foreground/50" />
+          <span>Team</span>
+          <span className="text-muted-foreground/40 font-mono ml-0.5">
+            {runningCount > 0 && `${runningCount} running`}
+            {runningCount > 0 && doneCount > 0 && ", "}
+            {doneCount > 0 && `${doneCount} done`}
+          </span>
+          <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
+        </button>
+        <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
+        {agents.map((agent) => {
+          const isActive = agent.id === selected.id
+          return (
             <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
+              key={agent.id}
+              onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
+                isActive
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
             >
-              <IconUsers size={13} className="text-muted-foreground/50" />
-              <span>Team</span>
-              <span className="text-muted-foreground/40 font-mono">
-                {runningCount > 0 && `${runningCount} running`}
-                {runningCount > 0 && doneCount > 0 && ", "}
-                {doneCount > 0 && `${doneCount} done`}
-              </span>
-              <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
+              {agent.status === "running" && isStreaming ? (
+                <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
+              ) : (
+                <IconCheck size={11} className="text-emerald-400 shrink-0" />
+              )}
+              <span className="max-w-[140px] truncate">{agent.description}</span>
             </button>
-            <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
-            {agents.map((agent) => {
-              const isActive = agent.id === selected.id
-              return (
-                <button
-                  key={agent.id}
-                  onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
-                    isActive
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                  )}
-                >
-                  {agent.status === "running" && isStreaming ? (
-                    <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
-                  ) : (
-                    <IconCheck size={11} className="text-emerald-400 shrink-0" />
-                  )}
-                  <span className="max-w-[140px] truncate">{agent.description}</span>
-                </button>
-              )
-            })}
-            <button
-              onClick={() => setDismissed(true)}
-              className="ml-auto p-1 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
-              title="Close team panel"
-            >
-              <IconX size={12} />
-            </button>
-          </div>
-        </div>
+          )
+        })}
+        <button
+          onClick={() => setDismissed(true)}
+          className="ml-auto p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+        >
+          <IconX size={11} />
+        </button>
       </div>
 
       {/* Output panel */}
       {!collapsed && selected && (
-        <div className="px-5">
+        <div className="border-t border-border/60 px-3">
           <TeamAgentOutput selected={selected} />
         </div>
       )}
@@ -2573,8 +2568,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 <span>Scroll to bottom</span>
               </button>
             )}
-            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
             <div className="px-5 py-4">
+            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
             <TasksBar todos={extractLatestTodos(agent.messages)} />
             <div className="relative">
               {/* @ mention picker */}

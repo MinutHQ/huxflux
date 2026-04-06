@@ -561,7 +561,8 @@ const AgentRow = React.memo(function AgentRow({
             className={cn(
               "text-xs flex-1 min-w-0 truncate leading-tight",
               isSelected && "font-semibold",
-              isCancelled && "line-through"
+              isCancelled && "line-through",
+              !isSelected && !!agent.unread && "font-semibold text-foreground"
             )}
           >
             {agent.title}
@@ -661,7 +662,7 @@ function StatusGroup({
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
-              isStreaming={streamingAgentId === agent.id}
+              isStreaming={!!agent.streaming || streamingAgentId === agent.id}
               onClick={() => onSelect(agent.id)}
               index={startIndex + i}
               onHover={onHover}
@@ -731,7 +732,7 @@ function RepoGroup({
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
-              isStreaming={streamingAgentId === agent.id}
+              isStreaming={!!agent.streaming || streamingAgentId === agent.id}
               onClick={() => onSelect(agent.id)}
               index={startIndex + i}
               onHover={onHover}

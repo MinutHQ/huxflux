@@ -4,9 +4,9 @@ import * as fs from "node:fs/promises"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
 import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable } from "../db/schema.js"
-import { emit } from "../ws/handler.js"
+import { emit, broadcast } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { config } from "../config.js"
 import type { Message, ToolCall } from "../types.js"
 
@@ -321,6 +321,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     createdAt: skeletonCreatedAt,
   })
 
+  // Mark agent as streaming so all connected clients know immediately
+  await db.update(agentsTable).set({ streaming: 1 }).where(eq(agentsTable.id, agentId))
+  const streamingAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (streamingAgent) broadcast({ type: "agent:updated", agent: streamingAgent as any })
+
   emit(agentId, { type: "message:start", agentId, messageId })
 
   const claudeBin = getClaudeBin()
@@ -459,11 +464,16 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         // B2: Restore the pre-run status instead of forcing "in-progress".
         // This preserves "in-review" if it was set before the run.
         await db.update(agentsTable)
-          .set({ status: preRunStatus === "in-review" ? "in-review" : "in-progress", updatedAt: doneAt })
+          .set({
+            status: preRunStatus === "in-review" ? "in-review" : "in-progress",
+            streaming: 0,
+            unread: sql`unread + 1`,
+            updatedAt: doneAt,
+          })
           .where(eq(agentsTable.id, agentId))
         // Broadcast updated agent so all clients (sidebar, etc.) stay in sync
         const finalAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-        if (finalAgent) emit(agentId, { type: "agent:updated", agent: finalAgent as any })
+        if (finalAgent) broadcast({ type: "agent:updated", agent: finalAgent as any })
         resolve()
       } catch (err) {
         reject(err)

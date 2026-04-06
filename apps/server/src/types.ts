@@ -143,6 +143,7 @@ export interface Agent {
   model: string
   location: string
   unread?: number
+  streaming?: boolean
   daysAgo?: string
   description?: string
   diffSummary?: { additions: number; deletions: number; commits?: number }

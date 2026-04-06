@@ -256,6 +256,10 @@ const MIGRATIONS: Migration[] = [
         FROM agents WHERE parent_agent_id IS NULL AND deleted_at IS NULL;
     `,
   },
+  {
+    version: 13,
+    sql: `ALTER TABLE agents ADD COLUMN streaming INTEGER DEFAULT 0;`,
+  },
 ]
 
 export function runMigrations() {

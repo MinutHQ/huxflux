@@ -93,6 +93,12 @@ export function useWorkspace(agents: AgentSummary[]) {
   function selectAgent(id: string) {
     lastAgentId.current = id
     const a = agents.find(ag => ag.id === id)
+    if (a?.unread) {
+      api.updateAgent(id, { unread: 0 }).catch(() => {})
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+        old ? old.map((ag) => ag.id === id ? { ...ag, unread: 0 } : ag) : old
+      )
+    }
     const isAlreadyInTabs = tabs.some(t => t.agentId === id)
     setRootAgentId(id)
     if (isAlreadyInTabs) {

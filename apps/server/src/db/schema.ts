@@ -27,6 +27,7 @@ export const agents = sqliteTable("agents", {
   model: text("model").notNull().default("Sonnet 4.6"),
   location: text("location").notNull(),
   unread: integer("unread").default(0),
+  streaming: integer("streaming").default(0),
   description: text("description"),
   prNumber: integer("pr_number"),
   prStatus: text("pr_status"), // JSON: PRStatus

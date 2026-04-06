@@ -471,6 +471,54 @@ function cmdRestore(slot?: string) {
   })
 }
 
+async function cmdReset() {
+  const pid = getRunningPid()
+  if (pid) {
+    console.error("huxflux is running — stop it first: huxflux stop")
+    process.exit(1)
+  }
+
+  console.log(`
+  ┌─ WARNING: DESTRUCTIVE OPERATION ──────────────────────────────┐
+  │                                                               │
+  │  This will PERMANENTLY DELETE your entire database:           │
+  │                                                               │
+  │    • All agents and their conversation history                │
+  │    • All repositories                                         │
+  │    • All messages, tool calls, and file changes               │
+  │    • All terminal history                                      │
+  │    • All database backups (.bak, .bak2)                       │
+  │                                                               │
+  │  Git worktrees on disk are NOT removed — clean them up        │
+  │  manually if needed.                                          │
+  │                                                               │
+  │  This action CANNOT be undone.                                │
+  │                                                               │
+  └───────────────────────────────────────────────────────────────┘
+`.trimStart())
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+
+  const a1 = await prompt(rl, "  Confirmation 1/3 — Do you want to erase all data? [y/N] ")
+  if (a1.toLowerCase() !== "y") { rl.close(); console.log("\n  Aborted.\n"); process.exit(0) }
+
+  const a2 = await prompt(rl, "  Confirmation 2/3 — Type \"yes\" to continue: ")
+  if (a2 !== "yes") { rl.close(); console.log("\n  Aborted.\n"); process.exit(0) }
+
+  const a3 = await prompt(rl, "  Confirmation 3/3 — Type \"huxflux\" to confirm the reset: ")
+  rl.close()
+  if (a3 !== "huxflux") { console.log("\n  Aborted.\n"); process.exit(0) }
+
+  console.log("")
+  for (const f of [DB_FILE, DB_BAK, DB_BAK2]) {
+    if (fs.existsSync(f)) {
+      fs.unlinkSync(f)
+      console.log(`  Deleted ${f}`)
+    }
+  }
+  console.log("\n  Database reset. Run 'huxflux start' for a fresh instance.\n")
+}
+
 const WEB_APP_URL = "https://huxflux.netlify.app"
 
 function cmdOpen(host?: string) {
@@ -530,6 +578,7 @@ Usage:
   huxflux audit          Tail the request audit log
   huxflux restore        Restore DB from latest backup (server must be stopped)
   huxflux restore 2      Restore DB from older backup (.bak2)
+  huxflux reset          ⚠️  Erase all data and start fresh (3 confirmations required)
   huxflux update         Update huxflux to the latest version
   huxflux help           Show this message
 `.trimStart())
@@ -549,6 +598,7 @@ switch (cmd) {
   case "token":    cmdToken(cmdArgs[0]); break
   case "audit":    cmdAudit(); break
   case "restore":  cmdRestore(cmdArgs[0]); break
+  case "reset":    cmdReset().catch(console.error); break
   case "update":   cmdUpdate(); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
   case "security": printDisclaimer(); break

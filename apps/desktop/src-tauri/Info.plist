@@ -4,5 +4,10 @@
 <dict>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>Huxflux notifies you when your AI agents complete their tasks.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

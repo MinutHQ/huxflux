@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Button } from "@huxflux/ui"
 import { useServers } from "@/hooks/useServers"
 import { setActiveServerId, parseConnectionString } from "@huxflux/shared"
-import { IconServer, IconLoader2, IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react"
+import { IconServer, IconLoader2, IconAlertCircle } from "@tabler/icons-react"
 
 interface OnboardingProps {
   onComplete: () => void

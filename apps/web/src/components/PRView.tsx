@@ -1379,6 +1379,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
 
   function handleRerun() {
     if (reviewing || isSending) return
+    clearReviewCache()
+    setMessages([])
     triggerReview()
   }
 
@@ -1646,7 +1648,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                       onRevert={(id) => updateCommentStatus(id, "pending")}
                       onResolve={(id) => toggleCommentResolved(id)}
                       onUserReviewed={onUserReviewed}
-                      onReviewSubmitted={(event, body, commentCount) => {
+                      onReviewSubmitted={(event, _body, commentCount) => {
                         const label = event === "APPROVE" ? "Approved" : event === "REQUEST_CHANGES" ? "Requested changes" : "Commented"
                         const detail = commentCount > 0 ? ` with ${commentCount} inline comment${commentCount !== 1 ? "s" : ""}` : ""
                         setMessages((prev) => [...prev, {

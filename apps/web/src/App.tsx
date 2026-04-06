@@ -300,7 +300,7 @@ export default function App() {
     </div>
   ) : (
     <ResizablePanelGroup orientation="horizontal" className="flex-1 min-w-0" defaultLayout={mainLayout.defaultLayout} onLayoutChanged={mainLayout.onLayoutChanged}>
-      <ResizablePanel id="huxflux-main-chat" order={1} defaultSize="72" minSize="30">
+      <ResizablePanel id="huxflux-main-chat" defaultSize="72" minSize="30">
         <ChatView
           agent={activeAgent}
           isStreaming={activeIsStreaming}
@@ -324,9 +324,9 @@ export default function App() {
 
       <ResizableHandle />
 
-      <ResizablePanel id="huxflux-main-right" order={2} defaultSize="28" minSize="15">
+      <ResizablePanel id="huxflux-main-right" defaultSize="28" minSize="15">
         <ResizablePanelGroup orientation="vertical" defaultLayout={rightLayout.defaultLayout} onLayoutChanged={rightLayout.onLayoutChanged}>
-          <ResizablePanel id="huxflux-right-files" order={1} defaultSize="50" minSize="20">
+          <ResizablePanel id="huxflux-right-files" defaultSize="50" minSize="20">
             <FileChangesView
               agent={activeAgent}
               selectedFile={workspace.openFileTab?.type === "diff" ? workspace.openFileTab.file.path : null}
@@ -340,7 +340,7 @@ export default function App() {
 
           <ResizableHandle />
 
-          <ResizablePanel id="huxflux-right-terminal" order={2} defaultSize="50" minSize="15">
+          <ResizablePanel id="huxflux-right-terminal" defaultSize="50" minSize="15">
             {terminalPanel}
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -365,7 +365,6 @@ export default function App() {
       <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
         <ResizablePanel
           id="huxflux-sidebar-panel"
-          order={1}
           panelRef={sidebarRef}
           defaultSize="18"
           minSize="12"
@@ -380,7 +379,7 @@ export default function App() {
 
         <ResizableHandle />
 
-        <ResizablePanel id="huxflux-content-panel" order={2} defaultSize="82" minSize="50" className="flex min-w-0 relative">
+        <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="flex min-w-0 relative">
           {/* Expand button shown when sidebar is collapsed */}
           {sidebarCollapsed && (
             <button

@@ -6,14 +6,12 @@ import {
   IconSend,
   IconFlask,
   IconGitBranch,
-  IconCircle,
   IconCircleCheck,
   IconTicket,
   IconListDetails,
   IconCheck,
   IconPencil,
   IconTrash,
-  IconX,
   IconPlus,
 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
@@ -46,6 +44,7 @@ export interface RefineSession {
   answers: string[]
   subtasks: RefineSubtask[]
   createdAt: string
+  agentId?: string
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -534,7 +533,6 @@ function ConversationPane({
   // Scroll to bottom on new messages / typing change — use ref callback to trigger on each relevant change
   const messagesLen = session.messages.length
   const bottomRefCb = useCallback((el: HTMLDivElement | null) => {
-    // @ts-expect-error assign mutable ref
     bottomRef.current = el
     el?.scrollIntoView({ behavior: "smooth" })
   }, [messagesLen, isTyping]) // eslint-disable-line react-hooks/exhaustive-deps

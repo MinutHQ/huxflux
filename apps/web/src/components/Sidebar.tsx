@@ -449,7 +449,6 @@ const AgentRow = React.memo(function AgentRow({
   isSelected,
   isStreaming,
   onClick,
-  index,
   onHover,
   onLeave,
   onDelete,
@@ -461,7 +460,6 @@ const AgentRow = React.memo(function AgentRow({
   isSelected: boolean
   isStreaming: boolean
   onClick: () => void
-  index: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
@@ -477,7 +475,6 @@ const AgentRow = React.memo(function AgentRow({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const RepoIconComp = repoIcon ? (TablerIcons as any)[repoIcon] as React.ComponentType<{ size?: number }> | undefined : undefined
   const isCancelled = agent.status === "cancelled"
-  const shortcutNum = index < 9 ? index + 1 : null
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState("")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -617,7 +614,6 @@ function StatusGroup({
   selectedId,
   streamingAgentId,
   onSelect,
-  startIndex,
   onHover,
   onLeave,
   onDelete,
@@ -630,7 +626,6 @@ function StatusGroup({
   selectedId: string
   streamingAgentId: string | null
   onSelect: (id: string) => void
-  startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
@@ -657,14 +652,13 @@ function StatusGroup({
       </button>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
-          {agents.map((agent, i) => (
+          {agents.map((agent) => (
             <AgentRow
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
               isStreaming={!!agent.streaming || streamingAgentId === agent.id}
               onClick={() => onSelect(agent.id)}
-              index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
               onDelete={onDelete}
@@ -687,7 +681,6 @@ function RepoGroup({
   selectedId,
   streamingAgentId,
   onSelect,
-  startIndex,
   onHover,
   onLeave,
   onDelete,
@@ -698,7 +691,6 @@ function RepoGroup({
   selectedId: string
   streamingAgentId: string | null
   onSelect: (id: string) => void
-  startIndex: number
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
@@ -727,14 +719,13 @@ function RepoGroup({
       </button>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
-          {agents.map((agent, i) => (
+          {agents.map((agent) => (
             <AgentRow
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
               isStreaming={!!agent.streaming || streamingAgentId === agent.id}
               onClick={() => onSelect(agent.id)}
-              index={startIndex + i}
               onHover={onHover}
               onLeave={onLeave}
               onDelete={onDelete}
@@ -1372,15 +1363,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     [filteredAgents]
   )
 
-  let globalIndex = 0
-  const groupStartIndices: Partial<Record<AgentStatus, number>> = {}
-  for (const status of visibleStatuses) {
-    groupStartIndices[status] = globalIndex
-    if (status !== "done") {
-      globalIndex += (grouped[status] ?? []).length
-    }
-  }
-
   // Repo name lookup map (repoId → name)
   const repoNames = useMemo(
     () => Object.fromEntries(repos.map((r) => [r.id, r.name])),
@@ -1408,13 +1390,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
     }
     return Array.from(map.entries()).map(([id, { name, agents: a }]) => ({ id, name, agents: a }))
   }, [filteredAgents, repos])
-
-  let repoGlobalIndex = 0
-  const repoGroupStartIndices = new Map<string, number>()
-  for (const group of repoGrouped) {
-    repoGroupStartIndices.set(group.id, repoGlobalIndex)
-    repoGlobalIndex += group.agents.length
-  }
 
   async function handleCreateAgent(repoId: string, title: string, branch: string, direct: boolean) {
     setShowNewAgent(false)
@@ -1647,7 +1622,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         selectedId={selectedId}
                         streamingAgentId={streamingAgentId}
                         onSelect={onSelect}
-                        startIndex={groupStartIndices[status] ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
                         onDelete={handleDeleteAgent}
@@ -1665,7 +1639,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         selectedId={selectedId}
                         streamingAgentId={streamingAgentId}
                         onSelect={onSelect}
-                        startIndex={repoGroupStartIndices.get(group.id) ?? 0}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
                         onDelete={handleDeleteAgent}

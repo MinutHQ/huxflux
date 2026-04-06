@@ -148,7 +148,7 @@ export const api = {
 
   // Repos
   getRepos: () => req<Repo[]>("/api/repos"),
-  createRepo: (body: Omit<Repo, "id" | "createdAt">) =>
+  createRepo: (body: Omit<Repo, "id" | "createdAt" | "workspacesPath"> & { workspacesPath?: string }) =>
     req<Repo>("/api/repos", { method: "POST", body: JSON.stringify(body) }),
   cloneRepo: (body: { url: string; location: string; name?: string }) =>
     req<Repo>("/api/repos/clone", { method: "POST", body: JSON.stringify(body) }),

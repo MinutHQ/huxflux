@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@huxflux/ui"
 import { useServers } from "@/hooks/useServers"
-import { useServerStatus } from "@/hooks/useServerStatus"
-import { setActiveServerId } from "@huxflux/shared"
+import { setActiveServerId, useServerStatus } from "@huxflux/shared"
+import type { ServerStatus } from "@huxflux/shared"
 import {
   IconChevronDown,
   IconServer,
@@ -13,7 +13,6 @@ import {
   IconTrash,
   IconKey,
 } from "@tabler/icons-react"
-import type { ServerStatus } from "@huxflux/shared"
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 

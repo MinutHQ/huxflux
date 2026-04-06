@@ -351,6 +351,11 @@ export default function App() {
   return (
     <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
+      {import.meta.env.DEV && (
+        <div className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">
+          Dev mode
+        </div>
+      )}
       <DisconnectedBanner />
       {isTauri && update && (
         <UpdateBanner

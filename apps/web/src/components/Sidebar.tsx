@@ -44,6 +44,54 @@ import {
   IconBolt,
 } from "@tabler/icons-react"
 
+// ── Status icons (Linear-style) ───────────────────────────────────────────────
+
+function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: number }) {
+  const color = statusConfig[status].hex
+  const cx = 7
+  const cy = 7
+  const r = 5.6
+
+  switch (status) {
+    case "done":
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill={color} />
+          <path d="M4.2 7.2 L6.2 9.2 L9.8 5.4" stroke="#1c1917" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    case "in-review":
+      // 3/4 pie inside a ring
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.4" />
+          <path d={`M ${cx} ${cy} L ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 1 1 ${cx - (r - 0.6)} ${cy} Z`} fill={color} />
+        </svg>
+      )
+    case "in-progress":
+      // half pie inside a ring
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.4" />
+          <path d={`M ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 0 1 ${cx} ${cy + r - 0.6} L ${cx} ${cy} Z`} fill={color} />
+        </svg>
+      )
+    case "backlog":
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.3" strokeDasharray="1.8 1.6" />
+        </svg>
+      )
+    case "cancelled":
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill={color} />
+          <path d="M4.6 4.6 L9.4 9.4 M9.4 4.6 L4.6 9.4" stroke="#1c1917" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )
+  }
+}
+
 // ── Worktree duration tracking ────────────────────────────────────────────────
 
 const WT_DURATION_KEY = "huxflux:worktree-durations"
@@ -85,7 +133,7 @@ function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y
       </div>
 
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground mb-2">
-        <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dotColor)} />
+        <StatusIcon status={agent.status} size={12} />
         <span className={cfg.color}>{cfg.label}</span>
         <span className="text-muted-foreground/40">·</span>
         <span className="font-mono">{agent.location}</span>
@@ -396,7 +444,7 @@ function StatusContextMenu({
               onClick={() => handleSetStatus(status)}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
             >
-              <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dotColor)} />
+              <StatusIcon status={status} size={13} />
               <span className={cn("flex-1 text-left", cfg.color)}>{cfg.label}</span>
               {agent.status === status && <IconCheck size={12} className="text-muted-foreground/60" />}
             </button>
@@ -642,7 +690,7 @@ function StatusGroup({
         onClick={() => setCollapsed(!collapsed)}
         className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
       >
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: config.hex }} />
+        <StatusIcon status={status} size={14} />
         <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
           {config.label}
         </span>

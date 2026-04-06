@@ -88,6 +88,7 @@ interface StreamState {
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
+  seenToolResult: boolean
 }
 
 function handleStreamEvent(
@@ -109,7 +110,10 @@ function handleStreamEvent(
   if (event.type === "assistant") {
     for (const block of event.message.content) {
       if (block.type === "text") {
-        const sep = state.fullContent && !state.fullContent.endsWith("\n") ? "\n" : ""
+        const sep = state.fullContent
+          ? (state.seenToolResult ? "\n\n---\n\n" : (!state.fullContent.endsWith("\n") ? "\n" : ""))
+          : ""
+        state.seenToolResult = false
         state.fullContent += sep + block.text
         emit(agentId, { type: "message:chunk", agentId, messageId, delta: sep + block.text })
         scheduleFlush()
@@ -137,6 +141,7 @@ function handleStreamEvent(
       }
     }
   } else if (event.type === "tool_result") {
+    state.seenToolResult = true
     const tc = state.collectedToolCalls.find((t) => t.id === event.tool_use_id)
     if (tc) tc.result = event.content
     // Persist tool result to DB immediately
@@ -307,6 +312,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     outputTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
+    seenToolResult: false,
   }
   const startedAt = Date.now()
 

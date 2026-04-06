@@ -531,6 +531,63 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
   )
 }
 
+// ── Terminal chip with hover preview ─────────────────────────────────────────
+
+function TerminalChip({ agentId, onRemove }: { agentId: string; onRemove: () => void }) {
+  const [open, setOpen] = useState(false)
+  const { data: lines = [] } = useQuery({
+    queryKey: ["terminal-preview", agentId],
+    queryFn: () => api.getTerminal(agentId),
+    enabled: open,
+    staleTime: 10_000,
+  })
+
+  return (
+    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <div className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px] cursor-default">
+        <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
+        <span className="font-medium text-foreground/80">Terminal output</span>
+        <button onClick={onRemove} className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5">
+          <IconX size={11} />
+        </button>
+      </div>
+      {open && lines.length > 0 && (
+        <div className="absolute bottom-full mb-2 left-0 w-[400px] z-20 rounded-xl border border-border bg-[#0d0d0d] shadow-2xl overflow-hidden pointer-events-none">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-[#141414]">
+            <div className="flex items-center gap-2">
+              <IconTerminal2 size={11} className="text-muted-foreground/50" />
+              <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Terminal</span>
+            </div>
+            <span className="text-[10px] text-emerald-400/70 font-medium">● running</span>
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            <table className="w-full border-collapse">
+              <tbody>
+                {lines.slice(-40).map((line, i) => (
+                  <tr key={i} className="hover:bg-white/[0.03]">
+                    <td className="select-none text-right pr-3 pl-3 py-[1px] text-[10px] font-mono text-white/20 w-8 shrink-0 align-top">
+                      {lines.length - 40 + i + 1 > 0 ? lines.length - 40 + i + 1 : i + 1}
+                    </td>
+                    <td className="pr-3 py-[1px] text-[11px] font-mono text-white/70 leading-relaxed whitespace-pre">
+                      {line || " "}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-3 py-1.5 border-t border-white/[0.06] bg-[#141414] flex items-center gap-2">
+            <IconX size={10} className="text-white/30" />
+            <span className="text-[10px] font-mono text-white/30 truncate">
+              terminal-output-{new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.txt
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── @ mention row with preview ────────────────────────────────────────────────
 
 function MentionRow({
@@ -719,20 +776,14 @@ function TasksBar({ todos }: { todos: TodoItem[] }) {
 
 // ── Table block ───────────────────────────────────────────────────────────────
 
-function TableBlock({ node, children }: { node?: any; children?: React.ReactNode }) {
+function TableBlock({ children }: { node?: any; children?: React.ReactNode }) {
   const [copied, setCopied] = useState(false)
-
-  function nodeText(n: any): string {
-    if (!n) return ""
-    if (typeof n.value === "string") return n.value
-    if (Array.isArray(n.children)) return n.children.map(nodeText).join("")
-    return ""
-  }
+  const tableRef = useRef<HTMLTableElement>(null)
 
   function copyTable() {
-    if (!node) return
-    const rows: string[][] = (node.children ?? []).map((row: any) =>
-      (row.children ?? []).map((cell: any) => nodeText(cell).trim())
+    if (!tableRef.current) return
+    const rows = Array.from(tableRef.current.rows).map((row) =>
+      Array.from(row.cells).map((cell) => cell.textContent?.trim() ?? "")
     )
     if (rows.length === 0) return
     const [header, ...body] = rows
@@ -757,7 +808,7 @@ function TableBlock({ node, children }: { node?: any; children?: React.ReactNode
         <span>{copied ? "Copied" : "Copy"}</span>
       </button>
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-[13px] border-collapse">{children}</table>
+        <table ref={tableRef} className="w-full text-[13px] border-collapse">{children}</table>
       </div>
     </div>
   )
@@ -2021,11 +2072,11 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   const applyMention = useCallback((option: { type: "file"; path: string; name: string } | { type: "terminal"; name: string; path: string }) => {
     if (option.type === "file") {
-      // Replace @query with @path inline in the textarea
+      // Replace @query with @name inline in the textarea (path stored in mentionAttachments)
       setInput((prev) => {
         const start = mentionStartRef.current
         const end = start + 1 + (mentionQuery?.length ?? 0)
-        return prev.slice(0, start) + "@" + option.path + " " + prev.slice(end)
+        return prev.slice(0, start) + "@" + option.name + " " + prev.slice(end)
       })
       setMentionAttachments((prev) => {
         if (prev.some((x) => x.type === "file" && x.path === option.path)) return prev
@@ -2129,14 +2180,13 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
     }
 
-    // Collect @path tokens from the text and fetch file contents
-    const atPathMatches = [...text.matchAll(/@([\w./\-]+)/g)]
-    const uniquePaths = [...new Set(atPathMatches.map((m) => m[1]))]
-    if (uniquePaths.length > 0) {
+    // Fetch content for all file mention attachments
+    const fileMentions = mentionAttachments.filter((m): m is { type: "file"; path: string; name: string } => m.type === "file")
+    if (fileMentions.length > 0) {
       const blocks: string[] = []
-      for (const path of uniquePaths) {
-        const fileContent = await api.getFileContent(agent.id, path).catch(() => "")
-        if (fileContent) blocks.push(`<file path="${path}">\n${fileContent}\n</file>`)
+      for (const m of fileMentions) {
+        const fileContent = await api.getFileContent(agent.id, m.path).catch(() => "")
+        if (fileContent) blocks.push(`<file path="${m.path}">\n${fileContent}\n</file>`)
       }
       if (blocks.length > 0) content = blocks.join("\n\n") + "\n\n---\n\n" + content
     }
@@ -2685,16 +2735,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                       </div>
                     ))}
                     {mentionAttachments.filter((ma) => ma.type === "terminal").map((ma) => (
-                      <div key="__terminal__" className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
-                        <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
-                        <span className="font-medium text-foreground/80">Terminal output</span>
-                        <button
-                          onClick={() => setMentionAttachments((p) => p.filter((x) => x !== ma))}
-                          className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"
-                        >
-                          <IconX size={11} />
-                        </button>
-                      </div>
+                      <TerminalChip key="__terminal__" agentId={agent.id} onRemove={() => setMentionAttachments((p) => p.filter((x) => x !== ma))} />
                     ))}
                   </div>
                 )}

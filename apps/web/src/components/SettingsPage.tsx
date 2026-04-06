@@ -219,6 +219,9 @@ function SettingInfo({ label, description }: { label: string; description?: stri
 
 function GeneralSettings() {
   const [notifications, setNotificationsState] = useState(getDesktopNotif)
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() =>
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  )
   const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled)
   const [autoConvertState, setAutoConvertState] = useState(getAutoConvert)
   const [stripYoureRightState, setStripYoureRightState] = useState(getStripYoureRight)
@@ -240,7 +243,13 @@ function GeneralSettings() {
     setNotificationsState(enabled)
     setDesktopNotif(enabled)
     if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission()
+      Notification.requestPermission().then((perm) => setNotifPermission(perm))
+    }
+  }
+
+  function handleRequestPermission() {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().then((perm) => setNotifPermission(perm))
     }
   }
 
@@ -288,16 +297,24 @@ function GeneralSettings() {
       <SettingRow>
         <div>
           <SettingInfo label="Notifications" description="Get notified when an agent finishes, even in background tabs." />
-          {typeof Notification !== "undefined" && Notification.permission === "denied" && (
+          {notifPermission === "denied" && (
             <p className="text-[11px] text-destructive mt-1">Blocked — allow notifications in your browser settings.</p>
           )}
-          {typeof Notification === "undefined" && (
+          {notifPermission === "unsupported" && (
             <p className="text-[11px] text-muted-foreground/60 mt-1">Not supported. On iOS, add to Home Screen first.</p>
+          )}
+          {notifPermission === "default" && notifications && (
+            <button
+              onClick={handleRequestPermission}
+              className="text-[11px] text-primary mt-1 hover:underline"
+            >
+              Grant browser permission to enable →
+            </button>
           )}
         </div>
         <Switch
           checked={notifications}
-          disabled={typeof Notification !== "undefined" && Notification.permission === "denied"}
+          disabled={notifPermission === "denied"}
           onCheckedChange={handleNotificationsChange}
         />
       </SettingRow>

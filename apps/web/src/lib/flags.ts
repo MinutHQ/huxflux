@@ -8,11 +8,13 @@ const STORAGE_KEY = "huxflux:flags"
 type Flags = {
   prReview: boolean
   refine: boolean
+  remoteEditor: boolean
 }
 
 const DEFAULTS: Flags = {
   prReview: false,
   refine: false,
+  remoteEditor: false,
 }
 
 function load(): Flags {

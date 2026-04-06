@@ -11,6 +11,7 @@
 
 ### Desktop
 
+- **Open in editor via Remote SSH** (experiment flag `remoteEditor`) — when connected to a remote server, the "Open in" dropdown detects locally installed SSH-capable editors (VS Code, Cursor) and opens the worktree via `--remote ssh-remote+user@host /path`; shows an amber setup banner with step-by-step instructions when SSH env vars are not configured on the server
 - Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
 - Frameless window with custom traffic light buttons (close/minimize/maximize)
 - Multiple terminals per agent — open and switch between terminal sessions with a tab bar
@@ -32,6 +33,7 @@
 
 ### Server
 
+- `GET /api/system/ssh-info` — returns SSH connection details (host, port, user, configured) for remote editor launch; configure via `HUXFLUX_SSH_HOST` / `HUXFLUX_SSH_USER` env vars
 - Each chat tab now resumes its own Claude session via `--resume <sessionId>`, preventing tabs from sharing conversation context
 - Added `session_id` column to agents table (migration v7)
 - Added `PUT` to CORS methods (required for mark-ready endpoint)

@@ -234,6 +234,10 @@ export const api = {
   submitFeedback: (body: { title: string; body?: string }) =>
     req<{ url: string; number: number }>("/api/feedback", { method: "POST", body: JSON.stringify(body) }),
 
+  // System
+  getSystemSshInfo: () =>
+    req<{ host: string; port: number; user: string; configured: boolean }>("/api/system/ssh-info"),
+
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ""

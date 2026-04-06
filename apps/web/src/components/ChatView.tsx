@@ -5,7 +5,9 @@ import { useAgents, useRepos } from "@huxflux/shared"
 import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
-import { api, getApiBase } from "@huxflux/shared"
+import { api, getApiBase, getActiveServer } from "@huxflux/shared"
+import { isTauri } from "@/lib/platform"
+import { getFlag } from "@/lib/flags"
 import { DiffView } from "@/components/DiffView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
@@ -64,6 +66,16 @@ const OPEN_IN_APPS = [
 ] as const
 
 const OPEN_IN_KEY = "huxflux:open-in-last"
+const SSH_CAPABLE_EDITORS = ["vscode", "cursor"]
+
+function isRemoteServer(): boolean {
+  const server = getActiveServer()
+  if (!server) return false
+  try {
+    const h = new URL(server.url).hostname
+    return h !== "localhost" && h !== "127.0.0.1" && h !== "::1"
+  } catch { return false }
+}
 
 const MODELS = [
   { id: "claude-opus-4-6",           label: "Opus 4.6" },
@@ -1940,6 +1952,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
   const [lastOpenInApp, setLastOpenInApp] = useState(() => localStorage.getItem(OPEN_IN_KEY) ?? "finder")
   const [openInOpen, setOpenInOpen] = useState(false)
+  const remoteMode = getFlag("remoteEditor") && isTauri && isRemoteServer()
+  const [detectedEditors, setDetectedEditors] = useState<string[]>([])
+  const [sshInfo, setSshInfo] = useState<{ host: string; port: number; user: string; configured: boolean } | null>(null)
+  const [showSshSetup, setShowSshSetup] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { data: allAgents = [] } = useAgents()
   const { data: repos = [] } = useRepos()
@@ -1958,22 +1974,51 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     }
   }, [editingTitle])
 
+  // Load SSH info + detect local editors when in remote mode
+  useEffect(() => {
+    if (!remoteMode) return
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<string[]>("detect_editors").then(setDetectedEditors).catch(() => {})
+    })
+    api.getSystemSshInfo().then(setSshInfo).catch(() => {})
+  }, [remoteMode])
+
   // "Open in" keyboard shortcut: Cmd/Ctrl+O reopens last-used app
   useEffect(() => {
-    function handleOpenIn(e: KeyboardEvent) {
+    function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "o" && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        void api.openIn(agent.id, lastOpenInApp)
+        void doOpenIn(lastOpenInApp)
       }
     }
-    window.addEventListener("keydown", handleOpenIn)
-    return () => window.removeEventListener("keydown", handleOpenIn)
-  }, [agent.id, lastOpenInApp])
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [agent.id, lastOpenInApp, remoteMode, sshInfo])
+
+  async function doOpenIn(appKey: string) {
+    if (remoteMode && sshInfo) {
+      try {
+        const res = await api.getWorktreePath(agent.id)
+        const { invoke } = await import("@tauri-apps/api/core")
+        await invoke("open_ssh_editor", {
+          editor: appKey,
+          user: sshInfo.user,
+          host: sshInfo.host,
+          port: sshInfo.port,
+          path: res.path,
+        })
+      } catch (err) {
+        toast.error(String(err))
+      }
+    } else {
+      void api.openIn(agent.id, appKey)
+    }
+  }
 
   function handleOpenIn(appKey: string) {
     localStorage.setItem(OPEN_IN_KEY, appKey)
     setLastOpenInApp(appKey)
-    void api.openIn(agent.id, appKey)
+    void doOpenIn(appKey)
   }
 
 
@@ -2389,8 +2434,22 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 <IconChevronDown size={10} className="text-muted-foreground/50" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-48 p-1" sideOffset={4}>
-              {OPEN_IN_APPS.map((item) => (
+            <PopoverContent align="end" className="w-52 p-1" sideOffset={4}>
+              {remoteMode && sshInfo && !sshInfo.configured && (
+                <div className="flex items-center justify-between px-2 py-1.5 mb-1 text-[11px] text-amber-400 bg-amber-400/10 rounded">
+                  <span>SSH not configured</span>
+                  <button
+                    onClick={() => { setOpenInOpen(false); setShowSshSetup(true) }}
+                    className="underline ml-1"
+                  >
+                    Setup
+                  </button>
+                </div>
+              )}
+              {(remoteMode
+                ? OPEN_IN_APPS.filter((a) => SSH_CAPABLE_EDITORS.includes(a.key) && detectedEditors.includes(a.key))
+                : OPEN_IN_APPS
+              ).map((item) => (
                 <button
                   key={item.key}
                   onClick={() => { handleOpenIn(item.key); setOpenInOpen(false) }}
@@ -2398,9 +2457,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 >
                   <item.Icon size={14} className="text-muted-foreground" />
                   <span className="flex-1 text-left">{item.label}</span>
-                  <span className="text-[10px] text-muted-foreground/40">{item.shortcut}</span>
+                  {!remoteMode && <span className="text-[10px] text-muted-foreground/40">{item.shortcut}</span>}
                 </button>
               ))}
+              {remoteMode && detectedEditors.length === 0 && (
+                <div className="px-2 py-3 text-[11px] text-muted-foreground text-center">
+                  No SSH-capable editors found.<br />Install VS Code or Cursor.
+                </div>
+              )}
               <div className="border-t border-border my-1" />
               <button
                 onClick={async () => {
@@ -2413,7 +2477,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               >
                 <IconClipboard size={14} className="text-muted-foreground" />
                 <span className="flex-1 text-left">Copy path</span>
-                <span className="text-[10px] text-muted-foreground/40">⌘⇧C</span>
+                {!remoteMode && <span className="text-[10px] text-muted-foreground/40">⌘⇧C</span>}
               </button>
             </PopoverContent>
           </Popover>
@@ -2928,6 +2992,36 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               </div>
             </div>
           </div>
+          </div>
+        </div>
+      )}
+
+      {showSshSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowSshSetup(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-[480px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold">Remote SSH Setup</h2>
+              <button onClick={() => setShowSshSetup(false)} className="text-muted-foreground hover:text-foreground">
+                <IconX size={16} />
+              </button>
+            </div>
+            <p className="text-[12px] text-muted-foreground mb-3">
+              Set these environment variables on the server before starting Huxflux:
+            </p>
+            <pre className="bg-background rounded-lg p-3 text-[11px] font-mono text-foreground mb-4 select-all">
+{`export HUXFLUX_SSH_HOST=<server-ip-or-hostname>
+export HUXFLUX_SSH_USER=<your-username>
+huxflux start`}
+            </pre>
+            <p className="text-[12px] text-muted-foreground mb-1">
+              On your machine, install the <strong>Remote - SSH</strong> extension in VS Code or Cursor.
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              The server must have SSH enabled and accept key-based authentication from your machine.
+            </p>
+            <div className="mt-4 flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setShowSshSetup(false)}>Close</Button>
+            </div>
           </div>
         </div>
       )}

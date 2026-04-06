@@ -1125,6 +1125,7 @@ function PlaceholderSettings({ title }: { title: string }) {
 function ExperimentalSettings() {
   const [prReview, setPrReview] = useState(() => getFlag("prReview"))
   const [refine, setRefine] = useState(() => getFlag("refine"))
+  const [remoteEditor, setRemoteEditor] = useState(() => getFlag("remoteEditor"))
 
   return (
     <div className="space-y-6">
@@ -1145,6 +1146,15 @@ function ExperimentalSettings() {
           </div>
         </div>
         <Switch checked={refine} onCheckedChange={(v) => { setFlag("refine", v); setRefine(v) }} />
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Remote Editor</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Open worktrees in VS Code or Cursor via Remote SSH when connected to a remote server. Desktop only.
+          </div>
+        </div>
+        <Switch checked={remoteEditor} onCheckedChange={(v) => { setFlag("remoteEditor", v); setRemoteEditor(v) }} />
       </div>
     </div>
   )

@@ -22,6 +22,7 @@ import { uploadRoutes } from "./routes/upload.js"
 import { feedbackRoutes } from "./routes/feedback.js"
 import { settingsRoutes } from "./routes/settings.js"
 import { statsRoutes } from "./routes/stats.js"
+import { systemRoutes } from "./routes/system.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -74,6 +75,7 @@ await app.register(uploadRoutes)
 await app.register(feedbackRoutes)
 await app.register(settingsRoutes)
 await app.register(statsRoutes)
+await app.register(systemRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
@@ -117,6 +119,9 @@ process.on("SIGTERM", () => { cleanupPortFile(); process.exit(0) })
 process.on("SIGINT", () => { cleanupPortFile(); process.exit(0) })
 
 startPoller()
+if (!process.env.HUXFLUX_SSH_USER) {
+  console.log("[huxflux] SSH not configured. Set HUXFLUX_SSH_HOST and HUXFLUX_SSH_USER to enable remote editor launch.")
+}
 console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
 if (boundPort !== config.port) {
   console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)

@@ -32,8 +32,15 @@ export function getServers(): HuxfluxServer[] {
   return getServersRaw()
 }
 
+function notifyChange() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("huxflux:servers-changed"))
+  }
+}
+
 function saveServers(servers: HuxfluxServer[]): void {
   getStorage().setItem(SERVERS_KEY, JSON.stringify(servers))
+  notifyChange()
 }
 
 export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer {
@@ -83,6 +90,7 @@ export function getActiveServerId(): string | null {
 
 export function setActiveServerId(id: string): void {
   getStorage().setItem(ACTIVE_KEY, id)
+  notifyChange()
 }
 
 export function getActiveServer(): HuxfluxServer | null {

@@ -73,7 +73,7 @@ function AddServerForm({ onDone }: { onDone: () => void }) {
 
       const server = add({ name: name.trim() || "My Server", url: normalizedUrl, token: trimmedToken })
       setActiveServerId(server.id)
-      onDone()
+      window.location.reload()
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         setError("Connection timed out.")

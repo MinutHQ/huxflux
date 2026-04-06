@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   getServers,
   addServer,
@@ -6,6 +6,7 @@ import {
   removeServer,
   getActiveServerId,
   setActiveServerId,
+  getActiveServer,
   type HuxfluxServer,
 } from "@huxflux/shared"
 
@@ -18,13 +19,19 @@ export function useServers() {
     setActiveIdState(getActiveServerId())
   }, [])
 
+  // Keep all useServers instances in sync via the serverStore event
+  useEffect(() => {
+    window.addEventListener("huxflux:servers-changed", refresh)
+    return () => window.removeEventListener("huxflux:servers-changed", refresh)
+  }, [refresh])
+
   const add = useCallback(
     (s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer => {
       const server = addServer(s)
-      refresh()
+      // refresh is handled by the huxflux:servers-changed event
       return server
     },
-    [refresh]
+    []
   )
 
   const update = useCallback(
@@ -33,28 +40,27 @@ export function useServers() {
       // Reload if connection details changed so WS reconnects with new settings
       if (patch.url !== undefined || patch.token !== undefined) {
         window.location.reload()
-      } else {
-        refresh()
       }
-    },
-    [refresh]
-  )
-
-  const remove = useCallback(
-    (id: string) => {
-      removeServer(id)
-      window.location.reload()
+      // refresh handled by event
     },
     []
   )
 
-  const setActive = useCallback(
-    (id: string) => {
-      setActiveServerId(id)
-      window.location.reload()
-    },
-    []
-  )
+  const remove = useCallback((id: string) => {
+    const wasActive = getActiveServerId() === id
+    removeServer(id)
+    // Only reload when the active server was removed — WS must reconnect to the
+    // new active server. For non-active removals the event update is sufficient.
+    if (wasActive) window.location.reload()
+  }, [])
+
+  const setActive = useCallback((id: string) => {
+    const prev = getActiveServer()
+    setActiveServerId(id)
+    // Reload only when switching to a different server URL so WS reconnects
+    const next = getServers().find((s) => s.id === id)
+    if (prev?.url !== next?.url) window.location.reload()
+  }, [])
 
   const activeServer = servers.find((s) => s.id === activeId) ?? servers[0] ?? null
 

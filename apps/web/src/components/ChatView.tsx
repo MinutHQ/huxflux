@@ -2238,15 +2238,11 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
     }
 
-    // Fetch content for all file mention attachments
+    // Append file paths for all file mention attachments
     const fileMentions = mentionAttachments.filter((m): m is { type: "file"; path: string; name: string } => m.type === "file")
     if (fileMentions.length > 0) {
-      const blocks: string[] = []
-      for (const m of fileMentions) {
-        const fileContent = await api.getFileContent(agent.id, m.path).catch(() => "")
-        if (fileContent) blocks.push(`<file path="${m.path}">\n${fileContent}\n</file>`)
-      }
-      if (blocks.length > 0) content = blocks.join("\n\n") + "\n\n---\n\n" + content
+      const paths = fileMentions.map((m) => m.path).join("\n")
+      content = `Referenced files:\n${paths}\n\n---\n\n` + content
     }
 
     // Terminal attachment (from chip)

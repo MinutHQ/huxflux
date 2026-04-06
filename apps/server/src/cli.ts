@@ -24,6 +24,7 @@ const LOG_FILE     = path.join(DATA_DIR, "server.log")
 const DB_FILE      = path.join(DATA_DIR, "huxflux.db")
 const DB_BAK       = DB_FILE + ".bak"
 const DB_BAK2      = DB_FILE + ".bak2"
+const WORKSPACES   = path.join(DATA_DIR, "workspaces")
 const SERVER_ENTRY = path.join(fileURLToPath(import.meta.url), "../index.js")
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -488,9 +489,10 @@ async function cmdReset() {
   │    • All messages, tool calls, and file changes               │
   │    • All terminal history                                      │
   │    • All database backups (.bak, .bak2)                       │
+  │    • All git worktrees in ~/huxflux/workspaces/               │
   │                                                               │
-  │  Git worktrees on disk are NOT removed — clean them up        │
-  │  manually if needed.                                          │
+  │  Note: git repos themselves are untouched, but you may need   │
+  │  to run 'git worktree prune' in each repo afterward.          │
   │                                                               │
   │  This action CANNOT be undone.                                │
   │                                                               │
@@ -516,7 +518,12 @@ async function cmdReset() {
       console.log(`  Deleted ${f}`)
     }
   }
-  console.log("\n  Database reset. Run 'huxflux start' for a fresh instance.\n")
+  if (fs.existsSync(WORKSPACES)) {
+    fs.rmSync(WORKSPACES, { recursive: true, force: true })
+    console.log(`  Deleted ${WORKSPACES}`)
+  }
+  console.log("\n  Reset complete. Run 'huxflux start' for a fresh instance.")
+  console.log("  Tip: run 'git worktree prune' in each repo to remove stale refs.\n")
 }
 
 const WEB_APP_URL = "https://huxflux.netlify.app"

@@ -11,6 +11,7 @@ description: What's new in Huxflux.
 
 ### Desktop
 
+- **Open in editor via Remote SSH** — when connected to a remote server, the "Open in" dropdown detects locally installed SSH-capable editors (VS Code, Cursor) and opens the worktree via Remote SSH; enable under Settings → Experimental → Remote Editor
 - Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
 - Native macOS traffic lights and rounded window corners
 - Multiple terminals per agent — open and switch between terminal sessions with a tab bar
@@ -40,6 +41,7 @@ description: What's new in Huxflux.
 
 ### Server
 
+- `GET /api/system/ssh-info` — returns SSH connection details for remote editor launch; configure via `HUXFLUX_SSH_HOST` and `HUXFLUX_SSH_USER` env vars
 - Each chat tab now resumes its own Claude session via `--resume <sessionId>`
 - GitHub-dependent UI (PR status, feedback) only shown when `GITHUB_TOKEN` is configured
 - `huxflux status` and `huxflux open` now show the actual bound port when the default port was in use

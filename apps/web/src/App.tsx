@@ -71,6 +71,18 @@ export default function App() {
         e.preventDefault()
         setTerminalMaximized((v) => !v)
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault()
+        setView("settings")
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:open-shortcuts"))
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:new-agent"))
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

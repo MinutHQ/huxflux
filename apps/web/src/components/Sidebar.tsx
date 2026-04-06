@@ -910,10 +910,27 @@ function FilterPopover({
 const KEYBOARD_SHORTCUTS = [
   { group: "General", label: "Toggle sidebar", keys: ["⌘", "B"] },
   { group: "General", label: "Toggle terminal", keys: ["F1"] },
+  { group: "General", label: "New agent", keys: ["⌘", "N"] },
+  { group: "General", label: "Open settings", keys: ["⌘", ","] },
+  { group: "General", label: "Keyboard shortcuts", keys: ["⌘", "/"] },
+  { group: "Chat", label: "Send message", keys: ["↵"] },
+  { group: "Chat", label: "New line", keys: ["⇧", "↵"] },
+  { group: "Chat", label: "Attach file", keys: ["⌘", "U"] },
+  { group: "Chat", label: "Open in editor", keys: ["⌘", "O"] },
+  { group: "Editor", label: "Save file", keys: ["⌘", "S"] },
+  { group: "Editor", label: "Cancel edit", keys: ["Esc"] },
 ]
 
 function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState("")
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { e.stopPropagation(); onClose() }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
 
   const filtered = KEYBOARD_SHORTCUTS.filter((s) =>
     !search || s.label.toLowerCase().includes(search.toLowerCase())
@@ -972,13 +989,13 @@ function KeyboardShortcutsDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function HelpPopover({ feedbackEnabled, onFeedback, onClose, anchorRef }: {
+function HelpPopover({ feedbackEnabled, onFeedback, onClose, onShowShortcuts, anchorRef }: {
   feedbackEnabled: boolean
   onFeedback: () => void
   onClose: () => void
+  onShowShortcuts: () => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
 }) {
-  const [showShortcuts, setShowShortcuts] = useState(false)
   const pos = anchorRef.current?.getBoundingClientRect()
 
   return createPortal(
@@ -1002,7 +1019,7 @@ function HelpPopover({ feedbackEnabled, onFeedback, onClose, anchorRef }: {
             </button>
           )}
           <button
-            onClick={() => setShowShortcuts(true)}
+            onClick={() => { onShowShortcuts(); onClose() }}
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left text-[12px] text-foreground"
           >
             <IconKeyboard size={13} className="text-muted-foreground shrink-0" />
@@ -1017,9 +1034,6 @@ function HelpPopover({ feedbackEnabled, onFeedback, onClose, anchorRef }: {
           </button>
         </div>
       </div>
-      {showShortcuts && (
-        <KeyboardShortcutsDialog onClose={() => { setShowShortcuts(false); onClose() }} />
-      )}
     </>,
     document.body
   )
@@ -1298,6 +1312,7 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const addWorkspaceBtnRef = useRef<HTMLButtonElement>(null)
   const [showFeedback, setShowFeedback] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [groupBy, setGroupByRaw] = useState<GroupByMode>(() => (localStorage.getItem("hive:sidebar:groupBy") as GroupByMode) || "status")
   const setGroupBy = (v: GroupByMode) => { setGroupByRaw(v); localStorage.setItem("hive:sidebar:groupBy", v) }
@@ -1323,6 +1338,17 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
   const sidebarContainerRef = useRef<HTMLDivElement>(null)
   const { data: repos = [] } = useRepos()
   const queryClient = useQueryClient()
+
+  useEffect(() => {
+    function onOpenShortcuts() { setShowShortcuts(true) }
+    function onNewAgent() { setShowNewAgent(true) }
+    window.addEventListener("huxflux:open-shortcuts", onOpenShortcuts)
+    window.addEventListener("huxflux:new-agent", onNewAgent)
+    return () => {
+      window.removeEventListener("huxflux:open-shortcuts", onOpenShortcuts)
+      window.removeEventListener("huxflux:new-agent", onNewAgent)
+    }
+  }, [])
 
   const prReviewEnabled = getFlag("prReview")
   const refineEnabled = getFlag("refine")
@@ -1763,8 +1789,12 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
           feedbackEnabled={feedbackEnabled}
           onFeedback={() => setShowFeedback(true)}
           onClose={() => setShowHelp(false)}
+          onShowShortcuts={() => setShowShortcuts(true)}
           anchorRef={helpBtnRef}
         />
+      )}
+      {showShortcuts && (
+        <KeyboardShortcutsDialog onClose={() => setShowShortcuts(false)} />
       )}
       {showFilter && (
         <FilterPopover

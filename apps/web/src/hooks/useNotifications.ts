@@ -2,6 +2,7 @@ import { toast } from "sonner"
 import { useAgentEvents } from "@huxflux/shared"
 import { playSound } from "@/lib/sounds"
 import { getSoundPref, getSoundEnabled, getDesktopNotif } from "@/lib/notificationPrefs"
+import { isTauri } from "@/lib/platform"
 import type { AgentSummary } from "@/data/mock"
 
 /**
@@ -25,8 +26,20 @@ export function useNotifications(agents: AgentSummary[]) {
       playSound(getSoundPref())
     }
 
-    if (getDesktopNotif() && typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification(`${title} finished`, { body: "Claude has completed its response." })
+    if (getDesktopNotif()) {
+      if (isTauri) {
+        import("@tauri-apps/plugin-notification").then(({ sendNotification, isPermissionGranted, requestPermission }) => {
+          isPermissionGranted().then(async (granted) => {
+            if (!granted) {
+              const permission = await requestPermission()
+              if (permission !== "granted") return
+            }
+            sendNotification({ title: `${title} finished`, body: "Claude has completed its response." })
+          })
+        }).catch(() => {})
+      } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`${title} finished`, { body: "Claude has completed its response." })
+      }
     }
   })
 }

@@ -5,6 +5,9 @@
 ### Mobile
 
 - Simplified new-agent flow to single step — tap a repo to instantly create an agent (auto-generates bee name and branch, no manual input required)
+- Replaced native action sheets and alerts with a custom bottom sheet component
+- Removed purple/indigo accent color — UI now uses stone-based colors consistent with the web app
+- Fixed `KeyboardAvoidingView` crash (switched from `react-native-keyboard-controller` to built-in RN component)
 
 ### Desktop
 
@@ -21,12 +24,21 @@
 - "Mark ready for review" button in PR tab to convert draft PRs (uses GitHub GraphQL API)
 - Streaming indicator now correctly resets when switching between agents
 - Loading indicator clears correctly after Claude finishes, even after a WS reconnect
+- **@ mentions in chat** — type `@` to search and attach worktree files inline or insert terminal output as context; file references render with accent color in sent messages; hover suggestions show a line-numbered preview panel
+- **Tasks bar** — reads Claude's `TodoWrite` tool calls and shows a collapsible task list above the chat input with per-task status (pending / active / completed)
+- **Markdown tables** — tables now render with styled rows and a copy button that exports pipe-formatted markdown for pasting into any markdown editor
+- Team agents and Tasks panels are now inset cards above the input box instead of full-width divider panels
+- Removed the border dividing the message list from the chat input area
 
 ### Server
 
 - Each chat tab now resumes its own Claude session via `--resume <sessionId>`, preventing tabs from sharing conversation context
 - Added `session_id` column to agents table (migration v7)
 - Added `PUT` to CORS methods (required for mark-ready endpoint)
+- Added support for local-only repos (no remote) — branch detection falls back to local HEAD
+- Fixed "fatal: invalid reference" when creating a worktree on a repo with no commits yet
+- Added `POST /api/repos/clone` — clone a remote repository by URL
+- Added `POST /api/repos/quick-start` — scaffold a new Vite or TanStack Start project with git initialized
 
 ---
 

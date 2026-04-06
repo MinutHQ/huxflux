@@ -1,11 +1,24 @@
-import { isTauri } from "@/lib/platform"
+import { isTauri, isMacOS } from "@/lib/platform"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { invoke } from "@tauri-apps/api/core"
 
-// Spacer that reserves space for the native macOS traffic lights when running
-// inside a Tauri window with titleBarStyle "overlay".
-// The drag region lets the user drag the window from the sidebar's top area.
-// Returns null in a plain browser — no spacer needed there.
+// Spacer that reserves space for the native macOS traffic lights.
+// Uses manual drag/zoom instead of data-tauri-drag-region so that
+// double-click calls native [NSWindow zoom:] (smooth animation) rather
+// than Tauri's toggleMaximize() which snaps to top-left.
+// Returns null in a plain browser or on Linux/Windows (native title bar).
 export function TitleBar() {
-  if (!isTauri) return null
+  if (!isTauri || !isMacOS) return null
 
-  return <div data-tauri-drag-region className="h-7 shrink-0" />
+  function handleMouseDown(e: React.MouseEvent) {
+    // Traffic lights occupy the left ~75px — let macOS handle those natively
+    if (e.clientX < 75) return
+    if (e.detail === 2) {
+      invoke("zoom_window")
+    } else {
+      getCurrentWindow().startDragging()
+    }
+  }
+
+  return <div onMouseDown={handleMouseDown} className="h-10 shrink-0" />
 }

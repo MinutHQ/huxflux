@@ -19,7 +19,7 @@ html, body {
 
 html.tauri,
 html.tauri body {
-  background: transparent;
+  background: #1c1917;
 }
 
 #root {

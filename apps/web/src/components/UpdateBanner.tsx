@@ -24,7 +24,7 @@ export function UpdateBanner({ update, isInstalling, progress, isIdle, onInstall
   if (dismissed) return null
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-primary text-primary-foreground text-[12px] shrink-0">
+    <div data-tauri-drag-region className="flex items-center gap-3 px-4 py-2 bg-primary text-primary-foreground text-[12px] shrink-0">
       <IconDownload size={13} className="shrink-0" />
 
       {isInstalling ? (

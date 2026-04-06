@@ -1,6 +1,19 @@
 use std::path::Path;
 use std::process::Command;
 
+#[tauri::command]
+fn zoom_window(window: tauri::WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        #[allow(unused_imports)]
+        use objc::{msg_send, runtime::Object, sel, sel_impl};
+        let ns_window = window.ns_window().unwrap() as *mut Object;
+        unsafe { let _: () = msg_send![ns_window, zoom: ns_window]; }
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = window; }
+}
+
 fn find_cli(name: &str) -> Option<String> {
     let candidates = [
         format!("/usr/local/bin/{}", name),
@@ -27,13 +40,23 @@ fn find_cli(name: &str) -> Option<String> {
 #[tauri::command]
 fn detect_editors() -> Vec<String> {
     let mut found = vec![];
-    if Path::new("/Applications/Visual Studio Code.app").exists() || find_cli("code").is_some() {
+    if is_editor_installed("code", "/Applications/Visual Studio Code.app") {
         found.push("vscode".to_string());
     }
-    if Path::new("/Applications/Cursor.app").exists() || find_cli("cursor").is_some() {
+    if is_editor_installed("cursor", "/Applications/Cursor.app") {
         found.push("cursor".to_string());
     }
     found
+}
+
+fn is_editor_installed(cli: &str, mac_app_path: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    if Path::new(mac_app_path).exists() {
+        return true;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = mac_app_path;
+    find_cli(cli).is_some()
 }
 
 #[tauri::command]
@@ -75,7 +98,7 @@ pub fn run() {
         .setup(|_app| {
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

@@ -42,6 +42,7 @@ import {
   IconX,
   IconHome,
   IconBolt,
+  IconRefresh,
 } from "@tabler/icons-react"
 
 // ── Status icons (Linear-style) ───────────────────────────────────────────────
@@ -1325,6 +1326,7 @@ interface SidebarProps {
   clearDeletingAgent: () => void
   prs: PullRequest[]
   prsLoading?: boolean
+  onRefetchPRs?: () => void
   selectedPrId: string | null
   onSelectPr: (id: string) => void
   onSwitchToAgents?: () => void
@@ -1340,7 +1342,7 @@ interface SidebarProps {
   feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1703,16 +1705,26 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
             <div className="px-4 py-2.5 border-b border-sidebar-border shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pull Requests</span>
-                <Button
-                  ref={prFilterBtnRef}
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setShowPrFilter((v) => !v)}
-                  className={hideReviewedPrs ? "text-primary" : ""}
-                  title="Filter"
-                >
-                  <IconFilter size={13} />
-                </Button>
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={onRefetchPRs}
+                    title="Refresh"
+                  >
+                    <IconRefresh size={13} />
+                  </Button>
+                  <Button
+                    ref={prFilterBtnRef}
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowPrFilter((v) => !v)}
+                    className={hideReviewedPrs ? "text-primary" : ""}
+                    title="Filter"
+                  >
+                    <IconFilter size={13} />
+                  </Button>
+                </div>
                 {showPrFilter && (
                   <PRFilterPopover
                     hideReviewed={hideReviewedPrs}

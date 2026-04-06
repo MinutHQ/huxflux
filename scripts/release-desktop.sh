@@ -1,33 +1,53 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./scripts/release-desktop.sh v0.2.0
+# Usage:
+#   ./scripts/release-desktop.sh v0.2.0              # macOS: builds macOS + Linux (via Docker)
+#   ./scripts/release-desktop.sh v0.2.0 --macos-only # skip Linux Docker build
+#   ./scripts/release-desktop.sh v0.2.0 --linux-only # on Linux: builds Linux only
+#
+# First run on a fresh machine builds the Docker image (~5 min). Subsequent
+# Linux builds reuse cached Cargo artifacts and are much faster.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASES_REPO="AlexMartosP/huxflux-releases"
+APP_NAME="Huxflux"
+DOCKER_IMAGE="huxflux-linux-builder:1"
 
-# ── Validate arguments ────────────────────────────────────────────────────────
+# ── Arguments ─────────────────────────────────────────────────────────────────
 
 TAG="${1:-}"
 if [[ -z "$TAG" ]]; then
-  echo "Usage: $0 <tag>  (e.g. v0.2.0)" >&2
+  echo "Usage: $0 <tag> [--macos-only|--linux-only]  (e.g. v0.2.0)" >&2
   exit 1
 fi
 if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Error: tag must be semver like v1.2.3, got: $TAG" >&2
   exit 1
 fi
-VERSION="${TAG#v}"  # strip leading 'v'
+VERSION="${TAG#v}"
 
-# ── Must be on main ───────────────────────────────────────────────────────────
+MODE="${2:-}"
+HOST_OS="$(uname -s)"
+
+if [[ "$MODE" == "--linux-only" ]]; then
+  BUILD_MACOS=false; BUILD_LINUX=true
+elif [[ "$MODE" == "--macos-only" ]]; then
+  BUILD_MACOS=true; BUILD_LINUX=false
+elif [[ "$HOST_OS" == "Darwin" ]]; then
+  BUILD_MACOS=true; BUILD_LINUX=true
+elif [[ "$HOST_OS" == "Linux" ]]; then
+  BUILD_MACOS=false; BUILD_LINUX=true
+else
+  echo "Error: unsupported OS '$HOST_OS'." >&2; exit 1
+fi
+
+# ── Guards ────────────────────────────────────────────────────────────────────
 
 BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" != "main" ]]; then
-  echo "Error: must be on main branch (currently on '$BRANCH')" >&2
-  exit 1
+  echo "Error: must be on main branch (currently on '$BRANCH')" >&2; exit 1
 fi
-
-# ── Signing key ───────────────────────────────────────────────────────────────
 
 if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
   KEY_FILE="${HOME}/.tauri/huxflux.key"
@@ -41,118 +61,199 @@ if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
 fi
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
 
-# ── Check gh CLI ──────────────────────────────────────────────────────────────
-
 if ! command -v gh &>/dev/null; then
-  echo "Error: gh CLI not found. Install: https://cli.github.com" >&2
-  exit 1
+  echo "Error: gh CLI not found. Install: https://cli.github.com" >&2; exit 1
 fi
-
-# ── Build ─────────────────────────────────────────────────────────────────────
 
 TARGET_DIR="$REPO_ROOT/apps/desktop/src-tauri/target"
 
-# Clean up temp DMG files left by hdiutil from any previous failed run
-echo "==> Cleaning up leftover DMG temp files..."
-find "$TARGET_DIR" -name "rw.*.dmg" -delete 2>/dev/null || true
-find "$TARGET_DIR" -path "*/bundle/dmg/*.dmg" -delete 2>/dev/null || true
+# Accumulate files to upload and latest.json platform entries
+UPLOAD_FILES=()
+PLATFORM_ENTRIES=""
 
-cd "$REPO_ROOT/apps/desktop"
+# ── macOS build ───────────────────────────────────────────────────────────────
 
-echo "==> Building macOS ARM (aarch64-apple-darwin)..."
-pnpm tauri build --target aarch64-apple-darwin
+if [[ "$BUILD_MACOS" == "true" ]]; then
+  echo "==> Cleaning up leftover DMG temp files..."
+  find "$TARGET_DIR" -name "rw.*.dmg" -delete 2>/dev/null || true
+  find "$TARGET_DIR" -path "*/bundle/dmg/*.dmg" -delete 2>/dev/null || true
 
-echo "==> Building macOS Intel (x86_64-apple-darwin)..."
-pnpm tauri build --target x86_64-apple-darwin
+  cd "$REPO_ROOT/apps/desktop"
 
-# ── Locate DMGs ──────────────────────────────────────────────────────────────
+  echo "==> Building macOS ARM (aarch64-apple-darwin)..."
+  pnpm tauri build --target aarch64-apple-darwin
 
-ARM_DMG="$(find "$TARGET_DIR/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)"
-X64_DMG="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg"   | head -1)"
+  echo "==> Building macOS Intel (x86_64-apple-darwin)..."
+  pnpm tauri build --target x86_64-apple-darwin
 
-for f in "$ARM_DMG" "$X64_DMG"; do
-  if [[ -z "$f" || ! -f "$f" ]]; then
-    echo "Error: DMG not found — build may have failed" >&2
-    exit 1
+  ARM_DMG="$(find "$TARGET_DIR/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)"
+  X64_DMG="$(find "$TARGET_DIR/x86_64-apple-darwin/release/bundle/dmg"  -name "*.dmg" | head -1)"
+  for f in "$ARM_DMG" "$X64_DMG"; do
+    [[ -n "$f" && -f "$f" ]] || { echo "Error: DMG not found" >&2; exit 1; }
+  done
+
+  ARM_BUNDLE_DIR="$TARGET_DIR/aarch64-apple-darwin/release/bundle/macos"
+  X64_BUNDLE_DIR="$TARGET_DIR/x86_64-apple-darwin/release/bundle/macos"
+  ARM_TAR="${ARM_BUNDLE_DIR}/${APP_NAME}_${VERSION}_aarch64.app.tar.gz"
+  X64_TAR="${X64_BUNDLE_DIR}/${APP_NAME}_${VERSION}_x64.app.tar.gz"
+
+  echo "==> Creating and signing macOS updater tarballs..."
+  (cd "$ARM_BUNDLE_DIR" && tar -czf "$ARM_TAR" "${APP_NAME}.app")
+  (cd "$X64_BUNDLE_DIR" && tar -czf "$X64_TAR" "${APP_NAME}.app")
+  pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+    --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
+  pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+    --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$X64_TAR"
+
+  ARM_SIG="$(cat "${ARM_TAR}.sig")"
+  X64_SIG="$(cat "${X64_TAR}.sig")"
+
+  # Stable names for download links (no version in filename)
+  ARM_DMG_STABLE="/tmp/${APP_NAME}-macos-arm.dmg"
+  X64_DMG_STABLE="/tmp/${APP_NAME}-macos-intel.dmg"
+  cp "$ARM_DMG" "$ARM_DMG_STABLE"
+  cp "$X64_DMG" "$X64_DMG_STABLE"
+
+  UPLOAD_FILES+=("$ARM_DMG_STABLE" "$X64_DMG_STABLE" "$ARM_TAR" "${ARM_TAR}.sig" "$X64_TAR" "${X64_TAR}.sig")
+
+  BASE_URL="https://github.com/${RELEASES_REPO}/releases/download/${TAG}"
+  PLATFORM_ENTRIES+="    \"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"${BASE_URL}/$(basename "$ARM_TAR")\" },"$'\n'
+  PLATFORM_ENTRIES+="    \"darwin-x86_64\":  { \"signature\": \"${X64_SIG}\", \"url\": \"${BASE_URL}/$(basename "$X64_TAR")\" },"$'\n'
+
+  echo "==> macOS build complete."
+fi
+
+# ── Linux build (via Docker when on macOS, native when on Linux) ──────────────
+
+if [[ "$BUILD_LINUX" == "true" ]]; then
+  LINUX_ARTIFACTS_DIR="/tmp/huxflux-linux-artifacts-${TAG}"
+  rm -rf "$LINUX_ARTIFACTS_DIR" && mkdir -p "$LINUX_ARTIFACTS_DIR"
+
+  if [[ "$HOST_OS" == "Darwin" ]]; then
+    if ! command -v docker &>/dev/null; then
+      echo "Error: Docker not found. Install Docker Desktop to build Linux on macOS." >&2
+      echo "Or skip with --macos-only and run this script on a Linux machine for the Linux build." >&2
+      exit 1
+    fi
+
+    echo "==> Building Docker image (cached after first run)..."
+    docker build -t "$DOCKER_IMAGE" \
+      -f "$REPO_ROOT/scripts/Dockerfile.linux-builder" \
+      "$REPO_ROOT/scripts" \
+      --quiet
+
+    echo "==> Building Linux via Docker (Cargo cache persists in Docker volumes)..."
+    docker run --rm \
+      -v "$REPO_ROOT:/src:ro" \
+      -v "huxflux-linux-workspace:/build" \
+      -v "huxflux-linux-target:/build/apps/desktop/src-tauri/target" \
+      -v "huxflux-cargo-registry:/root/.cargo/registry" \
+      -v "huxflux-cargo-git:/root/.cargo/git" \
+      -v "huxflux-pnpm-store:/root/.local/share/pnpm" \
+      -v "$LINUX_ARTIFACTS_DIR:/artifacts" \
+      -e "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY" \
+      -e "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
+      "$DOCKER_IMAGE" bash -c "
+        set -euo pipefail
+        source ~/.cargo/env
+
+        echo '--- Syncing source ---'
+        rsync -a --delete \
+          --exclude='node_modules' \
+          --exclude='.git' \
+          --exclude='apps/desktop/dist' \
+          /src/ /build/
+
+        echo '--- Installing dependencies ---'
+        cd /build
+        pnpm install --no-frozen-lockfile
+
+        echo '--- Building ---'
+        cd apps/desktop
+        pnpm tauri build
+
+        echo '--- Copying artifacts ---'
+        cp -r src-tauri/target/release/bundle /artifacts/bundle
+      "
+
+  else
+    # Running natively on Linux
+    cd "$REPO_ROOT/apps/desktop"
+    echo "==> Building Linux (native)..."
+    pnpm tauri build
+    cp -r "$TARGET_DIR/release/bundle" "$LINUX_ARTIFACTS_DIR/bundle"
   fi
-done
 
-# ── Create updater tarballs + sign ────────────────────────────────────────────
-# tauri build doesn't always auto-generate .app.tar.gz; create and sign explicitly.
+  APPIMAGE_SRC="$(find "$LINUX_ARTIFACTS_DIR/bundle/appimage" -name "*.AppImage" | head -1)"
+  DEB_SRC="$(find "$LINUX_ARTIFACTS_DIR/bundle/deb" -name "*.deb" | head -1)"
+  for f in "$APPIMAGE_SRC" "$DEB_SRC"; do
+    [[ -n "$f" && -f "$f" ]] || { echo "Error: Linux artifact not found — build may have failed" >&2; exit 1; }
+  done
 
-APP_NAME="Huxflux"
-ARM_BUNDLE_DIR="$TARGET_DIR/aarch64-apple-darwin/release/bundle/macos"
-X64_BUNDLE_DIR="$TARGET_DIR/x86_64-apple-darwin/release/bundle/macos"
+  LINUX_TAR="$LINUX_ARTIFACTS_DIR/${APP_NAME}_${VERSION}_x86_64.AppImage.tar.gz"
+  (cd "$LINUX_ARTIFACTS_DIR/bundle/appimage" && tar -czf "$LINUX_TAR" "$(basename "$APPIMAGE_SRC")")
 
-ARM_TAR="${ARM_BUNDLE_DIR}/${APP_NAME}_${VERSION}_aarch64.app.tar.gz"
-X64_TAR="${X64_BUNDLE_DIR}/${APP_NAME}_${VERSION}_x64.app.tar.gz"
-ARM_SIG="${ARM_TAR}.sig"
-X64_SIG="${X64_TAR}.sig"
+  cd "$REPO_ROOT/apps/desktop"
+  pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+    --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$LINUX_TAR"
 
-echo "==> Creating updater tarballs..."
-(cd "$ARM_BUNDLE_DIR" && tar -czf "$ARM_TAR" "${APP_NAME}.app")
-(cd "$X64_BUNDLE_DIR" && tar -czf "$X64_TAR" "${APP_NAME}.app")
+  LINUX_SIG="$(cat "${LINUX_TAR}.sig")"
 
-echo "==> Signing updater tarballs..."
-cd "$REPO_ROOT/apps/desktop"
-pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
-  --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
-pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
-  --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$X64_TAR"
+  APPIMAGE_STABLE="/tmp/${APP_NAME}-linux-x86_64.AppImage"
+  DEB_STABLE="/tmp/${APP_NAME}-linux-amd64.deb"
+  cp "$APPIMAGE_SRC" "$APPIMAGE_STABLE"
+  cp "$DEB_SRC" "$DEB_STABLE"
 
-ARM_DMG_NAME="$(basename "$ARM_DMG")"
-X64_DMG_NAME="$(basename "$X64_DMG")"
-ARM_TAR_NAME="$(basename "$ARM_TAR")"
-X64_TAR_NAME="$(basename "$X64_TAR")"
+  UPLOAD_FILES+=("$APPIMAGE_STABLE" "$DEB_STABLE" "$LINUX_TAR" "${LINUX_TAR}.sig")
 
-# ── Generate latest.json ─────────────────────────────────────────────────────
+  BASE_URL="https://github.com/${RELEASES_REPO}/releases/download/${TAG}"
+  PLATFORM_ENTRIES+="    \"linux-x86_64\": { \"signature\": \"${LINUX_SIG}\", \"url\": \"${BASE_URL}/$(basename "$LINUX_TAR")\" },"$'\n'
 
-ARM_SIG_CONTENT="$(cat "$ARM_SIG")"
-X64_SIG_CONTENT="$(cat "$X64_SIG")"
+  echo "==> Linux build complete."
+fi
+
+# ── Generate latest.json ──────────────────────────────────────────────────────
+
 PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-BASE_URL="https://github.com/${RELEASES_REPO}/releases/download/${TAG}"
+LATEST_JSON_FILE="/tmp/huxflux-latest-${TAG}.json"
 
-LATEST_JSON="$(cat <<JSON
+# Strip trailing comma from last entry
+PLATFORM_ENTRIES="${PLATFORM_ENTRIES%,$'\n'}"$'\n'
+
+cat > "$LATEST_JSON_FILE" <<JSON
 {
   "version": "${TAG}",
   "notes": "",
   "pub_date": "${PUB_DATE}",
   "platforms": {
-    "darwin-aarch64": {
-      "signature": "${ARM_SIG_CONTENT}",
-      "url": "${BASE_URL}/${ARM_TAR_NAME}"
-    },
-    "darwin-x86_64": {
-      "signature": "${X64_SIG_CONTENT}",
-      "url": "${BASE_URL}/${X64_TAR_NAME}"
-    }
-  }
+${PLATFORM_ENTRIES}  }
 }
 JSON
-)"
-
-LATEST_JSON_FILE="/tmp/huxflux-latest-${TAG}.json"
-echo "$LATEST_JSON" > "$LATEST_JSON_FILE"
 
 # ── Publish release ───────────────────────────────────────────────────────────
 
-echo "==> Creating release ${TAG} on ${RELEASES_REPO}..."
+echo "==> Publishing ${TAG} to ${RELEASES_REPO}..."
 GITHUB_TOKEN="" gh auth switch --user AlexMartosP
-# Delete existing release+tag if present (idempotent re-runs)
-GITHUB_TOKEN="" gh release delete "$TAG" --repo "$RELEASES_REPO" --yes 2>/dev/null || true
-GITHUB_TOKEN="" gh release create "$TAG" \
-  --repo "$RELEASES_REPO" \
-  --title "Huxflux ${TAG}" \
-  --notes "macOS release. The app is unsigned — right-click the .dmg → Open to bypass Gatekeeper." \
-  "$ARM_DMG" \
-  "$ARM_TAR" \
-  "$ARM_SIG" \
-  "$X64_DMG" \
-  "$X64_TAR" \
-  "$X64_SIG" \
-  "$LATEST_JSON_FILE#latest.json"
+
+RELEASE_EXISTS=false
+GITHUB_TOKEN="" gh release view "$TAG" --repo "$RELEASES_REPO" &>/dev/null && RELEASE_EXISTS=true
+
+if [[ "$RELEASE_EXISTS" == "false" ]]; then
+  GITHUB_TOKEN="" gh release create "$TAG" \
+    --repo "$RELEASES_REPO" \
+    --title "Huxflux ${TAG}" \
+    --notes "The macOS app is unsigned — right-click the .dmg → Open to bypass Gatekeeper." \
+    "${UPLOAD_FILES[@]}" \
+    "$LATEST_JSON_FILE#latest.json"
+else
+  GITHUB_TOKEN="" gh release upload "$TAG" \
+    --repo "$RELEASES_REPO" \
+    --clobber \
+    "${UPLOAD_FILES[@]}" \
+    "$LATEST_JSON_FILE#latest.json"
+fi
 
 rm -f "$LATEST_JSON_FILE"
 
 echo ""
-echo "✓ Released ${TAG} to https://github.com/${RELEASES_REPO}/releases/tag/${TAG}"
+echo "✓ Released ${TAG} → https://github.com/${RELEASES_REPO}/releases/tag/${TAG}"

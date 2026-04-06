@@ -19,14 +19,13 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "transparent": true,
-        "shadow": true
+        "backgroundColor": "#1c1917"
       }
     ],
     "security": {
       "csp": null
     },
-    "macOSPrivateApi": true
+    "macOSPrivateApi": false
   },
   "bundle": {
     "active": true,

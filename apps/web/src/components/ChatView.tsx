@@ -461,23 +461,30 @@ function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   )
 }
 
-function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreaming?: boolean }) {
+function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; isStreaming?: boolean; agentId: string }) {
+  const storageKey = `huxflux-team-dismissed-${agentId}`
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
   const knownIdsRef = useRef<Set<string>>(new Set())
+  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(storageKey) === "1")
 
   // Re-show when new agent IDs appear (handles dismiss → new team)
   useEffect(() => {
     const newIds = agents.filter((a) => !knownIdsRef.current.has(a.id))
     if (newIds.length > 0) {
       for (const a of newIds) knownIdsRef.current.add(a.id)
+      sessionStorage.removeItem(storageKey)
       setDismissed(false)
       if (!selectedId || !agents.some((a) => a.id === selectedId)) {
         setSelectedId(newIds[0].id)
       }
     }
   }, [agents]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleDismiss() {
+    sessionStorage.setItem(storageKey, "1")
+    setDismissed(true)
+  }
 
   if (dismissed || agents.length < 2) return null
 
@@ -526,7 +533,7 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
           )
         })}
         <button
-          onClick={() => setDismissed(true)}
+          onClick={handleDismiss}
           className="ml-auto p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
         >
           <IconX size={11} />
@@ -731,17 +738,29 @@ function extractLatestTodos(messages: Message[]): TodoItem[] {
   return []
 }
 
-function TasksBar({ todos }: { todos: TodoItem[] }) {
+function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
+  const storageKey = `huxflux-tasks-dismissed-${agentId}`
   const [collapsed, setCollapsed] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
-  const prevCountRef = useRef(0)
+  const [dismissed, setDismissed] = useState(() => {
+    const stored = sessionStorage.getItem(storageKey)
+    return stored !== null && parseInt(stored) >= todos.length
+  })
+  const prevCountRef = useRef(todos.length)
 
   useEffect(() => {
-    if (todos.length > 0 && todos.length !== prevCountRef.current) {
+    if (todos.length > prevCountRef.current) {
       prevCountRef.current = todos.length
+      sessionStorage.removeItem(storageKey)
       setDismissed(false)
+    } else {
+      prevCountRef.current = todos.length
     }
-  }, [todos.length])
+  }, [todos.length, storageKey])
+
+  function handleDismiss() {
+    sessionStorage.setItem(storageKey, String(todos.length))
+    setDismissed(true)
+  }
 
   if (dismissed || todos.length === 0) return null
 
@@ -764,7 +783,7 @@ function TasksBar({ todos }: { todos: TodoItem[] }) {
           <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
         </button>
         <button
-          onClick={() => setDismissed(true)}
+          onClick={handleDismiss}
           className="ml-auto p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors"
         >
           <IconX size={11} />
@@ -956,7 +975,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { 
             </div>
           )}
           {displayText && (
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
               {displayText.split(/(@[\w./\-]+)/g).map((part, i) =>
                 /^@[\w./\-]+$/.test(part)
                   ? <span key={i} className="font-mono text-[12px] text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded">{part}</span>
@@ -2130,15 +2149,16 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   const applyMention = useCallback((option: { type: "file"; path: string; name: string } | { type: "terminal"; name: string; path: string }) => {
     if (option.type === "file") {
-      // Replace @query with @name inline in the textarea (path stored in mentionAttachments)
+      // Use only the basename for display so the mention reads @index.html not @apps/desktop/index.html
+      const displayName = option.name.split("/").pop() ?? option.name
       setInput((prev) => {
         const start = mentionStartRef.current
         const end = start + 1 + (mentionQuery?.length ?? 0)
-        return prev.slice(0, start) + "@" + option.name + " " + prev.slice(end)
+        return prev.slice(0, start) + "@" + displayName + " " + prev.slice(end)
       })
       setMentionAttachments((prev) => {
         if (prev.some((x) => x.type === "file" && x.path === option.path)) return prev
-        return [...prev, { type: "file" as const, path: option.path, name: option.name }]
+        return [...prev, { type: "file" as const, path: option.path, name: displayName }]
       })
     } else {
       // Terminal: remove @query from textarea, add as chip
@@ -2238,11 +2258,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
     }
 
-    // Append file paths for all file mention attachments
+    // Replace @name mentions inline with their full paths
     const fileMentions = mentionAttachments.filter((m): m is { type: "file"; path: string; name: string } => m.type === "file")
-    if (fileMentions.length > 0) {
-      const paths = fileMentions.map((m) => m.path).join("\n")
-      content = `Referenced files:\n${paths}\n\n---\n\n` + content
+    for (const mention of fileMentions) {
+      content = content.replaceAll(`@${mention.name}`, mention.path)
     }
 
     // Terminal attachment (from chip)
@@ -2661,7 +2680,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   return (
                     <div className="mb-5 group relative">
                       <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
-                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{displayText}</p>
+                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{displayText}</p>
                       </div>
                       <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -2705,8 +2724,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               </button>
             )}
             <div className="px-5 py-4">
-            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
-            <TasksBar todos={extractLatestTodos(agent.messages)} />
+            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
+            <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} />
             <div className="relative">
               {/* @ mention picker */}
               {mentionQuery !== null && mentionOptions.length > 0 && (

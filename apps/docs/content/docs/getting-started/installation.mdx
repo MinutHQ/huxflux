@@ -3,7 +3,29 @@ title: Installation
 description: Install Huxflux on your machine.
 ---
 
-## Requirements
+## Desktop app
+
+Download the desktop app for a native experience with no browser required.
+
+[Download on GitHub →](https://github.com/AlexMartosP/huxflux-releases/releases/latest)
+
+Available as `.dmg` (macOS), `.AppImage` and `.deb` (Linux).
+
+**macOS — app is unsigned**
+
+If macOS blocks the app on first launch, remove the quarantine flag:
+
+```sh
+xattr -d com.apple.quarantine /Applications/Huxflux.app
+```
+
+---
+
+## Server (CLI)
+
+Run the Huxflux server on any machine to access it from the desktop app or any browser.
+
+### Requirements
 
 - **Node.js** 22.5 or later
 

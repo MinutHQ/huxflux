@@ -138,7 +138,7 @@ export default function App() {
 
   const prReviewEnabled = getFlag("prReview")
   const { githubEnabled, feedbackEnabled } = useServerConfig()
-  const { prs, isLoading: prsLoading } = usePRs()
+  const { prs, isLoading: prsLoading, refetch: refetchPRs } = usePRs()
   const [reviewedPrIds, setReviewedPrIds] = useState<Set<string>>(new Set())
   const [userReviewedPrIds, setUserReviewedPrIds] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("huxflux:user-reviewed") ?? "[]")) }
@@ -235,6 +235,7 @@ export default function App() {
     onSwitchToAgents: workspace.switchToAgentView,
     onSwitchToReview: workspace.switchToReviewView,
     prsLoading,
+    onRefetchPRs: refetchPRs,
     refineSessions,
     selectedRefineId,
     onSelectRefine: (id: string) => { setShowHome(false); setSelectedRefineId(id) },
@@ -352,7 +353,7 @@ export default function App() {
     <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
       {import.meta.env.DEV && (
-        <div className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">
+        <div data-tauri-drag-region className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">
           Dev mode
         </div>
       )}

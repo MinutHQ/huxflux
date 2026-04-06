@@ -15,12 +15,12 @@ function relativeTime(iso: string): string {
 export function usePRs() {
   const { githubEnabled } = useServerConfig()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["prs"],
     queryFn: () => api.listPRs(),
     enabled: githubEnabled,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
   })
 
   const prs: PullRequest[] = (data ?? []).map((pr) => ({
@@ -45,5 +45,5 @@ export function usePRs() {
     url: pr.url,
   }))
 
-  return { prs, isLoading }
+  return { prs, isLoading, refetch }
 }

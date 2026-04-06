@@ -268,7 +268,13 @@ export async function githubRoutes(app: FastifyInstance) {
         }
       })
 
-      proc.stderr.on("data", (chunk: Buffer) => { stderrOutput += chunk.toString() })
+      proc.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString()
+        stderrOutput += text
+        for (const line of text.split("\n").filter((l) => l.trim())) {
+          console.error(`[review ${owner}/${repo}#${number}] ${line}`)
+        }
+      })
 
       proc.on("close", (code) => {
         if (code !== 0 && stderrOutput) {

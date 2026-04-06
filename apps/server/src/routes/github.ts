@@ -224,7 +224,7 @@ export async function githubRoutes(app: FastifyInstance) {
           "--print",
           "--output-format", "stream-json",
           "--verbose",
-          "--allowedTools", "",
+          "--allowedTools", "Read,Glob,Grep",
           "--model", "claude-sonnet-4-6",
           prompt,
         ],

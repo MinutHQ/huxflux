@@ -45,6 +45,31 @@ This opens the web app in your browser and automatically connects it to your ser
 
 </Steps>
 
+## HTTPS / Remote access
+
+When using the hosted web app (served over HTTPS) with a self-hosted server, browsers block plain `ws://` connections. You need to put your server behind HTTPS using a reverse proxy.
+
+### nginx + Let's Encrypt
+
+```sh
+sudo apt install nginx certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com
+```
+
+Add this to your nginx site config:
+
+```nginx
+location / {
+    proxy_pass http://localhost:4321;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
+
+The `Upgrade` headers are required for WebSocket proxying. Once set up, connect using `https://yourdomain.com`.
+
 ## Troubleshooting
 
 **`huxflux` not found after install**

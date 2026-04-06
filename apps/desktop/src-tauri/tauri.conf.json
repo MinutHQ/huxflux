@@ -37,7 +37,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "infoPlistAdditions": {
+        "NSUserNotificationUsageDescription": "Huxflux notifies you when your AI agents complete their tasks."
+      }
+    }
   },
   "plugins": {
     "updater": {

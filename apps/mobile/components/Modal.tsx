@@ -1,5 +1,4 @@
-import { View, Text, TouchableOpacity, Modal, TextInput, Pressable, Platform, ScrollView } from "react-native"
-import { KeyboardAvoidingView } from "react-native-keyboard-controller"
+import { View, Text, TouchableOpacity, Modal, TextInput, Pressable, Platform, ScrollView, KeyboardAvoidingView } from "react-native"
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react"
 import { c } from "../theme"
 
@@ -133,7 +132,7 @@ function ConfirmDialog({ title, message, confirmLabel, confirmDestructive, onCon
             onPress={() => { onDismiss(); onConfirm() }}
             style={{
               flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center",
-              backgroundColor: confirmDestructive ? "#ef4444" : c.accent,
+              backgroundColor: confirmDestructive ? "#ef4444" : c.fgBright,
             }}
           >
             <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{confirmLabel ?? "Confirm"}</Text>
@@ -189,10 +188,10 @@ function PromptDialog({ title, placeholder, defaultValue, onSubmit, onDismiss }:
             onPress={() => { if (value.trim()) { onDismiss(); onSubmit(value.trim()) } }}
             style={{
               flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center",
-              backgroundColor: value.trim() ? c.accent : c.secondary,
+              backgroundColor: value.trim() ? c.fgBright : c.secondary,
             }}
           >
-            <Text style={{ color: value.trim() ? "#fff" : c.fgSub, fontSize: 15, fontWeight: "600" }}>Done</Text>
+            <Text style={{ color: value.trim() ? c.fgBrightFg : c.fgSub, fontSize: 15, fontWeight: "600" }}>Done</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -224,7 +223,7 @@ function AlertDialog({ title, message, buttons, onDismiss }: {
                 onPress={() => { onDismiss(); btn.onPress?.() }}
                 style={{
                   borderRadius: 12, paddingVertical: 14, alignItems: "center",
-                  backgroundColor: isDestructive ? "#ef4444" : isCancel ? c.secondary : c.accent,
+                  backgroundColor: isDestructive ? "#ef4444" : isCancel ? c.secondary : c.fgBright,
                 }}
               >
                 <Text style={{ color: isCancel ? c.fg : "#fff", fontSize: 15, fontWeight: "600" }}>{btn.label}</Text>

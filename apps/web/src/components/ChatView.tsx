@@ -536,34 +536,38 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
   )
 }
 
-// ── @ mention row with file preview ──────────────────────────────────────────
+// ── @ mention row with preview ────────────────────────────────────────────────
 
 function MentionRow({
   option,
   agentId,
   isActive,
   onSelect,
+  rowRef,
 }: {
   option: { type: "file" | "terminal"; name: string; path: string }
   agentId: string
   isActive: boolean
   onSelect: () => void
+  rowRef?: React.Ref<HTMLDivElement>
 }) {
   const [open, setOpen] = useState(false)
-  const { data: preview } = useQuery({
-    queryKey: ["mention-preview", agentId, option.path],
+  const { data: previewLines } = useQuery({
+    queryKey: ["mention-preview", agentId, option.type === "terminal" ? "__terminal__" : option.path],
     queryFn: () =>
       option.type === "terminal"
-        ? api.getTerminal(agentId).then((lines) => lines.slice(-40).join("\n"))
-        : api.getFileContent(agentId, option.path),
-    enabled: open && option.type !== "terminal" ? !!option.path : open,
+        ? api.getTerminal(agentId)
+        : api.getFileContent(agentId, option.path).then((c) => c.split("\n")),
+    enabled: open,
     staleTime: 30_000,
   })
 
   const dir = option.path.includes("/") ? option.path.split("/").slice(0, -1).join("/") + "/" : ""
+  const lines: string[] = previewLines ?? []
 
   return (
     <div
+      ref={rowRef}
       className="relative"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -582,14 +586,42 @@ function MentionRow({
         <span className="text-[12px] font-medium text-foreground/80 shrink-0">{option.name}</span>
         {dir && <span className="text-[11px] text-muted-foreground/40 truncate">{dir}</span>}
       </button>
-      {open && preview && (
-        <div className="absolute left-full top-0 ml-2 w-80 z-20 rounded-xl border border-border bg-card shadow-xl overflow-hidden pointer-events-none">
-          <div className="px-3 py-1.5 border-b border-border/60 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
-            {option.type === "terminal" ? "Terminal output" : option.path}
+      {open && lines.length > 0 && (
+        <div className="absolute left-full top-0 ml-2 w-[380px] z-20 rounded-xl border border-border bg-[#0d0d0d] shadow-2xl overflow-hidden pointer-events-none">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-[#141414]">
+            <div className="flex items-center gap-2">
+              <IconTerminal2 size={11} className="text-muted-foreground/50" />
+              <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                {option.type === "terminal" ? "Terminal" : option.path}
+              </span>
+            </div>
+            {option.type === "terminal" && (
+              <span className="text-[10px] text-emerald-400/70 font-medium">● running</span>
+            )}
           </div>
-          <pre className="px-3 py-2 text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre overflow-hidden max-h-48 overflow-y-auto">
-            {preview.slice(0, 2000)}
-          </pre>
+          {/* Line-numbered content */}
+          <div className="max-h-52 overflow-y-auto">
+            <table className="w-full border-collapse">
+              <tbody>
+                {lines.slice(-40).map((line, i) => {
+                  const lineNum = option.type === "terminal"
+                    ? lines.length - 40 + i + 1
+                    : i + 1
+                  return (
+                    <tr key={i} className="hover:bg-white/[0.03]">
+                      <td className="select-none text-right pr-3 pl-3 py-[1px] text-[10px] font-mono text-white/20 w-8 shrink-0 align-top">
+                        {lineNum > 0 ? lineNum : i + 1}
+                      </td>
+                      <td className="pr-3 py-[1px] text-[11px] font-mono text-white/70 leading-relaxed whitespace-pre break-all">
+                        {line || " "}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -850,7 +882,13 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { 
             </div>
           )}
           {displayText && (
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{displayText}</p>
+            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+              {displayText.split(/(@[\w./\-]+)/g).map((part, i) =>
+                /^@[\w./\-]+$/.test(part)
+                  ? <span key={i} className="font-mono text-[12px] text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded">{part}</span>
+                  : part
+              )}
+            </p>
           )}
         </div>
       </div>
@@ -1903,6 +1941,13 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionAttachments, setMentionAttachments] = useState<MentionAttachment[]>([])
   const mentionStartRef = useRef<number>(0)
+  const mentionListRef = useRef<HTMLDivElement>(null)
+  const mentionActiveRef = useRef<HTMLDivElement>(null)
+
+  // Scroll active mention row into view when navigating with keyboard
+  useEffect(() => {
+    mentionActiveRef.current?.scrollIntoView({ block: "nearest" })
+  }, [mentionIndex])
 
   async function handleModelChange(model: string) {
     await api.updateAgent(agent.id, { model } as Parameters<typeof api.updateAgent>[1])
@@ -1977,20 +2022,30 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   }, [])
 
   const applyMention = useCallback((option: { type: "file"; path: string; name: string } | { type: "terminal"; name: string; path: string }) => {
-    setInput((prev) => {
-      const start = mentionStartRef.current
-      const end = start + 1 + (mentionQuery?.length ?? 0)
-      return prev.slice(0, start) + prev.slice(end)
-    })
-    setMentionQuery(null)
-    setMentionAttachments((prev) => {
-      if (option.type === "terminal") {
+    if (option.type === "file") {
+      // Replace @query with @path inline in the textarea
+      setInput((prev) => {
+        const start = mentionStartRef.current
+        const end = start + 1 + (mentionQuery?.length ?? 0)
+        return prev.slice(0, start) + "@" + option.path + " " + prev.slice(end)
+      })
+      setMentionAttachments((prev) => {
+        if (prev.some((x) => x.type === "file" && x.path === option.path)) return prev
+        return [...prev, { type: "file" as const, path: option.path, name: option.name }]
+      })
+    } else {
+      // Terminal: remove @query from textarea, add as chip
+      setInput((prev) => {
+        const start = mentionStartRef.current
+        const end = start + 1 + (mentionQuery?.length ?? 0)
+        return prev.slice(0, start) + prev.slice(end)
+      })
+      setMentionAttachments((prev) => {
         if (prev.some((x) => x.type === "terminal")) return prev
         return [...prev, { type: "terminal" as const }]
-      }
-      if (prev.some((x) => x.type === "file" && x.path === option.path)) return prev
-      return [...prev, { type: "file" as const, path: option.path, name: option.name }]
-    })
+      })
+    }
+    setMentionQuery(null)
   }, [mentionQuery])
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -2076,18 +2131,23 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
     }
 
-    if (mentionAttachments.length > 0) {
+    // Collect @path tokens from the text and fetch file contents
+    const atPathMatches = [...text.matchAll(/@([\w./\-]+)/g)]
+    const uniquePaths = [...new Set(atPathMatches.map((m) => m[1]))]
+    if (uniquePaths.length > 0) {
       const blocks: string[] = []
-      for (const ma of mentionAttachments) {
-        if (ma.type === "file") {
-          const fileContent = await api.getFileContent(agent.id, ma.path).catch(() => "")
-          blocks.push(`<file path="${ma.path}">\n${fileContent}\n</file>`)
-        } else {
-          const lines = await api.getTerminal(agent.id).catch(() => [] as string[])
-          blocks.push(`<terminal>\n${lines.slice(-100).join("\n")}\n</terminal>`)
-        }
+      for (const path of uniquePaths) {
+        const fileContent = await api.getFileContent(agent.id, path).catch(() => "")
+        if (fileContent) blocks.push(`<file path="${path}">\n${fileContent}\n</file>`)
       }
-      content = blocks.join("\n\n") + "\n\n---\n\n" + content
+      if (blocks.length > 0) content = blocks.join("\n\n") + "\n\n---\n\n" + content
+    }
+
+    // Terminal attachment (from chip)
+    if (mentionAttachments.some((ma) => ma.type === "terminal")) {
+      const lines = await api.getTerminal(agent.id).catch(() => [] as string[])
+      const termBlock = `<terminal>\n${lines.slice(-100).join("\n")}\n</terminal>`
+      content = termBlock + "\n\n---\n\n" + content
     }
 
     if (linkedAgents.length > 0) {
@@ -2525,7 +2585,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   <div className="px-3 py-1.5 border-b border-border/60 flex items-center gap-1.5">
                     <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Files & Context</span>
                   </div>
-                  <div className="max-h-52 overflow-y-auto">
+                  <div ref={mentionListRef} className="max-h-52 overflow-y-auto">
                     {mentionOptions.map((opt, i) => (
                       <MentionRow
                         key={opt.type === "terminal" ? "__terminal__" : opt.path}
@@ -2533,6 +2593,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         agentId={agent.id}
                         isActive={i === mentionIndex}
                         onSelect={() => applyMention(opt)}
+                        rowRef={i === mentionIndex ? mentionActiveRef : undefined}
                       />
                     ))}
                   </div>
@@ -2589,7 +2650,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                     </div>
                   </div>
                 )}
-                {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0 || mentionAttachments.length > 0) && (
+                {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0 || mentionAttachments.some((m) => m.type === "terminal")) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
                     {pendingComments.map((c) => {
                       const loc = c.path ? c.path.split("/").pop() + (c.line ? `:${c.line}` : "") : null
@@ -2625,15 +2686,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         </button>
                       </div>
                     ))}
-                    {mentionAttachments.map((ma) => (
-                      <div key={ma.type === "terminal" ? "__terminal__" : ma.path} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
-                        {ma.type === "terminal"
-                          ? <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
-                          : <IconFileCode size={12} className="text-muted-foreground/60 shrink-0" />
-                        }
-                        <span className="font-medium text-foreground/80 max-w-[120px] truncate">
-                          {ma.type === "terminal" ? "Terminal output" : ma.name}
-                        </span>
+                    {mentionAttachments.filter((ma) => ma.type === "terminal").map((ma) => (
+                      <div key="__terminal__" className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
+                        <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
+                        <span className="font-medium text-foreground/80">Terminal output</span>
                         <button
                           onClick={() => setMentionAttachments((p) => p.filter((x) => x !== ma))}
                           className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"

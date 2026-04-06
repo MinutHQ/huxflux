@@ -11,6 +11,8 @@
 
 ### Desktop
 
+- macOS notifications now appear in System Settings → Notifications (added `NSUserNotificationUsageDescription` via `src-tauri/Info.plist`)
+- DMG installer now includes the "drag to Applications" folder shortcut
 - **Open in editor via Remote SSH** (experiment flag `remoteEditor`) — when connected to a remote server, the "Open in" dropdown detects locally installed SSH-capable editors (VS Code, Cursor) and opens the worktree via `--remote ssh-remote+user@host /path`; shows an amber setup banner with step-by-step instructions when SSH env vars are not configured on the server
 - Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
 - Frameless window with custom traffic light buttons (close/minimize/maximize)
@@ -19,6 +21,7 @@
 
 ### Web
 
+- Fixed all TypeScript build errors (unused imports, missing props, invalid type comparisons, unsafe `as` casts)
 - Streaming indicator now restores correctly when navigating back to an agent that is still running
 - Sidebar is now resizable (12–28% width) and collapsible via `⌘B` or the chevron button
 - Long agent titles in sidebar now ellipsis correctly instead of overflowing
@@ -33,6 +36,7 @@
 
 ### Server
 
+- `huxflux reset` — destructive command to wipe the database and all git worktrees for a clean slate; requires three confirmations (`y` → `"yes"` → `"huxflux"`) and stops immediately on any wrong answer
 - `GET /api/system/ssh-info` — returns SSH connection details (host, port, user, configured) for remote editor launch; configure via `HUXFLUX_SSH_HOST` / `HUXFLUX_SSH_USER` env vars
 - Each chat tab now resumes its own Claude session via `--resume <sessionId>`, preventing tabs from sharing conversation context
 - Added `session_id` column to agents table (migration v7)

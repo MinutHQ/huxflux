@@ -722,12 +722,17 @@ function TasksBar({ todos }: { todos: TodoItem[] }) {
 function TableBlock({ node, children }: { node?: any; children?: React.ReactNode }) {
   const [copied, setCopied] = useState(false)
 
+  function nodeText(n: any): string {
+    if (!n) return ""
+    if (typeof n.value === "string") return n.value
+    if (Array.isArray(n.children)) return n.children.map(nodeText).join("")
+    return ""
+  }
+
   function copyTable() {
     if (!node) return
     const rows: string[][] = (node.children ?? []).map((row: any) =>
-      (row.children ?? []).map((cell: any) =>
-        (cell.children ?? []).map((c: any) => c.value ?? c.children?.[0]?.value ?? "").join("")
-      )
+      (row.children ?? []).map((cell: any) => nodeText(cell).trim())
     )
     if (rows.length === 0) return
     const [header, ...body] = rows

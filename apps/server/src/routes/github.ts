@@ -151,8 +151,12 @@ export async function githubRoutes(app: FastifyInstance) {
       }
       const end = () => {
         activeReviews.delete(reviewKey)
+        clearInterval(keepalive)
         try { reply.raw.end() } catch { /* already ended */ }
       }
+
+      // Send a comment every 15s to prevent WebKit/Tauri from timing out the connection
+      const keepalive = setInterval(() => write(": ping\n\n"), 15_000)
 
       write(": connected\n\n")
       setStep(0) // Fetching diff

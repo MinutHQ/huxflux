@@ -1,6 +1,6 @@
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
-  Platform, ActivityIndicator, Image, Alert, KeyboardAvoidingView,
+  Platform, ActivityIndicator, Image, Alert, KeyboardAvoidingView, Linking,
 } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useRef, useState, useEffect, useMemo, memo } from "react"
@@ -30,7 +30,7 @@ function shortModel(modelId: string) {
 // ── Markdown-ish renderer ─────────────────────────────────────────────────────
 
 function InlineText({ text }: { text: string }) {
-  const parts = text.split(/(`[^`\n]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g)
+  const parts = text.split(/(`[^`\n]+`|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s)>\]"]+)/g)
   return (
     <Text style={{ color: c.fgBright, fontSize: 14, lineHeight: 21 }}>
       {parts.map((part, i) => {
@@ -42,6 +42,9 @@ function InlineText({ text }: { text: string }) {
         }
         if (part.startsWith("*") && part.endsWith("*")) {
           return <Text key={i} style={{ fontStyle: "italic" }}>{part.slice(1, -1)}</Text>
+        }
+        if (part.startsWith("http://") || part.startsWith("https://")) {
+          return <Text key={i} style={{ color: "#60a5fa", textDecorationLine: "underline" }} onPress={() => Linking.openURL(part)}>{part}</Text>
         }
         return <Text key={i}>{part}</Text>
       })}
@@ -226,9 +229,10 @@ function ToolCallsList({ calls, hasContent }: { calls: ToolCall[]; hasContent: b
           onPress={() => setExpanded((v) => !v)}
           style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, marginBottom: 2 }}
         >
-          <Text style={{ color: c.fgSub, fontSize: 11 }}>
-            {expanded ? "▾" : "▸"} {calls.length} tool calls
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name={expanded ? "chevron-down" : "chevron-forward"} size={11} color={c.fgSub} />
+            <Text style={{ color: c.fgSub, fontSize: 11 }}>{calls.length} tool calls</Text>
+          </View>
           {doneCount > 0 && <Text style={{ color: "#34d399", fontSize: 10 }}>✓{doneCount}</Text>}
           {pendingCount > 0 && <Text style={{ color: "#f59e0b", fontSize: 10 }}>○{pendingCount}</Text>}
         </TouchableOpacity>
@@ -257,9 +261,9 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
       style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, marginBottom: 6 }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Text style={{ color: c.fgSub, fontSize: 11 }}>✦</Text>
+        <Ionicons name="bulb-outline" size={11} color={c.fgSub} />
         <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "600", flex: 1 }}>Thinking</Text>
-        <Text style={{ color: c.fgSub, fontSize: 10 }}>{expanded ? "▲" : "▼"}</Text>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={10} color={c.fgSub} />
       </View>
       {expanded ? (
         <Text style={{ color: c.fgSub, fontSize: 12, lineHeight: 18, marginTop: 6, fontStyle: "italic" }}>
@@ -361,7 +365,7 @@ function TeamAgentDetail({ agent, onClose }: { agent: TeamAgent; onClose: () => 
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border }}>
         <Text style={{ color: c.fg, fontSize: 12, fontWeight: "600", flex: 1 }} numberOfLines={1}>{agent.description}</Text>
         <TouchableOpacity onPress={onClose} hitSlop={8}>
-          <Text style={{ color: c.fgSub, fontSize: 14 }}>✕</Text>
+          <Ionicons name="close" size={16} color={c.fgSub} />
         </TouchableOpacity>
       </View>
       <ScrollView style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
@@ -443,7 +447,7 @@ function TeamBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreaming?: b
 
           {/* Dismiss */}
           <TouchableOpacity onPress={() => setDismissed(true)} style={{ paddingHorizontal: 6 }}>
-            <Text style={{ color: c.placeholder, fontSize: 12 }}>✕</Text>
+            <Ionicons name="close" size={14} color={c.placeholder} />
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -926,11 +930,12 @@ export default function AgentChatScreen() {
         {/* Queued message preview */}
         {queuedMessage && (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
+            <Ionicons name="time-outline" size={12} color={c.fgSub} />
             <Text style={{ color: c.fgSub, fontSize: 11, flex: 1 }} numberOfLines={1}>
-              ⏱ Queued: {queuedMessage}
+              Queued: {queuedMessage}
             </Text>
             <TouchableOpacity onPress={() => setQueuedMessage(null)}>
-              <Text style={{ color: c.fgSub, fontSize: 12 }}>✕</Text>
+              <Ionicons name="close" size={14} color={c.fgSub} />
             </TouchableOpacity>
           </View>
         )}
@@ -951,7 +956,7 @@ export default function AgentChatScreen() {
                   onPress={() => setAttachments((prev) => prev.filter((a) => a.path !== f.path))}
                   style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: c.fg, alignItems: "center", justifyContent: "center" }}
                 >
-                  <Text style={{ color: c.bg, fontSize: 11, fontWeight: "700", lineHeight: 13 }}>✕</Text>
+                  <Ionicons name="close" size={11} color={c.bg} />
                 </TouchableOpacity>
               </View>
             ))}

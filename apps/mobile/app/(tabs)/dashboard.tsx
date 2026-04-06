@@ -1,5 +1,6 @@
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Animated, Easing, Dimensions } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Ionicons } from "@expo/vector-icons"
 import { useAgents, useRepos, statusConfig, api, type AgentSummary, type AgentStatus, type WorkspaceStats, type Repo, getActiveServer } from "@huxflux/shared"
 import { useQuery } from "@tanstack/react-query"
 import { useState, useEffect, useRef, useMemo } from "react"
@@ -167,8 +168,8 @@ function formatNum(n: number) {
 
 // ── Hero stat card (animated) ────────────────────────────────────────────────
 
-function HeroCard({ icon, target, label, color, bgTint, anim }: {
-  icon: string; target: number; label: string; color: string; bgTint: string; anim: Animated.Value
+function HeroCard({ iconName, target, label, color, bgTint, anim }: {
+  iconName: string; target: number; label: string; color: string; bgTint: string; anim: Animated.Value
 }) {
   const display = useAnimatedNumber(target)
   const glowPulse = usePulse(3000)
@@ -200,7 +201,7 @@ function HeroCard({ icon, target, label, color, bgTint, anim }: {
         <View style={{ position: "absolute", top: 0, bottom: 0, width: "30%", left: "35%", backgroundColor: "#fff", opacity: 0.3 }} />
       </View>
 
-      <Text style={{ fontSize: 16, marginBottom: 6 }}>{icon}</Text>
+      <Ionicons name={iconName as any} size={16} color={color} style={{ marginBottom: 6 }} />
       <Text style={{ color, fontSize: 24, fontWeight: "800", letterSpacing: -0.5, fontFamily: "monospace" }}>
         {formatNum(display)}
       </Text>
@@ -402,7 +403,7 @@ function RepoPanel({ repos, agents }: { repos: Repo[]; agents: AgentSummary[] })
             ],
           }}>
             <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: c.accent, fontSize: 13, fontWeight: "600" }}>⟨/⟩</Text>
+              <Ionicons name="code-slash-outline" size={14} color={c.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: c.fg, fontSize: 13, fontWeight: "600" }}>{repo.name}</Text>
@@ -477,12 +478,12 @@ export default function DashboardScreen() {
           >
             {/* Hero stat cards */}
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <HeroCard icon="⚡" target={stats.agents.total} label="Worktrees" color="#a78bfa" bgTint="#a78bfa" anim={heroAnims[0]} />
-              <HeroCard icon="📦" target={stats.repos} label="Repos" color="#34d399" bgTint="#34d399" anim={heroAnims[1]} />
+              <HeroCard iconName="git-branch-outline" target={stats.agents.total} label="Worktrees" color="#a78bfa" bgTint="#a78bfa" anim={heroAnims[0]} />
+              <HeroCard iconName="folder-outline" target={stats.repos} label="Repos" color="#34d399" bgTint="#34d399" anim={heroAnims[1]} />
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <HeroCard icon="💬" target={stats.messages.total} label="Messages" color="#60a5fa" bgTint="#60a5fa" anim={heroAnims[2]} />
-              <HeroCard icon="⚙" target={stats.toolCalls} label="Tool Calls" color="#fbbf24" bgTint="#fbbf24" anim={heroAnims[3]} />
+              <HeroCard iconName="chatbubble-outline" target={stats.messages.total} label="Messages" color="#60a5fa" bgTint="#60a5fa" anim={heroAnims[2]} />
+              <HeroCard iconName="construct-outline" target={stats.toolCalls} label="Tool Calls" color="#fbbf24" bgTint="#fbbf24" anim={heroAnims[3]} />
             </View>
 
             {/* Token + Code side by side */}

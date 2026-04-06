@@ -1,21 +1,58 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Animated, Easing } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId } from "@huxflux/shared"
 import { c, statusColors } from "../../theme"
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useHydrated } from "../_layout"
 import { useModal } from "../../components/Modal"
+import { useStreamingAgentId } from "../../hooks/useStreamingAgentId"
 
 // Match the desktop sidebar order
 const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
 const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "in-review", "done", "backlog", "cancelled"]
 
+// ── Streaming dots indicator ─────────────────────────────────────────────────
+
+function StreamingDots() {
+  const anims = useRef([0, 1, 2].map(() => new Animated.Value(0))).current
+
+  useEffect(() => {
+    const animations = anims.map((a, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(a, { toValue: 1, duration: 400, delay: i * 150, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(a, { toValue: 0, duration: 400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.delay((2 - i) * 150),
+        ])
+      )
+    )
+    Animated.parallel(animations).start()
+    return () => anims.forEach((a) => a.stopAnimation())
+  }, [])
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 3, flexShrink: 0 }}>
+      {anims.map((anim, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 4, height: 4, borderRadius: 2,
+            backgroundColor: "#f59e0b",
+            opacity: anim,
+            transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+          }}
+        />
+      ))}
+    </View>
+  )
+}
+
 // ── Agent row ────────────────────────────────────────────────────────────────
 
-function AgentRow({ agent }: { agent: AgentSummary }) {
+function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: boolean }) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const modal = useModal()
@@ -24,9 +61,9 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
 
   function handleLongPress() {
     modal.showActionSheet(agent.title, [
-      { label: "Rename", icon: "✏️", onPress: promptRename },
-      { label: "Change status", icon: "📊", onPress: promptStatus },
-      { label: "Delete", icon: "🗑", onPress: promptDelete, destructive: true },
+      { label: "Rename", onPress: promptRename },
+      { label: "Change status", onPress: promptStatus },
+      { label: "Delete", onPress: promptDelete, destructive: true },
     ])
   }
 
@@ -78,7 +115,7 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
       delayLongPress={400}
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
-      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, flexShrink: 0 }} />
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isStreaming ? "#f59e0b" : dotColor, flexShrink: 0 }} />
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -98,13 +135,13 @@ function AgentRow({ agent }: { agent: AgentSummary }) {
           {agent.prStatus && (
             <Text style={{ color: prColor ?? c.fgSub, fontSize: 11 }}>
               · PR #{agent.prStatus.number}
-              {agent.prStatus.merged ? " ✓" : agent.prStatus.state === "closed" ? " ✕" : agent.prStatus.hasChangeRequests ? " ⚠" : ""}
+              {agent.prStatus.merged ? " ✓" : agent.prStatus.state === "closed" ? " ✕" : agent.prStatus.hasChangeRequests ? " !" : ""}
             </Text>
           )}
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={14} color={c.fgSub} />
+      {isStreaming ? <StreamingDots /> : <Ionicons name="chevron-forward" size={14} color={c.fgSub} />}
     </TouchableOpacity>
   )
 }
@@ -136,7 +173,7 @@ function RepoSectionHeader({ name, count, collapsed, onToggle }: { name: string;
     >
       <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={c.fgSub} />
       <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: c.fgSub, fontSize: 11 }}>⟨/⟩</Text>
+        <Ionicons name="code-slash-outline" size={12} color={c.fgSub} />
       </View>
       <Text style={{ color: c.fg, fontSize: 12, fontWeight: "600", flex: 1 }}>{name}</Text>
       <Text style={{ color: c.placeholder, fontSize: 11 }}>{count}</Text>
@@ -158,6 +195,7 @@ export default function AgentsScreen() {
 
   const { data: agents = [], isLoading, refetch } = useAgents()
   const { data: repos = [] } = useRepos()
+  const streamingAgentId = useStreamingAgentId()
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["done", "cancelled"]))
   const [repoFilter, setRepoFilter] = useState<string>("all")
@@ -401,7 +439,7 @@ export default function AgentsScreen() {
               />
             )
           }
-          return <AgentRow agent={item.agent} />
+          return <AgentRow agent={item.agent} isStreaming={streamingAgentId === item.agent.id} />
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.fgSub} />}
         contentContainerStyle={{ paddingBottom: 32 }}

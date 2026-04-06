@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
+import { isTauri } from "@/lib/platform"
 import * as TablerIcons from "@tabler/icons-react"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme, type ColorTheme } from "@/lib/colorThemes"
@@ -297,7 +298,7 @@ function GeneralSettings() {
       <SettingRow>
         <div>
           <SettingInfo label="Notifications" description="Get notified when an agent finishes, even in background tabs." />
-          {notifPermission === "denied" && (
+          {notifPermission === "denied" && !isTauri && (
             <p className="text-[11px] text-destructive mt-1">Blocked — allow notifications in your browser settings.</p>
           )}
           {notifPermission === "unsupported" && (

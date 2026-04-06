@@ -536,6 +536,203 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
   )
 }
 
+// ── @ mention row with file preview ──────────────────────────────────────────
+
+function MentionRow({
+  option,
+  agentId,
+  isActive,
+  onSelect,
+}: {
+  option: { type: "file" | "terminal"; name: string; path: string }
+  agentId: string
+  isActive: boolean
+  onSelect: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const { data: preview } = useQuery({
+    queryKey: ["mention-preview", agentId, option.path],
+    queryFn: () =>
+      option.type === "terminal"
+        ? api.getTerminal(agentId).then((lines) => lines.slice(-40).join("\n"))
+        : api.getFileContent(agentId, option.path),
+    enabled: open && option.type !== "terminal" ? !!option.path : open,
+    staleTime: 30_000,
+  })
+
+  const dir = option.path.includes("/") ? option.path.split("/").slice(0, -1).join("/") + "/" : ""
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        onMouseDown={(e) => { e.preventDefault(); onSelect() }}
+        className={cn(
+          "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+          isActive ? "bg-accent" : "hover:bg-accent/50"
+        )}
+      >
+        {option.type === "terminal"
+          ? <IconTerminal2 size={13} className="text-muted-foreground/60 shrink-0" />
+          : <IconFileCode size={13} className="text-muted-foreground/60 shrink-0" />
+        }
+        <span className="text-[12px] font-medium text-foreground/80 shrink-0">{option.name}</span>
+        {dir && <span className="text-[11px] text-muted-foreground/40 truncate">{dir}</span>}
+      </button>
+      {open && preview && (
+        <div className="absolute left-full top-0 ml-2 w-80 z-20 rounded-xl border border-border bg-card shadow-xl overflow-hidden pointer-events-none">
+          <div className="px-3 py-1.5 border-b border-border/60 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+            {option.type === "terminal" ? "Terminal output" : option.path}
+          </div>
+          <pre className="px-3 py-2 text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre overflow-hidden max-h-48 overflow-y-auto">
+            {preview.slice(0, 2000)}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Todo extraction ───────────────────────────────────────────────────────────
+
+interface TodoItem {
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed"
+  priority?: "low" | "medium" | "high"
+}
+
+function extractLatestTodos(messages: Message[]): TodoItem[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (!msg.toolCalls) continue
+    for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
+      const tc = msg.toolCalls[j]
+      if (tc.tool !== "TodoWrite") continue
+      try {
+        const parsed = JSON.parse(tc.args ?? "{}")
+        const todos = parsed.todos ?? parsed
+        if (Array.isArray(todos) && todos.length > 0) return todos as TodoItem[]
+      } catch { /* ignore */ }
+    }
+  }
+  return []
+}
+
+function TasksBar({ todos }: { todos: TodoItem[] }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const prevCountRef = useRef(0)
+
+  useEffect(() => {
+    if (todos.length > 0 && todos.length !== prevCountRef.current) {
+      prevCountRef.current = todos.length
+      setDismissed(false)
+    }
+  }, [todos.length])
+
+  if (dismissed || todos.length === 0) return null
+
+  const doneCount = todos.filter((t) => t.status === "completed").length
+  const inProgressCount = todos.filter((t) => t.status === "in_progress").length
+
+  return (
+    <div className="border-t border-border bg-card/50 shrink-0">
+      <div className="px-5">
+        <div className="flex items-center gap-2 py-1.5">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors"
+          >
+            <IconCheck size={13} className="text-muted-foreground/50" />
+            <span>Tasks</span>
+            <span className="text-muted-foreground/40 font-mono ml-1">
+              {doneCount}/{todos.length}
+              {inProgressCount > 0 && ` · ${inProgressCount} active`}
+            </span>
+            <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="ml-auto p-1 text-muted-foreground/40 hover:text-foreground transition-colors"
+          >
+            <IconX size={12} />
+          </button>
+        </div>
+        {!collapsed && (
+          <div className="pb-2 space-y-0.5">
+            {todos.map((todo) => (
+              <div key={todo.id} className="flex items-start gap-2 py-0.5">
+                <div className={cn(
+                  "mt-0.5 w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center",
+                  todo.status === "completed"
+                    ? "bg-emerald-500/20 border-emerald-500/50"
+                    : todo.status === "in_progress"
+                      ? "border-amber-400/60 bg-amber-500/10"
+                      : "border-border"
+                )}>
+                  {todo.status === "completed" && <IconCheck size={9} className="text-emerald-400" />}
+                  {todo.status === "in_progress" && <IconLoader2 size={9} className="text-amber-400 animate-spin" />}
+                </div>
+                <span className={cn(
+                  "text-[12px] leading-snug",
+                  todo.status === "completed" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
+                )}>
+                  {todo.content}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Table block ───────────────────────────────────────────────────────────────
+
+function TableBlock({ node, children }: { node?: any; children?: React.ReactNode }) {
+  const [copied, setCopied] = useState(false)
+
+  function copyTable() {
+    if (!node) return
+    const rows: string[][] = (node.children ?? []).map((row: any) =>
+      (row.children ?? []).map((cell: any) =>
+        (cell.children ?? []).map((c: any) => c.value ?? c.children?.[0]?.value ?? "").join("")
+      )
+    )
+    if (rows.length === 0) return
+    const [header, ...body] = rows
+    const sep = header.map(() => "---")
+    const lines = [
+      `| ${header.join(" | ")} |`,
+      `| ${sep.join(" | ")} |`,
+      ...body.map((r) => `| ${r.join(" | ")} |`),
+    ]
+    navigator.clipboard.writeText(lines.join("\n"))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="relative my-4 group">
+      <button
+        onClick={copyTable}
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px] text-muted-foreground hover:text-foreground z-10"
+      >
+        {copied ? <IconCheck size={10} /> : <IconCopy size={10} />}
+        <span>{copied ? "Copied" : "Copy"}</span>
+      </button>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-[13px] border-collapse">{children}</table>
+      </div>
+    </div>
+  )
+}
+
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 const MarkdownContent = React.memo(function MarkdownContent({ content }: { content: string }) {
@@ -577,6 +774,16 @@ const MarkdownContent = React.memo(function MarkdownContent({ content }: { conte
           </a>
         ),
         hr: () => <hr className="border-border my-4" />,
+        table: ({ node, children }) => <TableBlock node={node}>{children}</TableBlock>,
+        thead: ({ children }) => <thead className="border-b border-border bg-secondary/40">{children}</thead>,
+        tbody: ({ children }) => <tbody className="divide-y divide-border/50">{children}</tbody>,
+        tr: ({ children }) => <tr className="hover:bg-accent/20 transition-colors">{children}</tr>,
+        th: ({ children }) => (
+          <th className="px-3 py-2 text-left text-[11px] font-semibold text-foreground/70 uppercase tracking-wide whitespace-nowrap">{children}</th>
+        ),
+        td: ({ children }) => (
+          <td className="px-3 py-2 text-foreground/80 leading-relaxed">{children}</td>
+        ),
       }}
     >
       {content}
@@ -1690,6 +1897,13 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [slashQuery, setSlashQuery] = useState<string | null>(null) // null = closed, "" = show all
   const [slashIndex, setSlashIndex] = useState(0)
 
+  // @ mention state
+  type MentionAttachment = { type: "file"; path: string; name: string } | { type: "terminal" }
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionAttachments, setMentionAttachments] = useState<MentionAttachment[]>([])
+  const mentionStartRef = useRef<number>(0)
+
   async function handleModelChange(model: string) {
     await api.updateAgent(agent.id, { model } as Parameters<typeof api.updateAgent>[1])
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model } : old)
@@ -1703,15 +1917,52 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     placeholderData: (prev) => prev,
   })
 
+  const { data: fileTree = [] } = useQuery({
+    queryKey: ["file-tree", agent.id],
+    queryFn: () => api.getFileTree(agent.id),
+    enabled: mentionQuery !== null,
+    staleTime: 30_000,
+  })
+
+  const mentionOptions = useMemo(() => {
+    function flattenTree(nodes: typeof fileTree): { name: string; path: string }[] {
+      const result: { name: string; path: string }[] = []
+      for (const node of nodes) {
+        if (node.type === "file") result.push({ name: node.name, path: node.path })
+        if (node.children) result.push(...flattenTree(node.children as typeof fileTree))
+      }
+      return result
+    }
+    const q = mentionQuery ?? ""
+    const files = flattenTree(fileTree)
+    const filtered = q === ""
+      ? files.slice(0, 20)
+      : files.filter((f) => f.path.toLowerCase().includes(q.toLowerCase())).slice(0, 20)
+    return [
+      { type: "terminal" as const, name: "Terminal output", path: "" },
+      ...filtered.map((f) => ({ type: "file" as const, name: f.name, path: f.path })),
+    ]
+  }, [fileTree, mentionQuery])
+
   function handleInputChange(value: string) {
     setInput(value)
-    // Detect "/" at start or after newline
     const lastLine = value.split("\n").pop() ?? ""
+    // Slash commands
     if (lastLine.startsWith("/")) {
       setSlashQuery(lastLine.slice(1))
       setSlashIndex(0)
     } else {
       setSlashQuery(null)
+    }
+    // @ mentions: detect last @ preceded by start or whitespace
+    const atMatch = lastLine.match(/(^|[\s])@(\S*)$/)
+    if (atMatch) {
+      const query = atMatch[2]
+      mentionStartRef.current = value.lastIndexOf("@" + query)
+      setMentionQuery(query)
+      setMentionIndex(0)
+    } else {
+      setMentionQuery(null)
     }
   }
 
@@ -1724,6 +1975,23 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     })
     setSlashQuery(null)
   }, [])
+
+  const applyMention = useCallback((option: { type: "file"; path: string; name: string } | { type: "terminal"; name: string; path: string }) => {
+    setInput((prev) => {
+      const start = mentionStartRef.current
+      const end = start + 1 + (mentionQuery?.length ?? 0)
+      return prev.slice(0, start) + prev.slice(end)
+    })
+    setMentionQuery(null)
+    setMentionAttachments((prev) => {
+      if (option.type === "terminal") {
+        if (prev.some((x) => x.type === "terminal")) return prev
+        return [...prev, { type: "terminal" as const }]
+      }
+      if (prev.some((x) => x.type === "file" && x.path === option.path)) return prev
+      return [...prev, { type: "file" as const, path: option.path, name: option.name }]
+    })
+  }, [mentionQuery])
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -1792,7 +2060,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     )
   }
 
-  function buildContent(text: string) {
+  async function buildContent(text: string) {
     let content = text
 
     if (pendingComments.length > 0) {
@@ -1806,6 +2074,20 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (attachments.length > 0) {
       const fileBlock = attachments.map((f) => `- ${f.name}: ${f.path}`).join("\n")
       content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
+    }
+
+    if (mentionAttachments.length > 0) {
+      const blocks: string[] = []
+      for (const ma of mentionAttachments) {
+        if (ma.type === "file") {
+          const fileContent = await api.getFileContent(agent.id, ma.path).catch(() => "")
+          blocks.push(`<file path="${ma.path}">\n${fileContent}\n</file>`)
+        } else {
+          const lines = await api.getTerminal(agent.id).catch(() => [] as string[])
+          blocks.push(`<terminal>\n${lines.slice(-100).join("\n")}\n</terminal>`)
+        }
+      }
+      content = blocks.join("\n\n") + "\n\n---\n\n" + content
     }
 
     if (linkedAgents.length > 0) {
@@ -1846,17 +2128,19 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     const text = input.trim()
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
-    const apiContent = buildContent(text)
     setInput("")
     onClearComments?.()
     setAttachments([])
+    setMentionAttachments([])
 
-    if (isStreaming) {
-      setQueuedMessage(JSON.stringify({ display: text, api: apiContent }))
-      return
-    }
-
-    void sendContent(text, apiContent)
+    void (async () => {
+      const apiContent = await buildContent(text)
+      if (isStreaming) {
+        setQueuedMessage(JSON.stringify({ display: text, api: apiContent }))
+        return
+      }
+      void sendContent(text, apiContent)
+    })()
   }
 
   // Auto-send queued message when streaming ends
@@ -2231,9 +2515,29 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 <span>Scroll to bottom</span>
               </button>
             )}
+            <TasksBar todos={extractLatestTodos(agent.messages)} />
             <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} />
             <div className="px-5 py-4 border-t border-border">
             <div className="relative">
+              {/* @ mention picker */}
+              {mentionQuery !== null && mentionOptions.length > 0 && (
+                <div className="absolute bottom-full mb-2 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-10">
+                  <div className="px-3 py-1.5 border-b border-border/60 flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">Files & Context</span>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto">
+                    {mentionOptions.map((opt, i) => (
+                      <MentionRow
+                        key={opt.type === "terminal" ? "__terminal__" : opt.path}
+                        option={opt}
+                        agentId={agent.id}
+                        isActive={i === mentionIndex}
+                        onSelect={() => applyMention(opt)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Slash command picker */}
               {slashQuery !== null && filteredCommands.length > 0 && (
                 <div className="absolute bottom-full mb-2 left-0 right-0 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-10">
@@ -2285,7 +2589,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                     </div>
                   </div>
                 )}
-                {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0) && (
+                {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0 || mentionAttachments.length > 0) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
                     {pendingComments.map((c) => {
                       const loc = c.path ? c.path.split("/").pop() + (c.line ? `:${c.line}` : "") : null
@@ -2321,6 +2625,23 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         </button>
                       </div>
                     ))}
+                    {mentionAttachments.map((ma) => (
+                      <div key={ma.type === "terminal" ? "__terminal__" : ma.path} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
+                        {ma.type === "terminal"
+                          ? <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
+                          : <IconFileCode size={12} className="text-muted-foreground/60 shrink-0" />
+                        }
+                        <span className="font-medium text-foreground/80 max-w-[120px] truncate">
+                          {ma.type === "terminal" ? "Terminal output" : ma.name}
+                        </span>
+                        <button
+                          onClick={() => setMentionAttachments((p) => p.filter((x) => x !== ma))}
+                          className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"
+                        >
+                          <IconX size={11} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <textarea
@@ -2350,6 +2671,12 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                     }
                   }}
                   onKeyDown={(e) => {
+                    if (mentionQuery !== null && mentionOptions.length > 0) {
+                      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionOptions.length); return }
+                      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionOptions.length) % mentionOptions.length); return }
+                      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); applyMention(mentionOptions[mentionIndex]); return }
+                      if (e.key === "Escape") { setMentionQuery(null); return }
+                    }
                     if (slashQuery !== null && filteredCommands.length > 0) {
                       if (e.key === "ArrowDown") { e.preventDefault(); setSlashIndex((i) => (i + 1) % filteredCommands.length); return }
                       if (e.key === "ArrowUp") { e.preventDefault(); setSlashIndex((i) => (i - 1 + filteredCommands.length) % filteredCommands.length); return }

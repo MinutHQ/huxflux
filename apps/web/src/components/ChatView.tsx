@@ -2423,6 +2423,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           {githubEnabled && agent.prStatus && (
             <PRStatusPill prStatus={agent.prStatus} agentId={agent.id} />
           )}
+          {githubEnabled && !agent.prStatus && !isStreaming && agent.messages.length > 0 && (
+            <button
+              onClick={() => { const msg = "Please create a pull request for the changes you've made. Write a clear title and description."; sendContent(msg, msg) }}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors text-[11px] text-muted-foreground"
+            >
+              Create PR
+            </button>
+          )}
           <Popover open={openInOpen} onOpenChange={setOpenInOpen}>
             <PopoverTrigger asChild>
               <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors">

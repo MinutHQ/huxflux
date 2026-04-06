@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { ModalProvider, useModal } from "../components/Modal"
-import { KeyboardProvider } from "react-native-keyboard-controller"
 import { StatusBar } from "expo-status-bar"
 import { ThemeContext, applyTheme, themes, c } from "../theme"
 import { PREF_KEYS } from "../lib/prefs"
@@ -113,13 +112,11 @@ export default function RootLayout() {
   return (
     <ThemeContext.Provider value={themeCtx}>
       <StatusBar style={isLight ? "dark" : "light"} />
-      <KeyboardProvider>
-        <QueryClientProvider client={queryClient}>
-          <ModalProvider>
-            <AppContent hydrated={hydrated} />
-          </ModalProvider>
-        </QueryClientProvider>
-      </KeyboardProvider>
+      <QueryClientProvider client={queryClient}>
+        <ModalProvider>
+          <AppContent hydrated={hydrated} />
+        </ModalProvider>
+      </QueryClientProvider>
     </ThemeContext.Provider>
   )
 }

@@ -535,15 +535,25 @@ function TeamAgentBar({ agents, isStreaming }: { agents: TeamAgent[]; isStreamin
 
 function TerminalChip({ agentId, onRemove }: { agentId: string; onRemove: () => void }) {
   const [open, setOpen] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Always fetch so data is ready before first hover
   const { data: lines = [] } = useQuery({
     queryKey: ["terminal-preview", agentId],
     queryFn: () => api.getTerminal(agentId),
-    enabled: open,
     staleTime: 10_000,
   })
 
+  function handleEnter() {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    setOpen(true)
+  }
+  function handleLeave() {
+    closeTimer.current = setTimeout(() => setOpen(false), 120)
+  }
+
   return (
-    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <div className="relative" onMouseEnter={handleEnter} onMouseLeave={handleLeave}>
       <div className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px] cursor-default">
         <IconTerminal2 size={12} className="text-muted-foreground/60 shrink-0" />
         <span className="font-medium text-foreground/80">Terminal output</span>
@@ -551,8 +561,13 @@ function TerminalChip({ agentId, onRemove }: { agentId: string; onRemove: () => 
           <IconX size={11} />
         </button>
       </div>
-      {open && lines.length > 0 && (
-        <div className="absolute bottom-full mb-2 left-0 w-[400px] z-20 rounded-xl border border-border bg-[#0d0d0d] shadow-2xl overflow-hidden pointer-events-none">
+      {open && (
+        <div
+          className="absolute bottom-full mb-2 left-0 w-[400px] rounded-xl border border-border bg-[#0d0d0d] shadow-2xl overflow-hidden"
+          style={{ zIndex: 9999 }}
+          onMouseEnter={handleEnter}
+          onMouseLeave={handleLeave}
+        >
           <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] bg-[#141414]">
             <div className="flex items-center gap-2">
               <IconTerminal2 size={11} className="text-muted-foreground/50" />
@@ -560,28 +575,26 @@ function TerminalChip({ agentId, onRemove }: { agentId: string; onRemove: () => 
             </div>
             <span className="text-[10px] text-emerald-400/70 font-medium">● running</span>
           </div>
-          <div className="max-h-56 overflow-y-auto">
-            <table className="w-full border-collapse">
-              <tbody>
-                {lines.slice(-40).map((line, i) => (
-                  <tr key={i} className="hover:bg-white/[0.03]">
-                    <td className="select-none text-right pr-3 pl-3 py-[1px] text-[10px] font-mono text-white/20 w-8 shrink-0 align-top">
-                      {lines.length - 40 + i + 1 > 0 ? lines.length - 40 + i + 1 : i + 1}
-                    </td>
-                    <td className="pr-3 py-[1px] text-[11px] font-mono text-white/70 leading-relaxed whitespace-pre">
-                      {line || " "}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-3 py-1.5 border-t border-white/[0.06] bg-[#141414] flex items-center gap-2">
-            <IconX size={10} className="text-white/30" />
-            <span className="text-[10px] font-mono text-white/30 truncate">
-              terminal-output-{new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.txt
-            </span>
-          </div>
+          {lines.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[11px] font-mono text-white/30">No terminal output yet</div>
+          ) : (
+            <div className="max-h-56 overflow-y-auto">
+              <table className="w-full border-collapse">
+                <tbody>
+                  {lines.slice(-40).map((line, i) => (
+                    <tr key={i} className="hover:bg-white/[0.03]">
+                      <td className="select-none text-right pr-3 pl-3 py-[1px] text-[10px] font-mono text-white/20 w-8 shrink-0 align-top">
+                        {Math.max(lines.length - 40, 0) + i + 1}
+                      </td>
+                      <td className="pr-3 py-[1px] text-[11px] font-mono text-white/70 leading-relaxed whitespace-pre">
+                        {line || " "}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

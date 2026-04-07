@@ -1038,10 +1038,12 @@ const MarkdownContent = React.memo(function MarkdownContent({ content }: { conte
 
 // ── Typing indicator ──────────────────────────────────────────────────────────
 
-function TypingBubble() {
+function TypingBubble({ elapsedSeconds }: { elapsedSeconds: number }) {
+  const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")
+  const ss = String(elapsedSeconds % 60).padStart(2, "0")
   return (
     <div className="mb-5">
-      <div className="inline-flex items-center gap-1.5 px-4 py-3">
+      <div className="inline-flex items-center gap-2 px-4 py-3">
         {[0, 1, 2].map((i) => (
           <span
             key={i}
@@ -1051,6 +1053,7 @@ function TypingBubble() {
             }}
           />
         ))}
+        <span className="text-[11px] font-mono text-muted-foreground/40 tabular-nums ml-0.5">{mm}:{ss}</span>
       </div>
     </div>
   )
@@ -2098,6 +2101,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [baseBranchOpen, setBaseBranchOpen] = useState(false)
   const [baseBranchSearch, setBaseBranchSearch] = useState("")
   const baseBranchSearchRef = useRef<HTMLInputElement>(null)
@@ -2278,6 +2282,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   function handleInputChange(value: string) {
     setInput(value)
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+    }
     const lastLine = value.split("\n").pop() ?? ""
     // Slash commands
     if (lastLine.startsWith("/")) {
@@ -2471,6 +2479,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
     setInput("")
+    if (textareaRef.current) textareaRef.current.style.height = "auto"
     void api.updateAgent(agent.id, { draft: "" })
     onClearComments?.()
     setAttachments([])
@@ -2545,6 +2554,24 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   // Single source of truth — derived from server's streaming flag + last
   // message's durationMs. See packages/shared/src/agentState.ts.
   const uiIsStreaming = isAgentStreaming(agent)
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const streamingStartRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (uiIsStreaming) {
+      if (streamingStartRef.current === null) {
+        streamingStartRef.current = Date.now()
+        setElapsedSeconds(0)
+      }
+      const id = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - streamingStartRef.current!) / 1000))
+      }, 1000)
+      return () => clearInterval(id)
+    } else {
+      streamingStartRef.current = null
+      setElapsedSeconds(0)
+    }
+  }, [uiIsStreaming])
 
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
@@ -2896,7 +2923,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 {agent.messages.map((msg, i) => (
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
                 ))}
-                {uiIsStreaming && <TypingBubble />}
+                {uiIsStreaming && <TypingBubble elapsedSeconds={elapsedSeconds} />}
                 {queuedMessage !== null && (() => {
                   let displayText = queuedMessage
                   try { displayText = (JSON.parse(queuedMessage) as { display: string }).display } catch { /* raw */ }
@@ -3063,11 +3090,12 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   </div>
                 )}
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => handleInputChange(e.target.value)}
                   placeholder={agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
                   rows={2}
-                  className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none"
+                  className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none overflow-y-auto"
                   onPaste={(e) => {
                     if (!getAutoConvert()) return
                     const text = e.clipboardData.getData("text/plain")

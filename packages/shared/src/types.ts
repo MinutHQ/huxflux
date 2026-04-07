@@ -120,6 +120,10 @@ export interface ToolCall {
   duration?: string
   subCalls?: ToolCall[]
   outputText?: string  // text output streamed by a sub-agent
+  // Text the main assistant emitted just before this tool call
+  // (e.g. "Now let me look at..."). Lets the UI interleave intermediate
+  // narration with the tool calls in the order they were produced.
+  precedingText?: string
 }
 
 export interface Message {
@@ -135,6 +139,11 @@ export interface Message {
   outputTokens?: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  // Client-only: text being streamed since the last tool call. Rendered
+  // inside the tool-calls accordion so intermediate narration doesn't first
+  // appear under the bubble and then jump into the accordion. Cleared on
+  // message:done (server then provides the authoritative `content`).
+  pendingText?: string
 }
 
 export interface Agent {

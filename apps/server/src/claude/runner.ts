@@ -87,15 +87,17 @@ async function refreshFileChanges(
 // ── Stream event handler ────────────────────────────────────────────────────
 
 interface StreamState {
-  fullContent: string
+  // Text emitted since the last tool call (or message start). On every
+  // tool_use it gets attached to that tool call's `precedingText` and reset.
+  // Whatever's left at message end becomes the message's final `content`.
+  pendingText: string
   fullThinking: string
-  collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string }>
+  collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string; precedingText?: string }>
   toolCallOrderIdx: number
   inputTokens: number | null
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
-  seenToolResult: boolean
 }
 
 function handleStreamEvent(
@@ -117,24 +119,31 @@ function handleStreamEvent(
   if (event.type === "assistant") {
     for (const block of event.message.content) {
       if (block.type === "text") {
-        const sep = state.fullContent
-          ? (state.seenToolResult ? "\n\n---\n\n" : (!state.fullContent.endsWith("\n") ? "\n" : ""))
-          : ""
-        state.seenToolResult = false
-        state.fullContent += sep + block.text
-        emit(agentId, { type: "message:chunk", agentId, messageId, delta: sep + block.text })
+        // Stream the chunk to the client right away (it appends to msg.content
+        // optimistically). If a tool_use follows, the client will move this
+        // text out of msg.content into the tool call's precedingText.
+        state.pendingText += block.text
+        emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
         scheduleFlush()
       } else if (block.type === "thinking") {
         state.fullThinking += block.thinking
         emit(agentId, { type: "message:thinking", agentId, messageId, delta: block.thinking })
         scheduleFlush()
       } else if (block.type === "tool_use") {
+        const precedingText = state.pendingText || undefined
+        state.pendingText = ""
         const tc: ToolCall = {
           id: block.id,
           tool: block.name,
           args: JSON.stringify(block.input),
+          precedingText,
         }
-        state.collectedToolCalls.push({ id: block.id, tool: block.name, args: JSON.stringify(block.input) })
+        state.collectedToolCalls.push({
+          id: block.id,
+          tool: block.name,
+          args: JSON.stringify(block.input),
+          precedingText,
+        })
         state.toolCallOrderIdx++
         // Persist tool call to DB immediately so it survives reloads
         db.insert(toolCallsTable).values({
@@ -143,12 +152,12 @@ function handleStreamEvent(
           tool: block.name,
           args: JSON.stringify(block.input),
           orderIdx: state.toolCallOrderIdx - 1,
+          precedingText,
         }).run()
         emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
       }
     }
   } else if (event.type === "tool_result") {
-    state.seenToolResult = true
     const tc = state.collectedToolCalls.find((t) => t.id === event.tool_use_id)
     if (tc) tc.result = event.content
     // Persist tool result to DB immediately
@@ -206,9 +215,14 @@ async function persistAssistantMessage(
   // Cancel any pending flush — we're about to write the final state
   if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
 
+  // Whatever text is left in the pending buffer at message end is the
+  // assistant's final answer text — anything earlier was already moved into
+  // the preceding tool calls' `precedingText`.
+  const finalContent = state.pendingText
+
   await db.update(messagesTable)
     .set({
-      content: state.fullContent,
+      content: finalContent,
       thinking: state.fullThinking || null,
       durationMs: Date.now() - startedAt,
       model,
@@ -229,7 +243,7 @@ async function persistAssistantMessage(
   const builtMessage: Message = {
     id: messageId,
     role: "assistant",
-    content: state.fullContent,
+    content: finalContent,
     thinking: state.fullThinking || undefined,
     timestamp: skeletonCreatedAt,
     durationMs: Date.now() - startedAt,
@@ -243,6 +257,7 @@ async function persistAssistantMessage(
       tool: tc.tool,
       args: tc.args,
       result: tc.result,
+      precedingText: tc.precedingText,
     })),
   }
 
@@ -311,7 +326,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
   // Stream state — mutable accumulator for the assistant response
   const state: StreamState = {
-    fullContent: "",
+    pendingText: "",
     fullThinking: "",
     collectedToolCalls: [],
     toolCallOrderIdx: 0,
@@ -319,7 +334,6 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     outputTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
-    seenToolResult: false,
   }
   const startedAt = Date.now()
 
@@ -431,8 +445,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       if (flushTimer.current) return
       flushTimer.current = setTimeout(() => {
         flushTimer.current = null
+        // Only the trailing pending text becomes content here too — text
+        // already moved into a tool call's precedingText is no longer in
+        // pendingText, so it won't be double-counted.
         db.update(messagesTable)
-          .set({ content: state.fullContent, thinking: state.fullThinking || null })
+          .set({ content: state.pendingText, thinking: state.fullThinking || null })
           .where(eq(messagesTable.id, messageId))
           .run()
       }, 500)
@@ -496,10 +513,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           message: {
             id: messageId,
             role: "assistant",
-            content: state.fullContent,
+            content: state.pendingText,
             timestamp: skeletonCreatedAt,
             durationMs: Date.now() - startedAt,
-            toolCalls: state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result })),
+            toolCalls: state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result, precedingText: tc.precedingText })),
           } as Message,
         })
       }

@@ -116,6 +116,10 @@ export interface ToolCall {
   result?: string
   duration?: string
   subCalls?: ToolCall[]
+  // Text the assistant emitted just before this tool call (intermediate
+  // narration like "Now let me look at..."). Preserved on the tool call so
+  // it can be rendered inline with tool calls in the order they happened.
+  precedingText?: string
 }
 
 export interface Message {

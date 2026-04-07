@@ -210,7 +210,7 @@ function AgentPromptBlock({ prompt }: { prompt: string }) {
 
 // ── Tool call row ─────────────────────────────────────────────────────────────
 
-function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolean }) {
+function ToolCallRow({ call, indent = false, isStreaming = false }: { call: ToolCall; indent?: boolean; isStreaming?: boolean }) {
   const [open, setOpen] = useState(true)
   const isAgent = call.tool === "Agent"
 
@@ -224,6 +224,13 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
         prompt = parsed.prompt ?? ""
       } catch { /* raw string fallback */ }
     }
+    // A tool call is only "running" while the parent message is still
+    // streaming AND no result has come back yet. Without the streaming guard,
+    // any tool call that never received a result (e.g. legacy rows) would
+    // spin forever after the message finished.
+    const isRunning = isStreaming && !call.result
+    const hasOutputText = !!(call.outputText && call.outputText.trim())
+    const hasSubCalls = !!(call.subCalls && call.subCalls.length > 0)
     return (
       <div className={cn("mt-1", indent && "ml-4")}>
         <button
@@ -231,16 +238,36 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
           className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5"
         >
           <IconChevronRight size={12} className={cn("transition-transform shrink-0", open && "rotate-90")} />
-          <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />
+          {isRunning
+            ? <IconLoader2 size={12} className="text-muted-foreground/70 shrink-0 animate-spin" />
+            : <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />}
           <span className="font-medium text-foreground/80">Agent</span>
           {description && <span className="text-muted-foreground/60 ml-1 truncate">{description}</span>}
         </button>
         {open && (
-          <div className="ml-3 mt-0.5 border-l border-border/50 pl-3 space-y-0.5">
+          <div className="ml-3 mt-0.5 border-l border-border/50 pl-3 space-y-1.5">
             {prompt && <AgentPromptBlock prompt={prompt} />}
-            {call.subCalls?.map((sub) => (
-              <ToolCallRow key={sub.id} call={sub} />
-            ))}
+            {hasSubCalls && (
+              <div className="space-y-0.5">
+                {call.subCalls!.map((sub) => (
+                  <ToolCallRow key={sub.id} call={sub} />
+                ))}
+              </div>
+            )}
+            {/* Human-readable text streamed by this sub-agent — kept tied to its row */}
+            {hasOutputText && (
+              <div className="mt-1 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
+                <MarkdownContent content={call.outputText!} />
+              </div>
+            )}
+            {isRunning && !hasOutputText && !hasSubCalls && (
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
+                <IconLoader2 size={11} className="animate-spin" />
+                <span>Working…</span>
+              </div>
+            )}
+            {/* Final result summary, once the sub-agent has finished */}
+            {call.result && <ResultBlock result={call.result} />}
           </div>
         )}
       </div>
@@ -266,8 +293,17 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
 
 // ── Tool calls accordion ──────────────────────────────────────────────────────
 
-function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasContent?: boolean; isStreaming?: boolean }) {
-  const [open, setOpen] = useState(false)
+function ToolCallsAccordion({ calls, isStreaming, pendingText }: { calls: ToolCall[]; hasContent?: boolean; isStreaming?: boolean; pendingText?: string }) {
+  const [open, setOpen] = useState(isStreaming ?? false)
+  const [userToggled, setUserToggled] = useState(false)
+
+  // Stay open for the duration of streaming, then collapse once the message
+  // is done. No more line-count threshold — that fought the user's reading
+  // flow. User-toggle still wins.
+  useEffect(() => {
+    if (userToggled) return
+    setOpen(!!isStreaming)
+  }, [isStreaming, userToggled])
 
   const lastCall = calls[calls.length - 1]
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
@@ -282,11 +318,13 @@ function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasCont
   return (
     <div className="mb-3">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); setUserToggled(true) }}
         className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5 group"
       >
         <IconChevronRight size={12} className={cn("transition-transform shrink-0", open && "rotate-90")} />
-        <IconBolt size={12} className="text-muted-foreground/50 shrink-0" />
+        {isStreaming
+          ? <IconLoader2 size={12} className="text-muted-foreground/70 shrink-0 animate-spin" />
+          : <IconBolt size={12} className="text-muted-foreground/50 shrink-0" />}
         <span className="font-medium text-foreground/70">{label}</span>
         {!open && (
           <span className="text-muted-foreground/40 ml-1 truncate">{summary}</span>
@@ -295,8 +333,22 @@ function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasCont
       {open && (
         <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
           {calls.map((tc) => (
-            <ToolCallRow key={tc.id} call={tc} />
+            <div key={tc.id}>
+              {tc.precedingText && tc.precedingText.trim() && (
+                <div className="my-1.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
+                  <MarkdownContent content={tc.precedingText} />
+                </div>
+              )}
+              <ToolCallRow call={tc} isStreaming={isStreaming} />
+            </div>
           ))}
+          {/* Live text being streamed since the last tool call. Stays inside
+              the accordion so it doesn't flicker through msg.content. */}
+          {pendingText && pendingText.trim() && (
+            <div className="my-1.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
+              <MarkdownContent content={pendingText} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -447,14 +499,18 @@ function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgen
 function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [toolsOpen, setToolsOpen] = useState(true)
+  const [toolsUserToggled, setToolsUserToggled] = useState(false)
   const hasSubCalls = selected.subCalls && selected.subCalls.length > 0
+  const subCallCount = selected.subCalls?.length ?? 0
   const hasOutput = selected.outputText && selected.outputText.trim()
   const hasResult = selected.result && selected.result.trim()
 
-  // Collapse tools accordion when agent finishes
+  // Collapse tools accordion when agent finishes, or once 10+ sub-calls have accrued
   useEffect(() => {
-    if (selected.status === "done") setToolsOpen(false)
-  }, [selected.status])
+    if (toolsUserToggled) return
+    if (selected.status === "done" || subCallCount >= 10) setToolsOpen(false)
+    else setToolsOpen(true)
+  }, [selected.status, subCallCount, toolsUserToggled])
 
   // Auto-scroll when content changes
   useEffect(() => {
@@ -473,11 +529,13 @@ function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
       {hasSubCalls && (
         <div>
           <button
-            onClick={() => setToolsOpen(!toolsOpen)}
+            onClick={() => { setToolsOpen(!toolsOpen); setToolsUserToggled(true) }}
             className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5"
           >
             <IconChevronRight size={11} className={cn("transition-transform shrink-0", toolsOpen && "rotate-90")} />
-            <IconBolt size={11} className="text-muted-foreground/50 shrink-0" />
+            {selected.status === "running"
+              ? <IconLoader2 size={11} className="text-muted-foreground/70 shrink-0 animate-spin" />
+              : <IconBolt size={11} className="text-muted-foreground/50 shrink-0" />}
             <span className="font-medium text-foreground/70">
               {selected.subCalls!.length === 1 ? "1 tool call" : `${selected.subCalls!.length} tool calls`}
             </span>
@@ -519,8 +577,16 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
   const storageKey = `huxflux-team-dismissed-${agentId}`
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
+  const [collapsedUserToggled, setCollapsedUserToggled] = useState(false)
   const knownIdsRef = useRef<Set<string>>(new Set())
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(storageKey) === "1")
+
+  // Auto-collapse the panel when no agents are running anymore — unless user toggled
+  const anyRunning = agents.some((a) => a.status === "running")
+  useEffect(() => {
+    if (collapsedUserToggled) return
+    setCollapsed(!anyRunning)
+  }, [anyRunning, collapsedUserToggled])
 
   // Re-show when new agent IDs appear (handles dismiss → new team)
   useEffect(() => {
@@ -551,7 +617,7 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
       {/* Tab bar */}
       <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto">
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => { setCollapsed(!collapsed); setCollapsedUserToggled(true) }}
           className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
         >
           <IconUsers size={12} className="text-muted-foreground/50" />
@@ -569,7 +635,7 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
           return (
             <button
               key={agent.id}
-              onClick={() => { setSelectedId(agent.id); setCollapsed(false) }}
+              onClick={() => { setSelectedId(agent.id); setCollapsed(false); setCollapsedUserToggled(true) }}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
                 isActive
@@ -992,11 +1058,17 @@ function TypingBubble() {
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { msg: Message; isStreaming?: boolean }) {
+const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isStreamingProp }: { msg: Message; isStreaming?: boolean }) {
   const isUser = msg.role === "user"
+  // Belt-and-braces: even if the parent's derived isStreaming hasn't flipped
+  // yet (cache update race), `durationMs` being set means this message is
+  // definitively done — clamp the spinner state locally.
+  const isStreaming = !!isStreamingProp && msg.durationMs == null
+  const pendingText = msg.pendingText ?? ""
+  const hasPending = pendingText.trim().length > 0
   // A non-streaming message with only tool calls and no text/thinking is not shown —
   // the tool calls accordion only renders alongside actual content (see below).
-  const isEmpty = !msg.content && !msg.thinking && (!msg.toolCalls || msg.toolCalls.length === 0)
+  const isEmpty = !msg.content && !msg.thinking && !hasPending && (!msg.toolCalls || msg.toolCalls.length === 0)
 
   if (isUser) {
     // Parse out "Attached files:\n- name: /path\n...\n\n---\n\n" prefix
@@ -1052,9 +1124,16 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming }: { 
       {/* Thinking */}
       {msg.thinking && <ThinkingBlock text={msg.thinking} />}
 
-      {/* Tool calls — show live during streaming, or only when there's an answer to associate with */}
-      {msg.toolCalls && msg.toolCalls.length > 0 && (isStreaming || !!msg.content) && (
-        <ToolCallsAccordion calls={msg.toolCalls} hasContent={!!msg.content} isStreaming={isStreaming} />
+      {/* Tool calls + live streaming text. Show whenever there are tool
+          calls, OR while a streaming chunk is in flight (so intermediate
+          text gets a home before the first tool call exists). */}
+      {((msg.toolCalls && msg.toolCalls.length > 0) || (isStreaming && hasPending)) && (
+        <ToolCallsAccordion
+          calls={msg.toolCalls ?? []}
+          hasContent={!!msg.content}
+          isStreaming={isStreaming}
+          pendingText={pendingText}
+        />
       )}
 
       {/* Content */}

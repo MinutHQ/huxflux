@@ -148,10 +148,16 @@ export function useAgent(id: string | null) {
                 content: "",
                 timestamp: new Date().toISOString(),
                 toolCalls: [],
+                pendingText: "",
               },
             ]
+        // Stream into pendingText (rendered inside the accordion), not into
+        // content — otherwise the text shows under the bubble first and then
+        // jumps into the accordion when the next tool call arrives.
         return withMessage.map((m) =>
-          m.id === event.messageId ? { ...m, content: m.content + event.delta } : m
+          m.id === event.messageId
+            ? { ...m, pendingText: (m.pendingText ?? "") + event.delta }
+            : m
         )
       })
     }
@@ -181,11 +187,19 @@ export function useAgent(id: string | null) {
                 toolCalls: [],
               },
             ]
-        return withMessage.map((m) =>
-          m.id === event.messageId
-            ? { ...m, toolCalls: [...(m.toolCalls ?? []), event.toolCall] }
-            : m
-        )
+        return withMessage.map((m) => {
+          if (m.id !== event.messageId) return m
+          // The pendingText buffer was the text streamed since the last tool
+          // call — it now belongs to this tool call. Use the server's value
+          // when present; fall back to the local buffer (e.g. if pendingText
+          // and event delivery race). Either way, clear the buffer.
+          const pre = event.toolCall.precedingText ?? (m.pendingText || undefined)
+          return {
+            ...m,
+            pendingText: "",
+            toolCalls: [...(m.toolCalls ?? []), { ...event.toolCall, precedingText: pre }],
+          }
+        })
       })
     }
 
@@ -212,7 +226,10 @@ export function useAgent(id: string | null) {
           const sd = map.get(tc.id)
           return sd ? { ...tc, subCalls: sd.subCalls, outputText: sd.outputText } : tc
         })
-        const merged = { ...incoming, toolCalls: mergedToolCalls }
+        // Clear the local pendingText buffer — the server's `content` is now
+        // authoritative (it holds whatever text was emitted after the last
+        // tool call).
+        const merged = { ...incoming, toolCalls: mergedToolCalls, pendingText: "" }
 
         // 1. Replace by exact ID (normal case)
         if (msgs.some((m) => m.id === event.messageId)) {

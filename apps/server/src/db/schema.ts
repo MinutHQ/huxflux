@@ -66,6 +66,9 @@ export const toolCalls = sqliteTable("tool_calls", {
   result: text("result"),
   duration: text("duration"),
   orderIdx: integer("order_idx").notNull().default(0),
+  // Text the assistant emitted between the previous tool call (or message
+  // start) and this one — preserves text↔tool ordering for inline display.
+  precedingText: text("preceding_text"),
 })
 
 export const fileChanges = sqliteTable("file_changes", {

@@ -290,6 +290,10 @@ const MIGRATIONS: Migration[] = [
     version: 15,
     sql: `ALTER TABLE agents ADD COLUMN draft TEXT;`,
   },
+  {
+    version: 16,
+    sql: `ALTER TABLE tool_calls ADD COLUMN preceding_text TEXT;`,
+  },
 ]
 
 export function runMigrations() {

@@ -111,6 +111,7 @@ export async function messagesRoutes(app: FastifyInstance) {
             args: tc.args ?? undefined,
             result: tc.result ?? undefined,
             duration: tc.duration ?? undefined,
+            precedingText: tc.precedingText ?? undefined,
           })) : undefined,
         }
       })

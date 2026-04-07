@@ -117,6 +117,7 @@ export async function agentsRoutes(app: FastifyInstance) {
           args: tc.args ?? undefined,
           result: tc.result ?? undefined,
           duration: tc.duration ?? undefined,
+          precedingText: tc.precedingText ?? undefined,
         })) : undefined,
       }
     })

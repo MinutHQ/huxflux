@@ -106,7 +106,7 @@ export async function getFileChanges(worktreePath: string, branchFrom: string): 
     const base = await resolveBase(worktreePath, branchFrom)
     const fileMap = new Map<string, FileChange>()
 
-    const addDiff = (files: typeof (await git.diffSummary([])).files) => {
+    const addDiff = (files: Array<{ file: string; [key: string]: unknown }>) => {
       for (const f of files) {
         const existing = fileMap.get(f.file)
         const add = "insertions" in f ? (f.insertions as number) : 0

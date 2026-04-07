@@ -29,6 +29,10 @@ import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { startPoller } from "./poller.js"
 import { resetStreamingFlags } from "./claude/runner.js"
+import { watchWorktree } from "./git/watcher.js"
+import { db } from "./db/index.js"
+import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
+import { isNull, eq } from "drizzle-orm"
 
 const app = Fastify({ logger: true })
 
@@ -94,6 +98,19 @@ runMigrations()
 // The in-memory runningProcesses Map starts empty, so any row claiming to
 // stream is a leftover that would otherwise show stuck loading indicators.
 resetStreamingFlags()
+
+// Re-attach file watchers for agents that were active before restart
+{
+  const activeAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
+  for (const agent of activeAgents) {
+    if (!agent.repoId || agent.noWorktree) continue
+    const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+    if (!repo) continue
+    const worktreePath = path.join(repo.workspacesPath, agent.location)
+    if (!fs.existsSync(worktreePath)) continue
+    watchWorktree(agent.id, worktreePath, repo.branchFrom)
+  }
+}
 
 let boundPort: number | null = null
 for (let attempt = 0; attempt < 10; attempt++) {

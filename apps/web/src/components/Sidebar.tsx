@@ -9,7 +9,7 @@ import type { PullRequest } from "@/data/mockReviews"
 import type { PendingAgent } from "@/hooks/useWorkspace"
 import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos } from "@huxflux/shared"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
@@ -1436,7 +1436,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
     return Array.from(map.entries()).map(([id, { name, agents: a }]) => ({ id, name, agents: a }))
   }, [filteredAgents, repos])
 
-  async function handleCreateAgent(repoId: string, title: string, branch: string, direct: boolean) {
+  async function handleCreateAgent(repoId: string, title: string, branch: string, direct: boolean, existingBranch?: boolean) {
     setShowNewAgent(false)
     const repoName = repos.find(r => r.id === repoId)?.name ?? ""
     const savedMs = getWorktreeDuration(repoId)
@@ -1446,9 +1446,9 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
       const agent = await api.createAgent({
         title,
         branch,
-        model: "claude-sonnet-4-6",
         repoId,
         noWorktree: direct || undefined,
+        existingBranch: existingBranch || undefined,
       })
       saveWorktreeDuration(repoId, Date.now() - t0)
       onAgentCreated(agent.id)

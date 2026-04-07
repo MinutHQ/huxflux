@@ -62,6 +62,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface HuxfluxSettings {
   reviewPrompt?: string
+  defaultModel?: string
 }
 
 export const api = {
@@ -85,6 +86,7 @@ export const api = {
     description?: string
     shareWorktreeWith?: string
     noWorktree?: boolean
+    existingBranch?: boolean
   }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
   updateAgent: (
     id: string,
@@ -93,6 +95,7 @@ export const api = {
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
   generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
+  switchBranch: (id: string, branch: string, force?: boolean) => req<Agent>(`/api/agents/${id}/switch-branch`, { method: "POST", body: JSON.stringify({ branch, force }) }),
 
   // Stats
   getStats: () => req<WorkspaceStats>("/api/stats"),
@@ -117,6 +120,8 @@ export const api = {
     req<{ name: string; path: string; type: "file" | "directory"; children?: any[] }[]>(`/api/agents/${agentId}/files/tree`),
   getFileContent: (agentId: string, path: string) =>
     fetch(`${getBase()}/api/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
+  getBaseFileContent: (agentId: string, path: string) =>
+    fetch(`${getBase()}/api/agents/${agentId}/files/base-content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
   saveFileContent: (agentId: string, path: string, content: string) =>
     req<{ ok: boolean }>(`/api/agents/${agentId}/files/content`, { method: "PUT", body: JSON.stringify({ path, content }) }),
   refreshFiles: (agentId: string) =>

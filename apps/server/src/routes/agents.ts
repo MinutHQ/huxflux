@@ -4,15 +4,19 @@ import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
+import { watchWorktree, unwatchWorktree, refreshWorktree } from "../git/watcher.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent, isAgentRunning } from "../claude/runner.js"
 import { generateTitle, deriveTitle } from "./messages.js"
 import { killAgentTerminals } from "../ws/pty.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { config } from "../config.js"
+import { getSettings } from "../settings.js"
+import { findPRForBranch } from "../github/client.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
 import { spawn } from "node:child_process"
+import simpleGit from "simple-git"
 
 function runScript(script: string, cwd: string, agentId: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -150,9 +154,10 @@ export async function agentsRoutes(app: FastifyInstance) {
       description?: string
       shareWorktreeWith?: string // agent ID to share worktree with
       noWorktree?: boolean
+      existingBranch?: boolean  // if true, branch already exists — skip -b and auto-link PR
     }
   }>("/api/agents", async (req, reply) => {
-    const { repoId, title, branch, model = "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree } = req.body
+    const { repoId, title, branch, model = getSettings().defaultModel ?? "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree, existingBranch } = req.body
     const now = new Date().toISOString()
     const id = uuid()
 
@@ -231,6 +236,15 @@ export async function agentsRoutes(app: FastifyInstance) {
     const created = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!created) return reply.code(500).send({ error: "Failed to create agent" })
 
+    // Start live file watcher for the new worktree
+    if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
+      const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
+      if (repo) {
+        const worktreePath = path.join(repo.workspacesPath, agentLocation)
+        watchWorktree(id, worktreePath, repo.branchFrom)
+      }
+    }
+
     // Auto-create the default t1 terminal tab for root agents (not child sessions)
     if (!shareWorktreeWith) {
       db.insert(terminalTabs).values({
@@ -240,6 +254,27 @@ export async function agentsRoutes(app: FastifyInstance) {
         label: null,
         orderIdx: 0,
       }).run()
+    }
+
+    // Auto-link PR when picking an existing branch (fire-and-forget)
+    if (existingBranch && agentRepoId && config.githubToken) {
+      const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
+      if (repo?.previewUrl || repo?.path) {
+        // Derive remote URL from git config
+        simpleGit(repo.path).remote(["get-url", "origin"]).then(async (remoteUrl) => {
+          const url = (remoteUrl ?? "").trim()
+          if (!url) return
+          const pr = await findPRForBranch(url, branch).catch(() => null)
+          if (!pr) return
+          db.update(agents).set({
+            pr: pr.url,
+            prNumber: pr.number,
+            prStatus: JSON.stringify(pr),
+          }).where(eq(agents.id, id)).run()
+          const updated = db.select().from(agents).where(eq(agents.id, id)).get()
+          if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+        }).catch(() => {})
+      }
     }
 
     broadcast({ type: "agent:updated", agent: created as any })
@@ -271,6 +306,91 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!updated) return reply.code(404).send({ error: "Not found" })
 
     broadcast({ type: "agent:updated", agent: updated as any })
+    return updated
+  })
+
+  // POST /api/agents/:id/switch-branch — checkout a different branch in the worktree
+  app.post<{ Params: { id: string }; Body: { branch: string; force?: boolean } }>("/api/agents/:id/switch-branch", async (req, reply) => {
+    const { id } = req.params
+    const { branch, force } = req.body
+    if (!branch) return reply.code(400).send({ error: "branch is required" })
+
+    const agent = db.select().from(agents).where(and(eq(agents.id, id), isNull(agents.deletedAt))).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (!agent.repoId) return reply.code(400).send({ error: "Agent has no repo" })
+    if (agent.branch === branch) return agent
+
+    // Check if another agent in this repo already has this branch
+    const conflict = db.select({ id: agents.id, title: agents.title })
+      .from(agents)
+      .where(and(eq(agents.repoId, agent.repoId), eq(agents.branch, branch), isNull(agents.deletedAt)))
+      .get()
+    if (conflict && conflict.id !== id) {
+      return reply.code(409).send({ error: `Branch "${branch}" is already checked out by "${conflict.title}"` })
+    }
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(400).send({ error: "Repo not found" })
+
+    const worktreePath = path.join(repo.workspacesPath, agent.location)
+    if (!existsSync(worktreePath)) return reply.code(400).send({ error: "Worktree not found on disk" })
+
+    const mainGit = simpleGit(repo.path)
+    const wt = simpleGit(worktreePath)
+    await wt.fetch(["--no-tags", "origin", branch]).catch(() => {})
+
+    if (force) {
+      // Prune stale entries and force-remove any worktree that still has this branch locked
+      const listRaw = await mainGit.raw(["worktree", "list", "--porcelain"]).catch(() => "")
+      const blocks = listRaw.trim().split(/\n\n+/)
+      for (const block of blocks) {
+        const lines = block.split("\n")
+        const pathLine = lines.find((l) => l.startsWith("worktree "))
+        const branchLine = lines.find((l) => l.startsWith("branch "))
+        if (!pathLine || !branchLine) continue
+        const wtPath = pathLine.slice("worktree ".length).trim()
+        const wtBranch = branchLine.slice("branch refs/heads/".length).trim()
+        if (wtBranch === branch && wtPath !== worktreePath) {
+          await mainGit.raw(["worktree", "remove", "--force", wtPath]).catch(() => {})
+        }
+      }
+      await mainGit.raw(["worktree", "prune"]).catch(() => {})
+    }
+
+    try {
+      await wt.checkout(branch)
+    } catch (err) {
+      const msg = String((err as Error).message ?? err)
+      if (msg.includes("already checked out") || msg.includes("is already used")) {
+        return reply.code(409).send({ error: `Branch "${branch}" is already checked out in another worktree`, code: "BRANCH_LOCKED" })
+      }
+      return reply.code(500).send({ error: `Git checkout failed: ${msg}` })
+    }
+
+    const now = new Date().toISOString()
+    db.update(agents).set({ branch, pr: null, prNumber: null, prStatus: null, updatedAt: now }).where(eq(agents.id, id)).run()
+
+    const updated = db.select().from(agents).where(eq(agents.id, id)).get()
+    if (!updated) return reply.code(500).send({ error: "Update failed" })
+
+    broadcast({ type: "agent:updated", agent: updated as any })
+
+    // Immediately refresh file changes for the new branch
+    void refreshWorktree(id, worktreePath, repo.branchFrom)
+
+    // Auto-link PR for the new branch (fire-and-forget)
+    if (config.githubToken) {
+      simpleGit(repo.path).remote(["get-url", "origin"]).then(async (remoteUrl) => {
+        const url = (remoteUrl ?? "").trim()
+        if (!url) return
+        const pr = await findPRForBranch(url, branch).catch(() => null)
+        if (!pr) return
+        db.update(agents).set({ pr: pr.url, prNumber: pr.number, prStatus: JSON.stringify(pr) }).where(eq(agents.id, id)).run()
+        const refreshed = db.select().from(agents).where(eq(agents.id, id)).get()
+        if (refreshed) broadcast({ type: "agent:updated", agent: refreshed as any })
+      }).catch(() => {})
+    }
+
     return updated
   })
 
@@ -322,6 +442,9 @@ export async function agentsRoutes(app: FastifyInstance) {
     await db.update(agents)
       .set({ deletedAt: now })
       .where(eq(agents.parentAgentId, req.params.id))
+
+    // Stop live file watcher before removing worktree
+    unwatchWorktree(req.params.id)
 
     // Remove worktree from disk (frees space) but keep DB record
     if (agent.repoId && !agent.noWorktree) {

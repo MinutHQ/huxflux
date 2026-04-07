@@ -6,6 +6,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, "settings.json")
 
 export interface HuxfluxSettings {
   reviewPrompt?: string
+  defaultModel?: string
 }
 
 export function getSettings(): HuxfluxSettings {

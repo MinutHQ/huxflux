@@ -1164,12 +1164,6 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
               <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
               <span className="text-[10px] text-muted-foreground/70 shrink-0">{pr.author}</span>
             </>}
-            {pr.branch && <>
-              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
-              <span className="text-[10px] font-mono text-muted-foreground/60 truncate max-w-[100px]">{pr.branch}</span>
-              <span className="text-[10px] text-muted-foreground/50 shrink-0">→</span>
-              <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">{pr.baseBranch}</span>
-            </>}
             <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
             <span className="text-[10px] text-muted-foreground/60 shrink-0">{pr.requestedAt}</span>
             {(pr.additions > 0 || pr.deletions > 0) && <>

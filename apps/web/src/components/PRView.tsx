@@ -39,6 +39,7 @@ import {
   IconMessageCircle2,
   IconLayoutColumns,
   IconLayoutRows,
+  IconChevronDown,
 } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile, trimPatchContext } from "@pierre/diffs"
@@ -1108,10 +1109,30 @@ function PRDiffPanel({
 
 // ── Changed files panel ───────────────────────────────────────────────────────
 
-function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description, prUrl }: { files: PRFile[]; loading?: boolean; viewedFiles: Set<string>; onFileSelect: (f: PRFile) => void; description?: string; prUrl?: string }) {
+function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description }: { files: PRFile[]; loading?: boolean; viewedFiles: Set<string>; onFileSelect: (f: PRFile) => void; description?: string }) {
   const viewedCount = files.filter((f) => viewedFiles.has(f.path)).length
+  const [descExpanded, setDescExpanded] = useState(true)
   return (
     <div className="flex flex-col h-full">
+      {/* Summary section */}
+      <div className="shrink-0 border-b border-border">
+        <button
+          onClick={() => setDescExpanded(v => !v)}
+          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-accent/20 transition-colors"
+        >
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</span>
+          <IconChevronDown size={12} className={cn("text-muted-foreground/40 transition-transform duration-150", descExpanded && "rotate-180")} />
+        </button>
+        {descExpanded && (
+          <div className="px-3 pb-2.5 text-[11px] text-muted-foreground/70 leading-relaxed overflow-y-auto" style={{ maxHeight: "40%" }}>
+            {description
+              ? <MarkdownContent content={description} />
+              : <span className="text-muted-foreground/30 italic">No description</span>
+            }
+          </div>
+        )}
+      </div>
+      {/* Changed files */}
       <div className="px-3 py-2.5 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Changed files</span>
@@ -1120,11 +1141,6 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description, 
           </span>
         </div>
       </div>
-      {description && (
-        <div className="px-3 py-2.5 border-b border-border shrink-0 text-[11px] text-muted-foreground/70 leading-relaxed prose-sm max-h-40 overflow-y-auto">
-          <MarkdownContent content={description} />
-        </div>
-      )}
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-0.5">
           {loading && files.length === 0 && (
@@ -1163,22 +1179,6 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description, 
           })}
         </div>
       </ScrollArea>
-      {prUrl && (
-        <div className="p-2 border-t border-border shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full gap-1.5 text-[11px]"
-            onClick={() => {
-              if (isTauri) invoke("open_url", { url: prUrl })
-              else window.open(prUrl, "_blank")
-            }}
-          >
-            <IconBrandGithub size={12} />
-            View on GitHub
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
@@ -1614,7 +1614,16 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[11px] font-mono text-muted-foreground/50">#{pr.number}</span>
-                    <span className="text-[13px] font-semibold text-foreground truncate">{pr.title}</span>
+                    {pr.url ? (
+                      <button
+                        onClick={() => { if (isTauri) invoke("open_url", { url: pr.url! }); else window.open(pr.url, "_blank") }}
+                        className="text-[13px] font-semibold text-foreground hover:text-foreground/70 transition-colors truncate text-left"
+                      >
+                        {pr.title}
+                      </button>
+                    ) : (
+                      <span className="text-[13px] font-semibold text-foreground truncate">{pr.title}</span>
+                    )}
                     {pr.reviewStatus === "changes-requested" && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 font-medium shrink-0">
                         Changes requested
@@ -1925,7 +1934,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
 
         {/* ── Right: Files ── */}
         <ResizablePanel defaultSize={38} minSize={25}>
-          <PRFilesPanel files={prFiles} loading={loadingFiles} viewedFiles={viewedFiles} onFileSelect={openFile} description={description || undefined} prUrl={pr.url} />
+          <PRFilesPanel files={prFiles} loading={loadingFiles} viewedFiles={viewedFiles} onFileSelect={openFile} description={description || undefined} />
         </ResizablePanel>
 
       </ResizablePanelGroup>

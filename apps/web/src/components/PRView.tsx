@@ -925,7 +925,12 @@ function PRDiffPanel({
   onThreadResolved: (threadId: string) => void
   agentId?: string
 }) {
-  const raw = fileDiffs[file.path] ?? file.patch ?? ""
+  // GitHub patches lack the `--- a/` / `+++ b/` headers that processFile needs to
+  // detect the language for Shiki. Prepend them when the patch comes from GitHub.
+  const rawPatch = fileDiffs[file.path] ?? file.patch ?? ""
+  const raw = rawPatch && !rawPatch.startsWith("diff --git") && !rawPatch.startsWith("---")
+    ? `--- a/${file.path}\n+++ b/${file.path}\n${rawPatch}`
+    : rawPatch
   const fileName = file.path.split("/").pop() ?? file.path
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -1065,7 +1070,7 @@ function PRDiffPanel({
           />
         ) : (
           <div className="flex items-center justify-center py-12 text-muted-foreground/30 text-[12px]">
-            Diff preview not available
+            {file.status === "added" ? "New file" : file.status === "deleted" ? "File deleted" : "Binary or large file — diff not available"}
           </div>
         )}
       </div>

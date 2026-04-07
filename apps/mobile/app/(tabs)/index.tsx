@@ -13,6 +13,19 @@ import { useModal } from "../../components/Modal"
 const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
 const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "in-review", "done", "backlog", "cancelled"]
 
+// ── Status icon (mirrors desktop Linear-style icons) ─────────────────────────
+
+function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: number }) {
+  const color = statusColors[status]?.color ?? "#888"
+  const icon = status === "done"        ? "checkmark-circle"
+             : status === "in-review"   ? "git-pull-request"
+             : status === "in-progress" ? "time"
+             : status === "backlog"     ? "ellipse-outline"
+             :                           "close-circle"
+  const solid = status === "done" || status === "cancelled"
+  return <Ionicons name={(solid ? icon : icon) as any} size={size} color={color} style={{ flexShrink: 0 }} />
+}
+
 // ── Streaming dots indicator ─────────────────────────────────────────────────
 
 function StreamingDots() {
@@ -56,7 +69,6 @@ function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: bo
   const queryClient = useQueryClient()
   const modal = useModal()
   const agentsKey = ["agents", getActiveServer()?.url ?? null]
-  const dotColor = statusColors[agent.status]?.color ?? c.fgSub
 
   function handleLongPress() {
     modal.showActionSheet(agent.title, [
@@ -127,7 +139,10 @@ function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: bo
       delayLongPress={400}
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
-      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isStreaming ? "#f59e0b" : dotColor, flexShrink: 0 }} />
+      {isStreaming
+        ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "#f59e0b", flexShrink: 0 }} />
+        : <StatusIcon status={agent.status} size={14} />
+      }
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -169,6 +184,7 @@ function StatusSectionHeader({ status, count, collapsed, onToggle }: { status: A
       style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
     >
       <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={color} />
+      <StatusIcon status={status} size={13} />
       <Text style={{ color, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
         {statusConfig[status].label}
       </Text>

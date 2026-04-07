@@ -16,7 +16,9 @@ import { toString as qrToString } from "qrcode"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
-const DATA_DIR     = path.join(os.homedir(), "huxflux") // keep in sync with config.ts DATA_DIR
+const DATA_DIR     = process.env.HUXFLUX_DIR?.trim()
+  ? path.resolve(process.env.HUXFLUX_DIR.trim())
+  : path.join(os.homedir(), "huxflux") // keep in sync with config.ts DATA_DIR
 const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
 const PORT_FILE    = path.join(DATA_DIR, "server.port")
@@ -80,6 +82,7 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
     NODE_ENV: "production",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
+    HUXFLUX_DIR: DATA_DIR,
     DB_PATH: path.join(DATA_DIR, "huxflux.db"),
     WORKSPACES_BASE: path.join(DATA_DIR, "workspaces"),
     ...(cfg.sandbox ? { SANDBOX_CONFIG: JSON.stringify(cfg.sandbox) } : {}),
@@ -198,7 +201,7 @@ function printSandboxStatus(cfg: Config) {
   const builtins = ["git", "node", "claude", "sh", "bash", "curl"]
   console.log(`  Built-in binaries:  ${builtins.join(", ")}`)
   console.log(`  Extra binaries:     ${extras.length > 0 ? extras.join(", ") : "(none)"}`)
-  console.log(`  Paths:              derived from registered repos + ~/huxflux\n`)
+  console.log(`  Paths:              derived from registered repos + ${DATA_DIR}\n`)
   console.log(`Commands:`)
   console.log(`  huxflux sandbox add <bin> [bin...]   Allow extra binaries`)
   console.log(`  huxflux sandbox remove <bin>         Revoke a binary`)
@@ -489,7 +492,7 @@ async function cmdReset() {
   │    • All messages, tool calls, and file changes               │
   │    • All terminal history                                      │
   │    • All database backups (.bak, .bak2)                       │
-  │    • All git worktrees in ~/huxflux/workspaces/               │
+  │    • All git worktrees in <WORKSPACES_BASE>                   │
   │                                                               │
   │  Note: git repos themselves are untouched, but you may need   │
   │  to run 'git worktree prune' in each repo afterward.          │
@@ -497,6 +500,7 @@ async function cmdReset() {
   │  This action CANNOT be undone.                                │
   │                                                               │
   └───────────────────────────────────────────────────────────────┘
+  Data directory: ${DATA_DIR}
 `.trimStart())
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
@@ -588,6 +592,12 @@ Usage:
   huxflux reset          ⚠️  Erase all data and start fresh (3 confirmations required)
   huxflux update         Update huxflux to the latest version
   huxflux help           Show this message
+
+Environment variables:
+  HUXFLUX_DIR   Data directory (default: ~/huxflux). Set to a different path to
+                run multiple independent instances on the same machine.
+                All other paths (DB, workspaces, logs, config) are derived from this.
+  PORT          Override the server port (default: 4321)
 `.trimStart())
 }
 

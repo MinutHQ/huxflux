@@ -1,0 +1,175 @@
+---
+title: User Manual
+description: How to use Huxflux effectively.
+---
+
+## What it is
+
+Huxflux is an AI agent orchestration system that gives Claude autonomous access to your Git repositories. It manages isolated worktrees per agent, streams Claude's output in real time, and provides a terminal, file diff viewer, and GitHub PR integration — all in one interface.
+
+---
+
+## Quick start
+
+```sh
+npm install -g @alexmartosp/huxflux
+huxflux start
+huxflux open          # opens web app and auto-connects
+```
+
+To connect from another device, get the connection string:
+
+```sh
+huxflux status        # prints URL, token, and QR code
+```
+
+Paste the `huxflux://...` string into **Settings → Servers** in the web app.
+
+---
+
+## Core concepts
+
+| Concept | What it is |
+|---|---|
+| **Agent** | A Claude session bound to a repo and branch. Each agent gets an isolated git worktree. |
+| **Chat session** | One conversation thread. An agent can have multiple independent sessions (tabs). |
+| **Worktree** | An isolated checkout of the repo. Claude writes here; your main checkout is untouched. |
+| **Message queue** | Messages sent while Claude is running are queued and delivered automatically when it finishes. |
+
+---
+
+## Creating your first agent
+
+1. **Add a repo** — Settings → Repositories → enter the local path
+2. **Create an agent** — click **+** in the sidebar → pick repo → enter branch name → select model
+3. **Send a message** — describe the task. Claude starts working immediately.
+
+The branch is created for you inside a git worktree under `~/huxflux/workspaces/`.
+
+---
+
+## The interface
+
+### Sidebar (toggle with `⌘B`)
+
+- Agents grouped by status: **In progress**, **In review**, **Backlog**, **Done**
+- Clicking an agent opens its most recent chat session
+- PR list shows open PRs across all repos (requires GitHub token)
+
+### Chat panel
+
+- Streaming Claude output with visible tool calls (Bash, Read, Write, Edit, etc.)
+- **Tasks bar** at the top shows Claude's current to-do list (from TodoWrite)
+- Send a follow-up while Claude is running — it queues automatically
+- Switch between chat sessions using the tabs above the input
+
+### File changes panel (right)
+
+- Lists every modified, added, and deleted file
+- Click a file to see its unified diff with syntax highlighting
+- Editing a file directly is supported — click the pencil icon
+
+### Terminal panel (right)
+
+- Full PTY terminal inside the agent's worktree
+- Multiple named tabs (click `+` to add, right-click to rename)
+- Press **F1** to expand the terminal to full width
+- Detected ports (e.g. `localhost:3000`) become clickable preview links
+
+---
+
+## Efficiency tips
+
+### Use `@` mentions in your message
+
+Type `@` in the input to search and attach file context or terminal output to your message. This focuses Claude on the right files without having to describe paths.
+
+### Pick the right model
+
+| Model | When to use |
+|---|---|
+| **Haiku 4.5** | Fast and cheap. Good for small, well-defined tasks. |
+| **Sonnet 4.6** | Balanced. Best default for most work. |
+| **Opus 4.6** | Most capable. Use for complex reasoning or architecture decisions. |
+
+The model selector is in the bottom-right of the input box.
+
+### Let Claude keep going
+
+Set tasks at a high level and let Claude run through multiple steps. The Tasks bar shows what it's doing. Only interrupt if it goes off course — use **Stop**, then clarify and resend.
+
+### Run agents in parallel
+
+Multiple agents can run simultaneously on different branches. Use this for independent tasks (e.g. one agent writing tests while another fixes a bug). The sidebar shows all active agents at a glance.
+
+### Use child chat sessions
+
+After Claude finishes a task, start a follow-up in a **new session tab** rather than continuing in the same thread. This keeps context clean and lets you revisit earlier sessions independently.
+
+### Queue your next message
+
+While Claude is running, you can type your next instruction. It sends automatically when Claude finishes — no need to watch and wait.
+
+---
+
+## GitHub PR integration
+
+Requires a GitHub token set in Settings → Providers.
+
+- Huxflux polls your agent's branch for PRs every 60 seconds
+- Agent status updates automatically: `in-review` when a PR opens, `done` when merged
+- The **PR tab** shows reviews, CI checks, diff comments, and review threads
+- You can mark a draft ready, re-request review, and submit reviews from the UI
+
+---
+
+## Terminal shortcuts
+
+| Action | How |
+|---|---|
+| Expand terminal | `F1` |
+| New terminal tab | `+` button next to tabs |
+| Paste terminal output into chat | Type `@terminal` in input |
+| Preview running server | Click detected port link in terminal header |
+
+---
+
+## CLI reference
+
+```sh
+huxflux start           # Start server in background
+huxflux stop            # Stop server
+huxflux status          # Show URL, token, and QR code
+huxflux open [host]     # Open web app and auto-connect
+huxflux logs            # Tail server log
+huxflux update          # Update to latest version
+huxflux token rotate    # Rotate auth token
+huxflux audit           # Tail request audit log
+huxflux security        # Print security recommendations
+huxflux restore         # Restore DB from backup
+```
+
+---
+
+## Security recommendations
+
+- Access the server over [Tailscale](https://tailscale.com) rather than exposing port 4321 to the internet
+- Rotate the token if it's ever exposed: `huxflux token rotate`
+- Only add repositories you trust — Claude has full read/write access to files in the worktree
+- On Linux, `huxflux sandbox setup` enables firejail to restrict Claude's filesystem access
+
+---
+
+## Data location
+
+All data lives under `~/huxflux/`:
+
+| Path | Purpose |
+|---|---|
+| `huxflux.db` | SQLite database (agents, messages, files) |
+| `server.log` | Server output |
+| `audit.log` | Request audit trail |
+| `workspaces/` | Git worktrees for each agent |
+| `config.json` | Auth token and port config |
+
+The database is backed up automatically to `.bak` and `.bak2` on each start. Use `huxflux restore` to roll back.

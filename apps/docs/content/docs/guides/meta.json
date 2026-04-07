@@ -1,4 +1,4 @@
 {
   "title": "Guides",
-  "pages": ["cli-reference", "security"]
+  "pages": ["manual", "cli-reference", "security"]
 }

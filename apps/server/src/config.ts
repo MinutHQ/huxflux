@@ -12,7 +12,9 @@ function parseSandbox(): SandboxConfig | undefined {
   }
 }
 
-export const DATA_DIR = path.join(os.homedir(), "huxflux")
+export const DATA_DIR = process.env.HUXFLUX_DIR?.trim()
+  ? path.resolve(process.env.HUXFLUX_DIR.trim())
+  : path.join(os.homedir(), "huxflux")
 
 // Dev mode is determined by NODE_ENV, not by the presence of AUTH_TOKEN.
 // Dev gets its own DB and workspaces so migrations during development

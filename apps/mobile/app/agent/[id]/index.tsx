@@ -185,12 +185,61 @@ function MessageContent({ text }: { text: string }) {
 
 // ── Tool calls ────────────────────────────────────────────────────────────────
 
-function ToolCallRow({ call }: { call: ToolCall }) {
-  const [expanded, setExpanded] = useState(false)
-  const isDone = call.result != null
-  const name = call.tool === "Agent"
+function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isStreaming?: boolean }) {
+  const [expanded, setExpanded] = useState(true)
+  const isAgent = call.tool === "Agent"
+  const isRunning = isStreaming && !call.result
+  const hasOutputText = !!(call.outputText && call.outputText.trim())
+  const hasSubCalls = !!(call.subCalls && call.subCalls.length > 0)
+
+  const name = isAgent
     ? (() => { try { return JSON.parse(call.args ?? "{}").description ?? call.tool } catch { return call.tool } })()
     : call.tool
+
+  if (isAgent) {
+    return (
+      <View style={{ marginTop: 2 }}>
+        <TouchableOpacity
+          onPress={() => setExpanded(v => !v)}
+          activeOpacity={0.7}
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 3 }}
+        >
+          <Ionicons name={expanded ? "chevron-down" : "chevron-forward"} size={11} color={c.fgSub} />
+          {isRunning
+            ? <ActivityIndicator size="small" color={c.fgSub} style={{ width: 12, height: 12 }} />
+            : <Ionicons name="sparkles-outline" size={11} color={c.fgSub} />}
+          <Text style={{ color: c.fg, fontSize: 12, fontWeight: "500", flex: 1 }} numberOfLines={1}>{name}</Text>
+        </TouchableOpacity>
+        {expanded && (
+          <View style={{ marginLeft: 12, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: c.border, gap: 4, marginTop: 2 }}>
+            {hasSubCalls && (
+              <View style={{ gap: 2 }}>
+                {call.subCalls!.map((sub) => (
+                  <ToolCallRow key={sub.id} call={sub} isStreaming={isStreaming} />
+                ))}
+              </View>
+            )}
+            {hasOutputText && (
+              <View style={{ marginTop: 2 }}>
+                <MessageContent text={call.outputText!} />
+              </View>
+            )}
+            {isRunning && !hasOutputText && !hasSubCalls && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 }}>
+                <ActivityIndicator size="small" color={c.fgSub} style={{ width: 11, height: 11 }} />
+                <Text style={{ color: c.fgSub, fontSize: 11 }}>Working…</Text>
+              </View>
+            )}
+            {call.result && (
+              <Text style={{ color: c.fgSub, fontSize: 11, fontStyle: "italic" }} numberOfLines={2}>
+                {call.result.trim()}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    )
+  }
 
   return (
     <TouchableOpacity
@@ -198,12 +247,12 @@ function ToolCallRow({ call }: { call: ToolCall }) {
       activeOpacity={0.7}
       style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, paddingVertical: 3 }}
     >
-      <Text style={{ color: isDone ? "#34d399" : "#f59e0b", fontSize: 10, marginTop: 3 }}>
-        {isDone ? "✓" : "○"}
-      </Text>
+      {isRunning
+        ? <ActivityIndicator size="small" color="#f59e0b" style={{ width: 12, height: 12, marginTop: 2 }} />
+        : <Text style={{ color: call.result != null ? "#34d399" : "#f59e0b", fontSize: 10, marginTop: 3 }}>{call.result != null ? "✓" : "○"}</Text>}
       <View style={{ flex: 1 }}>
         <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace" }}>{name}</Text>
-        {expanded && call.args && call.tool !== "Agent" && (
+        {expanded && call.args && (
           <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", opacity: 0.6, marginTop: 2 }} numberOfLines={3}>
             {(() => { try { return JSON.stringify(JSON.parse(call.args), null, 2) } catch { return call.args } })()}
           </Text>
@@ -213,37 +262,57 @@ function ToolCallRow({ call }: { call: ToolCall }) {
   )
 }
 
-function ToolCallsList({ calls, hasContent }: { calls: ToolCall[]; hasContent: boolean }) {
-  const [expanded, setExpanded] = useState(false)
-  const COLLAPSED_MAX = 3
-  const showToggle = calls.length > COLLAPSED_MAX
-  const visible = expanded ? calls : calls.slice(0, COLLAPSED_MAX)
-  const doneCount = calls.filter((tc) => tc.result != null).length
-  const pendingCount = calls.length - doneCount
+function ToolCallsList({ calls, hasContent, isStreaming, pendingText }: { calls: ToolCall[]; hasContent: boolean; isStreaming?: boolean; pendingText?: string }) {
+  const [open, setOpen] = useState(!!isStreaming)
+  const [userToggled, setUserToggled] = useState(false)
+  const label = calls.length === 0 ? "Working…" : calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
+  const lastCall = calls[calls.length - 1]
+  const summary = lastCall ? (lastCall.tool === "Agent"
+    ? (() => { try { return JSON.parse(lastCall.args ?? "{}").description ?? lastCall.tool } catch { return lastCall.tool } })()
+    : lastCall.tool) : ""
+
+  // Stay open while streaming; collapse when done. User toggle wins.
+  useEffect(() => {
+    if (userToggled) return
+    setOpen(!!isStreaming)
+  }, [isStreaming, userToggled])
+
+  const hasPending = !!(pendingText && pendingText.trim())
+
+  if (calls.length === 0 && !hasPending) return null
 
   return (
     <View style={{ marginBottom: hasContent ? 8 : 0 }}>
-      {/* Summary header */}
-      {showToggle && (
-        <TouchableOpacity
-          onPress={() => setExpanded((v) => !v)}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, marginBottom: 2 }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name={expanded ? "chevron-down" : "chevron-forward"} size={11} color={c.fgSub} />
-            <Text style={{ color: c.fgSub, fontSize: 11 }}>{calls.length} tool calls</Text>
-          </View>
-          {doneCount > 0 && <Text style={{ color: "#34d399", fontSize: 10 }}>✓{doneCount}</Text>}
-          {pendingCount > 0 && <Text style={{ color: "#f59e0b", fontSize: 10 }}>○{pendingCount}</Text>}
-        </TouchableOpacity>
-      )}
-      <View style={{ gap: 2 }}>
-        {visible.map((tc) => <ToolCallRow key={tc.id} call={tc} />)}
-      </View>
-      {showToggle && !expanded && (
-        <TouchableOpacity onPress={() => setExpanded(true)} style={{ paddingVertical: 4 }}>
-          <Text style={{ color: c.link, fontSize: 11 }}>Show {calls.length - COLLAPSED_MAX} more…</Text>
-        </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => { setOpen(v => !v); setUserToggled(true) }}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name={open ? "chevron-down" : "chevron-forward"} size={11} color={c.fgSub} />
+        {isStreaming
+          ? <ActivityIndicator size="small" color={c.fgSub} style={{ width: 12, height: 12 }} />
+          : <Ionicons name="flash-outline" size={11} color={c.fgSub} />}
+        <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "500" }}>{label}</Text>
+        {!open && summary ? <Text style={{ color: c.fgSub, fontSize: 11, opacity: 0.5, flex: 1 }} numberOfLines={1}>{summary}</Text> : null}
+      </TouchableOpacity>
+      {open && (
+        <View style={{ marginLeft: 12, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: c.border, gap: 2 }}>
+          {calls.map((tc) => (
+            <View key={tc.id}>
+              {tc.precedingText && tc.precedingText.trim() ? (
+                <View style={{ marginVertical: 4 }}>
+                  <MessageContent text={tc.precedingText} />
+                </View>
+              ) : null}
+              <ToolCallRow call={tc} isStreaming={isStreaming} />
+            </View>
+          ))}
+          {hasPending && (
+            <View style={{ marginVertical: 4 }}>
+              <MessageContent text={pendingText!} />
+            </View>
+          )}
+        </View>
       )}
     </View>
   )
@@ -280,9 +349,14 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
+const MessageBubble = memo(function MessageBubble({ message, isStreaming: isStreamingProp }: { message: Message; isStreaming?: boolean }) {
   const isUser = message.role === "user"
+  // Clamp: if durationMs is set, the message is definitively done even if
+  // the parent's isStreaming hasn't flipped yet.
+  const isStreaming = !!isStreamingProp && message.durationMs == null
   const toolCalls = message.toolCalls ?? []
+  const pendingText = message.pendingText ?? ""
+  const hasPending = pendingText.trim().length > 0
   const hasContent = !!message.content
 
   return (
@@ -296,15 +370,20 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Messag
           {/* Thinking block */}
           {message.thinking ? <ThinkingBlock thinking={message.thinking} /> : null}
 
-          {/* Tool calls */}
-          {toolCalls.length > 0 && (
-            <ToolCallsList calls={toolCalls} hasContent={hasContent} />
+          {/* Tool calls + live streaming text */}
+          {(toolCalls.length > 0 || (isStreaming && hasPending)) && (
+            <ToolCallsList
+              calls={toolCalls}
+              hasContent={hasContent}
+              isStreaming={isStreaming}
+              pendingText={pendingText}
+            />
           )}
 
           {/* Content */}
           {hasContent ? (
             <MessageContent text={message.content} />
-          ) : toolCalls.length === 0 ? (
+          ) : toolCalls.length === 0 && !hasPending ? (
             <View style={{ flexDirection: "row", gap: 4, paddingVertical: 4 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.secondary }} />
@@ -655,13 +734,14 @@ export default function AgentChatScreen() {
   const lastMessage = messages[messages.length - 1]
   const streamingContentLen = lastMessage?.content?.length ?? 0
   const streamingToolCallsLen = lastMessage?.toolCalls?.length ?? 0
+  const streamingPendingLen = lastMessage?.pendingText?.length ?? 0
 
   // Scroll to bottom when new messages arrive, content streams, or streaming ends
   useEffect(() => {
     if (messages.length > 0 && isAtBottom.current) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50)
     }
-  }, [messages.length, streamingContentLen, streamingToolCallsLen, isStreaming])
+  }, [messages.length, streamingContentLen, streamingToolCallsLen, streamingPendingLen, isStreaming])
 
   // Auto-send queued message when streaming ends
   useEffect(() => {
@@ -863,19 +943,20 @@ export default function AgentChatScreen() {
       {/* Sub-nav */}
       <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.border, paddingHorizontal: 16, gap: 4, paddingTop: 4 }}>
         {([
-          { label: "Chat", tab: "chat" as const },
-          { label: `Files${agent.fileChanges.length ? ` (${agent.fileChanges.length})` : ""}`, tab: "files" as const },
-          { label: "PR", tab: "pr" as const },
-          { label: "Terminal", tab: "terminal" as const },
-        ]).map(({ label, tab }) => (
+          { label: "Chat", tab: "chat" as const, icon: "sparkles-outline" as const, iconFocused: "sparkles" as const },
+          { label: `Files${agent.fileChanges.length ? ` (${agent.fileChanges.length})` : ""}`, tab: "files" as const, icon: "code-slash-outline" as const, iconFocused: "code-slash" as const },
+          { label: "PR", tab: "pr" as const, icon: "git-pull-request-outline" as const, iconFocused: "git-pull-request" as const },
+          { label: "Terminal", tab: "terminal" as const, icon: "terminal-outline" as const, iconFocused: "terminal" as const },
+        ]).map(({ label, tab, icon, iconFocused }) => (
           <TouchableOpacity
             key={tab}
             onPress={() => {
               setActiveTab(tab)
               if (tab === "chat") setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50)
             }}
-            style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: activeTab === tab ? 2 : 0, borderBottomColor: c.fg }}
+            style={{ paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: activeTab === tab ? 2 : 0, borderBottomColor: c.fg, flexDirection: "row", alignItems: "center", gap: 5 }}
           >
+            <Ionicons name={activeTab === tab ? iconFocused : icon} size={13} color={activeTab === tab ? c.fg : c.fgSub} />
             <Text style={{ color: activeTab === tab ? c.fg : c.fgSub, fontSize: 13, fontWeight: activeTab === tab ? "600" : "400" }}>
               {label}
             </Text>
@@ -892,7 +973,8 @@ export default function AgentChatScreen() {
             style={{ flex: 1 }}
             data={messages}
             keyExtractor={(m) => m.id}
-            renderItem={({ item }) => <MessageBubble message={item} />}
+            extraData={isStreaming}
+            renderItem={({ item, index }) => <MessageBubble message={item} isStreaming={isStreaming && index === messages.length - 1} />}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
             onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
               const dist = contentSize.height - contentOffset.y - layoutMeasurement.height

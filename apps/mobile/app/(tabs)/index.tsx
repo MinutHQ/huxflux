@@ -107,9 +107,22 @@ function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: bo
     : "#60a5fa"
     : null
 
+  function handlePress() {
+    if (agent.unread) {
+      const prev = queryClient.getQueryData<AgentSummary[]>(agentsKey)
+      queryClient.setQueryData<AgentSummary[]>(agentsKey, (old) =>
+        old ? old.map((a) => a.id === agent.id ? { ...a, unread: 0 } : a) : old
+      )
+      api.updateAgent(agent.id, { unread: 0 }).catch(() => {
+        if (prev) queryClient.setQueryData(agentsKey, prev)
+      })
+    }
+    router.push(`/agent/${agent.id}`)
+  }
+
   return (
     <TouchableOpacity
-      onPress={() => router.push(`/agent/${agent.id}`)}
+      onPress={handlePress}
       onLongPress={handleLongPress}
       delayLongPress={400}
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}

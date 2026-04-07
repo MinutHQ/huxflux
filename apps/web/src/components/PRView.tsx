@@ -930,24 +930,36 @@ function PRDiffPanel({
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // When agentId is available, fetch full content for syntax highlighting + hunk expansion
+  // Fetch full file content — via agent endpoints if agentId, else via GitHub API
   const { data: agentDiff } = useQuery({
     queryKey: ["diff", agentId, file.path],
     queryFn: () => api.getDiff(agentId!, file.path),
     staleTime: 30_000,
     enabled: !!agentId,
   })
-  const { data: newContent } = useQuery({
+  const { data: agentNewContent } = useQuery({
     queryKey: ["file-content", agentId, file.path],
     queryFn: () => api.getFileContent(agentId!, file.path),
     staleTime: 30_000,
     enabled: !!agentId && !!agentDiff,
   })
-  const { data: oldContent } = useQuery({
+  const { data: agentOldContent } = useQuery({
     queryKey: ["file-base-content", agentId, file.path],
     queryFn: () => api.getBaseFileContent(agentId!, file.path),
     staleTime: 30_000,
     enabled: !!agentId && !!agentDiff,
+  })
+  const { data: ghNewContent } = useQuery({
+    queryKey: ["pr-file-content", repoId, prNumber, file.path, "head"],
+    queryFn: () => api.getPRFileContent(repoId!, prNumber!, file.path, "head"),
+    staleTime: 60_000,
+    enabled: !agentId && !!repoId && !!prNumber && !!raw,
+  })
+  const { data: ghOldContent } = useQuery({
+    queryKey: ["pr-file-content", repoId, prNumber, file.path, "base"],
+    queryFn: () => api.getPRFileContent(repoId!, prNumber!, file.path, "base"),
+    staleTime: 60_000,
+    enabled: !agentId && !!repoId && !!prNumber && !!raw,
   })
 
   const [expandedHunks, setExpandedHunks] = useState<Map<number, HunkExpansionRegion>>(new Map())
@@ -962,6 +974,10 @@ function PRDiffPanel({
       return next
     })
   }
+
+  const rawForDiff = agentId ? (agentDiff ?? raw) : raw
+  const newContent = agentId ? agentNewContent : ghNewContent
+  const oldContent = agentId ? agentOldContent : ghOldContent
 
   // Prevent scroll jump when expanding hunks (same fix as DiffView)
   useEffect(() => {
@@ -991,8 +1007,6 @@ function PRDiffPanel({
     }
   }, [])
 
-  // Use agent full content if available, else fall back to GitHub patch
-  const rawForDiff = agentId ? agentDiff : raw
   const fileDiff = rawForDiff && oldContent !== undefined && newContent !== undefined
     ? processFile(rawForDiff, {
         oldFile: { name: fileName, contents: oldContent },
@@ -1000,9 +1014,7 @@ function PRDiffPanel({
       })
     : rawForDiff
       ? processFile(rawForDiff)
-      : raw
-        ? processFile(raw)
-        : null
+      : null
   const fileThreads = threads.filter((t) => t.path === file.path && !t.isResolved && t.comments.length > 0)
 
   return (

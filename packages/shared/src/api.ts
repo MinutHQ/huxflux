@@ -186,6 +186,10 @@ export const api = {
     const [owner, repo] = repoId.split("/")
     return req<PRDetails>(`/api/prs/${owner}/${repo}/${number}/details`)
   },
+  getPRFileContent: (repoId: string, number: number, filePath: string, side: "base" | "head") => {
+    const [owner, repo] = repoId.split("/")
+    return fetch(`${getBase()}/api/prs/${owner}/${repo}/${number}/file-content?path=${encodeURIComponent(filePath)}&side=${side}`, { headers: authHeaders() }).then((r) => r.text())
+  },
   resolveThread: (threadId: string) =>
     req<{ ok: boolean }>(`/api/prs/threads/${encodeURIComponent(threadId)}/resolve`, { method: "POST" }),
   replyToPRComment: (repoId: string, prNumber: number, commentId: number, body: string) => {

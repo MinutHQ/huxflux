@@ -6,7 +6,7 @@ import * as fsSync from "node:fs"
 import { eq, isNull, isNotNull, and } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, repos } from "../db/schema.js"
-import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread } from "../github/client.js"
+import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
@@ -95,6 +95,19 @@ export async function githubRoutes(app: FastifyInstance) {
     "/api/prs/:owner/:repo/:number/files",
     async (req, _reply) => {
       return getPRFilesForOwnerRepo(req.params.owner, req.params.repo, parseInt(req.params.number, 10))
+    }
+  )
+
+  // GET /api/prs/:owner/:repo/:number/file-content?path=...&side=base|head — raw file content at PR ref
+  app.get<{ Params: { owner: string; repo: string; number: string }; Querystring: { path?: string; side?: string } }>(
+    "/api/prs/:owner/:repo/:number/file-content",
+    async (req, reply) => {
+      const { owner, repo, number } = req.params
+      const { path: filePath = "", side = "head" } = req.query
+      if (!filePath) return reply.code(400).send({ error: "path is required" })
+      const content = await getPRFileContent(owner, repo, parseInt(number, 10), filePath, side as "base" | "head")
+      reply.header("Content-Type", "text/plain")
+      return content
     }
   )
 

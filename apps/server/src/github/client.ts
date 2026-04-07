@@ -551,3 +551,23 @@ export async function listBranches(repoUrl: string): Promise<string[]> {
   const branches = await octokit.paginate(octokit.repos.listBranches, { owner, repo, per_page: 100 })
   return branches.map((b) => b.name)
 }
+
+
+export async function getPRFileContent(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  filePath: string,
+  side: "base" | "head"
+): Promise<string> {
+  const octokit = getOctokit()
+  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
+  const ref = side === "base" ? pr.base.sha : pr.head.sha
+  try {
+    const { data } = await octokit.repos.getContent({ owner, repo, path: filePath, ref })
+    if (Array.isArray(data) || data.type !== "file") return ""
+    return Buffer.from(data.content, "base64").toString("utf8")
+  } catch {
+    return ""
+  }
+}

@@ -30,6 +30,7 @@ export function usePRs() {
     title: pr.title,
     repo: pr.repoName,
     author: pr.author,
+    authorAvatar: pr.authorAvatar,
     branch: pr.branch,
     baseBranch: pr.baseBranch,
     requestedAt: relativeTime(pr.createdAt),

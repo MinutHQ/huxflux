@@ -31,6 +31,7 @@ export interface PullRequest {
   title: string
   repo: string
   author: string
+  authorAvatar?: string
   branch: string
   baseBranch: string
   requestedAt: string

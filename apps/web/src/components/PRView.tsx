@@ -39,7 +39,6 @@ import {
   IconMessageCircle2,
   IconLayoutColumns,
   IconLayoutRows,
-  IconChevronDown,
 } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile, trimPatchContext } from "@pierre/diffs"
@@ -897,28 +896,6 @@ function ThreadCard({
   )
 }
 
-// ── Description accordion ─────────────────────────────────────────────────────
-
-function PRDescriptionAccordion({ description }: { description: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="mt-1">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors"
-      >
-        <IconChevronDown size={11} className={cn("transition-transform duration-150", open && "rotate-180")} />
-        <span>{open ? "Hide" : "Show"} description</span>
-      </button>
-      {open && (
-        <div className="mt-1.5 max-h-40 overflow-y-auto prose prose-sm prose-invert max-w-none [&>*]:text-[11px] [&>*]:text-muted-foreground/70 [&_p]:leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:mb-0.5 [&_h1]:text-[12px] [&_h2]:text-[12px] [&_h3]:text-[11px] [&_h1,h2,h3]:font-semibold [&_h1,h2,h3]:text-foreground/70 [&_code]:text-[10px] [&_code]:bg-secondary [&_code]:px-1 [&_code]:rounded [&_a]:text-blue-400/70 [&_a]:underline">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Diff panel ────────────────────────────────────────────────────────────────
 
 function PRDiffPanel({
@@ -1131,7 +1108,7 @@ function PRDiffPanel({
 
 // ── Changed files panel ───────────────────────────────────────────────────────
 
-function PRFilesPanel({ files, loading, viewedFiles, onFileSelect }: { files: PRFile[]; loading?: boolean; viewedFiles: Set<string>; onFileSelect: (f: PRFile) => void }) {
+function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description, prUrl }: { files: PRFile[]; loading?: boolean; viewedFiles: Set<string>; onFileSelect: (f: PRFile) => void; description?: string; prUrl?: string }) {
   const viewedCount = files.filter((f) => viewedFiles.has(f.path)).length
   return (
     <div className="flex flex-col h-full">
@@ -1143,6 +1120,11 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect }: { files: PR
           </span>
         </div>
       </div>
+      {description && (
+        <div className="px-3 py-2.5 border-b border-border shrink-0 text-[11px] text-muted-foreground/70 leading-relaxed prose-sm max-h-40 overflow-y-auto">
+          <MarkdownContent content={description} />
+        </div>
+      )}
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-0.5">
           {loading && files.length === 0 && (
@@ -1181,69 +1163,26 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect }: { files: PR
           })}
         </div>
       </ScrollArea>
+      {prUrl && (
+        <div className="p-2 border-t border-border shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5 text-[11px]"
+            onClick={() => {
+              if (isTauri) invoke("open_url", { url: prUrl })
+              else window.open(prUrl, "_blank")
+            }}
+          >
+            <IconBrandGithub size={12} />
+            View on GitHub
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── PR info panel ─────────────────────────────────────────────────────────────
-
-function PRInfoPanel({ pr, files, branch, baseBranch, description }: { pr: PullRequest; files: PRFile[]; branch: string; baseBranch: string; description: string }) {
-  const additions = files.length > 0 ? files.reduce((s, f) => s + f.additions, 0) : pr.additions
-  const deletions = files.length > 0 ? files.reduce((s, f) => s + f.deletions, 0) : pr.deletions
-  return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 py-2.5 border-b border-border shrink-0">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">PR info</span>
-      </div>
-      <div className="p-3 space-y-3 overflow-y-auto">
-        <div>
-          <div className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wide mb-1">Branch</div>
-          <div className="flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground flex-wrap">
-            <span className="text-foreground/80">{branch}</span>
-            <span className="text-muted-foreground/30">→</span>
-            <span>{baseBranch}</span>
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wide mb-1">Author</div>
-          <span className="text-[11px] text-muted-foreground">{pr.author}</span>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wide mb-1">Changes</div>
-          <div className="flex items-center gap-2 text-[11px] font-mono">
-            <span className="text-emerald-400">+{additions}</span>
-            <span className="text-red-400">-{deletions}</span>
-          </div>
-        </div>
-        {description && (
-          <div>
-            <div className="text-[10px] font-medium text-muted-foreground/40 uppercase tracking-wide mb-1">Description</div>
-            <div className="text-[11px] text-muted-foreground leading-relaxed prose-sm">
-              <MarkdownContent content={description} />
-            </div>
-          </div>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full gap-1.5 text-[11px]"
-          disabled={!pr.url}
-          onClick={() => {
-            if (!pr.url) return
-            if (isTauri) {
-              invoke("open_url", { url: pr.url })
-            } else {
-              window.open(pr.url, "_blank")
-            }
-          }}
-        >
-          <IconBrandGithub size={12} />
-          View on GitHub
-        </Button>
-      </div>
-    </div>
-  )
-}
 
 // ── Main PRView ───────────────────────────────────────────────────────────────
 
@@ -1665,9 +1604,13 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
             {/* PR header */}
             <div className="px-4 py-3 border-b border-border shrink-0">
               <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-md bg-secondary border border-border flex items-center justify-center shrink-0 mt-0.5">
-                  <IconGitPullRequest size={12} className="text-muted-foreground/60" />
-                </div>
+                {pr.authorAvatar ? (
+                  <img src={pr.authorAvatar} alt={pr.author} className="w-6 h-6 rounded-full shrink-0 mt-0.5 object-cover" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 mt-0.5">
+                    <IconGitPullRequest size={12} className="text-muted-foreground/60" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[11px] font-mono text-muted-foreground/50">#{pr.number}</span>
@@ -1701,9 +1644,6 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                       </>
                     )}
                   </div>
-                  {description && (
-                    <PRDescriptionAccordion description={description} />
-                  )}
                 </div>
               </div>
             </div>
@@ -1983,17 +1923,9 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
 
         <ResizableHandle />
 
-        {/* ── Right: Files + Info ── */}
+        {/* ── Right: Files ── */}
         <ResizablePanel defaultSize={38} minSize={25}>
-          <ResizablePanelGroup orientation="vertical">
-            <ResizablePanel defaultSize={60} minSize={30}>
-              <PRFilesPanel files={prFiles} loading={loadingFiles} viewedFiles={viewedFiles} onFileSelect={openFile} />
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={40} minSize={20}>
-              <PRInfoPanel pr={pr} files={prFiles} branch={branch} baseBranch={baseBranch} description={description} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+          <PRFilesPanel files={prFiles} loading={loadingFiles} viewedFiles={viewedFiles} onFileSelect={openFile} description={description || undefined} prUrl={pr.url} />
         </ResizablePanel>
 
       </ResizablePanelGroup>

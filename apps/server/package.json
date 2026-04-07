@@ -1,10 +1,10 @@
 {
   "name": "@alexmartosp/huxflux",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.6"
   },
   "bin": {
     "huxflux": "dist/cli.js"

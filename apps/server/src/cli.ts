@@ -3,6 +3,14 @@
 declare const __PKG_VERSION__: string
 const VERSION = typeof __PKG_VERSION__ !== "undefined" ? __PKG_VERSION__ : "dev"
 
+// Enforce minimum Node.js version — 22.6.0+ required for node:sqlite setReturnArrays
+const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number)
+if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 6)) {
+  console.error(`\nError: huxflux requires Node.js >= 22.6.0 (current: ${process.versions.node})`)
+  console.error(`  Please upgrade Node.js: https://nodejs.org\n`)
+  process.exit(1)
+}
+
 import { spawn, spawnSync, execFileSync } from "node:child_process"
 import * as crypto from "node:crypto"
 import * as fs from "node:fs"

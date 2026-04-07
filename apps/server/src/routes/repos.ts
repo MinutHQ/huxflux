@@ -50,6 +50,11 @@ export async function reposRoutes(app: FastifyInstance) {
   })
 
   app.post<{ Body: Omit<Repo, "id" | "createdAt"> }>("/api/repos", async (req, reply) => {
+    const existing = db.select().from(repos).where(eq(repos.path, req.body.path)).get()
+    if (existing) {
+      reply.code(409)
+      return { error: "A repository with this path is already registered" }
+    }
     const now = new Date().toISOString()
     const id = uuid()
     const body = req.body

@@ -40,10 +40,26 @@ function makeStmt(sql: string): any {
     all:     (...p: any[]) => (raw.prepare(sql) as any).all(...p),
     iterate: (...p: any[]) => (raw.prepare(sql) as any).iterate(...p),
     columns: () => raw.prepare(sql).columns(),
-    // raw() returns arrays instead of objects — used by drizzle for mapped queries
+    // raw() returns arrays instead of objects — used by drizzle for mapped queries.
+    // setReturnArrays was added in Node 22.6.0; fall back to Object.values for older builds.
     raw: (): any => ({
-      get: (...p: any[]) => { const s = raw.prepare(sql); s.setReturnArrays(true); return (s as any).get(...p) },
-      all: (...p: any[]) => { const s = raw.prepare(sql); s.setReturnArrays(true); return (s as any).all(...p) },
+      get: (...p: any[]) => {
+        const s = raw.prepare(sql)
+        if (typeof (s as any).setReturnArrays === "function") {
+          ;(s as any).setReturnArrays(true)
+          return (s as any).get(...p)
+        }
+        const row = (s as any).get(...p)
+        return row ? Object.values(row) : row
+      },
+      all: (...p: any[]) => {
+        const s = raw.prepare(sql)
+        if (typeof (s as any).setReturnArrays === "function") {
+          ;(s as any).setReturnArrays(true)
+          return (s as any).all(...p)
+        }
+        return ((s as any).all(...p) as any[]).map((r: any) => Object.values(r))
+      },
     }),
   }
 }
@@ -259,6 +275,16 @@ const MIGRATIONS: Migration[] = [
   {
     version: 13,
     sql: `ALTER TABLE agents ADD COLUMN streaming INTEGER DEFAULT 0;`,
+  },
+  {
+    version: 14,
+    sql: `
+      -- Remove duplicate repos keeping only the earliest created_at per path
+      DELETE FROM repos WHERE id NOT IN (
+        SELECT id FROM repos GROUP BY path HAVING MIN(created_at)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_path ON repos(path);
+    `,
   },
 ]
 

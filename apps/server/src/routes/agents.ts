@@ -285,7 +285,7 @@ export async function agentsRoutes(app: FastifyInstance) {
   // PATCH /api/agents/:id — update status / metadata
   app.patch<{
     Params: { id: string }
-    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string }>
+    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string; draft: string }>
   }>("/api/agents/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
@@ -299,6 +299,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       ...(body.description !== undefined && { description: body.description }),
       ...(body.unread !== undefined && { unread: body.unread }),
       ...(body.baseBranch !== undefined && { baseBranch: body.baseBranch }),
+      ...(body.draft !== undefined && { draft: body.draft }),
       updatedAt: now,
     }).where(eq(agents.id, id))
 

@@ -150,6 +150,7 @@ export interface Agent {
   streaming?: boolean
   daysAgo?: string
   description?: string
+  draft?: string
   diffSummary?: { additions: number; deletions: number; commits?: number }
   messages: Message[]
   hasMore?: boolean

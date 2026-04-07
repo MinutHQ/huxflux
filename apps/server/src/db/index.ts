@@ -286,6 +286,10 @@ const MIGRATIONS: Migration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_repos_path ON repos(path);
     `,
   },
+  {
+    version: 15,
+    sql: `ALTER TABLE agents ADD COLUMN draft TEXT;`,
+  },
 ]
 
 export function runMigrations() {

@@ -36,6 +36,7 @@ export const agents = sqliteTable("agents", {
   sessionId: text("session_id"), // Claude Code session ID — used for --resume on follow-up messages
   noWorktree: integer("no_worktree"), // 1 = run directly in repo.path, no git worktree
   deletedAt: text("deleted_at"), // soft delete — set instead of hard DELETE
+  draft: text("draft"), // persisted chat input draft
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

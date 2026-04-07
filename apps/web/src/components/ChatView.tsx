@@ -99,14 +99,64 @@ function truncateArgs(args: string, max = 52) {
   return args.length > max ? args.slice(0, max) + "…" : args
 }
 
-function fileChip(args: string) {
-  const name = args.split("/").pop() ?? args
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px] font-mono text-foreground/70 ml-1">
-      <IconSparkles size={9} className="text-muted-foreground/50" />
-      {name}
-    </span>
-  )
+function basename(p: string): string {
+  if (!p) return ""
+  const parts = p.split("/")
+  return parts[parts.length - 1] || p
+}
+
+// Returns a human-friendly { title, detail } for a tool call.
+// `title` is the prominent label (the tool's description if provided, else
+// something derived from the args). `detail` is the monospace summary next to it.
+function formatToolCall(tool: string, args?: string): { title: string; detail: string } {
+  if (!args) return { title: tool, detail: "" }
+  let parsed: any
+  try {
+    parsed = JSON.parse(args)
+  } catch {
+    return { title: tool, detail: truncateArgs(args) }
+  }
+
+  // If the tool input includes a description (e.g. Bash sometimes does), prefer
+  // it as the title regardless of which tool it is.
+  const desc = typeof parsed?.description === "string" ? parsed.description.trim() : ""
+
+  switch (tool) {
+    case "Bash": {
+      const cmd = String(parsed.command ?? "").trim()
+      if (desc) return { title: desc, detail: truncateArgs(cmd) }
+      // Fall back to using the command's first token as the title.
+      const m = cmd.match(/^(\S+)\s*([\s\S]*)$/)
+      if (!m) return { title: "Bash", detail: "" }
+      return { title: m[1], detail: truncateArgs(m[2]) }
+    }
+    case "Grep": {
+      const pat = String(parsed.pattern ?? "")
+      const where = parsed.path
+        ? ` in ${basename(String(parsed.path))}`
+        : parsed.glob ? ` in ${parsed.glob}` : ""
+      return { title: desc || "grep", detail: truncateArgs(`for "${pat}"${where}`) }
+    }
+    case "Glob":
+      return { title: desc || "glob", detail: truncateArgs(String(parsed.pattern ?? "")) }
+    case "Read":
+      return { title: desc || "Read", detail: basename(String(parsed.file_path ?? "")) }
+    case "Write":
+      return { title: desc || "Write", detail: basename(String(parsed.file_path ?? "")) }
+    case "Edit":
+      return { title: desc || "Edit", detail: basename(String(parsed.file_path ?? "")) }
+    case "TodoWrite":
+      return { title: desc || "TodoWrite", detail: `${parsed.todos?.length ?? 0} todos` }
+    case "WebFetch":
+      return { title: desc || "WebFetch", detail: truncateArgs(String(parsed.url ?? "")) }
+    case "WebSearch":
+      return { title: desc || "WebSearch", detail: truncateArgs(String(parsed.query ?? "")) }
+    default: {
+      const firstKey = parsed && typeof parsed === "object" ? Object.keys(parsed)[0] : undefined
+      const detail = firstKey ? String(parsed[firstKey] ?? "") : ""
+      return { title: desc || tool, detail: truncateArgs(detail) }
+    }
+  }
 }
 
 // ── Inline result block ───────────────────────────────────────────────────────
@@ -163,7 +213,6 @@ function AgentPromptBlock({ prompt }: { prompt: string }) {
 function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolean }) {
   const [open, setOpen] = useState(true)
   const isAgent = call.tool === "Agent"
-  const isRead = call.tool === "Read"
 
   if (isAgent) {
     let description = ""
@@ -198,17 +247,17 @@ function ToolCallRow({ call, indent = false }: { call: ToolCall; indent?: boolea
     )
   }
 
+  const { title, detail } = formatToolCall(call.tool, call.args)
   return (
     <div className={cn("mt-0.5", indent && "ml-4")}>
-      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground py-0.5">
+      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground py-0.5 min-w-0">
         {toolIcon(call.tool)}
-        <span className="font-medium text-foreground/70 shrink-0">{call.tool}</span>
-        {call.args && (
+        <span className="font-medium text-foreground/70 shrink-0">{title}</span>
+        {detail && (
           <span className="font-mono text-[11px] text-muted-foreground/60 truncate min-w-0">
-            {truncateArgs(call.args)}
+            {detail}
           </span>
         )}
-        {isRead && call.args && fileChip(call.args)}
       </div>
       {call.result && <ResultBlock result={call.result} />}
     </div>
@@ -224,7 +273,10 @@ function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasCont
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
   // When collapsed and streaming, show the last tool call; otherwise show distinct tool names
   const summary = isStreaming && lastCall
-    ? `${lastCall.tool}${lastCall.args ? ` ${truncateArgs(lastCall.args)}` : ""}`
+    ? (() => {
+        const { title, detail } = formatToolCall(lastCall.tool, lastCall.args)
+        return detail ? `${title} ${detail}` : title
+      })()
     : [...new Set(calls.map((c) => c.tool))].slice(0, 4).join(", ") + ([...new Set(calls.map((c) => c.tool))].length > 4 ? ", …" : "")
 
   return (
@@ -1953,7 +2005,12 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     }
   }, [])
   const queryClient = useQueryClient()
-  const [input, setInput] = useState("")
+  const [input, setInput] = useState(agent.draft ?? "")
+  const agentIdRef = useRef(agent.id)
+  agentIdRef.current = agent.id
+  const inputRef = useRef(input)
+  inputRef.current = input
+  const prevAgentIdRef = useRef<string | null>(null)
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
   const [thinking, setThinking] = useState(false)
   const [isSending, setIsSending] = useState(false)
@@ -2335,6 +2392,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
     setInput("")
+    void api.updateAgent(agent.id, { draft: "" })
     onClearComments?.()
     setAttachments([])
     setMentionAttachments([])
@@ -2368,10 +2426,26 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (openFileTab) setActiveTab("file")
   }, [openFileTab])
 
+  // Debounce-save draft on any input change (catches slash/mention completions too)
   useEffect(() => {
+    const agentId = agentIdRef.current
+    const timer = setTimeout(() => {
+      void api.updateAgent(agentId, { draft: input })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [input])
+
+  useEffect(() => {
+    // Flush the outgoing agent's draft immediately before switching
+    const prevId = prevAgentIdRef.current
+    if (prevId && prevId !== agent.id) {
+      void api.updateAgent(prevId, { draft: inputRef.current })
+    }
+    prevAgentIdRef.current = agent.id
     setActiveTab("chat")
     setIsAtBottom(true)
     bottomRef.current?.scrollIntoView({ behavior: "instant" })
+    setInput(agent.draft ?? "")
   }, [agent.id])
 
   // Auto-scroll to bottom when streaming, but only if the user is already at the bottom

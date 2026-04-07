@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react"
+import { isTauri } from "@/lib/platform"
+import { invoke } from "@tauri-apps/api/core"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ScrollArea } from "@huxflux/ui"
@@ -241,7 +243,7 @@ function ReviewCommentCard({
           <MarkdownContent content={comment.body} />
         </div>
 
-        {comment.status === "pending" && (
+        {(comment.status === "pending" || comment.status === "queued") && (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
               <Button
@@ -258,18 +260,24 @@ function ReviewCommentCard({
               >
                 Resolve
               </button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-[11px] px-2.5 gap-1.5 ml-auto"
-                disabled={sending}
-                onClick={handleSend}
-              >
-                {sending
-                  ? <IconLoader2 size={11} className="animate-spin" />
-                  : <IconBrandGithub size={11} />}
-                {comment.type === "inline" ? "Send inline" : "Send comment"}
-              </Button>
+              {comment.status === "queued" ? (
+                <div className="flex items-center gap-1 text-[11px] text-blue-400 ml-auto">
+                  <IconCheck size={11} /> Queued
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[11px] px-2.5 gap-1.5 ml-auto"
+                  disabled={sending}
+                  onClick={handleSend}
+                >
+                  {sending
+                    ? <IconLoader2 size={11} className="animate-spin" />
+                    : <IconBrandGithub size={11} />}
+                  {comment.type === "inline" ? "Send inline" : "Send comment"}
+                </Button>
+              )}
             </div>
             {sendError && (
               <p className="text-[11px] text-destructive">{sendError}</p>
@@ -541,7 +549,7 @@ function VerdictBar({
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const pendingComments = comments.filter((c) => c.status === "pending")
+  const pendingComments = comments.filter((c) => c.status === "pending" || c.status === "queued")
 
   async function handleSubmit(event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT") {
     if (!pr.repoId || submitting || submitted) return
@@ -620,6 +628,7 @@ function Message({
   pr,
   onDismiss,
   onSend,
+  onMarkSent,
   onRevert,
   onResolve,
   onUserReviewed,
@@ -629,6 +638,7 @@ function Message({
   pr: PullRequest
   onDismiss: (id: string) => void
   onSend: (id: string) => void
+  onMarkSent: (id: string) => void
   onRevert: (id: string) => void
   onResolve: (id: string) => void
   onUserReviewed?: () => void
@@ -658,7 +668,7 @@ function Message({
             comments={message.comments ?? []}
             summary={message.content}
             pr={pr}
-            onSubmitted={(ids) => { ids.forEach((id) => onSend(id)); onUserReviewed?.() }}
+            onSubmitted={(ids) => { ids.forEach((id) => onMarkSent(id)); onUserReviewed?.() }}
             onReviewSubmitted={(event, body, commentCount) => onReviewSubmitted?.(event, body, commentCount)}
           />
         )}
@@ -679,10 +689,12 @@ function Message({
                 onDismiss={onDismiss}
                 onSend={async (id) => {
                   const comment = message.comments?.find((x) => x.id === id)
-                  if (comment && pr.repoId) {
-                    await api.sendSingleComment(pr.repoId, pr.number, comment.body, comment.path, comment.line)
+                  if (comment?.type === "general" && pr.repoId) {
+                    await api.sendSingleComment(pr.repoId, pr.number, comment.body)
+                    onMarkSent(id)
+                  } else {
+                    onSend(id)
                   }
-                  onSend(id)
                 }}
                 onRevert={onRevert}
                 onResolve={onResolve}
@@ -1046,19 +1058,23 @@ function PRInfoPanel({ pr, files, branch, baseBranch, description }: { pr: PullR
             </div>
           </div>
         )}
-        {pr.url ? (
-          <a href={pr.url} target="_blank" rel="noopener noreferrer" className="block w-full">
-            <Button variant="outline" size="sm" className="w-full gap-1.5 text-[11px]">
-              <IconBrandGithub size={12} />
-              View on GitHub
-            </Button>
-          </a>
-        ) : (
-          <Button variant="outline" size="sm" className="w-full gap-1.5 text-[11px]" disabled>
-            <IconBrandGithub size={12} />
-            View on GitHub
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-1.5 text-[11px]"
+          disabled={!pr.url}
+          onClick={() => {
+            if (!pr.url) return
+            if (isTauri) {
+              invoke("open_url", { url: pr.url })
+            } else {
+              window.open(pr.url, "_blank")
+            }
+          }}
+        >
+          <IconBrandGithub size={12} />
+          View on GitHub
+        </Button>
       </div>
     </div>
   )
@@ -1451,7 +1467,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   }
 
   const canSend = input.trim().length > 0 && !isSending && !reviewing
-  const pendingCount = messages.flatMap((m) => m.comments ?? []).filter((c) => c.status === "pending").length
+  const pendingCount = messages.flatMap((m) => m.comments ?? []).filter((c) => c.status === "pending" || c.status === "queued").length
   const sentCount = messages.flatMap((m) => m.comments ?? []).filter((c) => c.status === "sent").length
 
   return (
@@ -1644,7 +1660,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                       message={msg}
                       pr={pr}
                       onDismiss={(id) => updateCommentStatus(id, "dismissed")}
-                      onSend={(id) => updateCommentStatus(id, "sent")}
+                      onSend={(id) => updateCommentStatus(id, "queued")}
+                      onMarkSent={(id) => updateCommentStatus(id, "sent")}
                       onRevert={(id) => updateCommentStatus(id, "pending")}
                       onResolve={(id) => toggleCommentResolved(id)}
                       onUserReviewed={onUserReviewed}

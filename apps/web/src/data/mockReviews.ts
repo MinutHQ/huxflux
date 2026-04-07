@@ -20,7 +20,7 @@ export interface ReviewComment {
   line?: number
   codeContext?: CodeLine[]
   body: string
-  status: "pending" | "dismissed" | "sent"
+  status: "pending" | "queued" | "dismissed" | "sent"
   resolved?: boolean
 }
 

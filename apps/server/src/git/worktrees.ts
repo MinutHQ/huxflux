@@ -80,13 +80,23 @@ export async function removeWorktree(repoPath: string, worktreePath: string): Pr
 /** Resolve the merge-base commit between HEAD and the base branch. */
 async function resolveBase(worktreePath: string, branchFrom: string): Promise<string> {
   const git = simpleGit(worktreePath)
-  try {
-    const mergeBase = await git.raw(["merge-base", "HEAD", branchFrom])
-    return mergeBase.trim()
-  } catch {
-    // branchFrom not found (e.g. offline, no fetch yet) — fall back to HEAD
-    return "HEAD"
+  // Try candidates in order: configured branchFrom, local equivalent, common defaults
+  const candidates = [...new Set([
+    branchFrom,
+    branchFrom.replace(/^origin\//, ""),
+    "origin/main", "origin/master", "main", "master",
+  ])]
+  for (const candidate of candidates) {
+    try {
+      const mb = await git.raw(["merge-base", "HEAD", candidate])
+      if (mb.trim()) return mb.trim()
+    } catch { /* try next */ }
   }
+  try {
+    const root = await git.raw(["rev-list", "--max-parents=0", "HEAD"])
+    if (root.trim()) return root.trim()
+  } catch { /* ignore */ }
+  return "HEAD"
 }
 
 export async function getFileChanges(worktreePath: string, branchFrom: string): Promise<FileChange[]> {
@@ -127,7 +137,7 @@ export async function getDiff(worktreePath: string, filePath: string, branchFrom
   const git = simpleGit(worktreePath)
   try {
     const base = await resolveBase(worktreePath, branchFrom)
-    const diff = await git.diff([base, "--", filePath])
+    const diff = await git.diff([base, "-U2", "--", filePath])
     if (diff) return diff
     // Untracked new file — render as full addition
     const content = await readFile(path.join(worktreePath, filePath), "utf8")
@@ -207,6 +217,16 @@ export async function getFileTree(worktreePath: string): Promise<FileTreeEntry[]
 export async function getFileContent(worktreePath: string, filePath: string): Promise<string> {
   try {
     return await readFile(path.join(worktreePath, filePath), "utf8")
+  } catch {
+    return ""
+  }
+}
+
+export async function getBaseFileContent(worktreePath: string, filePath: string, branchFrom: string): Promise<string> {
+  const git = simpleGit(worktreePath)
+  try {
+    const base = await resolveBase(worktreePath, branchFrom)
+    return await git.raw(["show", `${base}:${filePath}`])
   } catch {
     return ""
   }

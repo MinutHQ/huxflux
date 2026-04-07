@@ -1965,6 +1965,9 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [baseBranchOpen, setBaseBranchOpen] = useState(false)
   const [baseBranchSearch, setBaseBranchSearch] = useState("")
   const baseBranchSearchRef = useRef<HTMLInputElement>(null)
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false)
+  const [branchSearch, setBranchSearch] = useState("")
+  const branchSearchRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<{ name: string; path: string; mimeType: string }[]>([])
   const [linkedAgents, setLinkedAgents] = useState<AgentSummary[]>([])
   const [plusOpen, setPlusOpen] = useState(false)
@@ -1984,7 +1987,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const { data: repoBranches = [] } = useQuery({
     queryKey: ["repo-branches", agent.repoId],
     queryFn: () => api.getRepoBranches(agent.repoId!),
-    enabled: !!agent.repoId && baseBranchOpen,
+    enabled: !!agent.repoId && (baseBranchOpen || branchPickerOpen),
     staleTime: 60_000,
   })
 
@@ -2059,6 +2062,26 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (!val || val === agent.baseBranch) return
     await api.updateAgent(agent.id, { baseBranch: val })
     queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, baseBranch: val } : old)
+  }
+
+  async function selectBranch(val: string, force = false) {
+    setBranchPickerOpen(false)
+    setBranchSearch("")
+    if (!val || val === agent.branch) return
+    try {
+      const updated = await api.switchBranch(agent.id, val, force || undefined)
+      queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, ...updated } : old)
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
+    } catch (err: any) {
+      if (err?.message?.includes("already checked out")) {
+        toast.error(`Branch "${val}" is locked to a stale worktree`, {
+          action: { label: "Force remove & retry", onClick: () => void selectBranch(val, true) },
+          duration: 8000,
+        })
+      } else {
+        toast.error(err?.message ?? "Failed to switch branch")
+      }
+    }
   }
   const [slashQuery, setSlashQuery] = useState<string | null>(null) // null = closed, "" = show all
   const [slashIndex, setSlashIndex] = useState(0)
@@ -2386,7 +2409,54 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           </>
         )}
         <IconGitBranch size={13} className="text-muted-foreground/50 shrink-0" />
-        <span className="text-[12px] text-muted-foreground font-mono truncate">{agent.branch}</span>
+        <Popover open={branchPickerOpen} onOpenChange={(o) => { setBranchPickerOpen(o); if (o) setBranchSearch("") }}>
+          <PopoverTrigger asChild>
+            <button
+              className="text-[12px] text-muted-foreground font-mono hover:text-foreground transition-colors flex items-center gap-1 truncate max-w-[200px]"
+              title="Click to change branch"
+            >
+              {agent.branch}
+              <IconChevronDown size={11} className="opacity-50 shrink-0" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-1" align="start">
+            <input
+              ref={branchSearchRef}
+              value={branchSearch}
+              onChange={(e) => setBranchSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setBranchPickerOpen(false)
+                if (e.key === "Enter") {
+                  const filtered = repoBranches.filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
+                  if (filtered.length === 1) void selectBranch(filtered[0])
+                  else if (branchSearch.trim()) void selectBranch(branchSearch.trim())
+                }
+              }}
+              placeholder="Search branches…"
+              autoFocus
+              className="w-full bg-transparent border-b border-border px-2 py-1.5 text-[12px] font-mono outline-none placeholder:text-muted-foreground/50 mb-1"
+            />
+            <div className="max-h-48 overflow-y-auto">
+              {repoBranches
+                .filter((b) => b.toLowerCase().includes(branchSearch.toLowerCase()))
+                .map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => void selectBranch(b)}
+                    className={cn(
+                      "w-full text-left px-2 py-1 text-[12px] font-mono rounded hover:bg-accent transition-colors",
+                      b === agent.branch && "text-foreground font-medium"
+                    )}
+                  >
+                    {b}
+                  </button>
+                ))}
+              {repoBranches.length === 0 && (
+                <p className="px-2 py-1.5 text-[11px] text-muted-foreground">Loading branches…</p>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
         <span className="text-muted-foreground/30 shrink-0">›</span>
         <Popover open={baseBranchOpen} onOpenChange={(o) => { setBaseBranchOpen(o); if (o) setBaseBranchSearch("") }}>
           <PopoverTrigger asChild>

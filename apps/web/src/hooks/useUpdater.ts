@@ -20,12 +20,18 @@ export function useUpdater(): UpdaterState {
     if (!isTauri) return
 
     let cancelled = false
-    import("@tauri-apps/plugin-updater").then(({ check }) => {
-      check().then((u) => {
-        if (!cancelled && u?.available) setUpdate(u)
-      }).catch(() => { /* no update or offline */ })
-    })
-    return () => { cancelled = true }
+
+    function doCheck() {
+      import("@tauri-apps/plugin-updater").then(({ check }) => {
+        check().then((u) => {
+          if (!cancelled && u?.available) setUpdate(u)
+        }).catch(() => { /* no update or offline */ })
+      })
+    }
+
+    doCheck()
+    const interval = setInterval(doCheck, 60 * 60 * 1000) // re-check every hour
+    return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
   async function downloadAndInstall() {

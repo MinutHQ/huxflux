@@ -1,8 +1,9 @@
 import chokidar, { type FSWatcher } from "chokidar"
+import { simpleGit } from "simple-git"
 import { getFileChanges } from "./worktrees.js"
-import { emit } from "../ws/handler.js"
+import { emit, broadcast } from "../ws/handler.js"
 import { db } from "../db/index.js"
-import { fileChanges as fileChangesTable } from "../db/schema.js"
+import { fileChanges as fileChangesTable, agents as agentsTable } from "../db/schema.js"
 import { eq } from "drizzle-orm"
 
 interface WatchEntry {
@@ -16,8 +17,25 @@ const DEBOUNCE_MS = 600
 
 async function refresh(agentId: string, worktreePath: string, branchFrom: string) {
   try {
-    const files = await getFileChanges(worktreePath, branchFrom)
-    // Only update DB+emit if we got a result (even empty is valid — it means no changes)
+    const [files, branchSummary] = await Promise.all([
+      getFileChanges(worktreePath, branchFrom),
+      simpleGit(worktreePath).branch().catch(() => null),
+    ])
+
+    // Sync branch name if it changed (e.g. Claude pushed a PR and renamed the branch)
+    const currentBranch = branchSummary?.current
+    if (currentBranch) {
+      const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+      if (agent && agent.branch !== currentBranch) {
+        db.update(agentsTable)
+          .set({ branch: currentBranch, updatedAt: new Date().toISOString() })
+          .where(eq(agentsTable.id, agentId))
+          .run()
+        const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+        if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+      }
+    }
+
     await db.delete(fileChangesTable).where(eq(fileChangesTable.agentId, agentId))
     if (files.length > 0) {
       for (const f of files) {

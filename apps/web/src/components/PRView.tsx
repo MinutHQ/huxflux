@@ -39,6 +39,7 @@ import {
   IconMessageCircle2,
   IconLayoutColumns,
   IconLayoutRows,
+  IconChevronDown,
 } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile, trimPatchContext } from "@pierre/diffs"
@@ -896,6 +897,28 @@ function ThreadCard({
   )
 }
 
+// ── Description accordion ─────────────────────────────────────────────────────
+
+function PRDescriptionAccordion({ description }: { description: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors"
+      >
+        <IconChevronDown size={11} className={cn("transition-transform duration-150", open && "rotate-180")} />
+        <span>{open ? "Hide" : "Show"} description</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 text-[11px] text-muted-foreground/70 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+          {description}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Diff panel ────────────────────────────────────────────────────────────────
 
 function PRDiffPanel({
@@ -1647,7 +1670,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-mono text-muted-foreground/40">#{pr.number}</span>
+                    <span className="text-[11px] font-mono text-muted-foreground/50">#{pr.number}</span>
                     <span className="text-[13px] font-semibold text-foreground truncate">{pr.title}</span>
                     {pr.reviewStatus === "changes-requested" && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 font-medium shrink-0">
@@ -1655,22 +1678,32 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground/40">
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground/60 flex-wrap">
                     <span>{pr.author}</span>
-                    <span>·</span>
+                    <span className="text-muted-foreground/40">·</span>
                     <span className="font-mono">{branch}</span>
-                    <span>→</span>
+                    <span className="text-muted-foreground/50">→</span>
                     <span className="font-mono">{baseBranch}</span>
-                    <span>·</span>
+                    <span className="text-muted-foreground/40">·</span>
                     <span>{pr.requestedAt}</span>
+                    {(pr.additions > 0 || pr.deletions > 0) && (
+                      <>
+                        <span className="text-muted-foreground/40">·</span>
+                        <span className="text-emerald-400/80 font-mono">+{pr.additions}</span>
+                        <span className="text-red-400/80 font-mono">-{pr.deletions}</span>
+                      </>
+                    )}
                     {hasReviewed && pendingCount > 0 && (
                       <>
-                        <span>·</span>
+                        <span className="text-muted-foreground/40">·</span>
                         <span className="text-amber-400">{pendingCount} pending</span>
                         {sentCount > 0 && <span className="text-emerald-400">, {sentCount} sent</span>}
                       </>
                     )}
                   </div>
+                  {description && (
+                    <PRDescriptionAccordion description={description} />
+                  )}
                 </div>
               </div>
             </div>

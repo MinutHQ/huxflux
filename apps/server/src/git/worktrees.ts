@@ -104,30 +104,46 @@ export async function getFileChanges(worktreePath: string, branchFrom: string): 
 
   try {
     const base = await resolveBase(worktreePath, branchFrom)
+    const fileMap = new Map<string, FileChange>()
 
-    // All tracked changes (committed or not) since the branch diverged from base
-    const diffStat = await git.diffSummary([base])
-    const tracked: FileChange[] = diffStat.files.map((f) => ({
-      path: f.file,
-      additions: "insertions" in f ? (f.insertions as number) : 0,
-      deletions: "deletions" in f ? (f.deletions as number) : 0,
-    }))
+    const addDiff = (files: typeof (await git.diffSummary([])).files) => {
+      for (const f of files) {
+        const existing = fileMap.get(f.file)
+        const add = "insertions" in f ? (f.insertions as number) : 0
+        const del = "deletions" in f ? (f.deletions as number) : 0
+        if (existing) {
+          existing.additions += add
+          existing.deletions += del
+        } else {
+          fileMap.set(f.file, { path: f.file, additions: add, deletions: del })
+        }
+      }
+    }
 
-    // Untracked new files — not included in any git diff
+    // Committed changes on this branch since it diverged from base
+    const committed = await git.diffSummary([`${base}..HEAD`]).catch(() => null)
+    if (committed) addDiff(committed.files)
+
+    // Uncommitted changes (staged + unstaged) on top of HEAD
+    const uncommitted = await git.diffSummary(["HEAD"]).catch(() => null)
+    if (uncommitted) addDiff(uncommitted.files)
+
+    // Untracked new files not yet in any diff
     const untrackedRaw = await git.raw(["ls-files", "--others", "--exclude-standard"])
     const untrackedPaths = untrackedRaw.trim().split("\n").filter(Boolean)
-    const untracked: FileChange[] = await Promise.all(
+    await Promise.all(
       untrackedPaths.map(async (filePath) => {
+        if (fileMap.has(filePath)) return
         try {
           const content = await readFile(path.join(worktreePath, filePath), "utf8")
-          return { path: filePath, additions: content.split("\n").length, deletions: 0 }
+          fileMap.set(filePath, { path: filePath, additions: content.split("\n").length, deletions: 0 })
         } catch {
-          return { path: filePath, additions: 0, deletions: 0 }
+          fileMap.set(filePath, { path: filePath, additions: 0, deletions: 0 })
         }
       })
     )
 
-    return [...tracked, ...untracked]
+    return Array.from(fileMap.values())
   } catch {
     return []
   }

@@ -1115,16 +1115,16 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description }
   return (
     <div className="flex flex-col h-full">
       {/* Summary section */}
-      <div className="shrink-0 border-b border-border">
+      <div className={cn("border-b border-border flex flex-col", descExpanded ? "min-h-0 max-h-[40%]" : "shrink-0")}>
         <button
           onClick={() => setDescExpanded(v => !v)}
-          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-accent/20 transition-colors"
+          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-accent/20 transition-colors shrink-0"
         >
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</span>
           <IconChevronDown size={12} className={cn("text-muted-foreground/40 transition-transform duration-150", descExpanded && "rotate-180")} />
         </button>
         {descExpanded && (
-          <div className="px-3 pb-2.5 text-[11px] text-muted-foreground/70 leading-relaxed overflow-y-auto" style={{ maxHeight: "40%" }}>
+          <div className="px-3 pb-2.5 text-[11px] text-muted-foreground/70 leading-relaxed overflow-y-auto flex-1">
             {description
               ? <MarkdownContent content={description} />
               : <span className="text-muted-foreground/30 italic">No description</span>

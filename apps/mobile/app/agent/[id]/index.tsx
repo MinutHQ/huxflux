@@ -185,6 +185,57 @@ function MessageContent({ text }: { text: string }) {
 
 // ── Tool calls ────────────────────────────────────────────────────────────────
 
+function truncateArgs(args: string, max = 52) {
+  return args.length > max ? args.slice(0, max) + "…" : args
+}
+
+function basename(p: string): string {
+  if (!p) return ""
+  const parts = p.split("/")
+  return parts[parts.length - 1] || p
+}
+
+function formatToolCall(tool: string, args?: string): { title: string; detail: string } {
+  if (!args) return { title: tool, detail: "" }
+  let parsed: any
+  try {
+    parsed = JSON.parse(args)
+  } catch {
+    return { title: tool, detail: truncateArgs(args) }
+  }
+  const desc = typeof parsed?.description === "string" ? parsed.description.trim() : ""
+  switch (tool) {
+    case "Bash": {
+      const cmd = String(parsed.command ?? "").trim()
+      if (desc) return { title: desc, detail: truncateArgs(cmd) }
+      const m = cmd.match(/^(\S+)\s*([\s\S]*)$/)
+      if (!m) return { title: "Bash", detail: "" }
+      return { title: m[1], detail: truncateArgs(m[2]) }
+    }
+    case "Grep":
+      return { title: desc || "grep", detail: truncateArgs(`"${parsed.pattern ?? ""}"${parsed.path ? ` in ${basename(String(parsed.path))}` : parsed.glob ? ` in ${parsed.glob}` : ""}`) }
+    case "Glob":
+      return { title: desc || "glob", detail: truncateArgs(String(parsed.pattern ?? "")) }
+    case "Read":
+      return { title: desc || "Read", detail: basename(String(parsed.file_path ?? "")) }
+    case "Write":
+      return { title: desc || "Write", detail: basename(String(parsed.file_path ?? "")) }
+    case "Edit":
+      return { title: desc || "Edit", detail: basename(String(parsed.file_path ?? "")) }
+    case "TodoWrite":
+      return { title: desc || "TodoWrite", detail: `${parsed.todos?.length ?? 0} todos` }
+    case "WebFetch":
+      return { title: desc || "WebFetch", detail: truncateArgs(String(parsed.url ?? "")) }
+    case "WebSearch":
+      return { title: desc || "WebSearch", detail: truncateArgs(String(parsed.query ?? "")) }
+    default: {
+      const firstKey = parsed && typeof parsed === "object" ? Object.keys(parsed)[0] : undefined
+      const detail = firstKey ? String(parsed[firstKey] ?? "") : ""
+      return { title: desc || tool, detail: truncateArgs(detail) }
+    }
+  }
+}
+
 function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(true)
   const isAgent = call.tool === "Agent"
@@ -195,6 +246,7 @@ function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isStreamin
   const name = isAgent
     ? (() => { try { return JSON.parse(call.args ?? "{}").description ?? call.tool } catch { return call.tool } })()
     : call.tool
+  const { title: fmtTitle, detail: fmtDetail } = isAgent ? { title: name, detail: "" } : formatToolCall(call.tool, call.args)
 
   if (isAgent) {
     return (
@@ -251,12 +303,10 @@ function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isStreamin
         ? <ActivityIndicator size="small" color="#f59e0b" style={{ width: 12, height: 12, marginTop: 2 }} />
         : <Text style={{ color: call.result != null ? "#34d399" : "#f59e0b", fontSize: 10, marginTop: 3 }}>{call.result != null ? "✓" : "○"}</Text>}
       <View style={{ flex: 1 }}>
-        <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace" }}>{name}</Text>
-        {expanded && call.args && (
-          <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", opacity: 0.6, marginTop: 2 }} numberOfLines={3}>
-            {(() => { try { return JSON.stringify(JSON.parse(call.args), null, 2) } catch { return call.args } })()}
-          </Text>
-        )}
+        <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace" }} numberOfLines={1}>{fmtTitle}</Text>
+        {fmtDetail ? (
+          <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", opacity: 0.6, marginTop: 1 }} numberOfLines={1}>{fmtDetail}</Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   )
@@ -297,14 +347,14 @@ function ToolCallsList({ calls, hasContent, isStreaming, pendingText }: { calls:
       </TouchableOpacity>
       {open && (
         <View style={{ marginLeft: 12, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: c.border, gap: 2 }}>
-          {calls.map((tc) => (
+          {calls.map((tc, idx) => (
             <View key={tc.id}>
               {tc.precedingText && tc.precedingText.trim() ? (
                 <View style={{ marginVertical: 4 }}>
                   <MessageContent text={tc.precedingText} />
                 </View>
               ) : null}
-              <ToolCallRow call={tc} isStreaming={isStreaming} />
+              <ToolCallRow call={tc} isStreaming={isStreaming && idx === calls.length - 1} />
             </View>
           ))}
           {hasPending && (

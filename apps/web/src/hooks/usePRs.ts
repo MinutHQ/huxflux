@@ -43,6 +43,7 @@ export function usePRs() {
     files: [],
     description: "",
     url: pr.url,
+    agentId: pr.agentId,
   }))
 
   return { prs, isLoading, refetch }

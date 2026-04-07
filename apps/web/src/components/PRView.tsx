@@ -42,6 +42,8 @@ import {
 } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile } from "@pierre/diffs"
+import { useQuery } from "@tanstack/react-query"
+import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -908,6 +910,7 @@ function PRDiffPanel({
   onToggleViewed,
   onThreadReplied,
   onThreadResolved,
+  agentId,
 }: {
   file: PRFile
   fileDiffs: Record<string, string>
@@ -920,11 +923,45 @@ function PRDiffPanel({
   onToggleViewed: () => void
   onThreadReplied: (threadId: string, reply: PRThread["comments"][number]) => void
   onThreadResolved: (threadId: string) => void
+  agentId?: string
 }) {
   const raw = fileDiffs[file.path] ?? file.patch ?? ""
   const fileName = file.path.split("/").pop() ?? file.path
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // When agentId is available, fetch full content for syntax highlighting + hunk expansion
+  const { data: agentDiff } = useQuery({
+    queryKey: ["diff", agentId, file.path],
+    queryFn: () => api.getDiff(agentId!, file.path),
+    staleTime: 30_000,
+    enabled: !!agentId,
+  })
+  const { data: newContent } = useQuery({
+    queryKey: ["file-content", agentId, file.path],
+    queryFn: () => api.getFileContent(agentId!, file.path),
+    staleTime: 30_000,
+    enabled: !!agentId && !!agentDiff,
+  })
+  const { data: oldContent } = useQuery({
+    queryKey: ["file-base-content", agentId, file.path],
+    queryFn: () => api.getBaseFileContent(agentId!, file.path),
+    staleTime: 30_000,
+    enabled: !!agentId && !!agentDiff,
+  })
+
+  const [expandedHunks, setExpandedHunks] = useState<Map<number, HunkExpansionRegion>>(new Map())
+
+  function onHunkExpand(hunkIndex: number, direction: ExpansionDirections, expansionLineCount = 20) {
+    setExpandedHunks(prev => {
+      const next = new Map(prev)
+      const region = { ...next.get(hunkIndex) ?? { fromStart: 0, fromEnd: 0 } }
+      if (direction === "up" || direction === "both") region.fromStart += expansionLineCount
+      if (direction === "down" || direction === "both") region.fromEnd += expansionLineCount
+      next.set(hunkIndex, region)
+      return next
+    })
+  }
 
   // Prevent scroll jump when expanding hunks (same fix as DiffView)
   useEffect(() => {
@@ -954,7 +991,18 @@ function PRDiffPanel({
     }
   }, [])
 
-  const fileDiff = raw ? processFile(raw) : null
+  // Use agent full content if available, else fall back to GitHub patch
+  const rawForDiff = agentId ? agentDiff : raw
+  const fileDiff = rawForDiff && oldContent !== undefined && newContent !== undefined
+    ? processFile(rawForDiff, {
+        oldFile: { name: fileName, contents: oldContent },
+        newFile: { name: fileName, contents: newContent },
+      })
+    : rawForDiff
+      ? processFile(rawForDiff)
+      : raw
+        ? processFile(raw)
+        : null
   const fileThreads = threads.filter((t) => t.path === file.path && !t.isResolved && t.comments.length > 0)
 
   return (
@@ -999,6 +1047,8 @@ function PRDiffPanel({
               diffIndicators: "bars",
               disableFileHeader: true,
               hunkSeparators: "line-info",
+              expandedHunks,
+              onHunkExpand,
             }}
           />
         ) : (
@@ -1679,6 +1729,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                   repoId={pr.repoId}
                   prNumber={pr.number}
                   currentUser={currentUser}
+                  agentId={pr.agentId}
                   viewed={viewedFiles.has(openFileTab.path)}
                   onToggleViewed={() => toggleViewed(openFileTab.path)}
                   onThreadReplied={(threadId, reply) =>

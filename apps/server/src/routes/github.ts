@@ -3,7 +3,7 @@ import { spawn } from "node:child_process"
 import * as path from "node:path"
 import * as os from "node:os"
 import * as fsSync from "node:fs"
-import { eq } from "drizzle-orm"
+import { eq, isNull, isNotNull, and } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, repos } from "../db/schema.js"
 import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread } from "../github/client.js"
@@ -60,6 +60,16 @@ export async function githubRoutes(app: FastifyInstance) {
   app.get("/api/prs", async (_req, _reply) => {
     const rawPRs = await listReviewRequestedPRs()
 
+    // Look up agents by their PR URL to associate agentId with each PR
+    const allAgents = db.select({ id: agents.id, pr: agents.pr })
+      .from(agents)
+      .where(and(isNull(agents.deletedAt), isNotNull(agents.pr)))
+      .all()
+    const agentByPrUrl = new Map<string, string>()
+    for (const a of allAgents) {
+      if (a.pr) agentByPrUrl.set(a.pr, a.id)
+    }
+
     return rawPRs.map((pr): OpenPRWithRepo => ({
       number: pr.number,
       title: pr.title,
@@ -76,6 +86,7 @@ export async function githubRoutes(app: FastifyInstance) {
       isReadyToMerge: pr.mergeableState === "clean" && !pr.hasChangeRequests && !pr.draft,
       repoId: `${pr.owner}/${pr.repo}`,
       repoName: `${pr.owner}/${pr.repo}`,
+      agentId: agentByPrUrl.get(pr.url),
     }))
   })
 

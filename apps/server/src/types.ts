@@ -89,6 +89,7 @@ export interface OpenPR {
 export interface OpenPRWithRepo extends OpenPR {
   repoId: string
   repoName: string
+  agentId?: string
 }
 
 export interface PRFileDiff {

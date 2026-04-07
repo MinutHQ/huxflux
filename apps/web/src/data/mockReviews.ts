@@ -45,6 +45,7 @@ export interface PullRequest {
   files: PRFile[]
   description: string
   url?: string
+  agentId?: string
 }
 
 export const mockFileDiffs: Record<string, string> = {

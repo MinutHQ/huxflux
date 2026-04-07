@@ -8,7 +8,6 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useHydrated } from "../_layout"
 import { useModal } from "../../components/Modal"
-import { useStreamingAgentId } from "../../hooks/useStreamingAgentId"
 
 // Match the desktop sidebar order
 const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
@@ -192,7 +191,6 @@ export default function AgentsScreen() {
   const modal = useModal()
   const { data: agents = [], isLoading, refetch } = useAgents()
   const { data: repos = [] } = useRepos()
-  const streamingAgentId = useStreamingAgentId()
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["done", "cancelled"]))
   const [repoFilter, setRepoFilter] = useState<string>("all")
@@ -442,7 +440,7 @@ export default function AgentsScreen() {
               />
             )
           }
-          return <AgentRow agent={item.agent} isStreaming={streamingAgentId === item.agent.id} />
+          return <AgentRow agent={item.agent} isStreaming={!!item.agent.streaming} />
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.fgSub} />}
         contentContainerStyle={{ paddingBottom: 32 }}

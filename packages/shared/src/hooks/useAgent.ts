@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../api"
 import { useAgentEvents } from "../ws"
+import { isAgentStreaming } from "../agentState"
 import type { Agent, Message, ToolCall } from "../types"
 
 /** Called when the agent emits an error event. Override per platform. */
@@ -33,23 +34,16 @@ function mergeSubAgentData(msgs: Message[], map: Map<string, SubAgentData>): Mes
 
 export function useAgent(id: string | null) {
   const queryClient = useQueryClient()
-  const [isStreaming, setIsStreaming] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
   // Persistent client-side sub-agent data, keyed by Agent tool call ID
   const subAgentDataRef = useRef(new Map<string, SubAgentData>())
 
-  // Reset on agent switch — but preserve streaming state if the agent's last
-  // message is still incomplete (user navigated away and back while it ran).
+  // Reset sub-agent cache on agent switch.
   useEffect(() => {
-    const cached = queryClient.getQueryData<Agent>(["agent", id])
-    const msgs = cached?.messages
-    const last = msgs?.length ? msgs[msgs.length - 1] : null
-    const wasStreaming = last?.role === "assistant" && last.durationMs == null
-    setIsStreaming(!!wasStreaming)
     subAgentDataRef.current = new Map()
-  }, [id, queryClient])
+  }, [id])
 
   const query = useQuery({
     queryKey: ["agent", id],
@@ -72,36 +66,11 @@ export function useAgent(id: string | null) {
     }
   }, [query.data?.hasMore])
 
-  // Defensive: if fetched data has a completed last message, clear streaming.
-  // Guards against message:done being missed due to WS drop.
-  useEffect(() => {
-    const msgs = query.data?.messages
-    if (!msgs?.length) return
-    const last = msgs[msgs.length - 1]
-    if (last.role === "assistant" && last.durationMs != null) {
-      setIsStreaming(false)
-    }
-  }, [query.data])
-
-  // Poll while streaming: directly fetch and check without touching the RQ cache
-  // unless the run is confirmed done. This avoids the flicker that invalidateQueries
-  // causes (no loading state, no partial-data refetch mid-stream).
-  useEffect(() => {
-    if (!isStreaming || !id) return
-    const interval = setInterval(() => {
-      api.getAgent(id).then((fresh) => {
-        const last = fresh.messages[fresh.messages.length - 1]
-        if (last?.role === "assistant" && last.durationMs != null) {
-          setIsStreaming(false)
-          queryClient.setQueryData<Agent>(["agent", id], (old) => {
-            const merged = mergeSubAgentData(fresh.messages, subAgentDataRef.current)
-            return old ? { ...old, messages: merged } : { ...fresh, messages: merged }
-          })
-        }
-      }).catch(() => {})
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [isStreaming, id, queryClient])
+  // Loading state is now a pure derivation from query data — no internal
+  // React state, no effects, no polling. The server's streaming flag plus
+  // the last message's durationMs are the single source of truth, kept in
+  // sync by the runner's finalize path and the /api/agents override.
+  const isStreaming = query.data ? isAgentStreaming(query.data) : false
 
   const loadMore = useCallback(async () => {
     if (!id || isLoadingMore || !hasMore) return
@@ -154,7 +123,6 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "message:start") {
-      setIsStreaming(true)
       updateMessages((msgs) => [
         ...msgs,
         {
@@ -168,7 +136,6 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "message:chunk") {
-      setIsStreaming(true)
       updateMessages((msgs) => {
         const exists = msgs.some((m) => m.id === event.messageId)
         const withMessage = exists
@@ -277,7 +244,6 @@ export function useAgent(id: string | null) {
 
         return [...msgs, merged]
       })
-      setIsStreaming(false)
     }
 
     if (event.type === "file:changed") {
@@ -357,7 +323,6 @@ export function useAgent(id: string | null) {
     }
 
     if (event.type === "error") {
-      setIsStreaming(false)
       _onError(event.message)
     }
 

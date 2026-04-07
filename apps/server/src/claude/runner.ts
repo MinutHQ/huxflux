@@ -45,6 +45,13 @@ export function isAgentRunning(agentId: string): boolean {
   return runningProcesses.has(agentId)
 }
 
+// Clears any stale streaming=1 rows at startup. The in-memory runningProcesses
+// Map is empty on boot, so any row claiming to stream is a leftover from a
+// previous process that died mid-run.
+export function resetStreamingFlags(): void {
+  db.update(agentsTable).set({ streaming: 0 }).where(eq(agentsTable.streaming, 1)).run()
+}
+
 const MODEL_ALIASES: Record<string, string> = {
   "Opus 4.6": "claude-opus-4-6",
   "Sonnet 4.6": "claude-sonnet-4-6",
@@ -456,19 +463,51 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       }
     })
 
-    proc.on("close", async (code) => {
+    // ── Finalize ────────────────────────────────────────────────────────────
+    // Called from every exit path (close success, close catch, spawn error).
+    // Guarantees: runningProcesses entry removed, streaming flag cleared in DB,
+    // message:done emitted (with whatever partial state we have), and an
+    // agent:updated broadcast so every client can re-derive loading state.
+    // Idempotent — safe to call multiple times.
+    let finalized = false
+    async function finalize(): Promise<void> {
+      if (finalized) return
+      finalized = true
       runningProcesses.delete(agentId)
+
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
         try { handleStreamEvent(JSON.parse(buffer.trim()), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON remainder */ }
         buffer = ""
       }
+
+      // Persist the final message + emit message:done. Failures here must not
+      // prevent the streaming flag from being cleared, so they're swallowed.
       try {
-        // B3: persistAssistantMessage already calls refreshFileChanges — don't call it again
         await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, cwd, branchFrom, flushTimer)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(`[runner] persistAssistantMessage failed for ${agentId}:`, err)
+        // Still emit a done signal with whatever we have so the client unsticks.
+        emit(agentId, {
+          type: "message:done",
+          agentId,
+          messageId,
+          message: {
+            id: messageId,
+            role: "assistant",
+            content: state.fullContent,
+            timestamp: skeletonCreatedAt,
+            durationMs: Date.now() - startedAt,
+            toolCalls: state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result })),
+          } as Message,
+        })
+      }
+
+      // Restore the pre-run status and clear streaming regardless of what
+      // happened above. B2: don't downgrade "in-review".
+      try {
         const doneAt = new Date().toISOString()
-        // B2: Restore the pre-run status instead of forcing "in-progress".
-        // This preserves "in-review" if it was set before the run.
         await db.update(agentsTable)
           .set({
             status: preRunStatus === "in-review" ? "in-review" : "in-progress",
@@ -477,18 +516,22 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
             updatedAt: doneAt,
           })
           .where(eq(agentsTable.id, agentId))
-        // Broadcast updated agent so all clients (sidebar, etc.) stay in sync
         const finalAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
         if (finalAgent) broadcast({ type: "agent:updated", agent: finalAgent as any })
-        resolve()
       } catch (err) {
-        reject(err)
+        // eslint-disable-next-line no-console
+        console.error(`[runner] failed to clear streaming flag for ${agentId}:`, err)
       }
+    }
+
+    proc.on("close", async () => {
+      await finalize()
+      resolve()
     })
 
-    proc.on("error", (err) => {
-      runningProcesses.delete(agentId)
+    proc.on("error", async (err) => {
       emit(agentId, { type: "error", agentId, message: `Failed to spawn claude: ${err.message}` })
+      await finalize()
       reject(err)
     })
   })

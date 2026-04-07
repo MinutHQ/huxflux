@@ -661,7 +661,6 @@ function StatusGroup({
   status,
   agents,
   selectedId,
-  streamingAgentId,
   onSelect,
   onHover,
   onLeave,
@@ -673,7 +672,6 @@ function StatusGroup({
   status: AgentStatus
   agents: AgentSummary[]
   selectedId: string
-  streamingAgentId: string | null
   onSelect: (id: string) => void
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
@@ -706,7 +704,7 @@ function StatusGroup({
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
-              isStreaming={!!agent.streaming || streamingAgentId === agent.id}
+              isStreaming={!!agent.streaming}
               onClick={() => onSelect(agent.id)}
               onHover={onHover}
               onLeave={onLeave}
@@ -728,7 +726,6 @@ function RepoGroup({
   repoName,
   agents,
   selectedId,
-  streamingAgentId,
   onSelect,
   onHover,
   onLeave,
@@ -738,7 +735,6 @@ function RepoGroup({
   repoName: string
   agents: AgentSummary[]
   selectedId: string
-  streamingAgentId: string | null
   onSelect: (id: string) => void
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
@@ -773,7 +769,7 @@ function RepoGroup({
               key={agent.id}
               agent={agent}
               isSelected={selectedId === agent.id}
-              isStreaming={!!agent.streaming || streamingAgentId === agent.id}
+              isStreaming={!!agent.streaming}
               onClick={() => onSelect(agent.id)}
               onHover={onHover}
               onLeave={onLeave}
@@ -1315,7 +1311,6 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
 interface SidebarProps {
   agents: AgentSummary[]
   selectedId: string
-  streamingAgentId: string | null
   onSelect: (id: string) => void
   onOpenSettings: () => void
   onAgentCreating: (info: PendingAgent) => void
@@ -1342,7 +1337,7 @@ interface SidebarProps {
   feedbackEnabled?: boolean
 }
 
-export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1670,7 +1665,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         status={status}
                         agents={grouped[status]}
                         selectedId={selectedId}
-                        streamingAgentId={streamingAgentId}
                         onSelect={onSelect}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
@@ -1687,7 +1681,6 @@ export function Sidebar({ agents, selectedId, streamingAgentId, onSelect, onOpen
                         repoName={group.name}
                         agents={group.agents}
                         selectedId={selectedId}
-                        streamingAgentId={streamingAgentId}
                         onSelect={onSelect}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}

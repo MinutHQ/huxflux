@@ -28,6 +28,7 @@ import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { startPoller } from "./poller.js"
+import { resetStreamingFlags } from "./claude/runner.js"
 
 const app = Fastify({ logger: true })
 
@@ -88,6 +89,11 @@ app.get("/api/config", async () => ({
 
 // Startup — try requested port, then increment up to 10 times on EADDRINUSE
 runMigrations()
+
+// Clear any stale streaming=1 rows from a previous crashed/killed process.
+// The in-memory runningProcesses Map starts empty, so any row claiming to
+// stream is a leftover that would otherwise show stuck loading indicators.
+resetStreamingFlags()
 
 let boundPort: number | null = null
 for (let attempt = 0; attempt < 10; attempt++) {

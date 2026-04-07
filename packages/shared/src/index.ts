@@ -26,6 +26,9 @@ export type { WorkspaceStats } from "./api"
 export { useAgentEvents, connectBackgroundServer, useWsConnected } from "./ws"
 export type { ServerEvent } from "./ws"
 
+// Agent state
+export { isAgentStreaming } from "./agentState"
+
 // Diff
 export { parseUnifiedDiff, tokenize } from "./diff"
 export type { DiffLine, DiffLineType, DiffToken } from "./diff"

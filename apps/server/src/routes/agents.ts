@@ -5,7 +5,7 @@ import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
 import { broadcast, emit } from "../ws/handler.js"
-import { stopAgent } from "../claude/runner.js"
+import { stopAgent, isAgentRunning } from "../claude/runner.js"
 import { generateTitle, deriveTitle } from "./messages.js"
 import { killAgentTerminals } from "../ws/pty.js"
 import { parsePrStatus } from "../github/prStatus.js"
@@ -52,6 +52,10 @@ export async function agentsRoutes(app: FastifyInstance) {
       const deletions = files.reduce((s, f) => s + f.deletions, 0)
       return {
         ...a,
+        // Override the DB field with the live process state. The DB value is
+        // a projection of runningProcesses and can drift if a process exited
+        // abnormally; this makes the API self-healing.
+        streaming: isAgentRunning(a.id) ? 1 : 0,
         diffSummary: files.length > 0 ? { additions, deletions } : undefined,
         prStatus: parsePrStatus(a.prStatus),
       }
@@ -124,6 +128,8 @@ export async function agentsRoutes(app: FastifyInstance) {
 
     return {
       ...agent,
+      // See comment in GET /api/agents — live process state overrides DB flag.
+      streaming: isAgentRunning(agent.id) ? 1 : 0,
       messages: messagesWithTools,
       hasMore,
       fileChanges: files,

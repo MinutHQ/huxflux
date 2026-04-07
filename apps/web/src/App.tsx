@@ -15,7 +15,6 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/u
 import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig, api } from "@huxflux/shared"
 import { useQuery } from "@tanstack/react-query"
 import { useNotifications } from "@/hooks/useNotifications"
-import { useStreamingAgentId } from "@/hooks/useStreamingAgentId"
 import { useServers } from "@/hooks/useServers"
 import { useWorkspace } from "@/hooks/useWorkspace"
 import { playSound } from "@/lib/sounds"
@@ -161,10 +160,6 @@ export default function App() {
     staleTime: 10_000,
   })
 
-  const lastMsgs = activeAgent?.messages
-  const lastMsgDurationMs = lastMsgs?.length ? (lastMsgs[lastMsgs.length - 1].durationMs ?? null) : null
-  const streamingAgentId = useStreamingAgentId(lastMsgDurationMs)
-
   const selectedPr = prReviewEnabled && workspace.selectedPrId
     ? prs.find((p) => p.id === workspace.selectedPrId) ?? null
     : null
@@ -216,7 +211,6 @@ export default function App() {
   const sidebarProps = {
     agents,
     selectedId: workspace.sidebarSelectedId,
-    streamingAgentId,
     onSelect: (id: string) => { setShowHome(false); workspace.selectAgent(id) },
     onOpenSettings: () => setView("settings"),
     onAgentCreating: workspace.onAgentCreating,
@@ -363,7 +357,7 @@ export default function App() {
           update={update}
           isInstalling={isInstalling}
           progress={progress}
-          isIdle={!streamingAgentId && agents.every((a) => a.status !== "in-progress")}
+          isIdle={agents.every((a) => !a.streaming && a.status !== "in-progress")}
           onInstall={downloadAndInstall}
         />
       )}

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
-import { useAgents, useRepos } from "@huxflux/shared"
+import { useAgents, useRepos, isAgentStreaming } from "@huxflux/shared"
 import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
@@ -255,18 +255,18 @@ function ToolCallsAccordion({ calls, isStreaming }: { calls: ToolCall[]; hasCont
 
 function ThinkingBlock({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false)
-  const preview = text.length > 60 ? text.slice(0, 60) + "…" : text
+  const preview = text.replace(/\s+/g, " ").trim()
 
   return (
     <div className="mb-3">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-start gap-2 text-left w-full group"
+        className="flex items-start gap-2 text-left w-full group min-w-0"
       >
         <IconWorld size={13} className="text-muted-foreground/50 shrink-0 mt-0.5" />
         <span className="text-[12px] font-medium text-muted-foreground/70 shrink-0">Thinking</span>
         {!expanded && (
-          <span className="text-[12px] text-muted-foreground/40 font-mono truncate ml-1">{preview}</span>
+          <span className="text-[12px] text-muted-foreground/40 font-mono truncate ml-1 min-w-0 flex-1">{preview}</span>
         )}
       </button>
       {expanded && (
@@ -2366,11 +2366,9 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     onClearFileTab()
   }
 
-  // If the last assistant message has durationMs, the run is complete regardless of isStreaming.
-  // Guards against missed WS events keeping spinners alive after Claude finishes.
-  const lastMsg = agent.messages[agent.messages.length - 1]
-  const lastMsgDone = lastMsg?.role === "assistant" && lastMsg.durationMs != null
-  const uiIsStreaming = isStreaming && !lastMsgDone
+  // Single source of truth — derived from server's streaming flag + last
+  // message's durationMs. See packages/shared/src/agentState.ts.
+  const uiIsStreaming = isAgentStreaming(agent)
 
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending

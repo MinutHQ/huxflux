@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { isTauri } from "@/lib/platform"
 import { invoke } from "@tauri-apps/api/core"
 import ReactMarkdown from "react-markdown"
@@ -37,7 +37,11 @@ import {
   IconX,
   IconLoader2,
   IconMessageCircle2,
+  IconLayoutColumns,
+  IconLayoutRows,
 } from "@tabler/icons-react"
+import { FileDiff } from "@pierre/diffs/react"
+import { processFile } from "@pierre/diffs"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -892,82 +896,142 @@ function ThreadCard({
 
 // ── Diff panel ────────────────────────────────────────────────────────────────
 
-type DiffLine = { type: "add" | "del" | "ctx" | "hunk"; text: string; lineNo?: number }
-
-function parseDiff(raw: string): DiffLine[] {
-  const lines: DiffLine[] = []
-  let addNo = 1, delNo = 1
-  for (const line of raw.split("\n")) {
-    if (line.startsWith("@@")) {
-      const m = line.match(/@@ -(\d+).*\+(\d+)/)
-      if (m) { delNo = parseInt(m[1]); addNo = parseInt(m[2]) }
-      lines.push({ type: "hunk", text: line })
-    } else if (line.startsWith("+")) {
-      lines.push({ type: "add", text: line.slice(1), lineNo: addNo++ })
-    } else if (line.startsWith("-")) {
-      lines.push({ type: "del", text: line.slice(1), lineNo: delNo++ })
-    } else if (line.startsWith(" ")) {
-      lines.push({ type: "ctx", text: line.slice(1), lineNo: addNo++ }); delNo++
-    }
-  }
-  return lines
-}
-
-function PRDiffPanel({ file, fileDiffs, onClose }: { file: PRFile; fileDiffs: Record<string, string>; onClose: () => void }) {
+function PRDiffPanel({
+  file,
+  fileDiffs,
+  onClose,
+  threads,
+  repoId,
+  prNumber,
+  currentUser,
+  viewed,
+  onToggleViewed,
+  onThreadReplied,
+  onThreadResolved,
+}: {
+  file: PRFile
+  fileDiffs: Record<string, string>
+  onClose: () => void
+  threads: PRThread[]
+  repoId?: string
+  prNumber?: number
+  currentUser?: string
+  viewed: boolean
+  onToggleViewed: () => void
+  onThreadReplied: (threadId: string, reply: PRThread["comments"][number]) => void
+  onThreadResolved: (threadId: string) => void
+}) {
   const raw = fileDiffs[file.path] ?? file.patch ?? ""
-  const lines = raw ? parseDiff(raw) : []
   const fileName = file.path.split("/").pop() ?? file.path
+  const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Prevent scroll jump when expanding hunks (same fix as DiffView)
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    let savedScroll: number | null = null
+    let clearTimer: ReturnType<typeof setTimeout> | null = null
+    let inReset = false
+    const onScroll = () => {
+      if (savedScroll !== null && !inReset) {
+        inReset = true
+        container.scrollTop = savedScroll
+        inReset = false
+      }
+    }
+    const onClickCapture = () => {
+      savedScroll = container.scrollTop
+      if (clearTimer) clearTimeout(clearTimer)
+      clearTimer = setTimeout(() => { savedScroll = null; clearTimer = null }, 600)
+    }
+    container.addEventListener("click", onClickCapture, true)
+    container.addEventListener("scroll", onScroll)
+    return () => {
+      container.removeEventListener("click", onClickCapture, true)
+      container.removeEventListener("scroll", onScroll)
+      if (clearTimer) clearTimeout(clearTimer)
+    }
+  }, [])
+
+  const fileDiff = raw ? processFile(raw) : null
+  const fileThreads = threads.filter((t) => t.path === file.path && !t.isResolved && t.comments.length > 0)
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border shrink-0">
-        <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border shrink-0 text-[11px]">
+        <button onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors mr-1">
           <IconArrowLeft size={13} />
         </button>
-        <span className="text-[11px] font-mono text-muted-foreground truncate flex-1">
+        <span className="font-mono text-muted-foreground truncate flex-1">
           {file.path.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
         </span>
-        <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-mono">
-          <span className="text-emerald-400">+{file.additions}</span>
-          <span className="text-red-400">-{file.deletions}</span>
+        <div className="ml-auto flex items-center gap-3 shrink-0">
+          <span className="text-emerald-400 font-mono">+{file.additions}</span>
+          <span className="text-red-400 font-mono">-{file.deletions}</span>
+          <button
+            onClick={() => setDiffStyle((s) => s === "unified" ? "split" : "unified")}
+            className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            title={diffStyle === "unified" ? "Switch to split view" : "Switch to unified view"}
+          >
+            {diffStyle === "unified" ? <IconLayoutColumns size={13} /> : <IconLayoutRows size={13} />}
+          </button>
+          <button
+            onClick={onToggleViewed}
+            className={cn("flex items-center gap-1.5 transition-colors", viewed ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+          >
+            <IconEye size={13} />
+            <span>Viewed</span>
+          </button>
         </div>
       </div>
 
-      {lines.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground/30 text-[12px]">
-          Diff preview not available
-        </div>
-      ) : (
-        <ScrollArea className="flex-1">
-          <div className="text-[11px] font-mono">
-            {lines.map((line, i) => {
-              if (line.type === "hunk") {
-                return (
-                  <div key={i} className="px-3 py-1 bg-secondary/60 text-muted-foreground/50 border-y border-border/40">
-                    {line.text}
-                  </div>
-                )
-              }
-              const bg = line.type === "add" ? "bg-emerald-500/8" : line.type === "del" ? "bg-red-500/8" : ""
-              const prefix = line.type === "add" ? "+" : line.type === "del" ? "-" : " "
-              const prefixColor = line.type === "add" ? "text-emerald-400/60" : line.type === "del" ? "text-red-400/60" : "text-muted-foreground/20"
-              return (
-                <div key={i} className={cn("flex items-start group", bg)}>
-                  <span className="w-8 shrink-0 text-right pr-2 py-0.5 text-muted-foreground/20 select-none border-r border-border/20 text-[10px]">
-                    {line.lineNo}
-                  </span>
-                  <span className={cn("w-4 shrink-0 text-center py-0.5 select-none", prefixColor)}>{prefix}</span>
-                  <span className={cn(
-                    "flex-1 py-0.5 pr-4 whitespace-pre-wrap break-all",
-                    line.type === "add" ? "text-emerald-100/80" : line.type === "del" ? "text-red-100/60 line-through decoration-red-400/30" : "text-foreground/70"
-                  )}>
-                    {line.text}
-                  </span>
-                </div>
-              )
-            })}
+      {/* Diff content */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
+        {fileDiff ? (
+          <FileDiff
+            fileDiff={fileDiff}
+            options={{
+              theme: "vesper",
+              diffStyle,
+              lineDiffType: "word",
+              diffIndicators: "bars",
+              disableFileHeader: true,
+              hunkSeparators: "line-info",
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center py-12 text-muted-foreground/30 text-[12px]">
+            Diff preview not available
           </div>
-        </ScrollArea>
+        )}
+      </div>
+
+      {/* Inline comment threads for this file */}
+      {fileThreads.length > 0 && (
+        <div className="border-t border-border shrink-0 max-h-72 overflow-y-auto">
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/50">
+            <IconMessageCircle2 size={12} className="text-muted-foreground/50" />
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {fileThreads.length} comment{fileThreads.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="p-3 space-y-3">
+            {fileThreads.map((t) => (
+              <ThreadCard
+                key={t.id}
+                thread={t}
+                repoId={repoId ?? ""}
+                prNumber={prNumber ?? 0}
+                fileDiffs={fileDiffs}
+                currentUser={currentUser}
+                onReplied={onThreadReplied}
+                onResolved={onThreadResolved}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -975,13 +1039,16 @@ function PRDiffPanel({ file, fileDiffs, onClose }: { file: PRFile; fileDiffs: Re
 
 // ── Changed files panel ───────────────────────────────────────────────────────
 
-function PRFilesPanel({ files, loading, onFileSelect }: { files: PRFile[]; loading?: boolean; onFileSelect: (f: PRFile) => void }) {
+function PRFilesPanel({ files, loading, viewedFiles, onFileSelect }: { files: PRFile[]; loading?: boolean; viewedFiles: Set<string>; onFileSelect: (f: PRFile) => void }) {
+  const viewedCount = files.filter((f) => viewedFiles.has(f.path)).length
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-2.5 border-b border-border shrink-0">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Changed files</span>
-          <span className="text-[11px] font-mono text-muted-foreground/40">{files.length}</span>
+          <span className="text-[11px] font-mono text-muted-foreground/40">
+            {viewedCount > 0 ? `${viewedCount}/` : ""}{files.length}
+          </span>
         </div>
       </div>
       <ScrollArea className="flex-1">
@@ -992,28 +1059,34 @@ function PRFilesPanel({ files, loading, onFileSelect }: { files: PRFile[]; loadi
               <span className="text-[11px]">Loading files…</span>
             </div>
           )}
-          {files.map((file) => (
-            <div key={file.path} onClick={() => onFileSelect(file)} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent/40 transition-colors cursor-pointer group">
-              <IconFileCode size={11} className="text-muted-foreground/30 shrink-0" />
-              <span className="text-[11px] font-mono text-muted-foreground flex-1 min-w-0 truncate">
-                {file.path.split("/").pop()}
-              </span>
-              <div className="flex items-center gap-1.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                {file.additions > 0 && (
-                  <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-0.5">
-                    <IconPlusFile size={9} />
-                    {file.additions}
-                  </span>
-                )}
-                {file.deletions > 0 && (
-                  <span className="text-[10px] font-mono text-red-400 flex items-center gap-0.5">
-                    <IconMinus size={9} />
-                    {file.deletions}
-                  </span>
-                )}
+          {files.map((file) => {
+            const isViewed = viewedFiles.has(file.path)
+            return (
+              <div key={file.path} onClick={() => onFileSelect(file)} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent/40 transition-colors cursor-pointer group">
+                {isViewed
+                  ? <IconCheck size={11} className="text-muted-foreground/50 shrink-0" />
+                  : <IconFileCode size={11} className="text-muted-foreground/30 shrink-0" />
+                }
+                <span className={cn("text-[11px] font-mono flex-1 min-w-0 truncate", isViewed ? "text-muted-foreground/40" : "text-muted-foreground")}>
+                  {file.path.split("/").pop()}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                  {file.additions > 0 && (
+                    <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-0.5">
+                      <IconPlusFile size={9} />
+                      {file.additions}
+                    </span>
+                  )}
+                  {file.deletions > 0 && (
+                    <span className="text-[10px] font-mono text-red-400 flex items-center gap-0.5">
+                      <IconMinus size={9} />
+                      {file.deletions}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </ScrollArea>
     </div>
@@ -1105,6 +1178,25 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const [description, setDescription] = useState(pr.description)
   const [threads, setThreads] = useState<PRThread[]>([])
   const [currentUser, setCurrentUser] = useState<string | undefined>()
+
+  const viewedKey = pr.repoId ? `huxflux:pr-viewed:${pr.repoId}:${pr.number}` : null
+  const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => {
+    if (!pr.repoId) return new Set()
+    try {
+      const raw = localStorage.getItem(`huxflux:pr-viewed:${pr.repoId}:${pr.number}`)
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+    } catch { return new Set() }
+  })
+
+  const toggleViewed = useCallback((path: string) => {
+    setViewedFiles((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      if (viewedKey) localStorage.setItem(viewedKey, JSON.stringify(Array.from(next)))
+      return next
+    })
+  }, [viewedKey])
 
   const [reviewStep, setReviewStep] = useState(0)
   const [loadingFiles, setLoadingFiles] = useState(!!pr.repoId)
@@ -1579,7 +1671,25 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
             {/* File diff tab content */}
             {activeTab === "file" && openFileTab && (
               <div className="flex-1 min-h-0">
-                <PRDiffPanel file={openFileTab} fileDiffs={fileDiffs} onClose={closeFileTab} />
+                <PRDiffPanel
+                  file={openFileTab}
+                  fileDiffs={fileDiffs}
+                  onClose={closeFileTab}
+                  threads={threads}
+                  repoId={pr.repoId}
+                  prNumber={pr.number}
+                  currentUser={currentUser}
+                  viewed={viewedFiles.has(openFileTab.path)}
+                  onToggleViewed={() => toggleViewed(openFileTab.path)}
+                  onThreadReplied={(threadId, reply) =>
+                    setThreads((prev) => prev.map((th) =>
+                      th.id === threadId ? { ...th, comments: [...th.comments, reply] } : th
+                    ))
+                  }
+                  onThreadResolved={(threadId) =>
+                    setThreads((prev) => prev.filter((th) => th.id !== threadId))
+                  }
+                />
               </div>
             )}
 
@@ -1774,7 +1884,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
         <ResizablePanel defaultSize={38} minSize={25}>
           <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize={60} minSize={30}>
-              <PRFilesPanel files={prFiles} loading={loadingFiles} onFileSelect={openFile} />
+              <PRFilesPanel files={prFiles} loading={loadingFiles} viewedFiles={viewedFiles} onFileSelect={openFile} />
             </ResizablePanel>
             <ResizableHandle />
             <ResizablePanel defaultSize={40} minSize={20}>

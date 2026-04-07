@@ -80,6 +80,9 @@ export interface OpenPR {
   authorAvatar?: string
   branch: string
   baseBranch: string
+  body?: string
+  additions?: number
+  deletions?: number
   createdAt: string
   hasChangeRequests: boolean
   draft: boolean

@@ -41,7 +41,7 @@ import {
   IconLayoutRows,
 } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
-import { processFile } from "@pierre/diffs"
+import { processFile, trimPatchContext } from "@pierre/diffs"
 import { useQuery } from "@tanstack/react-query"
 import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
 
@@ -927,10 +927,12 @@ function PRDiffPanel({
 }) {
   // GitHub patches lack the `--- a/` / `+++ b/` headers that processFile needs to
   // detect the language for Shiki. Prepend them when the patch comes from GitHub.
+  // trimPatchContext(raw, 3) trims each hunk to at most 3 context lines.
   const rawPatch = fileDiffs[file.path] ?? file.patch ?? ""
-  const raw = rawPatch && !rawPatch.startsWith("diff --git") && !rawPatch.startsWith("---")
+  const rawWithHeaders = rawPatch && !rawPatch.startsWith("diff --git") && !rawPatch.startsWith("---")
     ? `--- a/${file.path}\n+++ b/${file.path}\n${rawPatch}`
     : rawPatch
+  const raw = rawWithHeaders ? trimPatchContext(rawWithHeaders, 3) : rawWithHeaders
   const fileName = file.path.split("/").pop() ?? file.path
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
   const scrollRef = useRef<HTMLDivElement>(null)

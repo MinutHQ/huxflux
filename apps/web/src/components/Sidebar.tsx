@@ -43,6 +43,7 @@ import {
   IconHome,
   IconBolt,
   IconRefresh,
+  IconChevronDown,
 } from "@tabler/icons-react"
 
 // ── Status icons (Linear-style) ───────────────────────────────────────────────
@@ -1114,7 +1115,8 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
   onHover: (y: number) => void
   onLeave: () => void
 }) {
-  const ref = useRef<HTMLButtonElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
+  const [descExpanded, setDescExpanded] = useState(false)
 
   function handleMouseEnter() {
     const rect = ref.current?.getBoundingClientRect()
@@ -1130,48 +1132,70 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
   })()
 
   return (
-    <button
+    <div
       ref={ref}
-      onClick={onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={onLeave}
-      className={cn(
-        "w-full min-w-0 flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-all",
-        isSelected
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
-      )}
+      className="w-full min-w-0"
     >
-      {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {pr.unread && <span className="w-1 h-1 rounded-full bg-primary shrink-0" />}
-          <span className={cn(
-            "text-xs leading-snug truncate min-w-0 flex-1",
-            isSelected && "font-semibold",
-            pr.unread && "text-foreground font-medium"
-          )}>
-            {pr.title}
-          </span>
-          {(pr.additions > 0 || pr.deletions > 0) && (
-            <span className="text-[10px] font-mono shrink-0 text-muted-foreground/40">
-              <span className="text-emerald-500/70">+{pr.additions}</span>
-              <span className="text-muted-foreground/30">/</span>
-              <span className="text-red-500/70">-{pr.deletions}</span>
+      <div
+        className={cn(
+          "w-full min-w-0 flex items-start gap-1 px-2.5 py-1.5 rounded-md transition-all",
+          isSelected
+            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+            : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
+        )}
+      >
+        {/* Main clickable area */}
+        <button onClick={onClick} className="flex-1 min-w-0 flex flex-col text-left">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {pr.unread && <span className="w-1 h-1 rounded-full bg-primary shrink-0" />}
+            <span className={cn(
+              "text-xs leading-snug truncate min-w-0 flex-1",
+              isSelected && "font-semibold",
+              pr.unread && "text-foreground font-medium"
+            )}>
+              {pr.title}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 mt-0.5 min-w-0">
-          <span className="text-[10px] font-mono text-muted-foreground/30 shrink-0">#{pr.number}</span>
-          {pr.repo && <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>}
-          {pr.repo && <span className="text-[10px] text-muted-foreground/50 shrink-0 font-medium">{pr.repo}</span>}
-          <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
-          <span className="text-[10px] text-muted-foreground/50 shrink-0">{pr.requestedAt}</span>
-          {badge && <span className="text-muted-foreground/40 text-[10px] shrink-0">·</span>}
-          {badge}
-        </div>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5 min-w-0 flex-wrap">
+            <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0">#{pr.number}</span>
+            {pr.author && <>
+              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
+              <span className="text-[10px] text-muted-foreground/70 shrink-0">{pr.author}</span>
+            </>}
+            {pr.branch && <>
+              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
+              <span className="text-[10px] font-mono text-muted-foreground/60 truncate max-w-[100px]">{pr.branch}</span>
+              <span className="text-[10px] text-muted-foreground/50 shrink-0">→</span>
+              <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">{pr.baseBranch}</span>
+            </>}
+            <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
+            <span className="text-[10px] text-muted-foreground/60 shrink-0">{pr.requestedAt}</span>
+            {(pr.additions > 0 || pr.deletions > 0) && <>
+              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
+              <span className="text-[10px] font-mono text-emerald-500/80 shrink-0">+{pr.additions}</span>
+              <span className="text-[10px] font-mono text-red-500/80 shrink-0">-{pr.deletions}</span>
+            </>}
+            {badge && <span className="text-muted-foreground/40 text-[10px] shrink-0">·</span>}
+            {badge}
+          </div>
+        </button>
+        {pr.description && (
+          <button
+            onClick={() => setDescExpanded(v => !v)}
+            className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors mt-0.5"
+          >
+            <IconChevronDown size={11} className={cn("transition-transform duration-150", descExpanded && "rotate-180")} />
+          </button>
+        )}
       </div>
-    </button>
+      {descExpanded && pr.description && (
+        <div className="px-2.5 pb-1.5 text-[10px] text-muted-foreground/60 leading-relaxed">
+          {pr.description}
+        </div>
+      )}
+    </div>
   )
 }
 

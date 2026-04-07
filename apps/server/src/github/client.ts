@@ -252,6 +252,11 @@ export async function listReviewRequestedPRs(): Promise<Array<OpenPR & { owner: 
       let hasChangeRequests = false
       let reviewRequested = false
       let userReviewed = fromReviewed
+      let branch = ""
+      let baseBranch = ""
+      let body: string | undefined
+      let additions = 0
+      let deletions = 0
       try {
         const [reviewsRes, prRes] = await Promise.all([
           octokit.pulls.listReviews({ owner, repo, pull_number: prNumber, per_page: 50 }),
@@ -266,6 +271,11 @@ export async function listReviewRequestedPRs(): Promise<Array<OpenPR & { owner: 
         hasChangeRequests = [...latestByReviewer.values()].some((s) => s === "CHANGES_REQUESTED")
         reviewRequested = prRes.data.requested_reviewers?.some((r) => r.login === me.login) ?? false
         userReviewed = reviewsRes.data.some((r) => r.user?.id === me.id && r.state !== "DISMISSED")
+        branch = prRes.data.head.ref
+        baseBranch = prRes.data.base.ref
+        body = prRes.data.body ?? undefined
+        additions = prRes.data.additions
+        deletions = prRes.data.deletions
       } catch { /* leave defaults */ }
 
       return {
@@ -275,8 +285,11 @@ export async function listReviewRequestedPRs(): Promise<Array<OpenPR & { owner: 
         title: item.title,
         author: (item.user?.login) ?? "unknown",
         authorAvatar: item.user?.avatar_url,
-        branch: "",
-        baseBranch: "",
+        branch,
+        baseBranch,
+        body,
+        additions,
+        deletions,
         createdAt: item.created_at,
         hasChangeRequests,
         reviewRequested,

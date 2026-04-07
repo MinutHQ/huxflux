@@ -38,10 +38,10 @@ export function usePRs() {
     userReviewed: pr.userReviewed,
     isReadyToMerge: pr.isReadyToMerge,
     unread: false,
-    additions: 0,
-    deletions: 0,
+    additions: pr.additions ?? 0,
+    deletions: pr.deletions ?? 0,
     files: [],
-    description: "",
+    description: pr.body ?? "",
     url: pr.url,
     agentId: pr.agentId,
   }))

@@ -1124,7 +1124,7 @@ function PRFilesPanel({ files, loading, viewedFiles, onFileSelect, description }
           <IconChevronDown size={12} className={cn("text-muted-foreground/40 transition-transform duration-150", descExpanded && "rotate-180")} />
         </button>
         {descExpanded && (
-          <div className="px-3 pb-2.5 text-[11px] text-muted-foreground/70 leading-relaxed overflow-y-auto flex-1">
+          <div className="px-3 pb-2.5 text-[11px] text-foreground/80 leading-relaxed overflow-y-auto flex-1">
             {description
               ? <MarkdownContent content={description} />
               : <span className="text-muted-foreground/30 italic">No description</span>

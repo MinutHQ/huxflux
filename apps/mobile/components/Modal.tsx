@@ -76,7 +76,7 @@ function ActionSheet({ title, options, onDismiss }: { title?: string; options: A
           {options.map((opt, i) => (
             <TouchableOpacity
               key={i}
-              onPress={() => { onDismiss(); opt.onPress() }}
+              onPress={() => { onDismiss(); setTimeout(() => opt.onPress(), 350) }}
               style={{
                 paddingHorizontal: 20, paddingVertical: 14,
                 flexDirection: "row", alignItems: "center", gap: 12,

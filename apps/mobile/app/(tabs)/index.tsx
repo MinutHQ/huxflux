@@ -64,7 +64,7 @@ function StreamingDots() {
 
 // ── Agent row ────────────────────────────────────────────────────────────────
 
-function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: boolean }) {
+function AgentRow({ agent, isStreaming, repoName }: { agent: AgentSummary; isStreaming: boolean; repoName?: string }) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const modal = useModal()
@@ -139,10 +139,9 @@ function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: bo
       delayLongPress={400}
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
-      {isStreaming
-        ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "#f59e0b", flexShrink: 0 }} />
-        : <StatusIcon status={agent.status} size={14} />
-      }
+      {isStreaming && (
+        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: "#f59e0b", flexShrink: 0 }} />
+      )}
 
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -156,12 +155,14 @@ function AgentRow({ agent, isStreaming }: { agent: AgentSummary; isStreaming: bo
           )}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
-          <Text style={{ color: c.fgSub, fontSize: 12, fontFamily: "monospace" }} numberOfLines={1}>
-            {agent.branch}
-          </Text>
+          {repoName && (
+            <Text style={{ color: c.fgSub, fontSize: 12 }} numberOfLines={1}>
+              {repoName}
+            </Text>
+          )}
           {agent.prStatus && (
             <Text style={{ color: prColor ?? c.fgSub, fontSize: 11 }}>
-              · PR #{agent.prStatus.number}
+              PR #{agent.prStatus.number}
               {agent.prStatus.merged ? " ✓" : agent.prStatus.state === "closed" ? " ✕" : agent.prStatus.hasChangeRequests ? " !" : ""}
             </Text>
           )}
@@ -220,6 +221,7 @@ export default function AgentsScreen() {
   const modal = useModal()
   const { data: agents = [], isLoading, refetch } = useAgents()
   const { data: repos = [] } = useRepos()
+  const repoNames = useMemo(() => Object.fromEntries(repos.map((r) => [r.id, r.name])), [repos])
   const [refreshing, setRefreshing] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["done", "cancelled"]))
   const [repoFilter, setRepoFilter] = useState<string>("all")
@@ -469,7 +471,7 @@ export default function AgentsScreen() {
               />
             )
           }
-          return <AgentRow agent={item.agent} isStreaming={!!item.agent.streaming} />
+          return <AgentRow agent={item.agent} isStreaming={!!item.agent.streaming} repoName={item.agent.repoId ? repoNames[item.agent.repoId] : undefined} />
         }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.fgSub} />}
         contentContainerStyle={{ paddingBottom: 32 }}

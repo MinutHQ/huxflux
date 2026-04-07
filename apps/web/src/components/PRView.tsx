@@ -911,8 +911,8 @@ function PRDescriptionAccordion({ description }: { description: string }) {
         <span>{open ? "Hide" : "Show"} description</span>
       </button>
       {open && (
-        <div className="mt-1.5 text-[11px] text-muted-foreground/70 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-          {description}
+        <div className="mt-1.5 max-h-40 overflow-y-auto prose prose-sm prose-invert max-w-none [&>*]:text-[11px] [&>*]:text-muted-foreground/70 [&_p]:leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:mb-0.5 [&_h1]:text-[12px] [&_h2]:text-[12px] [&_h3]:text-[11px] [&_h1,h2,h3]:font-semibold [&_h1,h2,h3]:text-foreground/70 [&_code]:text-[10px] [&_code]:bg-secondary [&_code]:px-1 [&_code]:rounded [&_a]:text-blue-400/70 [&_a]:underline">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
         </div>
       )}
     </div>

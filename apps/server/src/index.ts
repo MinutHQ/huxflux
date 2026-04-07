@@ -29,7 +29,7 @@ import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { startPoller } from "./poller.js"
 import { resetStreamingFlags } from "./claude/runner.js"
-import { watchWorktree } from "./git/watcher.js"
+import { watchWorktree, refreshWorktree } from "./git/watcher.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { isNull, eq } from "drizzle-orm"
@@ -99,17 +99,21 @@ runMigrations()
 // stream is a leftover that would otherwise show stuck loading indicators.
 resetStreamingFlags()
 
-// Re-attach file watchers for agents that were active before restart
+// Re-attach file watchers and do an initial scan for all active agents
 {
   const activeAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
-  for (const agent of activeAgents) {
-    if (!agent.repoId || agent.noWorktree) continue
-    const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-    if (!repo) continue
-    const worktreePath = path.join(repo.workspacesPath, agent.location)
-    if (!fs.existsSync(worktreePath)) continue
-    watchWorktree(agent.id, worktreePath, repo.branchFrom)
-  }
+  void (async () => {
+    for (const agent of activeAgents) {
+      if (!agent.repoId || agent.noWorktree) continue
+      const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+      if (!repo) continue
+      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      if (!fs.existsSync(worktreePath)) continue
+      watchWorktree(agent.id, worktreePath, repo.branchFrom)
+      // Populate file changes so they show up without needing a new agent run
+      await refreshWorktree(agent.id, worktreePath, repo.branchFrom).catch(() => {})
+    }
+  })()
 }
 
 let boundPort: number | null = null

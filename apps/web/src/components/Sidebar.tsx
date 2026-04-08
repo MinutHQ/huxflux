@@ -14,7 +14,6 @@ import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { getFlag } from "@/lib/flags"
-import { openExternal, handleExternalClick } from "@/lib/platform"
 import { toast } from "sonner"
 import { TitleBar } from "@/components/TitleBar"
 import {
@@ -179,7 +178,7 @@ function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y
                 target="_blank"
                 rel="noreferrer"
                 className="text-muted-foreground/60 flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
-                onClick={(e) => { e.stopPropagation(); handleExternalClick(e) }}
+                onClick={(e) => e.stopPropagation()}
               >
                 #{agent.prStatus.number}
                 <IconArrowUpRight size={11} />
@@ -1064,7 +1063,7 @@ function HelpPopover({ feedbackEnabled, onFeedback, onClose, onShowShortcuts, an
             Keyboard shortcuts
           </button>
           <button
-            onClick={() => { openExternal("https://huxflux-docs.netlify.app/docs"); onClose() }}
+            onClick={() => { window.open("https://huxflux-docs.netlify.app/docs", "_blank"); onClose() }}
             className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-accent/60 transition-colors text-left text-[12px] text-foreground"
           >
             <IconBook size={13} className="text-muted-foreground shrink-0" />

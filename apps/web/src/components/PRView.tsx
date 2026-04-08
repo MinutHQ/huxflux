@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { openExternal, handleExternalClick } from "@/lib/platform"
+import { isTauri } from "@/lib/platform"
+import { invoke } from "@tauri-apps/api/core"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { ScrollArea } from "@huxflux/ui"
@@ -159,7 +160,7 @@ function MarkdownContent({ content }: { content: string }) {
         details: ({ children }) => <details className="mb-2 rounded border border-border bg-secondary/20 px-3 py-1.5 text-[12px]">{children}</details>,
         summary: ({ children }) => <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">{children}</summary>,
         hr: () => <hr className="border-border my-3" />,
-        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleExternalClick} className="text-blue-400 hover:underline">{children}</a>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{children}</a>,
       }}
     >
       {cleaned}
@@ -867,7 +868,7 @@ function InlineMd({ text }: { text: string }) {
         ol: ({ children }) => <ol style={{ margin: "2px 0", paddingLeft: 16 }}>{children}</ol>,
         li: ({ children }) => <li style={{ fontSize: 12, lineHeight: 1.5 }}>{children}</li>,
         strong: ({ children }) => <strong style={{ fontWeight: 600, color: "rgba(255,255,255,0.95)" }}>{children}</strong>,
-        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleExternalClick} style={{ color: "rgb(96,165,250)", textDecoration: "none" }}>{children}</a>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "rgb(96,165,250)", textDecoration: "none" }}>{children}</a>,
         blockquote: ({ children }) => <blockquote style={{ borderLeft: "2px solid rgba(255,255,255,0.15)", paddingLeft: 8, margin: "4px 0", color: "rgba(255,255,255,0.5)" }}>{children}</blockquote>,
       }}
     >
@@ -2206,7 +2207,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
               <span className="text-[11px] font-mono text-muted-foreground/50 shrink-0">#{pr.number}</span>
               {prUrl ? (
                 <button
-                  onClick={() => openExternal(prUrl)}
+                  onClick={() => { if (isTauri) invoke("open_url", { url: prUrl }); else window.open(prUrl, "_blank") }}
                   className="text-[14px] font-semibold text-foreground hover:text-foreground/70 transition-colors truncate text-left cursor-pointer"
                 >
                   {title}

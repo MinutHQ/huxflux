@@ -323,31 +323,13 @@ export function runMigrations() {
   const currentVersion = (raw.prepare("SELECT version FROM schema_version").get() as { version: number }).version
 
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
-  if (pending.length === 0) {
-    console.log(`[db] schema up to date (v${currentVersion})`)
-    return
-  }
+  if (pending.length === 0) return
 
-  console.log(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
   for (const migration of pending) {
-    // Run DDL outside transactions — node:sqlite's shim silently swallows
-    // ALTER TABLE and other DDL inside transaction wrappers.
-    sqlite.exec(migration.sql)
-    raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+    sqlite.transaction(() => {
+      sqlite.exec(migration.sql)
+      raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+    })()
     console.log(`[db] applied migration v${migration.version}`)
-  }
-  console.log(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
-
-  repairSchema()
-}
-
-// Fix columns that were lost due to ALTER TABLE being silently swallowed
-// inside node:sqlite transactions in earlier versions of the migration runner.
-function repairSchema() {
-  const cols = raw.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[]
-  const colNames = new Set(cols.map((c) => c.name))
-  if (!colNames.has("preceding_text")) {
-    sqlite.exec("ALTER TABLE tool_calls ADD COLUMN preceding_text TEXT")
-    console.log("[db] repaired: added missing preceding_text column")
   }
 }

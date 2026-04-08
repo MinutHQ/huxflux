@@ -6,7 +6,6 @@ import { cn } from "@huxflux/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
 import { getActiveServer, useRepos, api } from "@huxflux/shared"
-import { handleExternalClick } from "@/lib/platform"
 import { colorThemes, getColorTheme } from "@/lib/colorThemes"
 import "@xterm/xterm/css/xterm.css"
 
@@ -487,7 +486,6 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
                     href={`http://localhost:${detectedPort}`}
                     target="_blank"
                     rel="noreferrer"
-                    onClick={handleExternalClick}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
                   >
                     <IconWorld size={11} className="text-emerald-400" />

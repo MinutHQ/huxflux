@@ -4,7 +4,6 @@ import { Button } from "@huxflux/ui"
 import { api } from "@huxflux/shared"
 import { IconX, IconMessageCircle, IconExternalLink } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { handleExternalClick } from "@/lib/platform"
 
 export function FeedbackDialog({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("")
@@ -49,7 +48,6 @@ export function FeedbackDialog({ onClose }: { onClose: () => void }) {
               href={submitted.url}
               target="_blank"
               rel="noreferrer"
-              onClick={handleExternalClick}
               className="flex items-center gap-1.5 text-sm text-foreground hover:underline"
             >
               <IconExternalLink size={13} />

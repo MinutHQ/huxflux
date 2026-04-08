@@ -6,7 +6,7 @@ import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
 import { api, getApiBase, getActiveServer } from "@huxflux/shared"
-import { isTauri, handleExternalClick } from "@/lib/platform"
+import { isTauri } from "@/lib/platform"
 import { getFlag } from "@/lib/flags"
 import { DiffView } from "@/components/DiffView"
 import { FileContentView } from "@/components/FileContentView"
@@ -1014,7 +1014,7 @@ const MarkdownContent = React.memo(function MarkdownContent({ content }: { conte
           <blockquote className="border-l-2 border-border pl-3 text-muted-foreground my-3">{children}</blockquote>
         ),
         a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer" onClick={handleExternalClick} className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity">
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity">
             {children}
           </a>
         ),
@@ -1263,7 +1263,6 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
         href={prStatus.url}
         target="_blank"
         rel="noreferrer"
-        onClick={handleExternalClick}
         className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border text-[11px] text-muted-foreground font-mono hover:text-foreground transition-colors"
       >
         #{prStatus.number}

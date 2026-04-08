@@ -397,7 +397,7 @@ export async function submitPRReview(
   prNumber: number,
   event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
   body: string,
-  comments: Array<{ path: string; line: number; body: string }>,
+  comments: Array<{ path: string; line: number; body: string; start_line?: number }>,
 ): Promise<void> {
   const octokit = getOctokit()
   // GitHub does not allow inline comments on APPROVE reviews
@@ -410,7 +410,13 @@ export async function submitPRReview(
     commit_id: pr.head.sha,
     event,
     body,
-    comments: inlineComments.map((c) => ({ path: c.path, line: c.line, side: "RIGHT" as const, body: c.body })),
+    comments: inlineComments.map((c) => ({
+      path: c.path,
+      line: c.line,
+      side: "RIGHT" as const,
+      body: c.body,
+      ...(c.start_line && c.start_line !== c.line ? { start_line: c.start_line, start_side: "RIGHT" as const } : {}),
+    })),
   })
 }
 
@@ -565,6 +571,11 @@ export async function listBranches(repoUrl: string): Promise<string[]> {
   return branches.map((b) => b.name)
 }
 
+
+export async function deleteReviewComment(owner: string, repo: string, commentId: number): Promise<void> {
+  const octokit = getOctokit()
+  await octokit.pulls.deleteReviewComment({ owner, repo, comment_id: commentId })
+}
 
 export async function getPRFileContent(
   owner: string,

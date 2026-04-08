@@ -194,6 +194,10 @@ export const api = {
   },
   resolveThread: (threadId: string) =>
     req<{ ok: boolean }>(`/api/prs/threads/${encodeURIComponent(threadId)}/resolve`, { method: "POST" }),
+  deleteComment: (repoId: string, commentId: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/comments/${commentId}`, { method: "DELETE" })
+  },
   replyToPRComment: (repoId: string, prNumber: number, commentId: number, body: string) => {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/comments/${commentId}/reply`, {
@@ -204,7 +208,7 @@ export const api = {
   submitPRReview: (
     repoId: string,
     prNumber: number,
-    body: { event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string; comments: Array<{ path: string; line: number; body: string }> }
+    body: { event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string; comments: Array<{ path: string; line: number; body: string; start_line?: number }> }
   ) => {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/submit-review`, {
@@ -227,11 +231,12 @@ export const api = {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/chat-messages`, { method: "DELETE" })
   },
-  streamPRReview: (repoId: string, prNumber: number) => {
+  streamPRReview: (repoId: string, prNumber: number, existingComments?: Array<{ path: string; line: number; body: string }>) => {
     const [owner, repo] = repoId.split("/")
     return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/review`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: { ...authHeaders(), ...(existingComments ? { "Content-Type": "application/json" } : {}) },
+      ...(existingComments?.length ? { body: JSON.stringify({ existingComments }) } : {}),
     })
   },
   streamPRChat: (repoId: string, prNumber: number, messages: Array<{ role: "user" | "assistant"; content: string }>) => {

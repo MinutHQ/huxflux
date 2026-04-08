@@ -12,10 +12,15 @@ export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
 
   static getDerivedStateFromError(error: Error): State {
+    // @pierre/diffs throws a harmless error during React 19 strict-mode unmount — suppress it
+    if (error.message?.includes("instance should exist when unmounting")) {
+      return { error: null }
+    }
     return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (error.message?.includes("instance should exist when unmounting")) return
     console.error("Uncaught render error", error, info.componentStack)
   }
 

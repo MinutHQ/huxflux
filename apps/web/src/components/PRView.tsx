@@ -49,10 +49,9 @@ import {
   IconAlertTriangle,
   IconFolder,
 } from "@tabler/icons-react"
-import { FileDiff } from "@pierre/diffs/react"
-import { processFile, trimPatchContext } from "@pierre/diffs"
+import { PatchDiff } from "@pierre/diffs/react"
+import type { SelectedLineRange, DiffLineAnnotation } from "@pierre/diffs"
 import { useQuery } from "@tanstack/react-query"
-import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +77,7 @@ interface PendingReviewComment {
   id: string
   path: string
   line: number
+  startLine?: number
   body: string
   source: "agentic" | "inline"
   codeContext?: ReviewComment["codeContext"]
@@ -849,32 +849,36 @@ function ConversationsTab({
   )
 }
 
-// ── Inline-commentable diff view ─────────────────────────────────────────────
+// ── Inline-commentable diff view (using @pierre/diffs) ──────────────────────
 
-type ParsedDiffLine =
-  | { kind: "hunk"; content: string }
-  | { kind: "added" | "removed" | "context"; oldLine?: number; newLine?: number; content: string }
-  | { kind: "gap"; from: number; to: number }
+// Markdown renderer safe for shadow DOM slots (uses inline styles, not Tailwind)
+function InlineMd({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p style={{ margin: "0 0 4px", lineHeight: 1.5 }}>{children}</p>,
+        code: ({ children, className }) => {
+          if (className?.includes("language-")) {
+            return <pre style={{ background: "rgba(255,255,255,0.05)", borderRadius: 4, padding: "6px 8px", overflow: "auto", margin: "4px 0", fontSize: 11 }}><code>{children}</code></pre>
+          }
+          return <code style={{ fontSize: 11, background: "rgba(255,255,255,0.08)", padding: "1px 4px", borderRadius: 3 }}>{children}</code>
+        },
+        ul: ({ children }) => <ul style={{ margin: "2px 0", paddingLeft: 16 }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ margin: "2px 0", paddingLeft: 16 }}>{children}</ol>,
+        li: ({ children }) => <li style={{ fontSize: 12, lineHeight: 1.5 }}>{children}</li>,
+        strong: ({ children }) => <strong style={{ fontWeight: 600, color: "rgba(255,255,255,0.95)" }}>{children}</strong>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "rgb(96,165,250)", textDecoration: "none" }}>{children}</a>,
+        blockquote: ({ children }) => <blockquote style={{ borderLeft: "2px solid rgba(255,255,255,0.15)", paddingLeft: 8, margin: "4px 0", color: "rgba(255,255,255,0.5)" }}>{children}</blockquote>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  )
+}
 
-function parseDiffLines(patch: string): ParsedDiffLine[] {
-  const result: ParsedDiffLine[] = []
-  let old = 0, nw = 0
-  let lastNewLine = 0
-  for (const line of patch.split("\n")) {
-    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/)
-    if (hunk) {
-      const newStart = parseInt(hunk[2], 10)
-      if (lastNewLine > 0 && newStart > lastNewLine + 1) {
-        result.push({ kind: "gap", from: lastNewLine + 1, to: newStart - 1 })
-      }
-      old = parseInt(hunk[1], 10) - 1; nw = newStart - 1
-      result.push({ kind: "hunk", content: line }); continue
-    }
-    if (line.startsWith("+")) { nw++; lastNewLine = nw; result.push({ kind: "added", newLine: nw, content: line.slice(1) }) }
-    else if (line.startsWith("-")) { old++; result.push({ kind: "removed", oldLine: old, content: line.slice(1) }) }
-    else if (line.startsWith(" ")) { old++; nw++; lastNewLine = nw; result.push({ kind: "context", oldLine: old, newLine: nw, content: line.slice(1) }) }
-  }
-  return result
+function patchToGitDiff(filePath: string, patch: string): string {
+  return `diff --git a/${filePath} b/${filePath}\n--- a/${filePath}\n+++ b/${filePath}\n${patch}`
 }
 
 function DiffWithInlineComments({
@@ -883,264 +887,317 @@ function DiffWithInlineComments({
   onAddComment,
   onRemoveComment,
   onEditComment,
+  threads,
+  filePath,
+  diffStyle,
   repoId,
   prNumber,
-  filePath,
+  currentUser,
+  onThreadReplied,
+  onThreadResolved,
 }: {
   patch: string
   pendingComments: PendingReviewComment[]
-  onAddComment: (line: number, body: string) => void
+  onAddComment: (line: number, body: string, startLine?: number) => void
   onRemoveComment: (id: string) => void
   onEditComment: (id: string, body: string) => void
+  threads?: PRThread[]
+  filePath?: string
+  diffStyle: "unified" | "split"
   repoId?: string
   prNumber?: number
-  filePath?: string
+  currentUser?: string
+  onThreadReplied?: (threadId: string, reply: PRThread["comments"][number]) => void
+  onThreadResolved?: (threadId: string) => void
 }) {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
-  const [activeCommentIdx, setActiveCommentIdx] = useState<number | null>(null)
-  const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null)
+  const [commentRange, setCommentRange] = useState<{ start: number; end: number } | null>(null)
   const [commentBody, setCommentBody] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState("")
-  const [fileContent, setFileContent] = useState<string[] | null>(null)
-  const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set())
-  const [loadingZone, setLoadingZone] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
-  const rawLines = parseDiffLines(patch)
-
-  async function expandZone(from: number, to: number) {
-    const key = `gap-${from}-${to}`
-    if (expandedZones.has(key)) { setExpandedZones(prev => { const n = new Set(prev); n.delete(key); return n }); return }
-    let content = fileContent
-    if (!content && repoId && prNumber != null && filePath) {
-      setLoadingZone(key)
-      try {
-        const text = await api.getPRFileContent(repoId, prNumber, filePath, "head")
-        content = text.split("\n")
-        setFileContent(content)
-      } catch { content = [] } finally { setLoadingZone(null) }
-    }
-    setExpandedZones(prev => { const n = new Set(prev); n.add(key); return n })
-  }
-
-  // Expand gap zones inline so the comment/hover logic works uniformly
-  const lines: ParsedDiffLine[] = rawLines.flatMap((l) => {
-    if (l.kind !== "gap") return [l]
-    const key = `gap-${l.from}-${l.to}`
-    if (!expandedZones.has(key) || !fileContent) return [l]
-    return Array.from({ length: l.to - l.from + 1 }, (_, i): ParsedDiffLine => ({
-      kind: "context",
-      oldLine: l.from + i,
-      newLine: l.from + i,
-      content: fileContent[l.from + i - 1] ?? "",
-    }))
+  const [replyingThreadId, setReplyingThreadId] = useState<string | null>(null)
+  const [replyBody, setReplyBody] = useState("")
+  const [sending, setSending] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    // Resolved threads start collapsed
+    const initial = new Set<string>()
+    for (const t of (threads ?? [])) { if (t.isResolved) initial.add(t.id) }
+    return initial
   })
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const diffInstanceRef = useRef<any>(null)
 
-  function openForm(idx: number, line: number) {
-    setActiveCommentIdx(idx)
-    setActiveCommentLine(line)
-    setCommentBody("")
-    setTimeout(() => textareaRef.current?.focus(), 50)
+  function toggleCollapse(id: string) {
+    setCollapsed(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
 
-  function openEdit(id: string, body: string) {
-    setEditingId(id)
-    setEditBody(body)
-    setTimeout(() => editTextareaRef.current?.focus(), 50)
+  async function deleteThreadComment(commentDatabaseId: number, threadId: string) {
+    if (!repoId || sending) return
+    setSending(true)
+    try {
+      await api.deleteComment(repoId, commentDatabaseId)
+      // Optimistic: remove the thread from view
+      onThreadResolved?.(threadId)
+    } catch { /* ignore */ } finally { setSending(false) }
+  }
+
+  const gitDiff = useMemo(
+    () => filePath ? patchToGitDiff(filePath, patch) : patch,
+    [filePath, patch]
+  )
+
+  const hasOpenForm = commentRange != null || editingId != null || replyingThreadId != null
+
+  function handleGutterClick(range: SelectedLineRange) {
+    setCommentRange({ start: range.start, end: range.end })
+    setCommentBody("")
+    setEditingId(null)
+    setReplyingThreadId(null)
+    setTimeout(() => textareaRef.current?.focus(), 80)
+  }
+
+  function submitComment() {
+    if (!commentBody.trim() || !commentRange) return
+    const startLine = commentRange.start !== commentRange.end ? commentRange.start : undefined
+    onAddComment(commentRange.end, commentBody.trim(), startLine)
+    setCommentRange(null)
+    setCommentBody("")
   }
 
   function submitEdit() {
-    if (!editBody.trim() || editingId == null) return
+    if (!editBody.trim() || !editingId) return
     onEditComment(editingId, editBody.trim())
     setEditingId(null)
     setEditBody("")
   }
 
-  function submit() {
-    if (!commentBody.trim() || activeCommentLine == null) return
-    onAddComment(activeCommentLine, commentBody.trim())
-    setActiveCommentIdx(null)
-    setActiveCommentLine(null)
-    setCommentBody("")
+  async function submitReply(thread: PRThread) {
+    if (!replyBody.trim() || sending || !repoId || !prNumber) return
+    const rootComment = thread.comments.find((c) => !c.isReply) ?? thread.comments[0]
+    if (!rootComment?.databaseId) return
+    setSending(true)
+    try {
+      await api.replyToPRComment(repoId, prNumber, rootComment.databaseId, replyBody.trim())
+      onThreadReplied?.(thread.id, {
+        id: `local-${Date.now()}`, author: currentUser ?? "you", body: replyBody.trim(),
+        createdAt: new Date().toISOString(), url: "", isReply: true, path: thread.path, line: thread.line,
+      })
+      setReplyBody("")
+      setReplyingThreadId(null)
+    } catch { /* ignore */ } finally { setSending(false) }
+  }
+
+  async function resolveThread(threadId: string) {
+    setSending(true)
+    try {
+      await api.resolveThread(threadId)
+      onThreadResolved?.(threadId)
+    } catch { /* ignore */ } finally { setSending(false) }
+  }
+
+  // Build annotations
+  const annotations = useMemo((): DiffLineAnnotation<{ id: string; kind: "thread" | "pending" | "form" }>[] => {
+    const items: DiffLineAnnotation<{ id: string; kind: "thread" | "pending" | "form" }>[] = []
+    for (const t of (threads ?? [])) {
+      if (!t.line || !t.comments.length) continue
+      items.push({ side: "additions", lineNumber: t.line, metadata: { id: t.id, kind: "thread" } })
+    }
+    for (const c of pendingComments) {
+      items.push({ side: "additions", lineNumber: c.line, metadata: { id: c.id, kind: "pending" } })
+    }
+    if (commentRange) {
+      items.push({ side: "additions", lineNumber: commentRange.end, metadata: { id: "__form__", kind: "form" } })
+    }
+    return items
+  }, [threads, pendingComments, commentRange])
+
+  // Force rerender when annotations change so slots are created
+  useEffect(() => {
+    if (diffInstanceRef.current && annotations.length > 0) {
+      // Small delay to let React commit the slotted children first
+      const timer = setTimeout(() => {
+        try { diffInstanceRef.current?.rerender() } catch { /* ignore */ }
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [annotations.length])
+
+  const S = { // inline style helpers
+    card: { padding: "8px 12px", background: "rgba(59,130,246,0.04)", borderRadius: 8, margin: "4px 8px", fontFamily: "system-ui, sans-serif", overflowWrap: "anywhere" as const, wordBreak: "break-word" as const, overflow: "hidden" as const, minWidth: 0, maxWidth: "100%" } as const,
+    textarea: { width: "100%", fontSize: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "6px 10px", color: "inherit", resize: "none" as const, overflow: "hidden" as const, outline: "none" },
+    btnPrimary: { fontSize: 11, fontWeight: 500, padding: "4px 10px", borderRadius: 4, background: "var(--primary, #3b82f6)", color: "white", border: "none", cursor: "pointer" } as const,
+    btnGhost: { fontSize: 11, background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer" } as const,
+    btnDanger: { fontSize: 11, background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer" } as const,
+    actions: { display: "flex", alignItems: "center", gap: 8, marginTop: 6 } as const,
   }
 
   return (
-    <div className="overflow-x-auto text-[12px] font-mono bg-[#0d0d0d] rounded-b-lg">
-      <table className="min-w-full border-collapse">
-        <tbody>
-          {lines.map((line, idx) => {
-            if (line.kind === "hunk") {
-              return (
-                <tr key={idx} className="bg-blue-500/5">
-                  <td colSpan={5} className="px-3 py-0.5 text-blue-400/60 text-[11px] select-none">{line.content}</td>
-                </tr>
-              )
-            }
-            if (line.kind === "gap") {
-              const key = `gap-${line.from}-${line.to}`
-              const count = line.to - line.from + 1
-              const isLoading = loadingZone === key
-              return (
-                <tr key={key} className="bg-secondary/20">
-                  <td colSpan={5} className="py-0.5 text-center border-y border-border/20">
-                    <button
-                      onClick={() => expandZone(line.from, line.to)}
-                      disabled={isLoading}
-                      className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors flex items-center gap-1.5 mx-auto py-0.5"
-                    >
-                      {isLoading ? <IconLoader2 size={11} className="animate-spin" /> : <span>↕</span>}
-                      {count} unchanged line{count !== 1 ? "s" : ""}
-                    </button>
-                  </td>
-                </tr>
-              )
-            }
-            const commentLine = line.kind !== "removed" ? line.newLine : line.oldLine
-            const isHovered = hoveredIdx === idx
-            const hasComment = commentLine != null && pendingComments.some((c) => c.line === commentLine)
-            const showForm = activeCommentIdx === idx
-            const rowBg = line.kind === "added" ? "bg-emerald-500/10" : line.kind === "removed" ? "bg-red-500/10" : ""
-            const prefix = line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " "
-            const prefixColor = line.kind === "added" ? "text-emerald-400" : line.kind === "removed" ? "text-red-400" : "text-muted-foreground/20"
-            const textColor = line.kind === "added" ? "text-emerald-100/90" : line.kind === "removed" ? "text-red-200/80" : "text-foreground/70"
+    <div className="overflow-auto rounded-b-lg">
+      <PatchDiff<{ id: string; kind: "thread" | "pending" | "form" }>
+        patch={gitDiff}
+        lineAnnotations={annotations}
+        options={{
+          theme: "vesper",
+          diffStyle,
+          lineDiffType: "word",
+          diffIndicators: "bars",
+          disableFileHeader: true,
+          unsafeCSS: `[data-line-annotation] { overflow: hidden; min-width: 0; } [data-annotation-content] { overflow: hidden; min-width: 0; }`,
+          hunkSeparators: "line-info",
+          enableGutterUtility: !hasOpenForm,
+          onGutterUtilityClick: handleGutterClick,
+          enableLineSelection: !hasOpenForm,
+          onPostRender: (_node, instance) => { diffInstanceRef.current = instance },
+        }}
+        renderAnnotation={(annotation) => {
+          const { id, kind } = annotation.metadata
 
+          // ── New comment form ──
+          if (kind === "form" && commentRange) {
+            const rangeLabel = commentRange.start !== commentRange.end
+              ? `lines ${commentRange.start}–${commentRange.end}` : `line ${commentRange.end}`
             return (
-              <React.Fragment key={idx}>
-                <tr
-                  className={cn("group relative", rowBg, isHovered && commentLine != null && "brightness-110")}
-                  onMouseEnter={() => setHoveredIdx(idx)}
-                  onMouseLeave={() => setHoveredIdx(null)}
-                >
-                  {/* Old line number */}
-                  <td className="select-none text-right pl-2 pr-1.5 py-0.5 w-9 text-[10px] text-muted-foreground/20 tabular-nums border-r border-border/20">
-                    {line.kind !== "added" ? (line.oldLine ?? "") : ""}
-                  </td>
-                  {/* New line number */}
-                  <td className="select-none text-right pl-1.5 pr-1.5 py-0.5 w-9 text-[10px] text-muted-foreground/20 tabular-nums border-r border-border/20">
-                    {line.kind !== "removed" ? (line.newLine ?? "") : ""}
-                  </td>
-                  {/* Prefix */}
-                  <td className={cn("select-none px-1 py-0.5 w-4 text-center font-bold", prefixColor)}>{prefix}</td>
-                  {/* Content */}
-                  <td className={cn("pl-1 pr-2 py-0.5 whitespace-pre", textColor)}>{line.content}</td>
-                  {/* Add comment button — sticky so it stays visible when scrolling horizontally */}
-                  <td className="sticky right-0 w-6 px-1 bg-inherit">
-                    {commentLine != null && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); if (commentLine != null) openForm(idx, commentLine) }}
-                        className={cn(
-                          "w-4 h-4 rounded text-[10px] font-bold flex items-center justify-center transition-colors select-none",
-                          hasComment
-                            ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                            : isHovered
-                            ? "bg-accent text-foreground/70 hover:text-foreground"
-                            : "text-muted-foreground/25 hover:bg-accent hover:text-foreground/60"
-                        )}
-                        title="Add comment"
-                      >
-                        +
-                      </button>
-                    )}
-                  </td>
-                </tr>
-                {/* Pending comments for this line */}
-                {commentLine != null && pendingComments.filter((c) => c.line === commentLine).map((c) => (
-                  <tr key={c.id} className="bg-blue-500/5 border-y border-blue-500/10" onMouseEnter={() => setHoveredIdx(null)}>
-                    <td colSpan={5} className="px-3 py-2">
-                      {editingId === c.id ? (
-                        <div>
-                          <textarea
-                            ref={editTextareaRef}
-                            value={editBody}
-                            onChange={(e) => {
-                              setEditBody(e.target.value)
-                              e.target.style.height = "auto"
-                              e.target.style.height = `${e.target.scrollHeight}px`
-                            }}
-                            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitEdit() }}
-                            rows={2}
-                            className="w-full text-[12px] font-sans bg-secondary/60 border border-input rounded px-2.5 py-1.5 text-foreground focus:outline-none focus:border-ring resize-none overflow-hidden"
-                          />
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <button
-                              onClick={submitEdit}
-                              disabled={!editBody.trim()}
-                              className="text-[11px] font-medium px-2.5 py-1 rounded bg-primary text-primary-foreground disabled:opacity-40"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="text-[11px] text-muted-foreground/50 hover:text-foreground px-1 py-1"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-2">
-                          <span className="text-blue-400/60 text-[10px] mt-0.5 shrink-0">◆</span>
-                          <span className="text-[12px] font-sans text-foreground/80 flex-1">{c.body}</span>
-                          <button
-                            onClick={() => openEdit(c.id, c.body)}
-                            className="text-muted-foreground/30 hover:text-foreground transition-colors shrink-0 text-[10px]"
-                            title="Edit comment"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => onRemoveComment(c.id)}
-                            className="text-muted-foreground/30 hover:text-red-400 transition-colors shrink-0"
-                            title="Remove comment"
-                          >
-                            <IconX size={11} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {showForm && (
-                  <tr className="bg-blue-500/5 border-y border-blue-500/20" onMouseEnter={() => setHoveredIdx(null)}>
-                    <td colSpan={5} className="px-3 py-2">
-                      <textarea
-                        ref={textareaRef}
-                        value={commentBody}
-                        onChange={(e) => {
-                          setCommentBody(e.target.value)
-                          e.target.style.height = "auto"
-                          e.target.style.height = `${e.target.scrollHeight}px`
-                        }}
-                        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit() }}
-                        placeholder={`Comment on line ${commentLine}…`}
-                        rows={2}
-                        className="w-full text-[12px] font-sans bg-secondary/60 border border-input rounded px-2.5 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring resize-none overflow-hidden"
-                      />
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <button
-                          onClick={submit}
-                          disabled={!commentBody.trim()}
-                          className="text-[11px] font-medium px-2.5 py-1 rounded bg-primary text-primary-foreground disabled:opacity-40"
-                        >
-                          Add comment
-                        </button>
-                        <button
-                          onClick={() => { setActiveCommentIdx(null); setActiveCommentLine(null) }}
-                          className="text-[11px] text-muted-foreground/50 hover:text-foreground px-1 py-1"
-                        >
-                          Cancel
-                        </button>
-                        <span className="text-[10px] text-muted-foreground/30 ml-auto">⌘↵ to submit</span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
+              <div style={S.card}>
+                <textarea ref={textareaRef} value={commentBody}
+                  onChange={(e) => { setCommentBody(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px` }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitComment() }}
+                  placeholder={`Comment on ${rangeLabel}…`} rows={2} style={S.textarea} />
+                <div style={S.actions}>
+                  <button onClick={submitComment} disabled={!commentBody.trim()} style={{ ...S.btnPrimary, opacity: commentBody.trim() ? 1 : 0.4 }}>Add comment</button>
+                  <button onClick={() => setCommentRange(null)} style={S.btnGhost}>Cancel</button>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginLeft: "auto" }}>⌘↵</span>
+                </div>
+              </div>
             )
-          })}
-        </tbody>
-      </table>
+          }
+
+          // ── Existing PR thread ──
+          if (kind === "thread") {
+            const t = (threads ?? []).find((th) => th.id === id)
+            if (!t || !t.comments.length) return null
+            const root = t.comments[0]
+            const isCollapsed = collapsed.has(t.id)
+            const resolvedLabel = t.isResolved ? " · Resolved" : ""
+
+            // Collapsed view
+            if (isCollapsed) {
+              return (
+                <div style={{ ...S.card, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", opacity: t.isResolved ? 0.5 : 0.7 }}
+                  onClick={() => toggleCollapse(t.id)}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>▶</span>
+                  {root.avatarUrl
+                    ? <img src={root.avatarUrl} style={{ width: 16, height: 16, borderRadius: "50%", objectFit: "cover" as const, flexShrink: 0 }} />
+                    : <div style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(255,255,255,0.1)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{(root.author?.[0] ?? "?").toUpperCase()}</div>
+                  }
+                  <strong style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{root.author}</strong>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{root.body}</span>
+                  {t.comments.length > 1 && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>{t.comments.length} comments</span>}
+                  {t.isResolved && <span style={{ fontSize: 10, color: "rgba(52,211,153,0.6)", flexShrink: 0 }}>✓ Resolved</span>}
+                </div>
+              )
+            }
+
+            // Expanded view
+            return (
+              <div style={{ ...S.card, ...(t.isResolved ? { opacity: 0.7, borderLeft: "2px solid rgba(52,211,153,0.3)" } : {}) }}>
+                {/* Collapse button + resolved badge */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, cursor: "pointer" }} onClick={() => toggleCollapse(t.id)}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>▼</span>
+                  {t.isResolved && <span style={{ fontSize: 10, color: "rgba(52,211,153,0.6)" }}>✓ Resolved</span>}
+                </div>
+                {/* Comments */}
+                {t.comments.map((c) => {
+                  const isMyComment = currentUser && c.author === currentUser
+                  return (
+                    <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, ...(c.isReply ? { paddingTop: 6, paddingLeft: 28 } : {}) }}>
+                      {!c.isReply && (c.avatarUrl
+                        ? <img src={c.avatarUrl} style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" as const, flexShrink: 0 }} />
+                        : <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,0.1)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{(c.author?.[0] ?? "?").toUpperCase()}</div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <strong style={{ fontSize: 12, color: "rgba(255,255,255,0.9)" }}>{c.author}</strong>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{relativeTime(c.createdAt)}</span>
+                          {isMyComment && c.databaseId && (
+                            <button onClick={(e) => { e.stopPropagation(); deleteThreadComment(c.databaseId!, t.id) }}
+                              disabled={sending} style={{ ...S.btnDanger, marginLeft: "auto" }}>Delete</button>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 1.4 }}><InlineMd text={c.body} /></div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {/* Reply form */}
+                {replyingThreadId === t.id ? (
+                  <div style={{ paddingTop: 8 }}>
+                    <textarea value={replyBody}
+                      onChange={(e) => { setReplyBody(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px` }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitReply(t) }}
+                      placeholder="Reply…" rows={1} style={S.textarea} autoFocus />
+                    <div style={S.actions}>
+                      <button onClick={() => submitReply(t)} disabled={!replyBody.trim() || sending} style={{ ...S.btnPrimary, opacity: replyBody.trim() && !sending ? 1 : 0.4 }}>Reply</button>
+                      <button onClick={() => { setReplyingThreadId(null); setReplyBody("") }} style={S.btnGhost}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ ...S.actions, paddingTop: 6 }}>
+                    <button onClick={() => { setReplyingThreadId(t.id); setReplyBody("") }} style={{ ...S.btnGhost, color: "rgba(96,165,250,0.7)" }}>↩ Reply</button>
+                    {!t.isResolved && currentUser && root.author === currentUser && (
+                      <button onClick={() => resolveThread(t.id)} disabled={sending} style={S.btnGhost}>✓ Resolve</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          // ── Pending comment (user's own) ──
+          if (kind === "pending") {
+            const c = pendingComments.find((p) => p.id === id)
+            if (!c) return null
+            const isCollapsed = collapsed.has(c.id)
+
+            if (isCollapsed) {
+              return (
+                <div style={{ ...S.card, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", opacity: 0.7 }}
+                  onClick={() => toggleCollapse(c.id)}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>▶</span>
+                  <span style={{ color: "rgba(96,165,250,0.6)", fontSize: 10, flexShrink: 0 }}>◆</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{c.body}</span>
+                </div>
+              )
+            }
+
+            if (editingId === c.id) {
+              return (
+                <div style={S.card}>
+                  <textarea value={editBody}
+                    onChange={(e) => { setEditBody(e.target.value); e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px` }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitEdit() }}
+                    rows={2} style={S.textarea} autoFocus />
+                  <div style={S.actions}>
+                    <button onClick={submitEdit} disabled={!editBody.trim()} style={{ ...S.btnPrimary, opacity: editBody.trim() ? 1 : 0.4 }}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={S.btnGhost}>Cancel</button>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <div style={S.card}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+                  <span style={{ color: "rgba(96,165,250,0.6)", fontSize: 10, flexShrink: 0, marginTop: 2, cursor: "pointer" }} onClick={() => toggleCollapse(c.id)}>▼</span>
+                  <span style={{ color: "rgba(96,165,250,0.6)", fontSize: 10, flexShrink: 0, marginTop: 2 }}>◆</span>
+                  <div style={{ flex: 1, fontSize: 12, color: "rgba(255,255,255,0.8)" }}><InlineMd text={c.body} /></div>
+                  <button onClick={() => { setEditingId(c.id); setEditBody(c.body) }} style={S.btnDanger}>Edit</button>
+                  <button onClick={() => onRemoveComment(c.id)} style={S.btnDanger}>✕</button>
+                </div>
+              </div>
+            )
+          }
+
+          return null
+        }}
+      />
     </div>
   )
 }
@@ -1180,14 +1237,14 @@ function FileDiffAccordion({
   onToggleExpand: () => void
   onThreadReplied: (threadId: string, reply: PRThread["comments"][number]) => void
   onThreadResolved: (threadId: string) => void
-  onAddComment: (path: string, line: number, body: string) => void
+  onAddComment: (path: string, line: number, body: string, startLine?: number) => void
   onRemoveComment: (id: string) => void
   onEditComment: (id: string, body: string) => void
   pendingComments: PendingReviewComment[]
   diffStyle: "unified" | "split"
 }) {
   const fileName = file.path.split("/").pop() ?? file.path
-  const fileThreads = threads.filter((t) => t.path === file.path && !t.isResolved && t.comments.length > 0)
+  const fileThreads = threads.filter((t) => t.path === file.path && t.comments.length > 0)
   const filePendingComments = pendingComments.filter((c) => c.path === file.path)
 
   const rawPatch = fileDiffs[file.path] ?? file.patch ?? ""
@@ -1226,43 +1283,29 @@ function FileDiffAccordion({
       {/* Diff content */}
       {isExpanded && (
         <div>
-          {rawPatch ? (
-            <DiffWithInlineComments
-              patch={rawPatch}
-              pendingComments={filePendingComments}
-              onAddComment={(line, body) => onAddComment(file.path, line, body)}
-              onRemoveComment={onRemoveComment}
-              onEditComment={onEditComment}
-              repoId={repoId}
-              prNumber={prNumber}
-              filePath={file.path}
-            />
-          ) : (
-            <div className="flex items-center justify-center py-8 text-muted-foreground/30 text-[12px]">
-              {file.status === "added" ? "New file" : file.status === "deleted" ? "File deleted" : "Binary or large file — diff not available"}
-            </div>
-          )}
+        {rawPatch ? (
+          <DiffWithInlineComments
+            patch={rawPatch}
+            pendingComments={filePendingComments}
+            onAddComment={(line, body, startLine) => onAddComment(file.path, line, body, startLine)}
+            onRemoveComment={onRemoveComment}
+            onEditComment={onEditComment}
+            threads={fileThreads}
+            filePath={file.path}
+            diffStyle={diffStyle}
+            repoId={repoId}
+            prNumber={prNumber}
+            currentUser={currentUser}
+            onThreadReplied={onThreadReplied}
+            onThreadResolved={onThreadResolved}
+          />
+        ) : (
+          <div className="flex items-center justify-center py-8 text-muted-foreground/30 text-[12px]">
+            {file.status === "added" ? "New file" : file.status === "deleted" ? "File deleted" : "Binary or large file — diff not available"}
+          </div>
+        )}
 
-          {/* Inline comment threads for this file */}
-          {fileThreads.length > 0 && (
-            <div className="border-t border-border/50">
-              <div className="p-3 space-y-3">
-                {fileThreads.map((t) => (
-                  <ThreadCard
-                    key={t.id}
-                    thread={t}
-                    repoId={repoId ?? ""}
-                    prNumber={prNumber ?? 0}
-                    fileDiffs={fileDiffs}
-                    currentUser={currentUser}
-                    onReplied={onThreadReplied}
-                    onResolved={onThreadResolved}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+      </div>
       )}
     </div>
   )
@@ -1296,7 +1339,7 @@ function SubmitReviewPopover({
         body,
         comments: pendingComments
           .filter((c) => c.path && c.line > 0)
-          .map((c) => ({ path: c.path, line: c.line, body: c.body })),
+          .map((c) => ({ path: c.path, line: c.line, body: c.body, ...(c.startLine ? { start_line: c.startLine } : {}) })),
       })
       onSubmitted()
       onClose()
@@ -1748,7 +1791,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
       if (details.body) setDescription(details.body)
       if (details.currentUser) setCurrentUser(details.currentUser)
       if (details.reviewingCurrentStep != null) setReviewStep(details.reviewingCurrentStep)
-      setThreads(details.threads.filter((t) => !t.isResolved && t.comments.length > 0))
+      setThreads(details.threads.filter((t) => t.comments.length > 0))
       setIssueComments(details.issueComments ?? [])
       setChecks((details as any).checks ?? [])
       setMergeableState((details as any).mergeableState ?? "")
@@ -1883,7 +1926,21 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
     setMessages((prev) => [...prev, streamMsg])
 
     try {
-      const response = await api.streamPRReview(pr.repoId, pr.number)
+      // Collect existing review comments to avoid duplicates on re-run
+      const existingComments: Array<{ path: string; line: number; body: string }> = []
+      for (const m of messages) {
+        if (m.isReview && m.comments) {
+          for (const c of m.comments) {
+            if (c.path && c.line && c.status !== "dismissed") {
+              existingComments.push({ path: c.path, line: c.line, body: c.body })
+            }
+          }
+        }
+      }
+      for (const c of pendingComments) {
+        if (c.path && c.line) existingComments.push({ path: c.path, line: c.line, body: c.body })
+      }
+      const response = await api.streamPRReview(pr.repoId, pr.number, existingComments.length > 0 ? existingComments : undefined)
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({})) as { error?: string; debug?: string[] }
         if (errBody.error === "not_configured") {
@@ -2065,9 +2122,14 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
     ))
   }
 
+  const messageCount = useRef(messages.length)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, reviewing, isSending])
+    // Only auto-scroll when new messages are added, not on status updates
+    if (messages.length > messageCount.current || reviewing || isSending) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+    messageCount.current = messages.length
+  }, [messages.length, reviewing, isSending])
 
   function handleInputChange(val: string) {
     setInput(val)
@@ -2102,13 +2164,14 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
     updateCommentStatus(comment.id, "pending")
   }
 
-  function addInlineComment(path: string, line: number, body: string) {
+  function addInlineComment(path: string, line: number, body: string, startLine?: number) {
     const newPending: PendingReviewComment = {
       id: `pending-inline-${Date.now()}`,
       path,
       line,
       body,
       source: "inline",
+      startLine,
     }
     savePendingComments((prev) => [...prev, newPending])
   }

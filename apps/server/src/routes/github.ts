@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 import { eq, isNull, isNotNull, and, asc } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, repos, prChatMessages } from "../db/schema.js"
-import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
+import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, deleteReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
@@ -128,10 +128,14 @@ export async function githubRoutes(app: FastifyInstance) {
   )
 
   // POST /api/prs/:owner/:repo/:number/review — stream an agentic code review via SSE
-  app.post<{ Params: { owner: string; repo: string; number: string } }>(
+  app.post<{
+    Params: { owner: string; repo: string; number: string }
+    Body: { existingComments?: Array<{ path: string; line: number; body: string }> }
+  }>(
     "/api/prs/:owner/:repo/:number/review",
     async (req, reply) => {
       const { owner, repo, number } = req.params
+      const existingComments = (req.body as any)?.existingComments as Array<{ path: string; line: number; body: string }> | undefined
       const prNumber = parseInt(number, 10)
       const repoSlug = `${owner}/${repo}`
 
@@ -220,11 +224,19 @@ export async function githubRoutes(app: FastifyInstance) {
         ? resolveSlashCommands(settings.reviewPrompt.trim())
         : ""
 
+      // Build existing comments section to avoid duplicates on re-run
+      let existingSection = ""
+      if (existingComments?.length) {
+        existingSection = `\n## Already-reviewed comments\nThe following comments have already been made on this PR. Do NOT repeat or rephrase them — only add NEW issues not already covered:\n` +
+          existingComments.map((c) => `- ${c.path}:${c.line} — ${c.body}`).join("\n")
+      }
+
       const prompt = [
         `Review pull request #${prNumber}: "${details.title}"`,
         `Branch: \`${details.branch}\` → \`${details.baseBranch}\``,
         details.body ? `\nDescription:\n${details.body}` : "",
         `\n## Changed files\n\n${diffSection}`,
+        existingSection,
         `\n## Instructions`,
         `The diff above contains all the changes. Review them directly — do not run any shell commands or read any files.`,
         userPrompt ? `\n## Additional review instructions\n\n${userPrompt}` : "",
@@ -529,7 +541,7 @@ export async function githubRoutes(app: FastifyInstance) {
     Body: {
       event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"
       body: string
-      comments: Array<{ path: string; line: number; body: string }>
+      comments: Array<{ path: string; line: number; body: string; start_line?: number }>
     }
   }>(
     "/api/prs/:owner/:repo/:number/submit-review",
@@ -552,6 +564,16 @@ export async function githubRoutes(app: FastifyInstance) {
       const { owner, repo, number, commentId } = req.params
       if (!req.body.body?.trim()) return reply.code(400).send({ error: "Body is required" })
       await replyToReviewComment(owner, repo, parseInt(number, 10), parseInt(commentId, 10), req.body.body.trim())
+      return { ok: true }
+    }
+  )
+
+  // DELETE /api/prs/:owner/:repo/comments/:commentId — delete a review comment
+  app.delete<{ Params: { owner: string; repo: string; commentId: string } }>(
+    "/api/prs/:owner/:repo/comments/:commentId",
+    async (req, _reply) => {
+      const { owner, repo, commentId } = req.params
+      await deleteReviewComment(owner, repo, parseInt(commentId, 10))
       return { ok: true }
     }
   )

@@ -51,3 +51,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Temp reference docs
+*.docs.txt
+pierre-diffs-docs.txt

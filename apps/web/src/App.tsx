@@ -43,7 +43,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
   const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
-  const [showHome, setShowHome] = useState(true)
+  const [showHome, setShowHome] = useState(() => !localStorage.getItem("huxflux-last-view"))
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -211,7 +211,7 @@ export default function App() {
   const sidebarProps = {
     agents,
     selectedId: workspace.sidebarSelectedId,
-    onSelect: (id: string) => { setShowHome(false); workspace.selectAgent(id) },
+    onSelect: (id: string) => { setShowHome(false); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) },
     onOpenSettings: () => setView("settings"),
     onAgentCreating: workspace.onAgentCreating,
     onAgentCreated: workspace.onAgentCreated,
@@ -235,7 +235,7 @@ export default function App() {
     onSelectRefine: (id: string) => { setShowHome(false); setSelectedRefineId(id) },
     onNewRefine: handleNewRefine,
     agentPorts,
-    onHome: () => setShowHome(true),
+    onHome: () => { setShowHome(true); localStorage.removeItem("huxflux-last-view") },
     showHome,
     onToggle: toggleSidebar,
     feedbackEnabled,

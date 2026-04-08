@@ -6,6 +6,7 @@ import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import type { Agent, FileChange, PRDetails, PRReview, PRCheck, PRComment, PRThread } from "@/data/mock"
 import { api } from "@huxflux/shared"
+import { handleExternalClick } from "@/lib/platform"
 import {
   IconFileText,
   IconChevronDown,
@@ -240,7 +241,7 @@ function ThreadBlock({ thread, onAddComment }: { thread: PRThread; onAddComment:
                     Add to chat
                   </button>
                 )}
-                <a href={comment.url} target="_blank" rel="noreferrer" className="text-muted-foreground/30 hover:text-muted-foreground/60">
+                <a href={comment.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="text-muted-foreground/30 hover:text-muted-foreground/60">
                   <IconArrowUpRight size={10} />
                 </a>
               </div>
@@ -322,6 +323,7 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
             href={pr.url}
             target="_blank"
             rel="noreferrer"
+            onClick={handleExternalClick}
             className="flex items-start gap-1.5 group"
           >
             <span className="text-[13px] font-medium text-foreground leading-snug group-hover:underline">
@@ -403,7 +405,7 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
                   <CheckIcon check={check} />
                   <span className="text-[12px] text-foreground flex-1 truncate">{check.name}</span>
                   {check.url && (
-                    <a href={check.url} target="_blank" rel="noreferrer" className="text-muted-foreground/40 hover:text-muted-foreground">
+                    <a href={check.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="text-muted-foreground/40 hover:text-muted-foreground">
                       <IconArrowUpRight size={11} />
                     </a>
                   )}
@@ -441,7 +443,7 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
                   <div className="flex items-center gap-1.5">
                     {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full" />}
                     <span className="text-[12px] font-medium text-foreground">{c.author}</span>
-                    <a href={c.url} target="_blank" rel="noreferrer" className="ml-auto text-muted-foreground/30 hover:text-muted-foreground/60">
+                    <a href={c.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="ml-auto text-muted-foreground/30 hover:text-muted-foreground/60">
                       <IconArrowUpRight size={11} />
                     </a>
                   </div>

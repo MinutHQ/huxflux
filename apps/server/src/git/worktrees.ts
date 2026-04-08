@@ -30,6 +30,12 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
   // Worktree directory already exists — assume it was created successfully before.
   if (existsSync(worktreePath)) return
 
+  // Pull latest from remote so the worktree starts from an up-to-date base
+  if (startPoint) {
+    const remote = startPoint.startsWith("origin/") ? startPoint.replace(/^origin\//, "") : startPoint
+    await git.fetch(["--no-tags", "origin", remote]).catch(() => {})
+  }
+
   const branches = await git.branch(["-a"])
 
   // Check if a LOCAL branch with this name already exists

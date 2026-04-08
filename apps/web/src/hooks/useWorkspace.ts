@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { api } from "@huxflux/shared"
+import { api, getActiveServerId } from "@huxflux/shared"
 import type { Agent, AgentSummary, FileChange, PRComment } from "@huxflux/shared"
+
+function serverKey(key: string): string {
+  const id = getActiveServerId()
+  return id ? `${key}:${id}` : key
+}
 
 export interface ChatTab {
   agentId: string
@@ -30,7 +35,7 @@ export function useWorkspace(agents: AgentSummary[]) {
 
   const [tabs, setTabs] = useState<ChatTab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(() => {
-    try { return localStorage.getItem("huxflux-active-agent") } catch { return null }
+    try { return localStorage.getItem(serverKey("huxflux-active-agent")) } catch { return null }
   })
   // The root (worktree-owning) agent for the current view — never changes when
   // switching between child chat sessions, so the terminal stays stable.
@@ -38,8 +43,8 @@ export function useWorkspace(agents: AgentSummary[]) {
   // session (which updates activeTabId) never corrupts rootAgentId on refresh.
   const [rootAgentId, setRootAgentId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem("huxflux-root-agent-id")
-          ?? localStorage.getItem("huxflux-active-agent")
+      return localStorage.getItem(serverKey("huxflux-root-agent-id"))
+          ?? localStorage.getItem(serverKey("huxflux-active-agent"))
     } catch { return null }
   })
   const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
@@ -51,43 +56,53 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [deletingAgent, setDeletingAgent] = useState<DeletingAgent | null>(null)
   const [justDeleted, setJustDeleted] = useState(false)
 
-  // Persist active tab across refreshes
+  // Persist active tab across refreshes (scoped to server)
   useEffect(() => {
     try {
-      if (activeTabId) localStorage.setItem("huxflux-active-agent", activeTabId)
-      else localStorage.removeItem("huxflux-active-agent")
+      const key = serverKey("huxflux-active-agent")
+      if (activeTabId) localStorage.setItem(key, activeTabId)
+      else localStorage.removeItem(key)
     } catch { /* ignore */ }
   }, [activeTabId])
 
   // Persist root agent separately so child-session tab switches don't corrupt it
   useEffect(() => {
     try {
-      if (rootAgentId) localStorage.setItem("huxflux-root-agent-id", rootAgentId)
-      else localStorage.removeItem("huxflux-root-agent-id")
+      const key = serverKey("huxflux-root-agent-id")
+      if (rootAgentId) localStorage.setItem(key, rootAgentId)
+      else localStorage.removeItem(key)
     } catch { /* ignore */ }
   }, [rootAgentId])
 
-  // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Sync tabs with agent data — update titles for sidebar agents, remove deleted ones.
+  // Uses functional updaters to always read the latest tabs/activeTabId, avoiding
+  // stale closures when selectAgent batches state updates in the same render cycle.
   useEffect(() => {
+    if (agents.length === 0) return
     const agentIds = new Set(agents.map(a => a.id))
-    const next = tabs
-      .filter(tab => tab.isChild || agentIds.has(tab.agentId))
-      .map(tab => {
-        const a = agents.find(ag => ag.id === tab.agentId)
-        return a ? { ...tab, title: a.title } : tab
+
+    setTabs(prev => {
+      const next = prev
+        .filter(tab => tab.isChild || agentIds.has(tab.agentId))
+        .map(tab => {
+          const a = agents.find(ag => ag.id === tab.agentId)
+          return a ? { ...tab, title: a.title } : tab
+        })
+      const changed = next.length !== prev.length ||
+        next.some((t, i) => t.agentId !== prev[i].agentId || t.title !== prev[i].title || t.isChild !== prev[i].isChild)
+      if (!changed) return prev
+
+      // If active tab was removed, fall back to last remaining tab
+      setActiveTabId(current => {
+        if (current && !next.some(t => t.agentId === current)) {
+          setOpenFileTab(null)
+          setPendingComments([])
+          return next.length > 0 ? next[next.length - 1].agentId : null
+        }
+        return current
       })
-    // Guard: only update state when something actually changed.
-    // `agents` can be a new array reference every render (default `[]`),
-    // so always calling setTabs would cause an infinite loop.
-    const tabsChanged = next.length !== tabs.length ||
-      next.some((t, i) => t.agentId !== tabs[i].agentId || t.title !== tabs[i].title || t.isChild !== tabs[i].isChild)
-    if (tabsChanged) setTabs(next)
-    if (activeTabId && !next.some(t => t.agentId === activeTabId)) {
-      setActiveTabId(next.length > 0 ? next[next.length - 1].agentId : null)
-      setOpenFileTab(null)
-      setPendingComments([])
-    }
+      return next
+    })
   }, [agents])
 
   function selectAgent(id: string) {

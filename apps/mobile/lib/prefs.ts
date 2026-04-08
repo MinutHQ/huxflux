@@ -6,6 +6,9 @@ const AUTO_CONVERT_KEY = "huxflux:auto:convert"
 const GIT_AUTO_PUSH_KEY = "huxflux:git:auto-push"
 const GIT_DELETE_BRANCH_KEY = "huxflux:git:delete-branch-on-archive"
 const GIT_ARCHIVE_ON_MERGE_KEY = "huxflux:git:archive-on-merge"
+export const COLLAPSED_SECTIONS_KEY = "huxflux:mobile:collapsed-sections"
+export const REPO_FILTER_KEY = "huxflux:mobile:repo-filter"
+export const GROUP_BY_KEY = "huxflux:mobile:group-by"
 
 export const PREF_KEYS = [
   STRIP_KEY,
@@ -14,6 +17,9 @@ export const PREF_KEYS = [
   GIT_AUTO_PUSH_KEY,
   GIT_DELETE_BRANCH_KEY,
   GIT_ARCHIVE_ON_MERGE_KEY,
+  COLLAPSED_SECTIONS_KEY,
+  REPO_FILTER_KEY,
+  GROUP_BY_KEY,
 ]
 
 function get(key: string, defaultVal: boolean): boolean {

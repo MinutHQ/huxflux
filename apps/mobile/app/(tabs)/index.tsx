@@ -2,12 +2,13 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId } from "@huxflux/shared"
+import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId, getStorage } from "@huxflux/shared"
 import { c, statusColors } from "../../theme"
 import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useHydrated } from "../_layout"
 import { useModal } from "../../components/Modal"
+import { COLLAPSED_SECTIONS_KEY, REPO_FILTER_KEY, GROUP_BY_KEY } from "../../lib/prefs"
 
 // Match the desktop sidebar order
 const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
@@ -226,6 +227,37 @@ export default function AgentsScreen() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["done", "cancelled"]))
   const [repoFilter, setRepoFilter] = useState<string>("all")
   const [groupBy, setGroupBy] = useState<GroupBy>("status")
+
+  // Hydrate UI prefs from cache once storage is ready (keys pre-loaded by _layout.tsx)
+  useEffect(() => {
+    if (!hydrated) return
+    const storage = getStorage()
+    const raw = storage.getItem(COLLAPSED_SECTIONS_KEY)
+    if (raw != null) {
+      try { setCollapsed(new Set(JSON.parse(raw))) } catch {}
+    }
+    const savedFilter = storage.getItem(REPO_FILTER_KEY)
+    if (savedFilter != null) setRepoFilter(savedFilter)
+    const savedGroupBy = storage.getItem(GROUP_BY_KEY)
+    if (savedGroupBy === "status" || savedGroupBy === "repo") setGroupBy(savedGroupBy)
+  }, [hydrated])
+
+  // Persist UI prefs on change (skip until hydrated to avoid overwriting stored values)
+  useEffect(() => {
+    if (!hydrated) return
+    getStorage().setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...collapsed]))
+  }, [hydrated, collapsed])
+
+  useEffect(() => {
+    if (!hydrated) return
+    getStorage().setItem(REPO_FILTER_KEY, repoFilter)
+  }, [hydrated, repoFilter])
+
+  useEffect(() => {
+    if (!hydrated) return
+    getStorage().setItem(GROUP_BY_KEY, groupBy)
+  }, [hydrated, groupBy])
+
   const server = getActiveServer()
   const allServers = getServers()
   const serverStatuses = useServerStatus(server ? [server] : [])

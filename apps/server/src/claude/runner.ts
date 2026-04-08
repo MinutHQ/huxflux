@@ -220,6 +220,23 @@ async function persistAssistantMessage(
   // the preceding tool calls' `precedingText`.
   const finalContent = state.pendingText
 
+  // Parse and strip any <huxflux:branch> tags emitted by Claude
+  const branchTagRe = /<huxflux:branch>(.*?)<\/huxflux:branch>/gs
+  let branchMatch: RegExpExecArray | null
+  let newBranch: string | null = null
+  while ((branchMatch = branchTagRe.exec(state.fullContent)) !== null) {
+    newBranch = branchMatch[1].trim()
+  }
+  if (newBranch) {
+    state.fullContent = state.fullContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
+    db.update(agentsTable)
+      .set({ branch: newBranch, updatedAt: new Date().toISOString() })
+      .where(eq(agentsTable.id, agentId))
+      .run()
+    const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
+  }
+
   await db.update(messagesTable)
     .set({
       content: finalContent,
@@ -268,6 +285,7 @@ async function persistAssistantMessage(
   // Refresh file changes after emitting so the client query cache is warm
   // by the time it re-fetches. Failures here don't affect the done signal.
   await refreshFileChanges(agentId, worktreePath, branchFrom)
+
 }
 
 // ── Main runner ─────────────────────────────────────────────────────────────
@@ -383,9 +401,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     // System prompt injected on every turn so Claude always knows its identity
     // and can rename itself via the REST API.
     const agentTitle = agentRow?.title ?? agentId
+    const agentBranch = agentRow?.branch ?? ""
     const apiBase = `http://localhost:${config.port}`
     const systemPrompt = [
-      `You are a Huxflux agent. Your agent ID is "${agentId}" and your current title is "${agentTitle}".`,
+      `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
       ``,
       `You can rename yourself at any time using Bash:`,
       `  curl -s -X PATCH ${apiBase}/api/agents/${agentId} -H "Content-Type: application/json" -d '{"title":"<new title>"}'`,
@@ -396,6 +415,9 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       `- Update the title again if the focus of the work changes significantly.`,
       `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
       `- Do not include the repo name or branch — just the task.`,
+      ``,
+      `If you rename your git branch (e.g. git branch -m old new), emit this tag on its own line so the UI stays in sync:`,
+      `  <huxflux:branch>new-branch-name</huxflux:branch>`,
       ``,
       `Answer format:`,
       `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,

@@ -294,6 +294,21 @@ const MIGRATIONS: Migration[] = [
     version: 16,
     sql: `ALTER TABLE tool_calls ADD COLUMN preceding_text TEXT;`,
   },
+  {
+    version: 17,
+    sql: `
+      CREATE TABLE IF NOT EXISTS pr_chat_messages (
+        id TEXT PRIMARY KEY,
+        repo_id TEXT NOT NULL,
+        pr_number INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        is_review INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pr_chat_messages_pr ON pr_chat_messages(repo_id, pr_number, created_at);
+    `,
+  },
 ]
 
 export function runMigrations() {

@@ -10,6 +10,7 @@ import type {
   PRDetails,
   OpenPRWithRepo,
   PRFileDiff,
+  PRChatMessage,
 } from "./types"
 
 export interface WorkspaceStats {
@@ -96,6 +97,7 @@ export const api = {
   generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
   switchBranch: (id: string, branch: string, force?: boolean) => req<Agent>(`/api/agents/${id}/switch-branch`, { method: "POST", body: JSON.stringify({ branch, force }) }),
+  renameBranch: (id: string, branch: string) => req<Agent>(`/api/agents/${id}/rename-branch`, { method: "POST", body: JSON.stringify({ branch }) }),
 
   // Stats
   getStats: () => req<WorkspaceStats>("/api/stats"),
@@ -217,11 +219,27 @@ export const api = {
       body: JSON.stringify({ body, path, line }),
     })
   },
+  getPRChatMessages: (repoId: string, prNumber: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<PRChatMessage[]>(`/api/prs/${owner}/${repo}/${prNumber}/chat-messages`)
+  },
+  clearPRChatMessages: (repoId: string, prNumber: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/chat-messages`, { method: "DELETE" })
+  },
   streamPRReview: (repoId: string, prNumber: number) => {
     const [owner, repo] = repoId.split("/")
     return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/review`, {
       method: "POST",
       headers: authHeaders(),
+    })
+  },
+  streamPRChat: (repoId: string, prNumber: number, messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+    const [owner, repo] = repoId.split("/")
+    return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/chat`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
     })
   },
 

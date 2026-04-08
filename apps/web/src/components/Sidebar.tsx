@@ -1116,20 +1116,17 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
   onLeave: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [descExpanded, setDescExpanded] = useState(false)
 
   function handleMouseEnter() {
     const rect = ref.current?.getBoundingClientRect()
     if (rect) onHover(rect.top)
   }
 
-  const badge = (() => {
-    if (pr.reviewRequested && pr.userReviewed)
-      return <span className="flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0 font-medium uppercase tracking-wide">Re-requested</span>
-    if (pr.reviewStatus === "approved")
-      return <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium uppercase tracking-wide">Approved</span>
-    return null
-  })()
+  const statusBorderColor = pr.reviewRequested && pr.userReviewed
+    ? "border-l-amber-400/60"
+    : pr.reviewStatus === "approved"
+    ? "border-l-emerald-400/60"
+    : "border-l-transparent"
 
   return (
     <div
@@ -1138,57 +1135,55 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
       onMouseLeave={onLeave}
       className="w-full min-w-0"
     >
-      <div
+      <button
+        onClick={onClick}
         className={cn(
-          "w-full min-w-0 flex items-start gap-1 px-2.5 py-1.5 rounded-md transition-all",
+          "w-full min-w-0 flex items-start gap-2.5 px-2 py-2 rounded-md transition-all text-left border-l-2",
+          statusBorderColor,
           isSelected
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground"
         )}
       >
-        {/* Main clickable area */}
-        <button onClick={onClick} className="flex-1 min-w-0 flex flex-col text-left">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {pr.unread && <span className="w-1 h-1 rounded-full bg-primary shrink-0" />}
-            <span className={cn(
-              "text-xs leading-snug truncate min-w-0 flex-1",
-              isSelected && "font-semibold",
-              pr.unread && "text-foreground font-medium"
-            )}>
-              {pr.title}
-            </span>
+        {/* Avatar */}
+        {pr.authorAvatar ? (
+          <img src={pr.authorAvatar} alt={pr.author} className="w-7 h-7 rounded-full shrink-0 mt-0.5 object-cover" />
+        ) : (
+          <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-semibold text-muted-foreground/60 uppercase">
+            {pr.author?.slice(0, 1) ?? "?"}
           </div>
-          <div className="flex items-center gap-1 mt-0.5 min-w-0 flex-wrap">
+        )}
+        {/* Text content */}
+        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+          {/* Title */}
+          <span className={cn(
+            "text-[12px] leading-snug truncate min-w-0",
+            isSelected ? "font-semibold text-foreground" : "text-foreground/80",
+            pr.unread && "font-semibold"
+          )}>
+            {pr.unread && <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary mr-1.5 mb-0.5 shrink-0" />}
+            {pr.title}
+          </span>
+          {/* Number + author + date */}
+          <div className="flex items-center gap-1 min-w-0">
             <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0">#{pr.number}</span>
             {pr.author && <>
-              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
-              <span className="text-[10px] text-muted-foreground/70 shrink-0">{pr.author}</span>
+              <span className="text-[10px] text-muted-foreground/30 shrink-0">·</span>
+              <span className="text-[10px] text-muted-foreground/60 truncate">{pr.author}</span>
             </>}
-            <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
-            <span className="text-[10px] text-muted-foreground/60 shrink-0">{pr.requestedAt}</span>
-            {(pr.additions > 0 || pr.deletions > 0) && <>
-              <span className="text-[10px] text-muted-foreground/40 shrink-0">·</span>
-              <span className="text-[10px] font-mono text-emerald-500/80 shrink-0">+{pr.additions}</span>
-              <span className="text-[10px] font-mono text-red-500/80 shrink-0">-{pr.deletions}</span>
-            </>}
-            {badge && <span className="text-muted-foreground/40 text-[10px] shrink-0">·</span>}
-            {badge}
+            <span className="text-[10px] text-muted-foreground/30 shrink-0">·</span>
+            <span className="text-[10px] text-muted-foreground/50 shrink-0">{pr.requestedAt}</span>
           </div>
-        </button>
-        {pr.description && (
-          <button
-            onClick={() => setDescExpanded(v => !v)}
-            className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors mt-0.5"
-          >
-            <IconChevronDown size={11} className={cn("transition-transform duration-150", descExpanded && "rotate-180")} />
-          </button>
-        )}
-      </div>
-      {descExpanded && pr.description && (
-        <div className="px-2.5 pb-1.5 text-[10px] text-muted-foreground/60 leading-relaxed">
-          {pr.description}
+          {/* Branch */}
+          {(pr.baseBranch || pr.branch) && (
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-[10px] font-mono text-muted-foreground/40 truncate">
+                {pr.baseBranch} ← {pr.branch}
+              </span>
+            </div>
+          )}
         </div>
-      )}
+      </button>
     </div>
   )
 }
@@ -1204,41 +1199,78 @@ function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, on
   onHover: (pr: PullRequest, y: number) => void
   onLeave: () => void
 }) {
+  const [repoFilter, setRepoFilter] = useState<string | null>(null)
+
   if (prsLoading) {
     return (
       <div className="p-2 space-y-1">
         {[72, 88, 64, 80].map((w, i) => (
-          <div key={i} className="px-2.5 py-1.5 space-y-1.5">
-            <div className="flex items-center gap-2">
+          <div key={i} className="px-2.5 py-1.5 space-y-1.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-muted/30 animate-pulse shrink-0" />
+            <div className="flex-1 space-y-1.5">
               <div className="h-2.5 rounded bg-muted/50 animate-pulse" style={{ width: `${w}%` }} />
-              <div className="h-2 rounded bg-muted/30 animate-pulse w-10 ml-auto shrink-0" />
+              <div className="h-2 rounded bg-muted/30 animate-pulse w-2/5" />
             </div>
-            <div className="h-2 rounded bg-muted/30 animate-pulse w-2/5" />
           </div>
         ))}
       </div>
     )
   }
 
-  const visiblePrs = hideReviewedPrs ? prs.filter((p) => !p.isReadyToMerge) : prs
+  // Derive unique repo names for filter pills
+  const repoNames = [...new Set(prs.map((p) => p.repo).filter(Boolean))]
+
+  const filteredByRepo = repoFilter ? prs.filter((p) => p.repo === repoFilter) : prs
+  const visiblePrs = hideReviewedPrs ? filteredByRepo.filter((p) => !p.isReadyToMerge) : filteredByRepo
   const reRequested = visiblePrs.filter((p) => p.reviewRequested && p.userReviewed)
   const toReview = visiblePrs.filter((p) => !p.userReviewed)
   const userReviewed = visiblePrs.filter((p) => p.userReviewed && !p.reviewRequested)
 
-  if (visiblePrs.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/40">
-        <IconGitPullRequest size={20} />
-        <span className="text-[12px]">No PRs to review</span>
-      </div>
-    )
-  }
-
   return (
-    <div className="p-2 space-y-0.5">
-      <PRGroup label="Re-requested" labelColor="text-amber-400/80" prs={reRequested} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
-      <PRGroup label="Review requested" labelColor="text-muted-foreground/50" prs={toReview} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
-      <PRGroup label="Reviewed" labelColor="text-muted-foreground/40" prs={userReviewed} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} defaultCollapsed />
+    <div className="flex flex-col">
+      {/* Repo filter pills */}
+      {repoNames.length > 1 && (
+        <div className="flex items-center gap-1 px-2 py-2 flex-wrap border-b border-sidebar-border">
+          <button
+            onClick={() => setRepoFilter(null)}
+            className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border transition-colors",
+              repoFilter === null
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+            )}
+          >
+            All
+          </button>
+          {repoNames.map((name) => (
+            <button
+              key={name}
+              onClick={() => setRepoFilter(repoFilter === name ? null : name)}
+              className={cn(
+                "text-[10px] px-2 py-0.5 rounded-full border transition-colors truncate max-w-[120px]",
+                repoFilter === name
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+              )}
+            >
+              {name.split("/").pop() ?? name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visiblePrs.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground/40">
+          <IconGitPullRequest size={20} />
+          <span className="text-[12px]">No PRs to review</span>
+        </div>
+      ) : (
+        <div className="p-2 space-y-0.5">
+          <PRGroup label="Re-requested" labelColor="text-amber-400/80" prs={reRequested} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
+          <PRGroup label="Review requested" labelColor="text-muted-foreground/50" prs={toReview} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
+          <PRGroup label="Reviewed" labelColor="text-muted-foreground/40" prs={userReviewed} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} defaultCollapsed />
+        </div>
+      )}
     </div>
   )
 }

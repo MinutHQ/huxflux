@@ -579,7 +579,7 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
   const [collapsed, setCollapsed] = useState(false)
   const [collapsedUserToggled, setCollapsedUserToggled] = useState(false)
   const knownIdsRef = useRef<Set<string>>(new Set())
-  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(storageKey) === "1")
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === "1")
 
   // Auto-collapse the panel when no agents are running anymore — unless user toggled
   const anyRunning = agents.some((a) => a.status === "running")
@@ -593,7 +593,7 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
     const newIds = agents.filter((a) => !knownIdsRef.current.has(a.id))
     if (newIds.length > 0) {
       for (const a of newIds) knownIdsRef.current.add(a.id)
-      sessionStorage.removeItem(storageKey)
+      localStorage.removeItem(storageKey)
       setDismissed(false)
       if (!selectedId || !agents.some((a) => a.id === selectedId)) {
         setSelectedId(newIds[0].id)
@@ -602,7 +602,7 @@ function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; i
   }, [agents]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleDismiss() {
-    sessionStorage.setItem(storageKey, "1")
+    localStorage.setItem(storageKey, "1")
     setDismissed(true)
   }
 
@@ -862,7 +862,7 @@ function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
   const storageKey = `huxflux-tasks-dismissed-${agentId}`
   const [collapsed, setCollapsed] = useState(false)
   const [dismissed, setDismissed] = useState(() => {
-    const stored = sessionStorage.getItem(storageKey)
+    const stored = localStorage.getItem(storageKey)
     return stored !== null && parseInt(stored) >= todos.length
   })
   const prevCountRef = useRef(todos.length)
@@ -870,7 +870,7 @@ function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
   useEffect(() => {
     if (todos.length > prevCountRef.current) {
       prevCountRef.current = todos.length
-      sessionStorage.removeItem(storageKey)
+      localStorage.removeItem(storageKey)
       setDismissed(false)
     } else {
       prevCountRef.current = todos.length
@@ -878,7 +878,7 @@ function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
   }, [todos.length, storageKey])
 
   function handleDismiss() {
-    sessionStorage.setItem(storageKey, String(todos.length))
+    localStorage.setItem(storageKey, String(todos.length))
     setDismissed(true)
   }
 

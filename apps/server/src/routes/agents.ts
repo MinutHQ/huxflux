@@ -396,6 +396,48 @@ export async function agentsRoutes(app: FastifyInstance) {
     return updated
   })
 
+  // POST /api/agents/:id/rename-branch — rename current git branch in-place (git branch -m)
+  app.post<{ Params: { id: string }; Body: { branch: string } }>("/api/agents/:id/rename-branch", async (req, reply) => {
+    const { id } = req.params
+    const { branch } = req.body
+    if (!branch) return reply.code(400).send({ error: "branch is required" })
+
+    const agent = db.select().from(agents).where(and(eq(agents.id, id), isNull(agents.deletedAt))).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (!agent.repoId) return reply.code(400).send({ error: "Agent has no repo" })
+    if (agent.branch === branch) return agent
+
+    const conflict = db.select({ id: agents.id, title: agents.title })
+      .from(agents)
+      .where(and(eq(agents.repoId, agent.repoId), eq(agents.branch, branch), isNull(agents.deletedAt)))
+      .get()
+    if (conflict && conflict.id !== id) {
+      return reply.code(409).send({ error: `Branch "${branch}" is already used by "${conflict.title}"` })
+    }
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(400).send({ error: "Repo not found" })
+
+    const worktreePath = path.join(repo.workspacesPath, agent.location)
+    if (!existsSync(worktreePath)) return reply.code(400).send({ error: "Worktree not found on disk" })
+
+    const wt = simpleGit(worktreePath)
+    try {
+      await wt.branch(["-m", agent.branch, branch])
+    } catch (err) {
+      return reply.code(500).send({ error: `git branch -m failed: ${String((err as Error).message ?? err)}` })
+    }
+
+    const now = new Date().toISOString()
+    db.update(agents).set({ branch, updatedAt: now }).where(eq(agents.id, id)).run()
+
+    const updated = db.select().from(agents).where(eq(agents.id, id)).get()
+    if (!updated) return reply.code(500).send({ error: "Update failed" })
+
+    broadcast({ type: "agent:updated", agent: updated as any })
+    return updated
+  })
+
   // POST /api/agents/:id/stop — kill the running Claude process
   app.post<{ Params: { id: string } }>("/api/agents/:id/stop", async (req, reply) => {
     const killed = stopAgent(req.params.id)

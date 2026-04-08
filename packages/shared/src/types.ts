@@ -98,6 +98,14 @@ export interface OpenPRWithRepo extends OpenPR {
   agentId?: string
 }
 
+export interface PRChatMessage {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  isReview: boolean
+  createdAt: string
+}
+
 export interface PRFileDiff {
   path: string
   additions: number

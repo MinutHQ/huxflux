@@ -93,3 +93,13 @@ export const terminalTabs = sqliteTable("terminal_tabs", {
   label: text("label"),                      // null = use default "Terminal N" display label
   orderIdx: integer("order_idx").notNull().default(0),
 })
+
+export const prChatMessages = sqliteTable("pr_chat_messages", {
+  id: text("id").primaryKey(),
+  repoId: text("repo_id").notNull(),       // "owner/repo"
+  prNumber: integer("pr_number").notNull(),
+  role: text("role").notNull(),            // "user" | "assistant"
+  content: text("content").notNull().default(""),
+  isReview: integer("is_review").default(0), // 1 = agentic review result
+  createdAt: text("created_at").notNull(),
+})

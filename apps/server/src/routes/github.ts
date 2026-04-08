@@ -3,9 +3,10 @@ import { spawn } from "node:child_process"
 import * as path from "node:path"
 import * as os from "node:os"
 import * as fsSync from "node:fs"
-import { eq, isNull, isNotNull, and } from "drizzle-orm"
+import { randomUUID } from "node:crypto"
+import { eq, isNull, isNotNull, and, asc } from "drizzle-orm"
 import { db } from "../db/index.js"
-import { agents, repos } from "../db/schema.js"
+import { agents, repos, prChatMessages } from "../db/schema.js"
 import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
@@ -149,9 +150,10 @@ export async function githubRoutes(app: FastifyInstance) {
       }
 
       if (!matchedRepo) {
-        console.log(`[review] no local repo matched for "${repoSlug}" (looking in ${allRepos.length} repos)\n${debugRows.join("\n")}`)
-        return reply.code(404).send({ error: "not_configured", debug: debugRows })
+        console.log(`[review] no local repo matched for "${repoSlug}" — using homedir as cwd\n${debugRows.join("\n")}`)
       }
+
+      const reviewCwd = matchedRepo?.path ?? os.homedir()
 
       // Start SSE stream immediately
       reply.raw.writeHead(200, {
@@ -260,7 +262,7 @@ export async function githubRoutes(app: FastifyInstance) {
           prompt,
         ],
         {
-          cwd: matchedRepo.path,
+          cwd: reviewCwd,
           stdio: ["ignore", "pipe", "pipe"],
           env: {
             ...process.env,
@@ -311,6 +313,20 @@ export async function githubRoutes(app: FastifyInstance) {
         if (code !== 0 && stderrOutput) {
           write(`data: ${JSON.stringify({ error: stderrOutput.trim().split("\n").pop() ?? "Claude exited with error" })}\n\n`)
         }
+        // Persist review to DB so it survives page reloads
+        if (accumulatedText.trim()) {
+          try {
+            db.insert(prChatMessages).values({
+              id: randomUUID(),
+              repoId: `${owner}/${repo}`,
+              prNumber,
+              role: "assistant",
+              content: accumulatedText,
+              isReview: 1,
+              createdAt: new Date().toISOString(),
+            }).run()
+          } catch { /* non-fatal */ }
+        }
         write("data: [DONE]\n\n")
         end()
       })
@@ -322,6 +338,173 @@ export async function githubRoutes(app: FastifyInstance) {
       })
 
       req.raw.on("close", () => proc.kill("SIGTERM"))
+    }
+  )
+
+  // POST /api/prs/:owner/:repo/:number/chat — follow-up chat about the PR, streamed via SSE
+  app.post<{
+    Params: { owner: string; repo: string; number: string }
+    Body: { messages: Array<{ role: "user" | "assistant"; content: string }> }
+  }>(
+    "/api/prs/:owner/:repo/:number/chat",
+    async (req, reply) => {
+      const { owner, repo, number } = req.params
+      const { messages } = req.body
+      const prNumber = parseInt(number, 10)
+      if (!messages?.length) return reply.code(400).send({ error: "messages required" })
+
+      const allRepos = db.select().from(repos).all()
+      let matchedRepo: typeof allRepos[0] | null = null
+      for (const r of allRepos) {
+        const remoteUrl = await getRemoteUrl(r.path, r.remote)
+        const parsed = remoteUrl ? remoteToRepoId(remoteUrl) : null
+        if (parsed && parsed === `${owner}/${repo}`.toLowerCase()) { matchedRepo = r; break }
+      }
+      const chatCwd = matchedRepo?.path ?? os.homedir()
+
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": req.headers.origin ?? "*",
+        "Access-Control-Allow-Credentials": "true",
+        "X-Accel-Buffering": "no",
+      })
+      reply.hijack()
+
+      const write = (data: string) => { try { reply.raw.write(data) } catch { /* closed */ } }
+      const end = () => { try { reply.raw.end() } catch { /* closed */ } }
+      const keepalive = setInterval(() => write(": ping\n\n"), 15_000)
+
+      write(": connected\n\n")
+
+      // Persist the user's message immediately
+      const userMsgId = randomUUID()
+      try {
+        db.insert(prChatMessages).values({
+          id: userMsgId,
+          repoId: `${owner}/${repo}`,
+          prNumber,
+          role: "user",
+          content: messages[messages.length - 1].content,
+          isReview: 0,
+          createdAt: new Date().toISOString(),
+        }).run()
+      } catch { /* non-fatal */ }
+
+      // Fetch PR metadata for context (lightweight — no diff)
+      let prTitle = `#${prNumber}`
+      let prBranch = ""
+      try {
+        const details = await getPRDetailsForOwnerRepo(owner, repo, prNumber)
+        prTitle = `#${prNumber}: "${details.title}"`
+        prBranch = details.branch ? ` (${details.branch} → ${details.baseBranch})` : ""
+      } catch { /* non-fatal — continue without metadata */ }
+
+      const history = messages.slice(0, -1)
+      const lastMsg = messages[messages.length - 1]
+
+      const prompt = [
+        `You are a code review assistant for PR ${prTitle}${prBranch} in ${owner}/${repo}.`,
+        `You can read files in the repository to answer questions about the code.`,
+        history.length > 0
+          ? `\nConversation so far:\n${history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n")}`
+          : "",
+        `\nUser: ${lastMsg.content}`,
+      ].filter(Boolean).join("\n")
+
+      const proc = spawn(
+        getClaudeBin(),
+        ["--print", "--output-format", "stream-json", "--verbose", "--allowedTools", "Read,Glob,Grep", "--model", "claude-sonnet-4-6", prompt],
+        {
+          cwd: chatCwd,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
+          },
+        }
+      )
+
+      let buffer = ""
+      let chatAccumulated = ""
+      proc.stdout.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString()
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const event = JSON.parse(line)
+            if (event.type === "assistant") {
+              for (const block of event.message.content) {
+                if (block.type === "text") {
+                  chatAccumulated += block.text
+                  write(`data: ${JSON.stringify({ text: block.text })}\n\n`)
+                }
+              }
+            }
+          } catch { /* non-JSON */ }
+        }
+      })
+
+      proc.on("close", () => {
+        clearInterval(keepalive)
+        // Persist assistant response
+        if (chatAccumulated.trim()) {
+          try {
+            db.insert(prChatMessages).values({
+              id: randomUUID(),
+              repoId: `${owner}/${repo}`,
+              prNumber,
+              role: "assistant",
+              content: chatAccumulated,
+              isReview: 0,
+              createdAt: new Date().toISOString(),
+            }).run()
+          } catch { /* non-fatal */ }
+        }
+        write("data: [DONE]\n\n")
+        end()
+      })
+
+      proc.on("error", (err) => {
+        clearInterval(keepalive)
+        write(`data: ${JSON.stringify({ error: `Failed to spawn claude: ${err.message}` })}\n\n`)
+        write("data: [DONE]\n\n")
+        end()
+      })
+
+      req.raw.on("close", () => { proc.kill("SIGTERM"); clearInterval(keepalive) })
+    }
+  )
+
+  // GET /api/prs/:owner/:repo/:number/chat-messages — fetch persisted PR chat history
+  app.get<{ Params: { owner: string; repo: string; number: string } }>(
+    "/api/prs/:owner/:repo/:number/chat-messages",
+    async (req, _reply) => {
+      const { owner, repo, number } = req.params
+      const repoId = `${owner}/${repo}`
+      const prNumber = parseInt(number, 10)
+      return db.select().from(prChatMessages)
+        .where(and(eq(prChatMessages.repoId, repoId), eq(prChatMessages.prNumber, prNumber)))
+        .orderBy(asc(prChatMessages.createdAt))
+        .all()
+        .map((m) => ({ ...m, isReview: m.isReview === 1 }))
+    }
+  )
+
+  // DELETE /api/prs/:owner/:repo/:number/chat-messages — clear PR chat history
+  app.delete<{ Params: { owner: string; repo: string; number: string } }>(
+    "/api/prs/:owner/:repo/:number/chat-messages",
+    async (req, _reply) => {
+      const { owner, repo, number } = req.params
+      const repoId = `${owner}/${repo}`
+      const prNumber = parseInt(number, 10)
+      db.delete(prChatMessages)
+        .where(and(eq(prChatMessages.repoId, repoId), eq(prChatMessages.prNumber, prNumber)))
+        .run()
+      return { ok: true }
     }
   )
 

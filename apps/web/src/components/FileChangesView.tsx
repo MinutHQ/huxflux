@@ -616,14 +616,14 @@ export function FileChangesView({ agent, selectedFile, onFileSelect, onFileConte
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center px-4 py-2.5 border-b border-border shrink-0 gap-4">
+      <div className="flex items-center px-2 py-2 border-b border-border shrink-0 gap-1">
         <button
           onClick={() => setTab("files")}
           className={cn(
-            "flex items-center gap-1.5 text-[12px] font-medium transition-colors pb-0.5",
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
             tab === "files"
-              ? "text-foreground border-b-2 border-foreground -mb-px"
-              : "text-muted-foreground hover:text-foreground border-b-2 border-transparent -mb-px"
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
           )}
         >
           All files
@@ -632,15 +632,18 @@ export function FileChangesView({ agent, selectedFile, onFileSelect, onFileConte
         <button
           onClick={() => setTab("changes")}
           className={cn(
-            "flex items-center gap-1.5 text-[12px] font-medium transition-colors pb-0.5",
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
             tab === "changes"
-              ? "text-foreground border-b-2 border-foreground -mb-px"
-              : "text-muted-foreground hover:text-foreground border-b-2 border-transparent -mb-px"
+              ? "bg-accent text-foreground"
+              : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
           )}
         >
           Changes
           {agent.fileChanges.length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-secondary text-muted-foreground">
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded font-medium",
+              tab === "changes" ? "bg-background/60 text-foreground" : "bg-accent/60 text-muted-foreground"
+            )}>
               {agent.fileChanges.length}
             </span>
           )}
@@ -650,10 +653,10 @@ export function FileChangesView({ agent, selectedFile, onFileSelect, onFileConte
           <button
             onClick={() => setTab("pr")}
             className={cn(
-              "flex items-center gap-1.5 text-[12px] font-medium transition-colors pb-0.5",
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
               tab === "pr"
-                ? "text-foreground border-b-2 border-foreground -mb-px"
-                : "text-muted-foreground hover:text-foreground border-b-2 border-transparent -mb-px"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
             )}
           >
             <IconGitPullRequest size={12} />

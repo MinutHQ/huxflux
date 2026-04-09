@@ -103,3 +103,11 @@ export const prChatMessages = sqliteTable("pr_chat_messages", {
   isReview: integer("is_review").default(0), // 1 = agentic review result
   createdAt: text("created_at").notNull(),
 })
+
+export const wrappedSummaries = sqliteTable("wrapped_summaries", {
+  id: text("id").primaryKey(),
+  periodKey: text("period_key").notNull().unique(),
+  summary: text("summary").notNull(),
+  statsJson: text("stats_json").notNull(),
+  createdAt: text("created_at").notNull(),
+})

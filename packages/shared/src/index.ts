@@ -20,7 +20,7 @@ export type { HuxfluxServer } from "./serverStore"
 
 // API
 export { api, getApiBase } from "./api"
-export type { WorkspaceStats } from "./api"
+export type { WorkspaceStats, WrappedSummary } from "./api"
 
 // WebSocket
 export { useAgentEvents, connectBackgroundServer, useWsConnected } from "./ws"

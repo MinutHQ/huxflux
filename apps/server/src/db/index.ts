@@ -309,6 +309,19 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_pr_chat_messages_pr ON pr_chat_messages(repo_id, pr_number, created_at);
     `,
   },
+  {
+    version: 18,
+    sql: `
+      CREATE TABLE IF NOT EXISTS wrapped_summaries (
+        id TEXT PRIMARY KEY,
+        period_key TEXT NOT NULL UNIQUE,
+        summary TEXT NOT NULL,
+        stats_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_wrapped_period ON wrapped_summaries(period_key);
+    `,
+  },
 ]
 
 export function runMigrations() {

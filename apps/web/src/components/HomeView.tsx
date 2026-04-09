@@ -545,8 +545,13 @@ export function HomeView() {
           </AnimatedSection>
         )}
 
+        {/* Wrapped summary */}
+        <AnimatedSection delay={425}>
+          <WrappedPanel />
+        </AnimatedSection>
+
         {/* Status + Repos */}
-        <AnimatedSection delay={500}>
+        <AnimatedSection delay={575}>
           <div className="grid grid-cols-2 gap-3">
             <StatusPanel statusCounts={statusCounts} totalAgents={totalAgents} />
             <RepoPanel repos={repos} agents={agents} />
@@ -926,6 +931,141 @@ function RepoPanel({ repos, agents }: { repos: { id: string; name: string }[]; a
       ) : (
         <p className="relative text-[12px] text-muted-foreground/40">No repos configured</p>
       )}
+    </div>
+  )
+}
+
+// ── Wrapped panel ───────────────────────────────────────────────────────────
+
+type WrappedPeriod = "wtd" | "last-week" | "last-month" | "last-year" | "custom"
+
+const periodLabels: Record<WrappedPeriod, string> = {
+  wtd: "This week",
+  "last-week": "Last week",
+  "last-month": "Last month",
+  "last-year": "Last year",
+  custom: "Custom",
+}
+
+function WrappedPanel() {
+  const [period, setPeriod] = useState<WrappedPeriod>("wtd")
+  const [customFrom, setCustomFrom] = useState("")
+  const [customTo, setCustomTo] = useState("")
+  const [summary, setSummary] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchWrapped = useCallback(async (p: WrappedPeriod, from?: string, to?: string) => {
+    if (p === "custom" && (!from || !to)) return
+    setLoading(true)
+    setError(null)
+    setSummary(null)
+    try {
+      const result = await api.getWrapped(p, from, to)
+      setSummary(result.summary)
+    } catch (err) {
+      setError((err as Error).message || "Failed to generate summary")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (period !== "custom") {
+      fetchWrapped(period)
+    }
+  }, [period, fetchWrapped])
+
+  const handleCustomSubmit = useCallback(() => {
+    if (customFrom && customTo) {
+      fetchWrapped("custom", customFrom, customTo)
+    }
+  }, [customFrom, customTo, fetchWrapped])
+
+  return (
+    <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-violet-500/5">
+      <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      <div className="relative flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <IconSparkles size={14} className="text-violet-400" />
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Wrapped</h2>
+        </div>
+      </div>
+
+      {/* Period selector */}
+      <div className="relative flex flex-wrap items-center gap-1.5 mb-4">
+        {(Object.keys(periodLabels) as WrappedPeriod[]).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={cn(
+              "px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-200",
+              period === p
+                ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                : "bg-muted/10 text-muted-foreground/50 border border-transparent hover:bg-muted/20 hover:text-muted-foreground/70",
+            )}
+          >
+            {periodLabels[p]}
+          </button>
+        ))}
+      </div>
+
+      {/* Custom date inputs */}
+      {period === "custom" && (
+        <div className="relative flex items-center gap-2 mb-4">
+          <input
+            type="date"
+            value={customFrom}
+            onChange={(e) => setCustomFrom(e.target.value)}
+            className="bg-muted/10 border border-border rounded-lg px-2.5 py-1.5 text-[12px] text-foreground"
+          />
+          <span className="text-[11px] text-muted-foreground/40">to</span>
+          <input
+            type="date"
+            value={customTo}
+            onChange={(e) => setCustomTo(e.target.value)}
+            className="bg-muted/10 border border-border rounded-lg px-2.5 py-1.5 text-[12px] text-foreground"
+          />
+          <button
+            onClick={handleCustomSubmit}
+            disabled={!customFrom || !customTo || loading}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-all duration-200 disabled:opacity-40"
+          >
+            Generate
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="relative min-h-[60px]">
+        {loading && (
+          <div className="space-y-3 animate-pulse">
+            <div className="h-3 bg-muted/15 rounded-full w-full" />
+            <div className="h-3 bg-muted/15 rounded-full w-[92%]" />
+            <div className="h-3 bg-muted/15 rounded-full w-[85%]" />
+            <div className="h-3 bg-muted/10 rounded-full w-full mt-5" />
+            <div className="h-3 bg-muted/10 rounded-full w-[88%]" />
+            <div className="h-3 bg-muted/10 rounded-full w-[70%]" />
+          </div>
+        )}
+        {error && (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-red-400/70">{error}</span>
+            <button
+              onClick={() => fetchWrapped(period, period === "custom" ? customFrom : undefined, period === "custom" ? customTo : undefined)}
+              className="text-[11px] text-violet-400 hover:text-violet-300 underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {summary && !loading && (
+          <div className="text-[13px] text-muted-foreground/80 leading-relaxed whitespace-pre-line">
+            {summary}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

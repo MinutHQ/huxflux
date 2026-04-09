@@ -13,6 +13,12 @@ import type {
   PRChatMessage,
 } from "./types"
 
+export interface WrappedSummary {
+  summary: string
+  periodKey: string
+  cached: boolean
+}
+
 export interface WorkspaceStats {
   agents: { total: number; active: number; deleted: number }
   messages: { total: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
@@ -103,6 +109,12 @@ export const api = {
 
   // Stats
   getStats: () => req<WorkspaceStats>("/api/stats"),
+  getWrapped: (period: string, from?: string, to?: string) => {
+    const params = new URLSearchParams({ period })
+    if (from) params.set("from", from)
+    if (to) params.set("to", to)
+    return req<WrappedSummary>(`/api/wrapped?${params}`)
+  },
 
   // Messages
   getMessages: (agentId: string) => req<Message[]>(`/api/agents/${agentId}/messages`),

@@ -109,9 +109,10 @@ resetStreamingFlags()
       if (!repo) continue
       const worktreePath = path.join(repo.workspacesPath, agent.location)
       if (!fs.existsSync(worktreePath)) continue
-      watchWorktree(agent.id, worktreePath, repo.branchFrom)
+      const effectiveBase = agent.baseBranch ?? repo.branchFrom
+      watchWorktree(agent.id, worktreePath, effectiveBase)
       // Populate file changes so they show up without needing a new agent run
-      await refreshWorktree(agent.id, worktreePath, repo.branchFrom).catch(() => {})
+      await refreshWorktree(agent.id, worktreePath, effectiveBase).catch(() => {})
     }
   })()
 }
@@ -122,6 +123,7 @@ for (let attempt = 0; attempt < 10; attempt++) {
   try {
     await app.listen({ port, host: "0.0.0.0" })
     boundPort = port
+    config.boundPort = port
     break
   } catch (err: any) {
     if (err?.code === "EADDRINUSE") {

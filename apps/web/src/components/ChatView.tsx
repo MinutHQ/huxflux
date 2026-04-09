@@ -151,9 +151,14 @@ function formatToolCall(tool: string, args?: string): { title: string; detail: s
       return { title: desc || "WebFetch", detail: truncateArgs(String(parsed.url ?? "")) }
     case "WebSearch":
       return { title: desc || "WebSearch", detail: truncateArgs(String(parsed.query ?? "")) }
+    case "AskUserQuestion": {
+      const q = parsed.questions?.[0]?.question ?? ""
+      return { title: desc || "Asking a question", detail: truncateArgs(q) }
+    }
     default: {
       const firstKey = parsed && typeof parsed === "object" ? Object.keys(parsed)[0] : undefined
-      const detail = firstKey ? String(parsed[firstKey] ?? "") : ""
+      const val = firstKey ? parsed[firstKey] : undefined
+      const detail = typeof val === "string" ? val : typeof val === "number" ? String(val) : ""
       return { title: desc || tool, detail: truncateArgs(detail) }
     }
   }
@@ -1037,6 +1042,132 @@ const MarkdownContent = React.memo(function MarkdownContent({ content }: { conte
 })
 
 // ── Typing indicator ──────────────────────────────────────────────────────────
+
+// ── AskUserQuestion card ─────────────────────────────────────────────────────
+
+function AskUserQuestionCard({
+  questions,
+  onSubmit,
+}: {
+  questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>
+  onSubmit: (answers: Record<string, string>) => void
+}) {
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [step, setStep] = useState(0)
+
+  const total = questions.length
+  const q = questions[step]
+  const currentAnswer = q ? answers[q.question]?.trim() : ""
+  const isLast = step === total - 1
+
+  if (!q) return null
+
+  return (
+    <div className="mb-3 rounded-xl border border-blue-400/30 bg-blue-500/5 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-blue-400/20 bg-blue-500/5">
+        <IconMessageCircle size={13} className="text-blue-400 shrink-0" />
+        <span className="text-[12px] font-medium text-blue-400/90">Claude is asking a question</span>
+        {total > 1 && (
+          <span className="text-[10px] font-mono text-blue-400/50 ml-auto">{step + 1}/{total}</span>
+        )}
+      </div>
+      <div className="px-3 py-3">
+        {q.header && <p className="text-[11px] font-semibold text-foreground/60 uppercase tracking-wider mb-1.5">{q.header}</p>}
+        <p className="text-[13px] text-foreground mb-2.5">{q.question}</p>
+        {q.options && q.options.length > 0 ? (
+          <div className="space-y-1">
+            {q.options.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  setAnswers((prev) => ({ ...prev, [q.question]: opt.label }))
+                  // Auto-advance after a short delay so the selection is visible
+                  if (!isLast) setTimeout(() => setStep((s) => s + 1), 200)
+                }}
+                className={cn(
+                  "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors text-[12px]",
+                  answers[q.question] === opt.label
+                    ? "border-blue-400/50 bg-blue-500/10 text-foreground"
+                    : "border-border bg-card hover:bg-accent text-foreground/80"
+                )}
+              >
+                <div className={cn(
+                  "w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-colors",
+                  answers[q.question] === opt.label ? "border-blue-400 bg-blue-400" : "border-muted-foreground/30"
+                )}>
+                  {answers[q.question] === opt.label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+                <div>
+                  <span className="font-medium">{opt.label}</span>
+                  {opt.description && <span className="text-muted-foreground/60 ml-1.5">{opt.description}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <input
+            type="text"
+            placeholder="Type your answer…"
+            value={answers[q.question] ?? ""}
+            onChange={(e) => setAnswers((prev) => ({ ...prev, [q.question]: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && currentAnswer) {
+                if (isLast) onSubmit(answers)
+                else setStep((s) => s + 1)
+              }
+            }}
+            className="w-full bg-card border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring"
+            autoFocus
+          />
+        )}
+      </div>
+      <div className="flex items-center justify-between px-3 py-2 border-t border-blue-400/20">
+        <div>
+          {step > 0 && (
+            <button
+              onClick={() => setStep((s) => s - 1)}
+              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Back
+            </button>
+          )}
+        </div>
+        <Button
+          size="sm"
+          className="h-7 text-[11px] px-3 gap-1"
+          disabled={!currentAnswer}
+          onClick={() => {
+            if (isLast) onSubmit(answers)
+            else setStep((s) => s + 1)
+          }}
+        >
+          {isLast ? (
+            <>
+              <IconCheck size={12} />
+              Submit
+            </>
+          ) : (
+            "Next"
+          )}
+        </Button>
+      </div>
+      {/* Step dots */}
+      {total > 1 && (
+        <div className="flex justify-center gap-1 pb-2">
+          {questions.map((_, i) => (
+            <div
+              key={i}
+              className={cn(
+                "w-1.5 h-1.5 rounded-full transition-colors",
+                i === step ? "bg-blue-400" : i < step && answers[questions[i].question] ? "bg-blue-400/40" : "bg-muted-foreground/20"
+              )}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function TypingBubble({ elapsedSeconds }: { elapsedSeconds: number }) {
   const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")
@@ -2062,9 +2193,14 @@ interface ChatViewProps {
   onRemoveComment?: (id: string) => void
   onClearComments?: () => void
   githubEnabled?: boolean
+  pendingQuestion?: {
+    toolUseId: string
+    questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>
+  } | null
+  onClearPendingQuestion?: () => void
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2097,8 +2233,9 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
   const [thinking, setThinking] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const [messageQueue, setMessageQueue] = useState<Array<{ id: string; agentId: string; display: string; api: string; planMode?: boolean }>>([])
   const [planMode, setPlanMode] = useState(false)
+  const [awaitingPlanApproval, setAwaitingPlanApproval] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -2451,7 +2588,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     return content
   }
 
-  async function sendContent(displayText: string, apiContent: string) {
+  async function sendContent(displayText: string, apiContent: string, opts?: { planMode?: boolean }) {
     setIsSending(true)
     const optimisticMsg: Message = {
       id: `optimistic-${Date.now()}`,
@@ -2464,7 +2601,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       return { ...old, messages: [...old.messages, optimisticMsg] }
     })
     try {
-      await api.sendMessage(agent.id, apiContent)
+      await api.sendMessage(agent.id, apiContent, opts)
     } catch {
       queryClient.setQueryData<Agent>(["agent", agent.id], (old) => {
         if (!old) return old
@@ -2479,6 +2616,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     const text = input.trim()
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || isSending) return
 
+    const isPlan = planMode
     setInput("")
     if (textareaRef.current) textareaRef.current.style.height = "auto"
     void api.updateAgent(agent.id, { draft: "" })
@@ -2486,30 +2624,45 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     setAttachments([])
     setMentionAttachments([])
 
+    if (isPlan) setAwaitingPlanApproval(true)
+
     void (async () => {
       const apiContent = await buildContent(text)
       if (isStreaming) {
-        setQueuedMessage(JSON.stringify({ display: text, api: apiContent }))
+        setMessageQueue((prev) => [...prev, { id: `q-${Date.now()}`, agentId: agent.id, display: text, api: apiContent, planMode: isPlan || undefined }])
         return
       }
-      void sendContent(text, apiContent)
+      void sendContent(text, apiContent, isPlan ? { planMode: true } : undefined)
     })()
   }
 
-  // Auto-send queued message when streaming ends
+  function handlePlanApprove() {
+    setAwaitingPlanApproval(false)
+    setPlanMode(false)
+    void sendContent("Plan approved", "Plan approved — execute it now.")
+  }
+
+  function handlePlanDismiss() {
+    setAwaitingPlanApproval(false)
+  }
+
+  async function handleAnswerQuestion(answers: Record<string, string>) {
+    try {
+      await api.answerQuestion(agent.id, answers)
+    } catch { /* non-fatal */ }
+    onClearPendingQuestion?.()
+  }
+
+  // Drain first queued message for the current agent when it stops streaming
   useEffect(() => {
-    if (!isStreaming && queuedMessage !== null) {
-      const msg = queuedMessage
-      setQueuedMessage(null)
-      try {
-        const parsed = JSON.parse(msg) as { display: string; api: string }
-        void sendContent(parsed.display, parsed.api)
-      } catch {
-        void sendContent(msg, msg)
-      }
-    }
+    if (isStreaming) return
+    const idx = messageQueue.findIndex((m) => m.agentId === agent.id)
+    if (idx === -1) return
+    const next = messageQueue[idx]
+    setMessageQueue((prev) => prev.filter((_, i) => i !== idx))
+    void sendContent(next.display, next.api, next.planMode ? { planMode: true } : undefined)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStreaming])
+  }, [isStreaming, agent.id])
 
   useEffect(() => {
     if (openFileTab) setActiveTab("file")
@@ -2577,8 +2730,26 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
 
+  // Only show plan approve/dismiss when streaming is done AND the agent actually produced a response
+  const lastAssistantMsg = [...agent.messages].reverse().find((m) => m.role === "assistant")
+  const showPlanApproval = awaitingPlanApproval && !isStreaming && !!lastAssistantMsg?.content
+
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div
+      className="flex flex-col h-full bg-background relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {isDragOver && (
+        <div className="absolute inset-0 bg-accent/20 border-2 border-dashed border-ring rounded-lg flex items-center justify-center pointer-events-none z-50">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
+            <IconPaperclip size={16} />
+            <span>Drop files to attach</span>
+          </div>
+        </div>
+      )}
       {/* Top metadata bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
@@ -2925,36 +3096,32 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
                 ))}
                 {uiIsStreaming && <TypingBubble elapsedSeconds={elapsedSeconds} />}
-                {queuedMessage !== null && (() => {
-                  let displayText = queuedMessage
-                  try { displayText = (JSON.parse(queuedMessage) as { display: string }).display } catch { /* raw */ }
-                  return (
-                    <div className="mb-5 group relative">
-                      <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
-                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{displayText}</p>
-                      </div>
-                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setInput(displayText)
-                            setQueuedMessage(null)
-                          }}
-                          className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
-                          title="Edit queued message"
-                        >
-                          <IconPencil size={11} />
-                        </button>
-                        <button
-                          onClick={() => setQueuedMessage(null)}
-                          className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-red-400 transition-colors"
-                          title="Cancel queued message"
-                        >
-                          <IconX size={11} />
-                        </button>
-                      </div>
+                {messageQueue.filter((m) => m.agentId === agent.id).map((qm) => (
+                  <div key={qm.id} className="mb-5 group relative">
+                    <div className="bg-card border border-border rounded-xl px-5 py-4 opacity-50">
+                      <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">{qm.display}</p>
                     </div>
-                  )
-                })()}
+                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setInput(qm.display)
+                          setMessageQueue((prev) => prev.filter((m) => m.id !== qm.id))
+                        }}
+                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
+                        title="Edit queued message"
+                      >
+                        <IconPencil size={11} />
+                      </button>
+                      <button
+                        onClick={() => setMessageQueue((prev) => prev.filter((m) => m.id !== qm.id))}
+                        className="p-1 rounded bg-card border border-border text-muted-foreground hover:text-red-400 transition-colors"
+                        title="Cancel queued message"
+                      >
+                        <IconX size={11} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
                 <div ref={bottomRef} />
               </div>
             </div>
@@ -2977,6 +3144,12 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
             <div className="px-5 py-4">
             <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
             <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} />
+            {pendingQuestion && pendingQuestion.agentId === agent.id && pendingQuestion.questions.length > 0 && (
+              <AskUserQuestionCard
+                questions={pendingQuestion.questions}
+                onSubmit={handleAnswerQuestion}
+              />
+            )}
             <div className="relative">
               {/* @ mention picker */}
               {mentionQuery !== null && mentionOptions.length > 0 && (
@@ -3030,25 +3203,13 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               <div
                 className={cn(
                   "bg-card rounded-xl transition-colors relative",
-                  planMode
-                    ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
-                    : isDragOver
-                      ? "border-2 border-dashed border-ring"
+                  showPlanApproval
+                    ? "border-2 border-dashed border-emerald-500/60"
+                    : planMode
+                      ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
                       : "border border-border focus-within:border-ring"
                 )}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
               >
-                {isDragOver && (
-                  <div className="absolute inset-0 rounded-xl bg-accent/30 flex items-center justify-center pointer-events-none z-10">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium">
-                      <IconPaperclip size={16} />
-                      <span>Drop files to attach</span>
-                    </div>
-                  </div>
-                )}
                 {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0 || mentionAttachments.some((m) => m.type === "terminal")) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
                     {pendingComments.map((c) => {
@@ -3094,27 +3255,28 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   ref={textareaRef}
                   value={input}
                   onChange={(e) => handleInputChange(e.target.value)}
-                  placeholder={agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
+                  placeholder={showPlanApproval ? "Approve or dismiss the plan…" : agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
                   rows={2}
                   className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none overflow-y-auto"
                   onPaste={(e) => {
+                    // Handle pasted files/images from clipboard
+                    const clipboardFiles = Array.from(e.clipboardData.items)
+                      .filter((item) => item.kind === "file")
+                      .map((item) => item.getAsFile())
+                      .filter((f): f is File => f !== null)
+                    if (clipboardFiles.length > 0) {
+                      e.preventDefault()
+                      uploadFiles(clipboardFiles)
+                      return
+                    }
+                    // Auto-convert large text pastes to file attachments
                     if (!getAutoConvert()) return
                     const text = e.clipboardData.getData("text/plain")
                     if (text.length > 5000) {
                       e.preventDefault()
                       const blob = new Blob([text], { type: "text/plain" })
                       const file = new File([blob], "pasted-text.txt", { type: "text/plain" })
-                      const reader = new FileReader()
-                      reader.onload = async () => {
-                        try {
-                          const result = await api.uploadFile(agent.id, file.name, reader.result as string, file.type)
-                          setAttachments((prev) => [...prev, result])
-                        } catch {
-                          // Fall back to inserting text directly
-                          setInput((prev) => prev + text)
-                        }
-                      }
-                      reader.readAsDataURL(file)
+                      uploadFiles([file])
                     }
                   }}
                   onKeyDown={(e) => {
@@ -3253,15 +3415,36 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         <IconPlayerStop size={13} />
                       </Button>
                     )}
-                    <Button
-                      size="icon-xs"
-                      variant={canSend ? (isStreaming ? "outline" : "default") : "secondary"}
-                      disabled={!canSend}
-                      onClick={handleSend}
-                      title={isStreaming ? "Queue message" : "Send"}
-                    >
-                      <IconSend size={13} />
-                    </Button>
+                    {showPlanApproval ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[11px] px-2 text-muted-foreground"
+                          onClick={handlePlanDismiss}
+                        >
+                          Dismiss
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-6 text-[11px] px-2.5 gap-1"
+                          onClick={handlePlanApprove}
+                        >
+                          <IconCheck size={12} />
+                          Approve
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="icon-xs"
+                        variant={canSend ? (isStreaming ? "outline" : "default") : "secondary"}
+                        disabled={!canSend}
+                        onClick={handleSend}
+                        title={isStreaming ? "Queue message" : "Send"}
+                      >
+                        <IconSend size={13} />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

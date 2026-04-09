@@ -145,7 +145,7 @@ export default function App() {
   })
 
   const workspace = useWorkspace(agents)
-  const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore } = useAgent(workspace.resolvedActiveId)
+  const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore, pendingQuestion: activePendingQuestion, clearPendingQuestion: activeClearPendingQuestion } = useAgent(workspace.resolvedActiveId)
 
   // Terminal is always keyed to the ROOT agent (not the active chat session).
   // rootAgentId is explicitly maintained in useWorkspace and never changes when
@@ -159,6 +159,20 @@ export default function App() {
     enabled: !!terminalAgentId,
     staleTime: 10_000,
   })
+
+  // Notify when an agent asks a question
+  const prevQuestionRef = useRef<string | null>(null)
+  useEffect(() => {
+    const qId = activePendingQuestion?.toolUseId ?? null
+    if (qId && qId !== prevQuestionRef.current) {
+      const title = activeAgent?.title ?? "Agent"
+      toast.info(`${title} is asking a question`, { description: activePendingQuestion?.questions[0]?.question })
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(`${title} needs your input`, { body: activePendingQuestion?.questions[0]?.question })
+      }
+    }
+    prevQuestionRef.current = qId
+  }, [activePendingQuestion?.toolUseId])
 
   const selectedPr = prReviewEnabled && workspace.selectedPrId
     ? prs.find((p) => p.id === workspace.selectedPrId) ?? null
@@ -314,6 +328,8 @@ export default function App() {
           onRemoveComment={(id: string) => workspace.setPendingComments((prev) => prev.filter((c) => c.id !== id))}
           onClearComments={() => workspace.setPendingComments([])}
           githubEnabled={githubEnabled}
+          pendingQuestion={activePendingQuestion}
+          onClearPendingQuestion={activeClearPendingQuestion}
         />
       </ResizablePanel>
 

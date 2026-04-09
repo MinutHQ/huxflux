@@ -307,6 +307,28 @@ export async function agentsRoutes(app: FastifyInstance) {
     const updated = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!updated) return reply.code(404).send({ error: "Not found" })
 
+    // Rebase onto new base branch when baseBranch changes
+    if (body.baseBranch !== undefined && updated.repoId) {
+      const repo = db.select().from(repos).where(eq(repos.id, updated.repoId)).get()
+      if (repo) {
+        const worktreePath = updated.noWorktree ? repo.path : path.join(repo.workspacesPath, updated.location)
+        const newBase = body.baseBranch
+        try {
+          const git = simpleGit(worktreePath)
+          // Fetch latest so the ref is up to date
+          const remote = newBase.includes("/") ? newBase.split("/")[0] : "origin"
+          await git.fetch(remote).catch(() => {})
+          await git.rebase([newBase])
+          // Refresh file changes after rebase
+          void refreshWorktree(id, worktreePath, newBase)
+        } catch (err) {
+          // Abort failed rebase so the worktree isn't left in a broken state
+          try { await simpleGit(worktreePath).rebase(["--abort"]) } catch { /* already clean */ }
+          app.log.error(`Rebase onto ${newBase} failed for agent ${id}: ${(err as Error).message}`)
+        }
+      }
+    }
+
     broadcast({ type: "agent:updated", agent: updated as any })
     return updated
   })
@@ -378,7 +400,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     broadcast({ type: "agent:updated", agent: updated as any })
 
     // Immediately refresh file changes for the new branch
-    void refreshWorktree(id, worktreePath, repo.branchFrom)
+    void refreshWorktree(id, worktreePath, updated.baseBranch ?? repo.branchFrom)
 
     // Auto-link PR for the new branch (fire-and-forget)
     if (config.githubToken) {
@@ -517,9 +539,71 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
     const worktreePath = path.join(repo.workspacesPath, agent.location)
-    const summary = await getDiffSummary(worktreePath, repo.branchFrom)
+    const summary = await getDiffSummary(worktreePath, agent.baseBranch ?? repo.branchFrom)
 
     return { diffSummary: summary }
+  })
+
+  // ── AskUserQuestion hook support ──────────────────────────────────────────
+
+  // In-memory map of pending questions awaiting user answers
+  const pendingQuestions = new Map<string, {
+    resolve: (answers: Record<string, string>) => void
+  }>()
+
+  // POST /api/agents/:id/ask — called by the PreToolUse hook script; long-polls until user answers
+  app.post<{
+    Params: { id: string }
+    Body: { tool_input: { questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }; tool_use_id: string }
+  }>("/api/agents/:id/ask", async (req, reply) => {
+    const { id } = req.params
+    const { tool_input, tool_use_id } = req.body
+    const questions = tool_input?.questions ?? []
+
+    app.log.info(`[ask] Agent ${id} AskUserQuestion: ${questions.length} questions, tool_use_id=${tool_use_id}`)
+
+    // Notify the frontend via WebSocket
+    emit(id, { type: "ask:question", agentId: id, toolUseId: tool_use_id, questions })
+
+    // Long-poll: wait for the user to answer (up to 5 minutes)
+    const answers = await new Promise<Record<string, string>>((resolve) => {
+      pendingQuestions.set(id, { resolve })
+      setTimeout(() => {
+        if (pendingQuestions.has(id)) {
+          pendingQuestions.delete(id)
+          resolve({})
+        }
+      }, 300_000)
+    })
+
+    // Return the hook response format Claude expects
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        updatedInput: {
+          questions,
+          answers,
+        },
+      },
+    }
+  })
+
+  // POST /api/agents/:id/answer — called by frontend when user answers a question
+  app.post<{
+    Params: { id: string }
+    Body: { answers: Record<string, string> }
+  }>("/api/agents/:id/answer", async (req, reply) => {
+    const { id } = req.params
+    const { answers } = req.body
+
+    const pending = pendingQuestions.get(id)
+    if (!pending) return reply.code(404).send({ error: "No pending question" })
+
+    pendingQuestions.delete(id)
+    pending.resolve(answers)
+
+    return { ok: true }
   })
 
   // POST /api/agents/:id/open-in — open worktree in a local application

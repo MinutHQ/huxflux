@@ -11,7 +11,7 @@ import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, list
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
-import { getClaudeBin } from "../claude/runner.js"
+import { getClaudeBin, resolveModelAlias } from "../claude/runner.js"
 import { getSettings } from "../settings.js"
 import type { PRStatus, PRDetails, OpenPRWithRepo } from "../types.js"
 
@@ -130,12 +130,14 @@ export async function githubRoutes(app: FastifyInstance) {
   // POST /api/prs/:owner/:repo/:number/review — stream an agentic code review via SSE
   app.post<{
     Params: { owner: string; repo: string; number: string }
-    Body: { existingComments?: Array<{ path: string; line: number; body: string }> }
+    Body: { existingComments?: Array<{ path: string; line: number; body: string }>; model?: string }
   }>(
     "/api/prs/:owner/:repo/:number/review",
     async (req, reply) => {
       const { owner, repo, number } = req.params
-      const existingComments = (req.body as any)?.existingComments as Array<{ path: string; line: number; body: string }> | undefined
+      const body = req.body as any
+      const existingComments = body?.existingComments as Array<{ path: string; line: number; body: string }> | undefined
+      const requestedModel = body?.model as string | undefined
       const prNumber = parseInt(number, 10)
       const repoSlug = `${owner}/${repo}`
 
@@ -220,6 +222,7 @@ export async function githubRoutes(app: FastifyInstance) {
 
       // Resolve any /slash-commands in the user's custom review prompt
       const settings = getSettings()
+      const reviewModel = resolveModelAlias(requestedModel ?? settings.defaultModel)
       const userPrompt = settings.reviewPrompt?.trim()
         ? resolveSlashCommands(settings.reviewPrompt.trim())
         : ""
@@ -270,7 +273,7 @@ export async function githubRoutes(app: FastifyInstance) {
           "--output-format", "stream-json",
           "--verbose",
           "--allowedTools", "Read,Glob,Grep",
-          "--model", "claude-sonnet-4-6",
+          "--model", reviewModel,
           prompt,
         ],
         {
@@ -356,12 +359,12 @@ export async function githubRoutes(app: FastifyInstance) {
   // POST /api/prs/:owner/:repo/:number/chat — follow-up chat about the PR, streamed via SSE
   app.post<{
     Params: { owner: string; repo: string; number: string }
-    Body: { messages: Array<{ role: "user" | "assistant"; content: string }> }
+    Body: { messages: Array<{ role: "user" | "assistant"; content: string }>; model?: string }
   }>(
     "/api/prs/:owner/:repo/:number/chat",
     async (req, reply) => {
       const { owner, repo, number } = req.params
-      const { messages } = req.body
+      const { messages, model: requestedModel } = req.body
       const prNumber = parseInt(number, 10)
       if (!messages?.length) return reply.code(400).send({ error: "messages required" })
 
@@ -425,9 +428,10 @@ export async function githubRoutes(app: FastifyInstance) {
         `\nUser: ${lastMsg.content}`,
       ].filter(Boolean).join("\n")
 
+      const chatModel = resolveModelAlias(requestedModel ?? getSettings().defaultModel)
       const proc = spawn(
         getClaudeBin(),
-        ["--print", "--output-format", "stream-json", "--verbose", "--allowedTools", "Read,Glob,Grep", "--model", "claude-sonnet-4-6", prompt],
+        ["--print", "--output-format", "stream-json", "--verbose", "--allowedTools", "Read,Glob,Grep", "--model", chatModel, prompt],
         {
           cwd: chatCwd,
           stdio: ["ignore", "pipe", "pipe"],

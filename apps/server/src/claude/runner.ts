@@ -19,6 +19,7 @@ interface RunnerOptions {
   agentId: string
   worktreePath: string
   model?: string
+  planMode?: boolean
 }
 
 // Registry of running agent processes
@@ -58,6 +59,14 @@ const MODEL_ALIASES: Record<string, string> = {
   "Haiku 4.5": "claude-haiku-4-5",
 }
 
+/** Resolve a display name ("Sonnet 4.6") or API id to an API model id. */
+export function resolveModelAlias(model: string | undefined, fallback = "claude-sonnet-4-6"): string {
+  if (!model) return fallback
+  // Already an API id (starts with "claude-")
+  if (model.startsWith("claude-")) return model
+  return MODEL_ALIASES[model] ?? fallback
+}
+
 // ── File change persistence ─────────────────────────────────────────────────
 
 async function refreshFileChanges(
@@ -91,6 +100,9 @@ interface StreamState {
   // tool_use it gets attached to that tool call's `precedingText` and reset.
   // Whatever's left at message end becomes the message's final `content`.
   pendingText: string
+  // All text across the entire message (never reset). Used by plan mode
+  // to surface the full plan as msg.content regardless of tool calls.
+  fullContent: string
   fullThinking: string
   collectedToolCalls: Array<{ id: string; tool: string; args?: string; result?: string; precedingText?: string }>
   toolCallOrderIdx: number
@@ -123,6 +135,7 @@ function handleStreamEvent(
         // optimistically). If a tool_use follows, the client will move this
         // text out of msg.content into the tool call's precedingText.
         state.pendingText += block.text
+        state.fullContent += block.text
         emit(agentId, { type: "message:chunk", agentId, messageId, delta: block.text })
         scheduleFlush()
       } else if (block.type === "thinking") {
@@ -211,14 +224,18 @@ async function persistAssistantMessage(
   worktreePath: string,
   branchFrom: string,
   flushTimer: { current: ReturnType<typeof setTimeout> | null },
+  planMode?: boolean,
 ): Promise<void> {
   // Cancel any pending flush — we're about to write the final state
   if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
 
-  // Whatever text is left in the pending buffer at message end is the
-  // assistant's final answer text — anything earlier was already moved into
-  // the preceding tool calls' `precedingText`.
-  const finalContent = state.pendingText
+  // In plan mode, use the precedingText from ExitPlanMode — that's the actual plan.
+  // In normal mode, only the text after the last tool call becomes content.
+  let finalContent = state.pendingText
+  if (planMode) {
+    const exitCall = state.collectedToolCalls.find((tc) => tc.tool === "ExitPlanMode")
+    if (exitCall?.precedingText?.trim()) finalContent = exitCall.precedingText.trim()
+  }
 
   // Parse and strip any <huxflux:branch> tags emitted by Claude
   const branchTagRe = /<huxflux:branch>(.*?)<\/huxflux:branch>/gs
@@ -252,6 +269,7 @@ async function persistAssistantMessage(
 
   // Update tool call results (they're already inserted; just ensure final state)
   for (const tc of state.collectedToolCalls) {
+    if (tc.result === undefined) continue
     await db.update(toolCallsTable)
       .set({ result: tc.result })
       .where(eq(toolCallsTable.id, tc.id))
@@ -345,6 +363,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   // Stream state — mutable accumulator for the assistant response
   const state: StreamState = {
     pendingText: "",
+    fullContent: "",
     fullThinking: "",
     collectedToolCalls: [],
     toolCallOrderIdx: 0,
@@ -395,14 +414,56 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     }
   }
 
-  const branchFrom = repoRow?.branchFrom ?? "HEAD"
+  const branchFrom = agentRow?.baseBranch ?? repoRow?.branchFrom ?? "HEAD"
+
+  // Install PreToolUse hook for AskUserQuestion in the user's global Claude settings.
+  // The hook script uses HUXFLUX_AGENT_ID, HUXFLUX_API_BASE, and HUXFLUX_AUTH env vars
+  // (set on spawn below) so one script works for all agents across all repos.
+  const apiBase = `http://localhost:${config.boundPort}`
+  try {
+    const homeClaudeDir = `${process.env.HOME}/.claude`
+    const hooksDir = `${homeClaudeDir}/hooks`
+    await fs.mkdir(hooksDir, { recursive: true })
+
+    // Write a generic hook script that reads agent ID + auth from env
+    const scriptPath = `${hooksDir}/huxflux-ask-user.sh`
+    const authHeader = config.authToken ? `-H "Authorization: Bearer $HUXFLUX_AUTH"` : ""
+    const scriptContent = [
+      `#!/bin/bash`,
+      `# Huxflux AskUserQuestion hook — routes questions to the Hive UI`,
+      `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
+      `curl -sf --max-time 300 -X POST "$HUXFLUX_API_BASE/api/agents/$HUXFLUX_AGENT_ID/ask" \\`,
+      `  -H "Content-Type: application/json" ${authHeader} -d @-`,
+    ].join("\n")
+    await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
+
+    // Add hook entry to user-level ~/.claude/settings.json if not already present
+    const settingsPath = `${homeClaudeDir}/settings.json`
+    let settings: Record<string, unknown> = {}
+    try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) } catch { /* fresh */ }
+    const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
+    const preToolUse = (hooks.PreToolUse ?? []) as Array<{ matcher?: string; hooks?: unknown[] }>
+    const alreadyInstalled = preToolUse.some((h) =>
+      h.matcher === "AskUserQuestion" && Array.isArray(h.hooks) && h.hooks.some((hk: any) => typeof hk.command === "string" && hk.command.includes("huxflux-ask-user"))
+    )
+    if (!alreadyInstalled) {
+      preToolUse.push({
+        matcher: "AskUserQuestion",
+        hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
+      })
+      hooks.PreToolUse = preToolUse
+      settings.hooks = hooks
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
+    }
+  } catch (hookErr) {
+    console.error(`[runner] Failed to install AskUserQuestion hook:`, (hookErr as Error).message)
+  }
 
   return new Promise((resolve, reject) => {
     // System prompt injected on every turn so Claude always knows its identity
     // and can rename itself via the REST API.
     const agentTitle = agentRow?.title ?? agentId
     const agentBranch = agentRow?.branch ?? ""
-    const apiBase = `http://localhost:${config.port}`
     const systemPrompt = [
       `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
       ``,
@@ -422,18 +483,30 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       `Answer format:`,
       `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
       `- Start each new idea or action on its own line.`,
+      ...(opts.planMode ? [
+        ``,
+        `You are in plan mode. You MUST describe your full plan in your response text so the user can read it in the chat.`,
+        `Do NOT only write to the plan file — output the plan steps directly in your message.`,
+        `After describing the plan, call ExitPlanMode.`,
+      ] : []),
     ].join("\n")
 
     // Launch claude CLI: --print for non-interactive, --output-format stream-json for streaming JSON
     // Use --continue for follow-up messages so Claude reuses the existing session context
+    // --permission-mode is per-invocation, so plan mode can use the same
+    // session — the approval message resumes with full plan context.
+    const resumeArgs = existingSessionId
+      ? ["--resume", existingSessionId]
+      : useContinue ? ["--continue"] : []
+
     const claudeArgs = [
       "--print",
       "--output-format", "stream-json",
       "--verbose",
-      "--dangerously-skip-permissions",
+      ...(opts.planMode ? ["--permission-mode", "plan"] : ["--dangerously-skip-permissions"]),
       "--model", model,
       "--append-system-prompt", systemPrompt,
-      ...(existingSessionId ? ["--resume", existingSessionId] : useContinue ? ["--continue"] : []),
+      ...resumeArgs,
       userContent,
     ]
     const { bin, args } = config.sandbox
@@ -453,6 +526,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         ...process.env,
         // Ensure common install locations are in PATH on both macOS and Linux
         PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
+        // Used by the AskUserQuestion hook script
+        HUXFLUX_AGENT_ID: agentId,
+        HUXFLUX_API_BASE: apiBase,
+        HUXFLUX_AUTH: config.authToken,
       },
     })
 
@@ -523,7 +600,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       // Persist the final message + emit message:done. Failures here must not
       // prevent the streaming flag from being cleared, so they're swallowed.
       try {
-        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, cwd, branchFrom, flushTimer)
+        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, cwd, branchFrom, flushTimer, opts.planMode)
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(`[runner] persistAssistantMessage failed for ${agentId}:`, err)

@@ -31,4 +31,6 @@ export const config = {
   // Set by the CLI on start. When absent (pnpm dev), auth is disabled.
   authToken: process.env.AUTH_TOKEN ?? "",
   sandbox: parseSandbox(),
+  /** Actual port the server is listening on (set after bind). */
+  boundPort: parseInt(process.env.PORT ?? "4321", 10),
 }

@@ -37,6 +37,13 @@ export function useAgent(id: string | null) {
   const [hasMore, setHasMore] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
 
+  // Pending AskUserQuestion from Claude, surfaced in the UI
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    agentId: string
+    toolUseId: string
+    questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>
+  } | null>(null)
+
   // Persistent client-side sub-agent data, keyed by Agent tool call ID
   const subAgentDataRef = useRef(new Map<string, SubAgentData>())
 
@@ -339,6 +346,10 @@ export function useAgent(id: string | null) {
       }
     }
 
+    if (event.type === "ask:question") {
+      setPendingQuestion({ agentId: event.agentId, toolUseId: event.toolUseId, questions: event.questions })
+    }
+
     if (event.type === "error") {
       _onError(event.message)
     }
@@ -360,5 +371,5 @@ export function useAgent(id: string | null) {
     }
   })
 
-  return { ...query, isStreaming, loadMore, hasMore, isLoadingMore }
+  return { ...query, isStreaming, loadMore, hasMore, isLoadingMore, pendingQuestion, clearPendingQuestion: () => setPendingQuestion(null) }
 }

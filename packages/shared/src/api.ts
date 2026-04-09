@@ -96,6 +96,8 @@ export const api = {
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
   generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
+  answerQuestion: (id: string, answers: Record<string, string>) =>
+    req<{ ok: boolean }>(`/api/agents/${id}/answer`, { method: "POST", body: JSON.stringify({ answers }) }),
   switchBranch: (id: string, branch: string, force?: boolean) => req<Agent>(`/api/agents/${id}/switch-branch`, { method: "POST", body: JSON.stringify({ branch, force }) }),
   renameBranch: (id: string, branch: string) => req<Agent>(`/api/agents/${id}/rename-branch`, { method: "POST", body: JSON.stringify({ branch }) }),
 
@@ -106,10 +108,10 @@ export const api = {
   getMessages: (agentId: string) => req<Message[]>(`/api/agents/${agentId}/messages`),
   getMoreMessages: (agentId: string, before: string) =>
     req<Message[]>(`/api/agents/${agentId}/messages?before=${encodeURIComponent(before)}&limit=50`),
-  sendMessage: (agentId: string, content: string) =>
+  sendMessage: (agentId: string, content: string, opts?: { planMode?: boolean }) =>
     req<{ status: string }>(`/api/agents/${agentId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...opts }),
     }),
 
   // Files
@@ -231,20 +233,24 @@ export const api = {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/chat-messages`, { method: "DELETE" })
   },
-  streamPRReview: (repoId: string, prNumber: number, existingComments?: Array<{ path: string; line: number; body: string }>) => {
+  streamPRReview: (repoId: string, prNumber: number, existingComments?: Array<{ path: string; line: number; body: string }>, model?: string) => {
     const [owner, repo] = repoId.split("/")
+    const payload: Record<string, unknown> = {}
+    if (existingComments?.length) payload.existingComments = existingComments
+    if (model) payload.model = model
+    const hasBody = Object.keys(payload).length > 0
     return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/review`, {
       method: "POST",
-      headers: { ...authHeaders(), ...(existingComments ? { "Content-Type": "application/json" } : {}) },
-      ...(existingComments?.length ? { body: JSON.stringify({ existingComments }) } : {}),
+      headers: { ...authHeaders(), ...(hasBody ? { "Content-Type": "application/json" } : {}) },
+      ...(hasBody ? { body: JSON.stringify(payload) } : {}),
     })
   },
-  streamPRChat: (repoId: string, prNumber: number, messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+  streamPRChat: (repoId: string, prNumber: number, messages: Array<{ role: "user" | "assistant"; content: string }>, model?: string) => {
     const [owner, repo] = repoId.split("/")
     return fetch(`${getBase()}/api/prs/${owner}/${repo}/${prNumber}/chat`, {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, ...(model ? { model } : {}) }),
     })
   },
 

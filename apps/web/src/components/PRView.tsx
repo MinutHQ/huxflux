@@ -60,6 +60,18 @@ const MODELS = [
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
 ]
 
+const MODEL_ALIAS_TO_ID: Record<string, string> = {
+  "Opus 4.6": "claude-opus-4-6",
+  "Sonnet 4.6": "claude-sonnet-4-6",
+  "Haiku 4.5": "claude-haiku-4-5-20251001",
+}
+
+function resolveModelId(alias: string | undefined): string {
+  if (!alias) return "claude-sonnet-4-6"
+  if (alias.startsWith("claude-")) return alias
+  return MODEL_ALIAS_TO_ID[alias] ?? "claude-sonnet-4-6"
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
@@ -1653,10 +1665,18 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const [hasReviewed, setHasReviewed] = useState(false)
   const [input, setInput] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [model, setModel] = useState("claude-sonnet-4-6")
+  const { data: appSettings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings })
+  const [model, setModel] = useState("")
   const [thinking, setThinking] = useState(false)
   const [reviewStep, setReviewStep] = useState(0)
   const [attachedThreads, setAttachedThreads] = useState<PRThread[]>([])
+
+  // Initialize model from settings
+  useEffect(() => {
+    if (appSettings?.defaultModel && !model) {
+      setModel(resolveModelId(appSettings.defaultModel))
+    }
+  }, [appSettings?.defaultModel])
 
   // PR details
   const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({})
@@ -1939,7 +1959,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
       for (const c of pendingComments) {
         if (c.path && c.line) existingComments.push({ path: c.path, line: c.line, body: c.body })
       }
-      const response = await api.streamPRReview(pr.repoId, pr.number, existingComments.length > 0 ? existingComments : undefined)
+      const response = await api.streamPRReview(pr.repoId, pr.number, existingComments.length > 0 ? existingComments : undefined, model || undefined)
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({})) as { error?: string; debug?: string[] }
         if (errBody.error === "not_configured") {
@@ -1972,7 +1992,6 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
             if (parsed.step != null) setReviewStep((prev) => Math.max(prev, parsed.step!))
             if (parsed.text) {
               accumulatedContent += parsed.text
-              setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, content: m.content + parsed.text } : m)))
             }
           } catch (parseErr) {
             const msg = (parseErr as Error).message
@@ -2009,11 +2028,14 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
           new Notification(`Review ready: ${pr.title}`, { body: reviewDesc })
         }
         onReviewDone?.()
+      } else if (accumulatedContent) {
+        // No structured review parsed — show raw text as fallback
+        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: accumulatedContent } : m))
       }
     } catch (err) {
       const errMsg = (err as Error).message
       const fallback = `Review failed: ${errMsg}`
-      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: m.content || fallback } : m))
+      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: fallback } : m))
     } finally {
       setReviewing(false)
       setHasReviewed(true)
@@ -2073,7 +2095,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
     ]
 
     try {
-      const response = await api.streamPRChat(pr.repoId, pr.number, apiMessages)
+      const response = await api.streamPRChat(pr.repoId, pr.number, apiMessages, model || undefined)
       if (!response.ok) {
         const err = await response.json().catch(() => ({})) as { error?: string }
         throw new Error(err.error ?? `Server error ${response.status}`)
@@ -2378,12 +2400,12 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
           )}
 
           {/* Review animation (first run only, not re-runs) */}
-          {reviewing && !isRerunRef.current && messages.every((m) => !m.content) && (
+          {reviewing && !isRerunRef.current && (
             <ReviewingView pr={pr} currentStep={reviewStep} />
           )}
 
           {/* Messages */}
-          {!(reviewing && !isRerunRef.current && messages.every((m) => !m.content)) && (messages.length > 0 || isSending) && (
+          {!(reviewing && !isRerunRef.current) && (messages.length > 0 || isSending) && (
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <div className="py-3">
                 {messages.map((msg) => {
@@ -2435,7 +2457,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                   }
                   return <ChatMessageBubble key={msg.id} message={msg} />
                 })}
-                {reviewing && !messages.every((m) => !m.content) && messages[messages.length - 1]?.content === "" && (
+                {reviewing && isRerunRef.current && (
                   <ReviewingInlineView currentStep={reviewStep} />
                 )}
                 <div ref={messagesEndRef} />
@@ -2481,7 +2503,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
               />
               <div className="flex items-center justify-between px-3 pb-3">
                 <div className="flex items-center gap-1">
-                  <Select value={model} onValueChange={setModel}>
+                  <Select value={model || "claude-sonnet-4-6"} onValueChange={setModel}>
                     <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
                       <IconSparkles size={13} className="text-muted-foreground shrink-0" />
                       <SelectValue />

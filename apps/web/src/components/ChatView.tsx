@@ -3309,6 +3309,11 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); applySlashCommand(filteredCommands[slashIndex].name); return }
                       if (e.key === "Escape") { setSlashQuery(null); return }
                     }
+                    if (e.key === "Tab" && e.shiftKey) {
+                      e.preventDefault()
+                      setPlanMode((v) => !v)
+                      return
+                    }
                     if (e.key === "u" && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault()
                       fileInputRef.current?.click()

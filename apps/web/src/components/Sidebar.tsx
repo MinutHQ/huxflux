@@ -209,17 +209,34 @@ function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y
 const BEE_ADJECTIVES = [
   "golden", "amber", "clover", "lavender", "sage", "thyme", "meadow",
   "misty", "swift", "bright", "busy", "wild", "pollen", "honey", "wax",
-  "violet", "royal", "fuzzy", "striped", "sunlit",
+  "violet", "royal", "fuzzy", "striped", "sunlit", "drowsy", "hazy",
+  "nimble", "plucky", "eager", "dusky", "velvet", "copper", "crimson",
+  "ivory", "marbled", "silken", "frosted", "glossy", "humming", "dappled",
+  "quiet", "restless", "brisk", "gentle", "wistful", "weary", "jolly",
+  "quirky", "zesty", "tangy", "sugary", "minty", "buttery", "dusty",
+  "earthen", "rustic", "woodland", "linen", "willow", "cedar", "juniper",
+  "hazel", "birch", "rowan", "maple", "ember", "mossy", "fernlike",
+  "breezy", "sunny", "stormy", "cloudy", "starlit", "moonlit", "dawnlit",
 ]
 const BEE_NOUNS = [
   "scout", "forager", "guard", "worker", "drone", "nurse", "harvester",
   "wanderer", "pilgrim", "ranger", "keeper", "seeker", "drifter", "carrier",
+  "gatherer", "builder", "mender", "tender", "weaver", "dancer", "singer",
+  "climber", "flier", "rover", "hunter", "tracker", "watcher", "herald",
+  "courier", "runner", "sifter", "sorter", "tinker", "cobbler", "scribe",
+  "sage", "mystic", "dreamer", "poet", "jester", "acrobat", "trickster",
+  "nomad", "voyager", "sailor", "captain", "mariner", "pathfinder", "shepherd",
+  "gardener", "baker", "brewer", "smith", "potter", "carver", "painter",
 ]
 
 function randomBeeName(): string {
   const adj = BEE_ADJECTIVES[Math.floor(Math.random() * BEE_ADJECTIVES.length)]
   const noun = BEE_NOUNS[Math.floor(Math.random() * BEE_NOUNS.length)]
-  return `${adj}-${noun}`
+  // 5-char base36 suffix adds ~60M possibilities per (adj, noun) pair,
+  // making collisions astronomically unlikely and preventing stale-branch
+  // name reuse from false-positive "already merged" detection.
+  const suffix = Math.random().toString(36).slice(2, 7).padStart(5, "0")
+  return `${adj}-${noun}-${suffix}`
 }
 
 function NewAgentPopover({

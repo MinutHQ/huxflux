@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Huxflux — Parallel Claude Code Agents</title>
+  <meta name="description" content="Self-hosted orchestrator for Claude Code. Run dozens of AI coding agents in parallel from a single UI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #08080a;
+      --bg-subtle: #0e0e12;
+      --bg-card: #121218;
+      --bg-card-hover: #18181f;
+      --border: #1e1e28;
+      --border-subtle: #16161e;
+      --text: #e8e6e3;
+      --text-secondary: #8a8690;
+      --text-tertiary: #5a5662;
+      --accent: #7c6aef;
+      --accent-bright: #9580ff;
+      --accent-dim: #5b4cc4;
+      --accent-glow: rgba(124, 106, 239, 0.15);
+      --blue: #60a5fa;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --font: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    html {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      overflow-x: hidden;
+    }
+
+    /* ── Noise overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.025;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Utility ── */
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    .mono { font-family: var(--mono); }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+    @keyframes gradient-shift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .animate-fade-up {
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.6s ease both;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(8, 8, 10, 0.8);
+      backdrop-filter: blur(12px) saturate(1.4);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    nav .inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    nav .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+    nav .logo svg {
+      width: 28px;
+      height: 28px;
+    }
+    nav .links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    nav .links a {
+      font-size: 14px;
+      color: var(--text-secondary);
+      transition: color 0.2s;
+    }
+    nav .links a:hover { color: var(--text); }
+    nav .cta-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      background: var(--accent);
+      color: #fff;
+      transition: background 0.2s, transform 0.15s;
+    }
+    nav .cta-nav:hover {
+      background: var(--accent-bright);
+      transform: translateY(-1px);
+    }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      padding: 180px 0 120px;
+      text-align: center;
+      overflow: hidden;
+    }
+    .hero-glow {
+      position: absolute;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 600px;
+      background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
+      pointer-events: none;
+      animation: pulse-glow 4s ease-in-out infinite;
+    }
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border-subtle) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(ellipse 60% 50% at 50% 40%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 40%, black 30%, transparent 80%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px 6px 8px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+    }
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .hero h1 {
+      font-size: clamp(42px, 6vw, 72px);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+      max-width: 800px;
+      margin: 0 auto 24px;
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent-bright) 0%, var(--blue) 50%, var(--accent) 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradient-shift 6s ease infinite;
+    }
+    .hero p {
+      font-size: 18px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto 40px;
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+    }
+    .hero-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 24px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .btn-primary:hover {
+      background: var(--accent-bright);
+      box-shadow: 0 0 40px rgba(124, 106, 239, 0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--text-tertiary);
+      transform: translateY(-1px);
+    }
+
+    /* ── Terminal mockup in hero ── */
+    .hero-terminal {
+      position: relative;
+      max-width: 560px;
+      margin: 56px auto 0;
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.65s both;
+    }
+    .hero-terminal .window {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+    }
+    .hero-terminal .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .hero-terminal .titlebar span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-tertiary);
+      opacity: 0.4;
+    }
+    .hero-terminal .titlebar .title {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-tertiary);
+      font-family: var(--mono);
+      width: auto;
+      height: auto;
+      border-radius: 0;
+      background: none;
+      opacity: 1;
+    }
+    .hero-terminal pre {
+      padding: 20px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text-secondary);
+      overflow-x: auto;
+    }
+    .hero-terminal pre .prompt { color: var(--accent-bright); }
+    .hero-terminal pre .cmd { color: var(--text); }
+    .hero-terminal pre .comment { color: var(--text-tertiary); }
+    .hero-terminal pre .success { color: var(--emerald); }
+
+    /* ── Section common ── */
+    section {
+      padding: 100px 0;
+      position: relative;
+    }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      max-width: 480px;
+    }
+
+    /* ── Feature bento ── */
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-top: 56px;
+      border: 1px solid var(--border-subtle);
+    }
+    .bento-card {
+      background: var(--bg-card);
+      padding: 32px;
+      transition: background 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .bento-card:hover {
+      background: var(--bg-card-hover);
+    }
+    .bento-card.span-2 {
+      grid-column: span 2;
+    }
+    .bento-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 18px;
+    }
+    .bento-icon.violet { background: rgba(124, 106, 239, 0.12); color: var(--accent-bright); }
+    .bento-icon.blue { background: rgba(96, 165, 250, 0.12); color: var(--blue); }
+    .bento-icon.emerald { background: rgba(52, 211, 153, 0.12); color: var(--emerald); }
+    .bento-icon.amber { background: rgba(251, 191, 36, 0.12); color: var(--amber); }
+    .bento-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+    }
+    .bento-card p {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+    }
+    .bento-card .visual {
+      margin-top: 20px;
+      height: 120px;
+      border-radius: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .bento-card .visual .bar {
+      height: 4px;
+      border-radius: 2px;
+      flex: 1;
+      margin: 0 12px;
+    }
+
+    /* ── Agents visual ── */
+    .agents-visual {
+      display: flex;
+      gap: 8px;
+      padding: 16px;
+      flex-wrap: wrap;
+    }
+    .agent-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-subtle);
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    .agent-chip .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+    .agent-chip .dot.green { background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
+    .agent-chip .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .agent-chip .dot.blue { background: var(--blue); box-shadow: 0 0 6px var(--blue); }
+
+    /* ── How it works ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      margin-top: 56px;
+    }
+    .step {
+      position: relative;
+      padding: 32px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      transition: border-color 0.3s, transform 0.2s;
+    }
+    .step:hover {
+      border-color: var(--accent-dim);
+      transform: translateY(-2px);
+    }
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--accent-glow);
+      color: var(--accent-bright);
+      border: 1px solid rgba(124, 106, 239, 0.2);
+      margin-bottom: 20px;
+    }
+    .step h3 {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
+    }
+    .step p {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+    }
+    .step code {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border-subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .step code .hl { color: var(--accent-bright); }
+
+    /* ── Platforms ── */
+    .platforms {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 56px;
+      flex-wrap: wrap;
+    }
+    .platform-card {
+      flex: 1;
+      min-width: 200px;
+      max-width: 300px;
+      padding: 32px 28px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      text-align: center;
+      transition: border-color 0.3s, transform 0.2s;
+    }
+    .platform-card:hover {
+      border-color: var(--text-tertiary);
+      transform: translateY(-2px);
+    }
+    .platform-card svg {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 16px;
+      color: var(--text-secondary);
+    }
+    .platform-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .platform-card p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* ── CTA band ── */
+    .cta-section {
+      text-align: center;
+      padding: 80px 0 100px;
+    }
+    .cta-section h2 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+    .cta-section p {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 40px 0;
+    }
+    footer .inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    footer .copy {
+      font-size: 13px;
+      color: var(--text-tertiary);
+    }
+    footer .foot-links {
+      display: flex;
+      gap: 24px;
+    }
+    footer .foot-links a {
+      font-size: 13px;
+      color: var(--text-secondary);
+      transition: color 0.2s;
+    }
+    footer .foot-links a:hover { color: var(--text); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .bento { grid-template-columns: 1fr; }
+      .bento-card.span-2 { grid-column: span 1; }
+      .steps { grid-template-columns: 1fr; }
+      .platforms { flex-direction: column; align-items: center; }
+      .platform-card { max-width: 100%; }
+      nav .links { display: none; }
+      .hero { padding: 140px 0 80px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- ── Nav ── -->
+  <nav>
+    <div class="container inner">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M14 2L25.26 8.5V21.5L14 28L2.74 21.5V8.5L14 2Z" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+          <path d="M14 8L20 11.5V18.5L14 22L8 18.5V11.5L14 8Z" fill="currentColor" fill-opacity="0.3" stroke="currentColor" stroke-width="1" stroke-linejoin="round" />
+        </svg>
+        Huxflux
+      </a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <a href="/docs/download" class="cta-nav">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-grid"></div>
+    <div class="container" style="position: relative; z-index: 1;">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        Open source &middot; Self-hosted
+      </div>
+      <h1>
+        Run <span class="gradient">parallel agents</span><br />from a single UI
+      </h1>
+      <p>
+        Huxflux orchestrates dozens of Claude Code agents simultaneously. Each gets its own branch, worktree, and terminal. You stay in control.
+      </p>
+      <div class="hero-buttons">
+        <a href="/docs/getting-started" class="btn btn-primary">
+          Get Started
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="/docs" class="btn btn-secondary">View Docs</a>
+      </div>
+
+      <div class="hero-terminal">
+        <div class="window">
+          <div class="titlebar">
+            <span></span><span></span><span></span>
+            <span class="title">Terminal</span>
+          </div>
+          <pre><span class="prompt">$</span> <span class="cmd">npx huxflux start</span>
+
+<span class="comment"># Huxflux server running on http://localhost:4321</span>
+<span class="comment"># 3 agents active, 2 in review, 1 shipping</span>
+
+<span class="success">&#10003;</span> <span class="comment">Agent "Add CSV export" committed 4 files</span>
+<span class="success">&#10003;</span> <span class="comment">Agent "Fix auth redirect" opened PR #142</span>
+<span class="success">&#10003;</span> <span class="comment">Agent "Refactor middleware" waiting for review</span></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section id="features">
+    <div class="container">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">Everything you need to<br />ship code with agents</h2>
+      <p class="section-desc">
+        A complete workspace for managing AI coding agents — from planning to pull request.
+      </p>
+
+      <div class="bento">
+        <!-- Parallel agents -->
+        <div class="bento-card span-2">
+          <div class="bento-icon violet">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <h3>Parallel agents</h3>
+          <p>Spin up dozens of Claude Code agents at once. Each runs in its own git worktree with an isolated branch — no conflicts, no waiting.</p>
+          <div class="visual">
+            <div class="agents-visual">
+              <div class="agent-chip"><span class="dot green"></span>Add CSV export</div>
+              <div class="agent-chip"><span class="dot green"></span>Fix login redirect</div>
+              <div class="agent-chip"><span class="dot amber"></span>Refactor auth</div>
+              <div class="agent-chip"><span class="dot blue"></span>Update API docs</div>
+              <div class="agent-chip"><span class="dot green"></span>Add dark mode</div>
+              <div class="agent-chip"><span class="dot amber"></span>DB migration</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plan mode -->
+        <div class="bento-card">
+          <div class="bento-icon blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <h3>Plan mode</h3>
+          <p>Review the plan before execution. Approve, dismiss, or ask for changes — Claude won't write a line until you say go.</p>
+        </div>
+
+        <!-- PR Review -->
+        <div class="bento-card">
+          <div class="bento-icon emerald">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+          </div>
+          <h3>AI code review</h3>
+          <p>Automated PR reviews with inline comments, severity levels, and one-click submission to GitHub.</p>
+        </div>
+
+        <!-- Interactive questions -->
+        <div class="bento-card">
+          <div class="bento-icon amber">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <h3>Interactive questions</h3>
+          <p>Claude can ask you questions mid-task. Answer inline in the chat — no context switching, no terminal juggling.</p>
+        </div>
+
+        <!-- Message queue -->
+        <div class="bento-card span-2">
+          <div class="bento-icon violet">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <h3>Queue messages across agents</h3>
+          <p>Stack up follow-ups while agents are working. Messages queue per-agent and send automatically when each one finishes — across any number of parallel agents.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ── -->
+  <section id="how-it-works" style="background: var(--bg-subtle);">
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-label">How it works</div>
+        <h2 class="section-title">Three commands to ship</h2>
+        <p class="section-desc" style="margin: 0 auto;">
+          Install the CLI, spin up agents, and let them work while you review.
+        </p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Install</h3>
+          <p>One command to get the server running. Works on Mac, Linux, and Windows.</p>
+          <code><span class="hl">npx</span> huxflux start</code>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Create agents</h3>
+          <p>Describe the task. Each agent gets its own branch and worktree automatically.</p>
+          <code><span class="hl">"Add CSV export to the devices table"</span></code>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Review &amp; ship</h3>
+          <p>Review diffs, approve plans, submit PRs — all from the same UI. Ship when ready.</p>
+          <code><span class="hl">&#10003;</span> PR #142 merged</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Platforms ── -->
+  <section>
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-label">Platforms</div>
+        <h2 class="section-title">Works everywhere</h2>
+        <p class="section-desc" style="margin: 0 auto;">
+          Manage your agents from the browser, a native desktop app, or your phone.
+        </p>
+      </div>
+
+      <div class="platforms">
+        <div class="platform-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <h3>Web</h3>
+          <p>Open in any browser. No installation required.</p>
+        </div>
+        <div class="platform-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><circle cx="7.5" cy="7" r="0.5" fill="currentColor"/><circle cx="10.5" cy="7" r="0.5" fill="currentColor"/></svg>
+          <h3>Desktop</h3>
+          <p>Native app for Mac and Windows via Tauri.</p>
+        </div>
+        <div class="platform-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          <h3>Mobile</h3>
+          <p>Monitor and message agents from iOS and Android.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <div class="container">
+      <h2>Start building with agents</h2>
+      <p>Self-hosted, open source, free. Your code never leaves your machine.</p>
+      <div class="hero-buttons">
+        <a href="/docs/getting-started" class="btn btn-primary">
+          Get Started
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="https://github.com" target="_blank" class="btn btn-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <div class="container inner">
+      <span class="copy">Huxflux</span>
+      <div class="foot-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <a href="https://x.com" target="_blank">Twitter</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

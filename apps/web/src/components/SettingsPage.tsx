@@ -420,11 +420,11 @@ function ProvidersSettings() {
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-medium text-foreground">Anthropic</span>
           <span className="text-[11px] px-2 py-0.5 rounded-full border bg-secondary text-muted-foreground border-border">
-            Configured on server
+            Via Claude CLI
           </span>
         </div>
         <p className="text-[12px] text-muted-foreground leading-snug">
-          The Anthropic API key is configured via the <code className="font-mono">ANTHROPIC_API_KEY</code> environment variable on the server.
+          Authentication is managed through the Claude CLI. Run <code className="font-mono">claude /login</code> in your terminal to sign in.
         </p>
       </div>
     </div>

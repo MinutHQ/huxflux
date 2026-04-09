@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Huxflux — Parallel Claude Code Agents</title>
+  <meta name="description" content="Self-hosted orchestrator for Claude Code. Run dozens of AI coding agents in parallel from a single UI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #050507;
+      --bg-subtle: #0a0a0f;
+      --card: #0d0d14;
+      --card-hover: #111119;
+      --border: #1a1a25;
+      --border-bright: #2a2a3a;
+      --text: #eae8e4;
+      --text-2: #908c96;
+      --text-3: #5c586a;
+      --violet: #8b5cf6;
+      --violet-bright: #a78bfa;
+      --violet-dim: #6d28d9;
+      --blue: #60a5fa;
+      --cyan: #22d3ee;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --font: 'Space Grotesk', system-ui, sans-serif;
+      --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    }
+
+    html {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    body { overflow-x: hidden; }
+
+    /* Grain */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.03;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+
+    /* ── Keyframes ── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(32px) } to { opacity: 1; transform: translateY(0) } }
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes orbit { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+    @keyframes orbit-reverse { from { transform: rotate(360deg) } to { transform: rotate(0deg) } }
+    @keyframes pulse { 0%,100% { opacity: 0.3; transform: scale(1) } 50% { opacity: 0.8; transform: scale(1.05) } }
+    @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12px) } }
+    @keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+    @keyframes glow-ring { 0%,100% { box-shadow: 0 0 20px rgba(139,92,246,0.1), 0 0 60px rgba(139,92,246,0.05) } 50% { box-shadow: 0 0 30px rgba(139,92,246,0.2), 0 0 80px rgba(139,92,246,0.1) } }
+    @keyframes typewriter { from { width: 0 } to { width: 100% } }
+    @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: 0 } }
+    @keyframes slide-in-left { from { opacity: 0; transform: translateX(-20px) } to { opacity: 1; transform: translateX(0) } }
+    @keyframes slide-in-right { from { opacity: 0; transform: translateX(20px) } to { opacity: 1; transform: translateX(0) } }
+    @keyframes scale-in { from { opacity: 0; transform: scale(0.9) } to { opacity: 1; transform: scale(1) } }
+    @keyframes dash { to { stroke-dashoffset: 0 } }
+    @keyframes beam { 0% { opacity: 0; transform: translateY(-100%) } 50% { opacity: 1 } 100% { opacity: 0; transform: translateY(100%) } }
+
+    .anim-fade-up { animation: fadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 14px 0;
+      background: rgba(5, 5, 7, 0.7);
+      backdrop-filter: blur(20px) saturate(1.6);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    nav .inner { display: flex; align-items: center; justify-content: space-between; }
+    nav .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; letter-spacing: -0.02em; }
+    nav .logo-mark {
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
+      position: relative;
+    }
+    nav .logo-mark svg { width: 16px; height: 16px; color: #fff; }
+    nav .links { display: flex; align-items: center; gap: 28px; }
+    nav .links a { font-size: 14px; color: var(--text-2); transition: color 0.2s; }
+    nav .links a:hover { color: var(--text); }
+    nav .nav-cta {
+      padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+      background: rgba(139,92,246,0.12); color: var(--violet-bright);
+      border: 1px solid rgba(139,92,246,0.2);
+      transition: all 0.2s;
+    }
+    nav .nav-cta:hover { background: rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.4); }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 120px 0 80px;
+      overflow: hidden;
+    }
+
+    /* Orbital rings background */
+    .hero-orbits {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 900px; height: 900px;
+      pointer-events: none;
+    }
+    .hero-orbits .ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(139,92,246,0.06);
+    }
+    .hero-orbits .ring:nth-child(1) { inset: 0; animation: orbit 60s linear infinite; }
+    .hero-orbits .ring:nth-child(2) { inset: 80px; animation: orbit-reverse 45s linear infinite; border-color: rgba(96,165,250,0.06); }
+    .hero-orbits .ring:nth-child(3) { inset: 180px; animation: orbit 35s linear infinite; border-color: rgba(52,211,153,0.05); }
+    .hero-orbits .ring:nth-child(4) { inset: 300px; animation: orbit-reverse 25s linear infinite; border-color: rgba(139,92,246,0.08); }
+
+    /* Floating dots on the rings */
+    .hero-orbits .dot {
+      position: absolute; width: 4px; height: 4px; border-radius: 50%;
+    }
+    .hero-orbits .ring:nth-child(1) .dot { top: -2px; left: 50%; background: var(--violet); box-shadow: 0 0 12px var(--violet); }
+    .hero-orbits .ring:nth-child(2) .dot { bottom: 20%; right: -2px; background: var(--blue); box-shadow: 0 0 12px var(--blue); }
+    .hero-orbits .ring:nth-child(3) .dot { top: 30%; left: -2px; background: var(--emerald); box-shadow: 0 0 12px var(--emerald); }
+    .hero-orbits .ring:nth-child(4) .dot { bottom: -2px; left: 40%; background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+
+    /* Center glow */
+    .hero-glow {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(139,92,246,0.12) 0%, rgba(96,165,250,0.06) 40%, transparent 70%);
+      animation: pulse 5s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .hero-content { position: relative; z-index: 2; text-align: center; max-width: 720px; }
+
+    .hero-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 14px 5px 6px;
+      border-radius: 100px; border: 1px solid var(--border);
+      background: rgba(13,13,20,0.8);
+      font-size: 13px; color: var(--text-2);
+      margin-bottom: 36px;
+      animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+      backdrop-filter: blur(8px);
+    }
+    .hero-pill .tag {
+      padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600;
+      background: linear-gradient(135deg, var(--violet), var(--blue));
+      color: #fff; letter-spacing: 0.03em;
+    }
+
+    .hero h1 {
+      font-size: clamp(44px, 7vw, 80px);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1.0;
+      margin-bottom: 28px;
+      animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.2s both;
+    }
+    .hero h1 em {
+      font-style: normal;
+      position: relative;
+      background: linear-gradient(135deg, var(--violet-bright) 0%, var(--cyan) 50%, var(--violet) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 4s linear infinite;
+    }
+
+    .hero .sub {
+      font-size: 19px; line-height: 1.6; color: var(--text-2);
+      max-width: 500px; margin: 0 auto 44px;
+      animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.35s both;
+    }
+
+    .hero-actions {
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.5s both;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 13px 28px; border-radius: 12px;
+      font-size: 15px; font-weight: 500; font-family: var(--font);
+      cursor: pointer; border: none; transition: all 0.25s;
+      position: relative; overflow: hidden;
+    }
+    .btn-glow {
+      background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
+      color: #fff;
+      box-shadow: 0 0 30px rgba(139,92,246,0.3), 0 0 80px rgba(139,92,246,0.1);
+    }
+    .btn-glow::before {
+      content: '';
+      position: absolute; inset: -1px;
+      border-radius: 13px;
+      background: linear-gradient(135deg, var(--violet-bright), var(--cyan), var(--violet));
+      background-size: 200% 200%;
+      animation: shimmer 3s linear infinite;
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .btn-glow:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 40px rgba(139,92,246,0.4), 0 0 100px rgba(139,92,246,0.15);
+    }
+    .btn-glow:hover::before { opacity: 1; }
+    .btn-ghost {
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(4px);
+    }
+    .btn-ghost:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: var(--border-bright);
+      transform: translateY(-2px);
+    }
+
+    /* ── Floating UI mockup ── */
+    .hero-visual {
+      position: relative;
+      margin-top: 72px;
+      animation: fadeUp 1s cubic-bezier(0.16,1,0.3,1) 0.7s both;
+    }
+    .hero-mockup {
+      max-width: 720px; margin: 0 auto;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      overflow: hidden;
+      box-shadow:
+        0 32px 100px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 0 60px rgba(139,92,246,0.08);
+      animation: glow-ring 4s ease-in-out infinite;
+    }
+    .mockup-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    .mockup-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); opacity: 0.3; }
+    .mockup-title {
+      flex: 1; text-align: center;
+      font-size: 12px; font-family: var(--mono); color: var(--text-3);
+    }
+    .mockup-body {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      min-height: 320px;
+    }
+    .mockup-sidebar {
+      border-right: 1px solid var(--border);
+      padding: 12px;
+    }
+    .mockup-sidebar-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-3);
+      padding: 4px 8px; margin-bottom: 4px;
+    }
+    .mockup-agent {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 8px; border-radius: 6px;
+      font-size: 12px; color: var(--text-2);
+      transition: background 0.2s;
+      animation: slide-in-left 0.5s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .mockup-agent:nth-child(2) { animation-delay: 0.8s; }
+    .mockup-agent:nth-child(3) { animation-delay: 0.9s; }
+    .mockup-agent:nth-child(4) { animation-delay: 1.0s; }
+    .mockup-agent:nth-child(5) { animation-delay: 1.1s; }
+    .mockup-agent:nth-child(6) { animation-delay: 1.2s; }
+    .mockup-agent.active { background: rgba(139,92,246,0.1); color: var(--text); }
+    .mockup-agent .status {
+      width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    }
+    .mockup-agent .status.green { background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
+    .mockup-agent .status.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+    .mockup-agent .status.blue { background: var(--blue); box-shadow: 0 0 6px var(--blue); }
+    .mockup-agent .status.violet { background: var(--violet); box-shadow: 0 0 6px var(--violet); }
+    .mockup-chat {
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 10px; justify-content: flex-end;
+    }
+    .chat-msg {
+      padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.5;
+      max-width: 85%;
+    }
+    .chat-msg.user {
+      align-self: flex-end;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); animation: slide-in-right 0.5s cubic-bezier(0.16,1,0.3,1) 1.3s both;
+    }
+    .chat-msg.assistant {
+      align-self: flex-start; color: var(--text-2);
+      animation: slide-in-left 0.5s cubic-bezier(0.16,1,0.3,1) 1.6s both;
+    }
+    .chat-msg.assistant .typing {
+      display: inline-flex; gap: 4px;
+    }
+    .chat-msg.assistant .typing span {
+      width: 5px; height: 5px; border-radius: 50%; background: var(--text-3);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .chat-msg.assistant .typing span:nth-child(2) { animation-delay: 0.15s; }
+    .chat-msg.assistant .typing span:nth-child(3) { animation-delay: 0.3s; }
+    .chat-tool {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border-radius: 6px;
+      background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.12);
+      font-size: 11px; font-family: var(--mono); color: var(--violet-bright);
+      align-self: flex-start;
+      animation: scale-in 0.4s cubic-bezier(0.16,1,0.3,1) 1.9s both;
+    }
+    .chat-tool svg { width: 12px; height: 12px; }
+    .mockup-input {
+      margin: 0 16px 16px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: space-between;
+      animation: fadeIn 0.5s 2.1s both;
+    }
+    .mockup-input span {
+      font-size: 12px; color: var(--text-3);
+    }
+    .mockup-input .send {
+      width: 24px; height: 24px; border-radius: 6px;
+      background: var(--violet); display: flex; align-items: center; justify-content: center;
+    }
+    .mockup-input .send svg { width: 12px; height: 12px; color: #fff; }
+
+    /* Floating cards around mockup */
+    .float-card {
+      position: absolute;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(13,13,20,0.9);
+      backdrop-filter: blur(12px);
+      font-size: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      animation: float 4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .float-card.fc-1 {
+      top: 20px; right: -60px;
+      animation-delay: 0s;
+    }
+    .float-card.fc-2 {
+      bottom: 40px; left: -50px;
+      animation-delay: 1.5s;
+    }
+    .float-card .fc-label {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-3); margin-bottom: 4px;
+    }
+    .float-card .fc-value {
+      font-family: var(--mono); font-size: 20px; font-weight: 600;
+    }
+    .float-card .fc-value.violet { color: var(--violet-bright); }
+    .float-card .fc-value.emerald { color: var(--emerald); }
+
+    /* ── Section ── */
+    section { padding: 120px 0; position: relative; }
+    .section-eyebrow {
+      font-family: var(--mono); font-size: 12px; font-weight: 500;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--violet-bright); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-eyebrow::before {
+      content: ''; width: 20px; height: 1px;
+      background: linear-gradient(90deg, var(--violet), transparent);
+    }
+    .section-heading {
+      font-size: clamp(30px, 4.5vw, 48px);
+      font-weight: 700; letter-spacing: -0.035em;
+      line-height: 1.1; margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 17px; line-height: 1.6; color: var(--text-2);
+      max-width: 500px;
+    }
+
+    /* ── Feature cards ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      margin-top: 64px;
+    }
+    .f-card {
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 32px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .f-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(139,92,246,0.3), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .f-card:hover { border-color: var(--border-bright); transform: translateY(-2px); }
+    .f-card:hover::before { opacity: 1; }
+
+    .f-card.c-hero { grid-column: span 7; }
+    .f-card.c-side { grid-column: span 5; }
+    .f-card.c-third { grid-column: span 4; }
+    .f-card.c-wide { grid-column: span 8; }
+
+    .f-card .f-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .f-icon.fi-violet { background: rgba(139,92,246,0.1); color: var(--violet-bright); border: 1px solid rgba(139,92,246,0.15); }
+    .f-icon.fi-blue { background: rgba(96,165,250,0.1); color: var(--blue); border: 1px solid rgba(96,165,250,0.15); }
+    .f-icon.fi-emerald { background: rgba(52,211,153,0.1); color: var(--emerald); border: 1px solid rgba(52,211,153,0.15); }
+    .f-icon.fi-amber { background: rgba(251,191,36,0.1); color: var(--amber); border: 1px solid rgba(251,191,36,0.15); }
+    .f-icon.fi-cyan { background: rgba(34,211,238,0.1); color: var(--cyan); border: 1px solid rgba(34,211,238,0.15); }
+    .f-icon.fi-rose { background: rgba(251,113,133,0.1); color: var(--rose); border: 1px solid rgba(251,113,133,0.15); }
+
+    .f-card h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 8px; }
+    .f-card p { font-size: 14px; line-height: 1.55; color: var(--text-2); }
+
+    /* Mini agent list inside hero card */
+    .f-agents {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px;
+    }
+    .f-agent {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 11px; font-family: var(--mono); color: var(--text-2);
+    }
+    .f-agent .fd { width: 5px; height: 5px; border-radius: 50%; }
+
+    /* Code block in feature card */
+    .f-code {
+      margin-top: 16px; padding: 14px;
+      border-radius: 10px;
+      background: var(--bg); border: 1px solid var(--border);
+      font-family: var(--mono); font-size: 12px; line-height: 1.7;
+      color: var(--text-2); overflow-x: auto;
+    }
+    .f-code .kw { color: var(--violet-bright); }
+    .f-code .fn { color: var(--blue); }
+    .f-code .str { color: var(--emerald); }
+    .f-code .cmt { color: var(--text-3); }
+
+    /* ── Steps ── */
+    .steps-section { background: var(--bg-subtle); }
+    .steps-track {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      margin-top: 64px;
+      position: relative;
+    }
+    /* Connecting line */
+    .steps-track::before {
+      content: '';
+      position: absolute; top: 40px; left: 80px; right: 80px;
+      height: 1px;
+      background: linear-gradient(90deg, var(--violet), var(--blue), var(--emerald));
+      opacity: 0.3;
+    }
+    .step-item {
+      text-align: center;
+      padding: 0 24px;
+      position: relative;
+    }
+    .step-num {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+      font-family: var(--mono); font-size: 18px; font-weight: 700;
+      position: relative; z-index: 1;
+    }
+    .step-item:nth-child(1) .step-num {
+      background: rgba(139,92,246,0.15); color: var(--violet-bright);
+      border: 1px solid rgba(139,92,246,0.25);
+      box-shadow: 0 0 20px rgba(139,92,246,0.15);
+    }
+    .step-item:nth-child(2) .step-num {
+      background: rgba(96,165,250,0.15); color: var(--blue);
+      border: 1px solid rgba(96,165,250,0.25);
+      box-shadow: 0 0 20px rgba(96,165,250,0.15);
+    }
+    .step-item:nth-child(3) .step-num {
+      background: rgba(52,211,153,0.15); color: var(--emerald);
+      border: 1px solid rgba(52,211,153,0.25);
+      box-shadow: 0 0 20px rgba(52,211,153,0.15);
+    }
+    .step-item h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .step-item p { font-size: 14px; line-height: 1.55; color: var(--text-2); }
+    .step-item code {
+      display: inline-block; margin-top: 14px;
+      padding: 8px 16px; border-radius: 8px;
+      background: var(--card); border: 1px solid var(--border);
+      font-family: var(--mono); font-size: 12px; color: var(--text-2);
+    }
+    .step-item code .hl { color: var(--violet-bright); }
+
+    /* ── Platforms ── */
+    .plat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 64px;
+    }
+    .plat-card {
+      padding: 36px 28px; border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      text-align: center;
+      transition: all 0.3s;
+      position: relative;
+    }
+    .plat-card:hover { border-color: var(--border-bright); transform: translateY(-3px); }
+    .plat-card svg {
+      width: 40px; height: 40px; margin: 0 auto 18px;
+      color: var(--text-2);
+    }
+    .plat-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .plat-card p { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+
+    /* ── CTA ── */
+    .final-cta {
+      text-align: center; padding: 100px 0 120px;
+      position: relative;
+    }
+    .final-cta .cta-glow {
+      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .final-cta h2 {
+      font-size: clamp(30px, 4.5vw, 48px);
+      font-weight: 700; letter-spacing: -0.035em;
+      margin-bottom: 16px; position: relative;
+    }
+    .final-cta p {
+      font-size: 17px; color: var(--text-2); margin-bottom: 36px;
+      position: relative;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 36px 0;
+    }
+    footer .inner { display: flex; align-items: center; justify-content: space-between; }
+    footer .copy { font-size: 13px; color: var(--text-3); }
+    footer .f-links { display: flex; gap: 24px; }
+    footer .f-links a { font-size: 13px; color: var(--text-2); transition: color 0.2s; }
+    footer .f-links a:hover { color: var(--text); }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .f-card.c-hero, .f-card.c-side, .f-card.c-third, .f-card.c-wide { grid-column: span 1; }
+      .steps-track { grid-template-columns: 1fr; gap: 40px; }
+      .steps-track::before { display: none; }
+      .plat-grid { grid-template-columns: 1fr; }
+      .hero-orbits { width: 500px; height: 500px; }
+      .mockup-body { grid-template-columns: 1fr; }
+      .mockup-sidebar { display: none; }
+      .float-card { display: none; }
+      nav .links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Nav -->
+  <nav>
+    <div class="container inner">
+      <a href="/" class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round">
+            <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z"/>
+          </svg>
+        </div>
+        Huxflux
+      </a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <a href="/docs/download" class="nav-cta">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-orbits">
+      <div class="ring"><div class="dot"></div></div>
+      <div class="ring"><div class="dot"></div></div>
+      <div class="ring"><div class="dot"></div></div>
+      <div class="ring"><div class="dot"></div></div>
+    </div>
+    <div class="hero-glow"></div>
+
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-pill">
+          <span class="tag">NEW</span>
+          Plan mode, interactive questions &amp; team agents
+        </div>
+
+        <h1>Your agents.<br/><em>In parallel.</em></h1>
+
+        <p class="sub">
+          Huxflux orchestrates dozens of Claude Code agents from a single dashboard. Each gets its own branch, terminal, and worktree. Self-hosted. Open source.
+        </p>
+
+        <div class="hero-actions">
+          <a href="/docs/getting-started" class="btn btn-glow">
+            Get Started
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          <a href="/docs" class="btn btn-ghost">View Docs</a>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="float-card fc-1">
+          <div class="fc-label">Active agents</div>
+          <div class="fc-value violet">12</div>
+        </div>
+        <div class="float-card fc-2">
+          <div class="fc-label">PRs shipped today</div>
+          <div class="fc-value emerald">7</div>
+        </div>
+
+        <div class="hero-mockup">
+          <div class="mockup-bar">
+            <div class="mockup-dot"></div>
+            <div class="mockup-dot"></div>
+            <div class="mockup-dot"></div>
+            <span class="mockup-title">huxflux &mdash; web-app</span>
+          </div>
+          <div class="mockup-body">
+            <div class="mockup-sidebar">
+              <div class="mockup-sidebar-label">In progress</div>
+              <div class="mockup-agent active">
+                <span class="status green"></span>
+                Add CSV export
+              </div>
+              <div class="mockup-agent">
+                <span class="status green"></span>
+                Fix auth redirect
+              </div>
+              <div class="mockup-agent">
+                <span class="status amber"></span>
+                Refactor middleware
+              </div>
+              <div class="mockup-sidebar-label" style="margin-top: 12px;">In review</div>
+              <div class="mockup-agent">
+                <span class="status blue"></span>
+                Update API docs
+              </div>
+              <div class="mockup-agent">
+                <span class="status violet"></span>
+                Add dark mode
+              </div>
+            </div>
+            <div class="mockup-chat">
+              <div class="chat-msg user">Add a CSV export button to the devices table</div>
+              <div class="chat-msg assistant">
+                <div class="typing"><span></span><span></span><span></span></div>
+              </div>
+              <div class="chat-tool">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                Edit src/components/DeviceTable.tsx
+              </div>
+              <div class="mockup-input">
+                <span>Add a follow up...</span>
+                <div class="send">
+                  <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features">
+    <div class="container">
+      <div class="section-eyebrow">Features</div>
+      <h2 class="section-heading">Everything you need to<br/>ship code with agents</h2>
+      <p class="section-sub">A complete workspace for orchestrating AI agents — from planning to pull request.</p>
+
+      <div class="features-grid">
+        <div class="f-card c-hero">
+          <div class="f-icon fi-violet">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <h3>Parallel agents with isolated worktrees</h3>
+          <p>Run dozens of agents simultaneously. Each gets its own git branch and worktree — complete isolation, zero conflicts.</p>
+          <div class="f-agents">
+            <div class="f-agent"><span class="fd" style="background:var(--emerald);box-shadow:0 0 6px var(--emerald)"></span>Add CSV export</div>
+            <div class="f-agent"><span class="fd" style="background:var(--emerald);box-shadow:0 0 6px var(--emerald)"></span>Fix login bug</div>
+            <div class="f-agent"><span class="fd" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></span>Refactor auth</div>
+            <div class="f-agent"><span class="fd" style="background:var(--blue);box-shadow:0 0 6px var(--blue)"></span>Update docs</div>
+            <div class="f-agent"><span class="fd" style="background:var(--emerald);box-shadow:0 0 6px var(--emerald)"></span>Dark mode</div>
+            <div class="f-agent"><span class="fd" style="background:var(--violet);box-shadow:0 0 6px var(--violet)"></span>DB migration</div>
+          </div>
+        </div>
+
+        <div class="f-card c-side">
+          <div class="f-icon fi-blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </div>
+          <h3>Plan before you build</h3>
+          <p>Claude reads your code and proposes a plan. Review it, approve, or ask for changes — nothing executes until you say go.</p>
+          <div class="f-code">
+            <span class="cmt">// Plan mode output</span><br/>
+            <span class="kw">1.</span> Add export button to toolbar<br/>
+            <span class="kw">2.</span> Create CSV serializer util<br/>
+            <span class="kw">3.</span> Wire up click handler<br/>
+            <span class="kw">4.</span> Add tests<br/><br/>
+            <span class="str">[Approve]</span> <span class="cmt">[Dismiss]</span>
+          </div>
+        </div>
+
+        <div class="f-card c-third">
+          <div class="f-icon fi-emerald">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+          </div>
+          <h3>AI code review</h3>
+          <p>Automated PR reviews with inline comments and one-click submit to GitHub.</p>
+        </div>
+
+        <div class="f-card c-third">
+          <div class="f-icon fi-amber">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <h3>Interactive questions</h3>
+          <p>Claude asks you questions mid-task. Answer inline — no terminal switching.</p>
+        </div>
+
+        <div class="f-card c-third">
+          <div class="f-icon fi-cyan">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <h3>Message queue</h3>
+          <p>Stack follow-ups while agents work. They send automatically when each agent finishes.</p>
+        </div>
+
+        <div class="f-card c-wide">
+          <div class="f-icon fi-rose">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Full workspace per agent</h3>
+          <p>Each agent has a chat interface, file diff viewer, and integrated terminal. Track changes, review code, and interact with your agents from one place — across web, desktop, and mobile.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how-it-works" class="steps-section">
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-eyebrow" style="justify-content: center;">
+          <span></span>How it works
+        </div>
+        <h2 class="section-heading">Three steps to ship</h2>
+        <p class="section-sub" style="margin: 0 auto;">Install, describe the task, review and merge.</p>
+      </div>
+
+      <div class="steps-track">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <h3>Install</h3>
+          <p>One command. Works on Mac, Linux, and Windows.</p>
+          <code><span class="hl">npx</span> huxflux start</code>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <h3>Create agents</h3>
+          <p>Describe what to build. Each agent gets its own branch.</p>
+          <code><span class="hl">"Add CSV export"</span></code>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <h3>Review &amp; ship</h3>
+          <p>Review diffs, approve plans, merge PRs.</p>
+          <code><span class="hl">&#10003;</span> PR #142 merged</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platforms -->
+  <section>
+    <div class="container">
+      <div style="text-align: center;">
+        <div class="section-eyebrow" style="justify-content: center;">
+          <span></span>Platforms
+        </div>
+        <h2 class="section-heading">Works everywhere</h2>
+        <p class="section-sub" style="margin: 0 auto;">Browser, desktop app, or your phone.</p>
+      </div>
+
+      <div class="plat-grid">
+        <div class="plat-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <h3>Web</h3>
+          <p>Open in any browser. Zero installation.</p>
+        </div>
+        <div class="plat-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><circle cx="7.5" cy="7" r=".5" fill="currentColor"/><circle cx="10.5" cy="7" r=".5" fill="currentColor"/></svg>
+          <h3>Desktop</h3>
+          <p>Native Mac &amp; Windows app via Tauri.</p>
+        </div>
+        <div class="plat-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          <h3>Mobile</h3>
+          <p>Monitor agents from iOS &amp; Android.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final-cta">
+    <div class="cta-glow"></div>
+    <div class="container">
+      <h2>Start shipping with agents</h2>
+      <p>Self-hosted. Open source. Your code stays on your machine.</p>
+      <div class="hero-actions" style="justify-content: center;">
+        <a href="/docs/getting-started" class="btn btn-glow">
+          Get Started
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="https://github.com" target="_blank" class="btn btn-ghost">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container inner">
+      <span class="copy">Huxflux</span>
+      <div class="f-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <a href="https://x.com" target="_blank">Twitter</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

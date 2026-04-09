@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Huxflux — Parallel Claude Code Agents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Berkeley+Mono,JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0b;
+      --surface: #111113;
+      --surface-2: #161618;
+      --border: rgba(255,255,255,0.06);
+      --border-hover: rgba(255,255,255,0.1);
+      --text: #fafaf9;
+      --text-2: #a1a1a6;
+      --text-3: #636366;
+      --accent: #6366f1;
+      --accent-soft: rgba(99,102,241,0.08);
+      --font: 'Inter', -apple-system, system-ui, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    html {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      scroll-behavior: smooth;
+      font-size: 16px;
+    }
+
+    body { overflow-x: hidden; }
+    a { color: inherit; text-decoration: none; }
+    .w { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Animations ── */
+    @keyframes enter { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes line-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+    .reveal {
+      opacity: 0; transform: translateY(20px);
+      transition: opacity 0.7s cubic-bezier(0.4, 0, 0, 1), transform 0.7s cubic-bezier(0.4, 0, 0, 1);
+    }
+    .reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      padding: 16px 0;
+      background: rgba(10,10,11,0.8);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .inner {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 15px; letter-spacing: -0.02em;
+    }
+    .logo-mark {
+      width: 24px; height: 24px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark svg { width: 14px; height: 14px; color: #fff; }
+    nav .links {
+      display: flex; align-items: center; gap: 24px;
+    }
+    nav .links a {
+      font-size: 13px; color: var(--text-3);
+      transition: color 0.15s;
+    }
+    nav .links a:hover { color: var(--text); }
+    nav .links .cta {
+      font-size: 13px; font-weight: 500; color: var(--text);
+      padding: 6px 14px; border-radius: 6px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      transition: all 0.15s;
+    }
+    nav .links .cta:hover {
+      background: var(--surface);
+      border-color: var(--border-hover);
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 160px 0 100px;
+      text-align: center;
+      position: relative;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(99,102,241,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-label {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500; color: var(--text-3);
+      letter-spacing: 0.02em;
+      margin-bottom: 24px;
+      animation: enter 0.6s cubic-bezier(0.4,0,0,1) 0.1s both;
+    }
+    .hero-label .dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #34d399;
+    }
+
+    .hero h1 {
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.1;
+      max-width: 600px;
+      margin: 0 auto 20px;
+      animation: enter 0.7s cubic-bezier(0.4,0,0,1) 0.15s both;
+    }
+
+    .hero p {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--text-2);
+      max-width: 440px;
+      margin: 0 auto 36px;
+      animation: enter 0.7s cubic-bezier(0.4,0,0,1) 0.25s both;
+    }
+
+    .hero-actions {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      animation: enter 0.7s cubic-bezier(0.4,0,0,1) 0.35s both;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 20px; border-radius: 8px;
+      font-size: 14px; font-weight: 500; font-family: var(--font);
+      border: none; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn svg { width: 14px; height: 14px; }
+    .btn-primary {
+      background: var(--text);
+      color: var(--bg);
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-2);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      color: var(--text);
+      border-color: var(--border-hover);
+      background: var(--surface);
+    }
+
+    /* ── Terminal ── */
+    .hero-terminal {
+      max-width: 540px;
+      margin: 56px auto 0;
+      animation: enter 0.8s cubic-bezier(0.4,0,0,1) 0.5s both;
+    }
+    .term {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .term-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .term-bar span {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-3); opacity: 0.25;
+    }
+    .term-bar .title {
+      flex: 1; text-align: center;
+      font-size: 11px; font-family: var(--mono); color: var(--text-3);
+      width: auto; height: auto; border-radius: 0; background: none; opacity: 1;
+    }
+    .term pre {
+      padding: 16px;
+      font-family: var(--mono); font-size: 12.5px;
+      line-height: 1.75; color: var(--text-2);
+      overflow-x: auto;
+    }
+    .term pre .p { color: var(--accent); }
+    .term pre .c { color: var(--text); }
+    .term pre .d { color: var(--text-3); }
+    .term pre .g { color: #34d399; }
+
+    /* ── Divider ── */
+    .divider {
+      width: 1px; height: 64px;
+      background: linear-gradient(180deg, var(--border), transparent);
+      margin: 0 auto;
+    }
+
+    /* ── Section ── */
+    section { padding: 80px 0; }
+    .section-head {
+      margin-bottom: 48px;
+    }
+    .section-head .label {
+      font-size: 12px; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 12px;
+      font-family: var(--mono);
+    }
+    .section-head h2 {
+      font-size: clamp(24px, 3.5vw, 36px);
+      font-weight: 700; letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 12px;
+    }
+    .section-head p {
+      font-size: 15px; line-height: 1.6;
+      color: var(--text-2);
+      max-width: 420px;
+    }
+
+    /* ── Feature list ── */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .feature {
+      background: var(--surface);
+      padding: 32px;
+      transition: background 0.2s;
+    }
+    .feature:hover { background: var(--surface-2); }
+    .feature .icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .feature .icon svg { width: 16px; height: 16px; }
+    .feature h3 {
+      font-size: 15px; font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }
+    .feature p {
+      font-size: 13px; line-height: 1.55;
+      color: var(--text-2);
+    }
+
+    /* ── Steps ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .step {
+      padding: 28px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: border-color 0.2s;
+    }
+    .step:hover { border-color: var(--border-hover); }
+    .step-num {
+      font-family: var(--mono);
+      font-size: 11px; font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 14px;
+      letter-spacing: 0.04em;
+    }
+    .step h3 {
+      font-size: 15px; font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .step p {
+      font-size: 13px; line-height: 1.55;
+      color: var(--text-2);
+    }
+    .step code {
+      display: block; margin-top: 14px;
+      padding: 8px 12px; border-radius: 6px;
+      background: var(--bg);
+      font-family: var(--mono); font-size: 12px;
+      color: var(--text-2);
+    }
+
+    /* ── Platforms ── */
+    .platforms {
+      display: flex; gap: 16px; justify-content: center;
+    }
+    .platform {
+      flex: 1; max-width: 240px;
+      padding: 28px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .platform:hover { border-color: var(--border-hover); }
+    .platform svg {
+      width: 28px; height: 28px;
+      margin: 0 auto 14px;
+      color: var(--text-3);
+    }
+    .platform h3 {
+      font-size: 14px; font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .platform p {
+      font-size: 12px; line-height: 1.4;
+      color: var(--text-3);
+    }
+
+    /* ── CTA ── */
+    .cta-section {
+      padding: 80px 0 100px;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: clamp(24px, 3.5vw, 36px);
+      font-weight: 700; letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+    .cta-section p {
+      font-size: 15px; color: var(--text-2);
+      margin-bottom: 28px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 24px 0;
+      border-top: 1px solid var(--border);
+    }
+    footer .inner {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    footer .copy {
+      font-size: 12px; color: var(--text-3);
+    }
+    footer .flinks {
+      display: flex; gap: 20px;
+    }
+    footer .flinks a {
+      font-size: 12px; color: var(--text-3);
+      transition: color 0.15s;
+    }
+    footer .flinks a:hover { color: var(--text-2); }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      .features { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .platforms { flex-direction: column; align-items: center; }
+      .platform { max-width: 100%; }
+      nav .links a:not(.cta) { display: none; }
+      .hero { padding: 130px 0 80px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="w inner">
+      <a href="/" class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"><path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z"/></svg>
+        </div>
+        Huxflux
+      </a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="/docs">Docs</a>
+        <a href="https://github.com">GitHub</a>
+        <a href="/docs/download" class="cta">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="w">
+      <div class="hero-label">
+        <span class="dot"></span>
+        Open source &middot; Self-hosted
+      </div>
+
+      <h1>Run parallel coding agents from one place</h1>
+
+      <p>
+        Orchestrate dozens of Claude Code agents. Each gets its own branch, worktree, and terminal. You stay in control.
+      </p>
+
+      <div class="hero-actions">
+        <a href="/docs/getting-started" class="btn btn-primary">
+          Get Started
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="/docs" class="btn btn-secondary">Docs</a>
+      </div>
+
+      <div class="hero-terminal">
+        <div class="term">
+          <div class="term-bar">
+            <span></span><span></span><span></span>
+            <span class="title">Terminal</span>
+          </div>
+          <pre><span class="p">$</span> <span class="c">npx huxflux start</span>
+
+<span class="d"># Server running on http://localhost:4321</span>
+<span class="d"># 6 agents active across 2 repos</span>
+
+<span class="g">&#10003;</span> <span class="d">Agent "Add CSV export" committed 4 files</span>
+<span class="g">&#10003;</span> <span class="d">Agent "Fix auth redirect" opened PR #142</span>
+<span class="g">&#10003;</span> <span class="d">Agent "Refactor middleware" waiting for plan approval</span></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="features">
+    <div class="w">
+      <div class="section-head reveal">
+        <div class="label">Features</div>
+        <h2>Everything you need to ship code with agents</h2>
+        <p>From planning to pull request, in one workspace.</p>
+      </div>
+
+      <div class="features reveal">
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <h3>Parallel agents</h3>
+          <p>Run dozens of Claude Code agents simultaneously, each in its own isolated git worktree.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </div>
+          <h3>Plan mode</h3>
+          <p>Review the plan before execution. Approve, dismiss, or iterate — nothing runs until you say go.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+          </div>
+          <h3>AI code review</h3>
+          <p>Automated PR reviews with inline comments, severity levels, and one-click submit to GitHub.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <h3>Interactive questions</h3>
+          <p>Claude can ask you questions mid-task. Answer inline in the chat, no context switching.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </div>
+          <h3>Message queue</h3>
+          <p>Queue follow-up messages across agents. They send automatically when each agent finishes.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>Team agents</h3>
+          <p>Claude spawns sub-agents that work in parallel on parts of a task, then combine results.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section id="how-it-works">
+    <div class="w">
+      <div class="section-head reveal" style="text-align: center;">
+        <div class="label">How it works</div>
+        <h2>Three steps</h2>
+      </div>
+
+      <div class="steps reveal">
+        <div class="step">
+          <div class="step-num">01</div>
+          <h3>Install</h3>
+          <p>One command to start the server.</p>
+          <code><span style="color:var(--accent)">npx</span> huxflux start</code>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <h3>Create agents</h3>
+          <p>Describe the task. Each agent gets its own branch and worktree.</p>
+          <code><span style="color:var(--accent)">"</span>Add CSV export to the devices table<span style="color:var(--accent)">"</span></code>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <h3>Review and ship</h3>
+          <p>Review diffs, approve plans, merge pull requests.</p>
+          <code><span style="color:#34d399">&#10003;</span> PR #142 merged</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section>
+    <div class="w">
+      <div class="section-head reveal" style="text-align: center;">
+        <div class="label">Platforms</div>
+        <h2>Works everywhere</h2>
+      </div>
+
+      <div class="platforms reveal">
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <h3>Web</h3>
+          <p>Any browser, no install.</p>
+        </div>
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+          <h3>Desktop</h3>
+          <p>Mac and Windows.</p>
+        </div>
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          <h3>Mobile</h3>
+          <p>iOS and Android.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <section class="cta-section">
+    <div class="w reveal">
+      <h2>Start building with agents</h2>
+      <p>Self-hosted, open source, free. Your code never leaves your machine.</p>
+      <div class="hero-actions">
+        <a href="/docs/getting-started" class="btn btn-primary">
+          Get Started
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a href="https://github.com" class="btn btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="w inner">
+      <span class="copy">Huxflux</span>
+      <div class="flinks">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com">GitHub</a>
+        <a href="https://x.com">Twitter</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('is-visible'); obs.unobserve(e.target); }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+  </script>
+</body>
+</html>

@@ -2730,9 +2730,26 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
 
-  // Only show plan approve/dismiss when streaming is done AND the agent actually produced a response
+  // Detect plan mode from tool calls in the latest messages
   const lastAssistantMsg = [...agent.messages].reverse().find((m) => m.role === "assistant")
-  const showPlanApproval = awaitingPlanApproval && !isStreaming && !!lastAssistantMsg?.content
+  const hasExitPlanMode = lastAssistantMsg?.toolCalls?.some((tc) => tc.tool === "ExitPlanMode") ?? false
+  // Check if Claude entered plan mode (in any recent message) and hasn't exited yet
+  const claudeInPlanMode = (() => {
+    for (let i = agent.messages.length - 1; i >= 0; i--) {
+      const tcs = agent.messages[i].toolCalls ?? []
+      if (tcs.some((tc) => tc.tool === "ExitPlanMode")) return false
+      if (tcs.some((tc) => tc.tool === "EnterPlanMode")) return true
+    }
+    return false
+  })()
+
+  // Show approve/dismiss when:
+  // 1. User-initiated: awaitingPlanApproval flag is set, OR
+  // 2. Claude-initiated: last assistant message has ExitPlanMode
+  // Streaming must be done and the message must have content (the plan).
+  const showPlanApproval = !isStreaming && !!lastAssistantMsg?.content && (awaitingPlanApproval || hasExitPlanMode)
+  // Show plan mode indicator when Claude is actively planning (entered but not exited)
+  const isInPlanMode = planMode || claudeInPlanMode
 
   return (
     <div
@@ -3205,7 +3222,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   "bg-card rounded-xl transition-colors relative",
                   showPlanApproval
                     ? "border-2 border-dashed border-emerald-500/60"
-                    : planMode
+                    : isInPlanMode
                       ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
                       : "border border-border focus-within:border-ring"
                 )}
@@ -3339,7 +3356,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                       onClick={() => setPlanMode(!planMode)}
                       className={cn(
                         "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                        planMode ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
+                        isInPlanMode ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
                       )}
                     >
                       <IconMap size={13} />

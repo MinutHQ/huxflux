@@ -34,7 +34,7 @@ export { parseUnifiedDiff, tokenize } from "./diff"
 export type { DiffLine, DiffLineType, DiffToken } from "./diff"
 
 // Hooks
-export { useAgents } from "./hooks/useAgents"
+export { useAgents, markAgentDeleted } from "./hooks/useAgents"
 export { useAgent, configureAgentErrorHandler } from "./hooks/useAgent"
 export { useRepos } from "./hooks/useRepos"
 export { useServerStatus } from "./hooks/useServerStatus"

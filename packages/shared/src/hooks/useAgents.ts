@@ -4,6 +4,18 @@ import { getActiveServer } from "../serverStore"
 import { useAgentEvents } from "../ws"
 import type { AgentSummary } from "../types"
 
+// Tombstones for agents that were just deleted client-side. Prevents a
+// late-arriving `agent:updated` event from resurrecting a deleted agent
+// before the server's `agent:deleted` broadcast catches up.
+const deletedAgentIds = new Set<string>()
+
+export function markAgentDeleted(id: string) {
+  deletedAgentIds.add(id)
+  // Keep the tombstone long enough to outlast any in-flight events but
+  // short enough not to block a legitimate re-create of the same id.
+  setTimeout(() => deletedAgentIds.delete(id), 30_000)
+}
+
 export function useAgents() {
   const queryClient = useQueryClient()
   const serverUrl = getActiveServer()?.url ?? null
@@ -17,9 +29,10 @@ export function useAgents() {
 
   useAgentEvents(null, (event) => {
     if (event.type === "agent:updated") {
-      queryClient.setQueryData<AgentSummary[]>(["agents", serverUrl], (old) => {
+      const updated = event.agent
+      if (deletedAgentIds.has(updated.id)) return
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) => {
         if (!old) return old
-        const updated = event.agent
         if (updated.parentAgentId) return old // child tabs don't appear in sidebar
         const idx = old.findIndex((a) => a.id === updated.id)
         if (idx === -1) return [...old, updated]
@@ -27,12 +40,13 @@ export function useAgents() {
       })
     }
     if (event.type === "agent:deleted") {
-      queryClient.setQueryData<AgentSummary[]>(["agents", serverUrl], (old) =>
+      markAgentDeleted(event.agentId)
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
         old ? old.filter((a) => a.id !== event.agentId) : old
       )
     }
     if (event.type === "ws:reconnected") {
-      queryClient.invalidateQueries({ queryKey: ["agents", serverUrl] })
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
     }
   })
 

@@ -8,7 +8,7 @@ import { statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
 import type { PullRequest } from "@/data/mockReviews"
 import type { PendingAgent } from "@/hooks/useWorkspace"
 import type { RefineSession } from "@/components/RefineView"
-import { api, useRepos } from "@huxflux/shared"
+import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
@@ -419,7 +419,7 @@ function StatusContextMenu({
     onClose()
     if (status === agent.status) return
     await api.updateAgent(agent.id, { status })
-    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+    queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
       old ? old.map((a) => a.id === agent.id ? { ...a, status } : a) : old
     )
   }
@@ -428,7 +428,7 @@ function StatusContextMenu({
     onClose()
     try {
       const updated = await api.generateTitle(agent.id)
-      queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
         old ? old.map((a) => a.id === agent.id ? { ...a, title: updated.title } : a) : old
       )
     } catch {
@@ -578,7 +578,7 @@ const AgentRow = React.memo(function AgentRow({
     setEditing(false)
     if (!title || title === agent.title) return
     await api.updateAgent(agent.id, { title })
-    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+    queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
       old ? old.map((a) => a.id === agent.id ? { ...a, title } : a) : old
     )
   }
@@ -1529,8 +1529,13 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
   function handleDeleteAgent(agent: AgentSummary) {
     const repoName = agent.repoId ? (repos.find(r => r.id === agent.repoId)?.name ?? "") : ""
     onAgentDeleting(agent.id, { title: agent.title, branch: agent.branch, repoName })
-    // Optimistically remove from sidebar immediately
-    queryClient.setQueryData<AgentSummary[]>(["agents"], (old) =>
+    // Tombstone the id so a late `agent:updated` event can't resurrect it
+    // before the server's `agent:deleted` broadcast arrives.
+    markAgentDeleted(agent.id)
+    // Optimistically remove from sidebar immediately.
+    // Use setQueriesData with prefix matching because useAgents keys its
+    // query as ["agents", serverUrl] — an exact ["agents"] write would miss.
+    queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
       old ? old.filter((a) => a.id !== agent.id) : old
     )
     // Fire API in background — don't block the UI

@@ -41,10 +41,10 @@ export function getApiBase(): string {
   return getBase()
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const hasBody = init?.body !== undefined
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15_000)
+  const timer = setTimeout(() => controller.abort(), init?.timeoutMs ?? 15_000)
   let res: Response
   try {
     res = await fetch(`${getBase()}${path}`, {
@@ -109,11 +109,14 @@ export const api = {
 
   // Stats
   getStats: () => req<WorkspaceStats>("/api/stats"),
-  getWrapped: (period: string, from?: string, to?: string) => {
+  getWrapped: (period: string, from?: string, to?: string, refresh?: boolean, length?: "short" | "medium" | "long") => {
     const params = new URLSearchParams({ period })
     if (from) params.set("from", from)
     if (to) params.set("to", to)
-    return req<WrappedSummary>(`/api/wrapped?${params}`)
+    if (refresh) params.set("refresh", "true")
+    if (length) params.set("length", length)
+    // Claude summary generation can take 20–30s; give it headroom.
+    return req<WrappedSummary>(`/api/wrapped?${params}`, { timeoutMs: 60_000 })
   },
 
   // Messages

@@ -14,6 +14,7 @@ import {
   IconFlame,
   IconTrophy,
   IconRocket,
+  IconRefresh,
 } from "@tabler/icons-react"
 
 const visibleStatuses: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
@@ -474,7 +475,7 @@ export function HomeView() {
         }}
       />
 
-      <div className="max-w-3xl mx-auto px-6 py-12 relative z-10">
+      <div className="max-w-6xl mx-auto px-6 py-12 relative z-10">
         {/* Header */}
         <div
           className="mb-10 transition-all duration-1000"
@@ -506,57 +507,65 @@ export function HomeView() {
           </div>
         </div>
 
-        {/* Hero stat cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          {([
-            { icon: <IconGitBranch size={18} />, label: "Worktrees", value: stats?.agents.total ?? totalAgents, color: "rgb(96, 165, 250)", colorClass: "blue" },
-            { icon: <IconDatabase size={18} />, label: "Repos", value: stats?.repos ?? repos.length, color: "rgb(167, 139, 250)", colorClass: "violet" },
-            { icon: <IconMessage size={18} />, label: "Messages", value: stats?.messages.total ?? 0, color: "rgb(52, 211, 153)", colorClass: "emerald" },
-            { icon: <IconBolt size={18} />, label: "Tool calls", value: stats?.toolCalls ?? 0, color: "rgb(251, 191, 36)", colorClass: "amber" },
-          ] as const).map((card, i) => (
-            <HeroCard key={card.label} {...card} visible={heroVisible[i]} sparkData={i === 0 ? sparkData : undefined} />
-          ))}
-        </div>
-
-        {/* Token + Code row */}
-        {stats && (
-          <AnimatedSection delay={200}>
+        {/* Dashboard: stats column + Wrapped column */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 items-start">
+          {/* Stats column */}
+          <div className="min-w-0">
+            {/* Hero stat cards */}
             <div className="grid grid-cols-2 gap-3 mb-8">
-              <TokenPanel stats={stats} />
-              <CodePanel stats={stats} />
+              {([
+                { icon: <IconGitBranch size={18} />, label: "Worktrees", value: stats?.agents.total ?? totalAgents, color: "rgb(96, 165, 250)", colorClass: "blue" },
+                { icon: <IconDatabase size={18} />, label: "Repos", value: stats?.repos ?? repos.length, color: "rgb(167, 139, 250)", colorClass: "violet" },
+                { icon: <IconMessage size={18} />, label: "Messages", value: stats?.messages.total ?? 0, color: "rgb(52, 211, 153)", colorClass: "emerald" },
+                { icon: <IconBolt size={18} />, label: "Tool calls", value: stats?.toolCalls ?? 0, color: "rgb(251, 191, 36)", colorClass: "amber" },
+              ] as const).map((card, i) => (
+                <HeroCard key={card.label} {...card} visible={heroVisible[i]} sparkData={i === 0 ? sparkData : undefined} />
+              ))}
             </div>
-          </AnimatedSection>
-        )}
 
-        {/* Activity chart */}
-        {stats && stats.dailyAgents.length > 0 && (
-          <AnimatedSection delay={350}>
-            <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
-              <div className="relative flex items-center justify-between mb-4">
-                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Agent activity (30 days)</h2>
-                <span className="text-[11px] text-muted-foreground/40 tabular-nums">
-                  {stats.dailyAgents.reduce((s, d) => s + d.count, 0)} total
-                </span>
+            {/* Token + Code row */}
+            {stats && (
+              <AnimatedSection delay={200}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
+                  <TokenPanel stats={stats} />
+                  <CodePanel stats={stats} />
+                </div>
+              </AnimatedSection>
+            )}
+
+            {/* Activity chart */}
+            {stats && stats.dailyAgents.length > 0 && (
+              <AnimatedSection delay={350}>
+                <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
+                  <div className="relative flex items-center justify-between mb-4">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Agent activity (30 days)</h2>
+                    <span className="text-[11px] text-muted-foreground/40 tabular-nums">
+                      {stats.dailyAgents.reduce((s, d) => s + d.count, 0)} total
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <ActivityChart data={stats.dailyAgents} />
+                  </div>
+                </div>
+              </AnimatedSection>
+            )}
+
+            {/* Status + Repos */}
+            <AnimatedSection delay={575}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <StatusPanel statusCounts={statusCounts} totalAgents={totalAgents} />
+                <RepoPanel repos={repos} agents={agents} />
               </div>
-              <div className="relative">
-                <ActivityChart data={stats.dailyAgents} />
-              </div>
-            </div>
-          </AnimatedSection>
-        )}
-
-        {/* Wrapped summary */}
-        <AnimatedSection delay={425}>
-          <WrappedPanel />
-        </AnimatedSection>
-
-        {/* Status + Repos */}
-        <AnimatedSection delay={575}>
-          <div className="grid grid-cols-2 gap-3">
-            <StatusPanel statusCounts={statusCounts} totalAgents={totalAgents} />
-            <RepoPanel repos={repos} agents={agents} />
+            </AnimatedSection>
           </div>
-        </AnimatedSection>
+
+          {/* Wrapped column */}
+          <div className="min-w-0 lg:sticky lg:top-6">
+            <AnimatedSection delay={425}>
+              <WrappedPanel />
+            </AnimatedSection>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -938,6 +947,7 @@ function RepoPanel({ repos, agents }: { repos: { id: string; name: string }[]; a
 // ── Wrapped panel ───────────────────────────────────────────────────────────
 
 type WrappedPeriod = "wtd" | "last-week" | "last-month" | "last-year" | "custom"
+type WrappedLength = "short" | "medium" | "long"
 
 const periodLabels: Record<WrappedPeriod, string> = {
   wtd: "This week",
@@ -947,21 +957,30 @@ const periodLabels: Record<WrappedPeriod, string> = {
   custom: "Custom",
 }
 
+const lengthLabels: Record<WrappedLength, string> = {
+  short: "Short",
+  medium: "Medium",
+  long: "Long",
+}
+
 function WrappedPanel() {
   const [period, setPeriod] = useState<WrappedPeriod>("wtd")
+  const [length, setLength] = useState<WrappedLength>("medium")
   const [customFrom, setCustomFrom] = useState("")
   const [customTo, setCustomTo] = useState("")
   const [summary, setSummary] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchWrapped = useCallback(async (p: WrappedPeriod, from?: string, to?: string) => {
+  const fetchWrapped = useCallback(async (p: WrappedPeriod, len: WrappedLength, from?: string, to?: string, refresh?: boolean) => {
     if (p === "custom" && (!from || !to)) return
     setLoading(true)
     setError(null)
-    setSummary(null)
+    // Keep the existing summary visible (dimmed) during regenerate;
+    // only clear it for a first-time fetch so the skeleton can show.
+    if (!refresh) setSummary(null)
     try {
-      const result = await api.getWrapped(p, from, to)
+      const result = await api.getWrapped(p, from, to, refresh, len)
       setSummary(result.summary)
     } catch (err) {
       setError((err as Error).message || "Failed to generate summary")
@@ -972,18 +991,30 @@ function WrappedPanel() {
 
   useEffect(() => {
     if (period !== "custom") {
-      fetchWrapped(period)
+      fetchWrapped(period, length)
+    } else if (customFrom && customTo) {
+      fetchWrapped("custom", length, customFrom, customTo)
     }
-  }, [period, fetchWrapped])
+  // Re-fetch whenever period or length change; custom dates are handled by submit button
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, length, fetchWrapped])
 
   const handleCustomSubmit = useCallback(() => {
     if (customFrom && customTo) {
-      fetchWrapped("custom", customFrom, customTo)
+      fetchWrapped("custom", length, customFrom, customTo)
     }
-  }, [customFrom, customTo, fetchWrapped])
+  }, [customFrom, customTo, length, fetchWrapped])
+
+  const handleRegenerate = useCallback(() => {
+    if (period === "custom") {
+      if (customFrom && customTo) fetchWrapped("custom", length, customFrom, customTo, true)
+    } else {
+      fetchWrapped(period, length, undefined, undefined, true)
+    }
+  }, [period, length, customFrom, customTo, fetchWrapped])
 
   return (
-    <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 mb-8 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-violet-500/5">
+    <div className="relative bg-card/80 backdrop-blur-xl border border-border rounded-xl p-5 overflow-hidden group hover:border-border/80 transition-all duration-300 hover:shadow-xl hover:shadow-violet-500/5">
       <div className="home-shimmer absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
 
       <div className="relative flex items-center justify-between mb-4">
@@ -991,10 +1022,24 @@ function WrappedPanel() {
           <IconSparkles size={14} className="text-violet-400" />
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">Wrapped</h2>
         </div>
+        <button
+          onClick={handleRegenerate}
+          disabled={loading || (period === "custom" && (!customFrom || !customTo))}
+          title="Regenerate summary"
+          className={cn(
+            "flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium border transition-all duration-200 disabled:cursor-not-allowed",
+            loading
+              ? "bg-violet-500/15 text-violet-300 border-violet-500/25"
+              : "bg-muted/10 text-muted-foreground/60 border-transparent hover:bg-muted/20 hover:text-muted-foreground/90 disabled:opacity-40",
+          )}
+        >
+          <IconRefresh size={12} className={cn(loading && "animate-spin")} />
+          {loading ? "Regenerating…" : "Regenerate"}
+        </button>
       </div>
 
       {/* Period selector */}
-      <div className="relative flex flex-wrap items-center gap-1.5 mb-4">
+      <div className="relative flex flex-wrap items-center gap-1.5 mb-2">
         {(Object.keys(periodLabels) as WrappedPeriod[]).map((p) => (
           <button
             key={p}
@@ -1007,6 +1052,25 @@ function WrappedPanel() {
             )}
           >
             {periodLabels[p]}
+          </button>
+        ))}
+      </div>
+
+      {/* Length selector */}
+      <div className="relative flex items-center gap-1.5 mb-4">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 mr-1">Length</span>
+        {(Object.keys(lengthLabels) as WrappedLength[]).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLength(l)}
+            className={cn(
+              "px-2 py-0.5 rounded-full text-[11px] font-medium transition-all duration-200",
+              length === l
+                ? "bg-blue-500/15 text-blue-300 border border-blue-500/25"
+                : "bg-muted/10 text-muted-foreground/50 border border-transparent hover:bg-muted/20 hover:text-muted-foreground/70",
+            )}
+          >
+            {lengthLabels[l]}
           </button>
         ))}
       </div>
@@ -1039,7 +1103,7 @@ function WrappedPanel() {
 
       {/* Content */}
       <div className="relative min-h-[60px]">
-        {loading && (
+        {loading && !summary && (
           <div className="space-y-3 animate-pulse">
             <div className="h-3 bg-muted/15 rounded-full w-full" />
             <div className="h-3 bg-muted/15 rounded-full w-[92%]" />
@@ -1053,15 +1117,20 @@ function WrappedPanel() {
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-red-400/70">{error}</span>
             <button
-              onClick={() => fetchWrapped(period, period === "custom" ? customFrom : undefined, period === "custom" ? customTo : undefined)}
+              onClick={() => fetchWrapped(period, length, period === "custom" ? customFrom : undefined, period === "custom" ? customTo : undefined)}
               className="text-[11px] text-violet-400 hover:text-violet-300 underline underline-offset-2"
             >
               Retry
             </button>
           </div>
         )}
-        {summary && !loading && (
-          <div className="text-[13px] text-muted-foreground/80 leading-relaxed whitespace-pre-line">
+        {summary && (
+          <div
+            className={cn(
+              "text-[13px] leading-relaxed whitespace-pre-line transition-opacity duration-300",
+              loading ? "text-muted-foreground/40 animate-pulse" : "text-muted-foreground/80",
+            )}
+          >
             {summary}
           </div>
         )}

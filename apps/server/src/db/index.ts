@@ -349,7 +349,14 @@ export function runMigrations() {
   for (const migration of pending) {
     // Run DDL outside transactions — node:sqlite's shim silently swallows
     // ALTER TABLE and other DDL inside transaction wrappers.
-    sqlite.exec(migration.sql)
+    try {
+      sqlite.exec(migration.sql)
+    } catch (err) {
+      const msg = (err as Error).message ?? ""
+      // Ignore "duplicate column" errors — column may have been added manually
+      if (!msg.includes("duplicate column")) throw err
+      console.log(`[db] migration v${migration.version}: column already exists, skipping`)
+    }
     raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
     console.log(`[db] applied migration v${migration.version}`)
   }

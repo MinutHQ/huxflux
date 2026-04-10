@@ -157,11 +157,11 @@ export async function reposRoutes(app: FastifyInstance) {
   })
 
   // POST /api/repos/quick-start — scaffold a new project from a template and register it
-  app.post<{ Body: { name: string; location: string; template: "vite" | "tanstack-start" } }>("/api/repos/quick-start", async (req, reply) => {
+  app.post<{ Body: { name: string; location: string; template: "empty" | "vite" | "tanstack-start" } }>("/api/repos/quick-start", async (req, reply) => {
     const { name, location, template } = req.body
     if (!name?.trim()) return reply.code(400).send({ error: "name required" })
     if (!location?.trim()) return reply.code(400).send({ error: "location required" })
-    if (!["vite", "tanstack-start"].includes(template)) return reply.code(400).send({ error: "invalid template" })
+    if (!["empty", "vite", "tanstack-start"].includes(template)) return reply.code(400).send({ error: "invalid template" })
 
     const resolvedParent = resolvePath(location.trim())
     const projectPath = path.join(resolvedParent, name.trim())
@@ -174,7 +174,9 @@ export async function reposRoutes(app: FastifyInstance) {
     }
 
     try {
-      if (template === "vite") {
+      if (template === "empty") {
+        fsSync.mkdirSync(projectPath, { recursive: true })
+      } else if (template === "vite") {
         await execFileAsync("npm", ["create", "vite@latest", name.trim(), "--", "--template", "react-ts"], {
           cwd: resolvedParent,
           timeout: 120_000,

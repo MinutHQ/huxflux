@@ -147,6 +147,8 @@ export interface Message {
   outputTokens?: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  // Display name for the sender (for delegated messages between agents)
+  sender?: string
   // Client-only: text being streamed since the last tool call. Rendered
   // inside the tool-calls accordion so intermediate narration doesn't first
   // appear under the bubble and then jump into the accordion. Cleared on

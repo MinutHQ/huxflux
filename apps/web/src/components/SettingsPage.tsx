@@ -1876,6 +1876,7 @@ export function CloneRepoDialog({ onClose, onAdded }: { onClose: () => void; onA
 }
 
 const TEMPLATES = [
+  { id: "empty" as const, label: "Empty", description: "Blank project, git initialized" },
   { id: "vite" as const, label: "Vite", description: "React + TypeScript starter" },
   { id: "tanstack-start" as const, label: "TanStack Start", description: "Full-stack React framework" },
 ]
@@ -1884,7 +1885,7 @@ export function QuickStartDialog({ onClose, onAdded }: { onClose: () => void; on
   const queryClient = useQueryClient()
   const [name, setName] = useState("")
   const [location, setLocation] = useState("~/projects")
-  const [template, setTemplate] = useState<"vite" | "tanstack-start">("vite")
+  const [template, setTemplate] = useState<"empty" | "vite" | "tanstack-start">("empty")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1941,7 +1942,7 @@ export function QuickStartDialog({ onClose, onAdded }: { onClose: () => void; on
           </div>
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Template</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {TEMPLATES.map((t) => (
                 <button
                   key={t.id}

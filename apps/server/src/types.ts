@@ -135,6 +135,7 @@ export interface Message {
   outputTokens?: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  sender?: string
 }
 
 export interface Agent {

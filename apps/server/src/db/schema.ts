@@ -55,6 +55,7 @@ export const messages = sqliteTable("messages", {
   outputTokens: integer("output_tokens"),
   cacheReadTokens: integer("cache_read_tokens"),
   cacheWriteTokens: integer("cache_write_tokens"),
+  sender: text("sender"), // display name for delegated messages, e.g. agent title
 })
 
 export const toolCalls = sqliteTable("tool_calls", {

@@ -156,9 +156,10 @@ export async function agentsRoutes(app: FastifyInstance) {
       shareWorktreeWith?: string // agent ID to share worktree with
       noWorktree?: boolean
       existingBranch?: boolean  // if true, branch already exists — skip -b and auto-link PR
+      baseBranch?: string       // override repo.branchFrom for this agent
     }
   }>("/api/agents", async (req, reply) => {
-    const { repoId, title, branch, model = getSettings().defaultModel ?? "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree, existingBranch } = req.body
+    const { repoId, title, branch, model = getSettings().defaultModel ?? "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree, existingBranch, baseBranch } = req.body
     const now = new Date().toISOString()
     const id = uuid()
 
@@ -203,6 +204,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       description: description ?? null,
       parentAgentId: shareWorktreeWith ?? null,
       noWorktree: noWorktree ? 1 : null,
+      baseBranch: baseBranch ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -217,7 +219,7 @@ export async function agentsRoutes(app: FastifyInstance) {
         }
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
         try {
-          await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
+          await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
         } catch (err) {
           app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
           // Roll back the agent row so we don't leave an orphaned record
@@ -242,7 +244,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
-        watchWorktree(id, worktreePath, repo.branchFrom)
+        watchWorktree(id, worktreePath, baseBranch ?? repo.branchFrom)
       }
     }
 
@@ -292,6 +294,11 @@ export async function agentsRoutes(app: FastifyInstance) {
     const body = req.body
     const now = new Date().toISOString()
 
+    // Read old state before update (needed for rebase --onto)
+    const oldAgent = body.baseBranch !== undefined
+      ? db.select().from(agents).where(eq(agents.id, id)).get()
+      : null
+
     await db.update(agents).set({
       ...(body.title !== undefined && { title: body.title }),
       ...(body.status !== undefined && { status: body.status }),
@@ -308,23 +315,41 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!updated) return reply.code(404).send({ error: "Not found" })
 
     // Rebase onto new base branch when baseBranch changes
-    if (body.baseBranch !== undefined && updated.repoId) {
+    if (body.baseBranch !== undefined && updated.repoId && oldAgent) {
       const repo = db.select().from(repos).where(eq(repos.id, updated.repoId)).get()
       if (repo) {
         const worktreePath = updated.noWorktree ? repo.path : path.join(repo.workspacesPath, updated.location)
-        const newBase = body.baseBranch
+        const newBaseRaw = body.baseBranch
+        const oldBaseRaw = oldAgent.baseBranch ?? repo.branchFrom
+        const git = simpleGit(worktreePath)
         try {
-          const git = simpleGit(worktreePath)
-          // Fetch latest so the ref is up to date
-          const remote = newBase.includes("/") ? newBase.split("/")[0] : "origin"
-          await git.fetch(remote).catch(() => {})
-          await git.rebase([newBase])
-          // Refresh file changes after rebase
-          void refreshWorktree(id, worktreePath, newBase)
+          // Check if remote exists before trying to fetch
+          const hasRemote = await git.remote([]).then((r) => !!r?.trim()).catch(() => false)
+          if (hasRemote) await git.fetch("origin").catch(() => {})
+          // Resolve refs: prefer origin/ prefixed if the remote ref exists
+          const resolveRef = async (ref: string): Promise<string> => {
+            if (ref.startsWith("origin/")) return ref
+            if (hasRemote) {
+              const remoteRef = `origin/${ref}`
+              const exists = await git.raw(["rev-parse", "--verify", remoteRef]).then(() => true).catch(() => false)
+              if (exists) return remoteRef
+            }
+            return ref
+          }
+          const newBase = await resolveRef(newBaseRaw)
+          const oldBase = await resolveRef(oldBaseRaw)
+          // Count commits only on this branch (not on any remote) = agent's own work
+          const agentCommits = await git.raw(["rev-list", "--count", "HEAD", "--not", "--remotes"]).then((s) => parseInt(s.trim(), 10)).catch(() => 0)
+          if (agentCommits > 0) {
+            // Rebase the agent's N commits onto the new base
+            await git.rebase(["--onto", newBase, `HEAD~${agentCommits}`])
+          } else {
+            await git.raw(["reset", "--hard", newBase])
+          }
+          void refreshWorktree(id, worktreePath, newBaseRaw)
         } catch (err) {
-          // Abort failed rebase so the worktree isn't left in a broken state
-          try { await simpleGit(worktreePath).rebase(["--abort"]) } catch { /* already clean */ }
-          app.log.error(`Rebase onto ${newBase} failed for agent ${id}: ${(err as Error).message}`)
+          try { await git.rebase(["--abort"]) } catch { /* already clean */ }
+          app.log.error(`Rebase onto ${newBaseRaw} failed for agent ${id}: ${(err as Error).message}`)
         }
       }
     }

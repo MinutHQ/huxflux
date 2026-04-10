@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 import { eq, isNull, isNotNull, and, asc } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, repos, prChatMessages } from "../db/schema.js"
-import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, deleteReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
+import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, mergePR, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, deleteReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
@@ -708,5 +708,54 @@ export async function githubRoutes(app: FastifyInstance) {
     broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
 
     return pr
+  })
+
+  // POST /api/agents/:id/pr/merge — merge the agent's PR
+  app.post<{ Params: { id: string }; Body: { method?: "merge" | "squash" | "rebase" } }>("/api/agents/:id/pr/merge", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (!agent.prNumber) return reply.code(400).send({ error: "No PR on this agent" })
+    if (!agent.repoId) return reply.code(400).send({ error: "Agent has no repo" })
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+    const repoUrl = await getRemoteUrl(repo.path, repo.remote)
+    if (!repoUrl) return reply.code(400).send({ error: "Cannot resolve remote URL" })
+
+    try {
+      await mergePR(repoUrl, agent.prNumber, req.body?.method ?? "squash")
+    } catch (err: any) {
+      return reply.code(400).send({ error: err?.message ?? String(err) })
+    }
+
+    const pr = await getPRStatus(repoUrl, agent.prNumber)
+    const now = new Date().toISOString()
+    await db.update(agents)
+      .set({ prStatus: JSON.stringify(pr), status: "done", updatedAt: now })
+      .where(eq(agents.id, agent.id))
+
+    const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
+    broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
+
+    return pr
+  })
+
+  // POST /api/prs/:owner/:repo/:number/merge — merge a PR by owner/repo/number
+  app.post<{
+    Params: { owner: string; repo: string; number: string }
+    Body: { method?: "merge" | "squash" | "rebase" }
+  }>("/api/prs/:owner/:repo/:number/merge", async (req, reply) => {
+    const { owner, repo, number } = req.params
+    const prNumber = parseInt(number, 10)
+    const repoUrl = `https://github.com/${owner}/${repo}`
+
+    try {
+      await mergePR(repoUrl, prNumber, req.body?.method ?? "squash")
+    } catch (err: any) {
+      return reply.code(400).send({ error: err?.message ?? String(err) })
+    }
+
+    return { ok: true, merged: true }
   })
 }

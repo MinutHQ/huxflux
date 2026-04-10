@@ -3,7 +3,7 @@ import type { FastifyRequest, FastifyReply } from "fastify"
 import { config } from "./config.js"
 
 // Public endpoints that never require auth
-const PUBLIC = new Set(["/health"])
+const PUBLIC = new Set(["/health", "/api/config"])
 
 export async function authHook(req: FastifyRequest, reply: FastifyReply) {
   if (PUBLIC.has(req.routeOptions?.url ?? req.url)) return

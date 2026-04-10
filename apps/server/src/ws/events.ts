@@ -9,7 +9,7 @@ export type ClientEvent =
 export type ServerEvent =
   | { type: "agent:updated";    agent: AgentSummary }
   | { type: "agent:deleted";    agentId: string }
-  | { type: "message:user";     agentId: string; message: { id: string; role: "user"; content: string; timestamp: string } }
+  | { type: "message:user";     agentId: string; message: { id: string; role: "user"; content: string; timestamp: string; sender?: string } }
   | { type: "message:start";    agentId: string; messageId: string }
   | { type: "message:chunk";    agentId: string; messageId: string; delta: string }
   | { type: "message:thinking"; agentId: string; messageId: string; delta: string }

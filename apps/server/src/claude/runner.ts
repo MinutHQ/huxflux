@@ -20,6 +20,8 @@ interface RunnerOptions {
   worktreePath: string
   model?: string
   planMode?: boolean
+  delegateFrom?: string  // parent agent ID when this run was delegated
+  sender?: string        // display name for the sender (for delegated messages)
 }
 
 // Registry of running agent processes
@@ -254,6 +256,26 @@ async function persistAssistantMessage(
     if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
   }
 
+  // Parse and execute <huxflux:delegate agent="ID">task</huxflux:delegate> tags.
+  // Sends the task to the target agent via the local API (handles queuing + auth).
+  const delegateRe = /<huxflux:delegate agent="([^"]+)">([\s\S]*?)<\/huxflux:delegate>/g
+  let delegateMatch: RegExpExecArray | null
+  const sourceTitle = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.title ?? "Another agent"
+  while ((delegateMatch = delegateRe.exec(state.fullContent)) !== null) {
+    const targetAgentId = delegateMatch[1].trim()
+    const task = delegateMatch[2].trim()
+    if (targetAgentId && task) {
+      const body = JSON.stringify({ content: task, sender: sourceTitle, delegateFrom: agentId })
+      fetch(`http://localhost:${config.boundPort}/api/agents/${targetAgentId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
+        body,
+      }).catch((err) => console.error(`[delegate] Failed to send to ${targetAgentId}:`, err))
+    }
+  }
+  // Strip delegate tags from displayed content
+  finalContent = finalContent.replace(/<huxflux:delegate agent="[^"]*">[\s\S]*?<\/huxflux:delegate>\n?/g, "").trim()
+
   await db.update(messagesTable)
     .set({
       content: finalContent,
@@ -330,20 +352,27 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     .from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.sessionId ?? null
 
 
-  // Persist user message
+  // Persist user message — strip internal metadata (linked workspaces, attached files, etc.)
+  // so the chat displays cleanly. The full content is still passed to Claude.
+  const displayContent = userContent.replace(/\n\n---\n\nLinked workspaces[\s\S]*$/, "").replace(/^Attached files:\n[\s\S]*?\n\n---\n\n/, "").replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
   const userMsgId = uuid()
+  // Sender can be explicitly provided (answer-back) or derived from delegateFrom (outbound delegate)
+  const senderName = opts.sender
+    ?? (opts.delegateFrom ? db.select().from(agentsTable).where(eq(agentsTable.id, opts.delegateFrom)).get()?.title : undefined)
+    ?? undefined
   await db.insert(messagesTable).values({
     id: userMsgId,
     agentId,
     role: "user",
-    content: userContent,
+    content: displayContent || userContent,
     timestamp: now,
     createdAt: now,
+    ...(senderName ? { sender: senderName } : {}),
   })
   emit(agentId, {
     type: "message:user",
     agentId,
-    message: { id: userMsgId, role: "user" as const, content: userContent, timestamp: now },
+    message: { id: userMsgId, role: "user" as const, content: displayContent || userContent, timestamp: now, ...(senderName ? { sender: senderName } : {}) },
   })
 
   // Mark agent as in-progress unless already in-review (don't downgrade)
@@ -618,6 +647,16 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
             toolCalls: state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result, precedingText: tc.precedingText })),
           } as Message,
         })
+      }
+
+      // If this run was triggered by a delegate from another agent, send the result back
+      if (opts.delegateFrom && state.fullContent.trim()) {
+        const agentTitle = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.title ?? "Agent"
+        fetch(`http://localhost:${config.boundPort}/api/agents/${opts.delegateFrom}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
+          body: JSON.stringify({ content: state.fullContent.trim(), sender: agentTitle }),
+        }).catch((err) => console.error(`[delegate] Failed to reply to ${opts.delegateFrom}:`, err))
       }
 
       // Restore the pre-run status and clear streaming regardless of what

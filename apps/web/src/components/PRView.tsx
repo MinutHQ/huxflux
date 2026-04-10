@@ -1670,6 +1670,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const [thinking, setThinking] = useState(false)
   const [reviewStep, setReviewStep] = useState(0)
   const [attachedThreads, setAttachedThreads] = useState<PRThread[]>([])
+  const [merging, setMerging] = useState(false)
 
   // Initialize model from settings
   useEffect(() => {
@@ -2293,6 +2294,26 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                       : <IconAlertTriangle size={11} />}
                     {mergeableState === "clean" ? "Ready to merge" : mergeableState === "blocked" ? "Blocked" : "Unstable"}
                   </span>
+                  {mergeableState === "clean" && pr.repoId && (
+                    <Button
+                      size="sm"
+                      className="h-5 px-2.5 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md shrink-0"
+                      disabled={merging}
+                      onClick={async () => {
+                        setMerging(true)
+                        try {
+                          await api.mergePRByRepo(pr.repoId, pr.number)
+                          toast.success(`PR #${pr.number} merged`)
+                        } catch (err) {
+                          toast.error(`Merge failed: ${err instanceof Error ? err.message : "unknown error"}`)
+                        } finally {
+                          setMerging(false)
+                        }
+                      }}
+                    >
+                      {merging ? "Merging…" : "Merge"}
+                    </Button>
+                  )}
                 </>
               )}
             </div>

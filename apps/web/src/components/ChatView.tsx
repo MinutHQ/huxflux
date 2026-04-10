@@ -166,6 +166,29 @@ function formatToolCall(tool: string, args?: string): { title: string; detail: s
 
 // ── Inline result block ───────────────────────────────────────────────────────
 
+function LinkedWorkspaceMessage({ sender, content }: { sender: string; content: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mb-5">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/40", open && "rotate-90")} />
+        <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
+        <span>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> answered</span>
+      </button>
+      {open && (
+        <div className="ml-[22px] mt-1.5 pl-3 border-l border-blue-400/15">
+          <div className="text-sm text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
+            <MarkdownContent content={content} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ResultBlock({ result }: { result: string }) {
   const [collapsed, setCollapsed] = useState(false)
   const lines = result.split("\n")
@@ -1204,6 +1227,11 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
   // the tool calls accordion only renders alongside actual content (see below).
   const isEmpty = !msg.content && !msg.thinking && !hasPending && (!msg.toolCalls || msg.toolCalls.length === 0)
 
+  // Messages from linked workspaces — collapsed accordion
+  if (isUser && msg.sender) {
+    return <LinkedWorkspaceMessage sender={msg.sender} content={msg.content} />
+  }
+
   if (isUser) {
     // Parse out "Attached files:\n- name: /path\n...\n\n---\n\n" prefix
     const attachmentMatch = msg.content.match(/^Attached files:\n([\s\S]*?)\n\n---\n\n([\s\S]*)$/)
@@ -1352,6 +1380,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
 function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: string }) {
   const [marking, setMarking] = useState(false)
   const [rerequesting, setRerequesting] = useState(false)
+  const [merging, setMerging] = useState(false)
 
   async function handleMarkReady() {
     setMarking(true)
@@ -1374,6 +1403,20 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
     }
   }
 
+  async function handleMerge() {
+    setMerging(true)
+    try {
+      await api.mergePR(agentId)
+      toast.success("PR merged")
+    } catch (err) {
+      toast.error(`Merge failed: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setMerging(false)
+    }
+  }
+
+  const isReadyToMerge = prStatus.state === "open" && !prStatus.draft && !prStatus.hasChangeRequests && prStatus.mergeableState !== "behind" && prStatus.mergeableState !== "blocked" && prStatus.mergeableState !== "dirty"
+
   const { label, pill } = (() => {
     if (prStatus.merged)
       return { label: "Merged", pill: "bg-purple-500/10 border-purple-500/25 text-purple-400" }
@@ -1383,7 +1426,7 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
       return { label: "PR changes requested", pill: "bg-orange-500/10 border-orange-500/25 text-orange-400" }
     if (prStatus.mergeableState === "blocked" || prStatus.mergeableState === "dirty")
       return { label: prStatus.mergeableState === "dirty" ? "Merge conflict" : "Blocked", pill: "bg-red-500/10 border-red-500/25 text-red-400" }
-    if (prStatus.state === "open" && !prStatus.draft && !prStatus.hasChangeRequests && prStatus.mergeableState !== "behind")
+    if (isReadyToMerge)
       return { label: "Ready to merge", pill: "bg-emerald-500/10 border-emerald-500/25 text-emerald-400" }
     return { label: "In review", pill: "bg-blue-500/10 border-blue-500/25 text-blue-400" }
   })()
@@ -1403,6 +1446,16 @@ function PRStatusPill({ prStatus, agentId }: { prStatus: PRStatus; agentId: stri
       <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-medium", pill)}>
         {label}
       </div>
+      {isReadyToMerge && (
+        <Button
+          size="sm"
+          className="h-5 px-2.5 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md"
+          onClick={handleMerge}
+          disabled={merging}
+        >
+          {merging ? "Merging…" : "Merge"}
+        </Button>
+      )}
       {prStatus.draft && !prStatus.merged && (
         <Button
           variant="ghost"
@@ -2248,6 +2301,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const branchSearchRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<{ name: string; path: string; mimeType: string }[]>([])
   const [linkedAgents, setLinkedAgents] = useState<AgentSummary[]>([])
+  const linkedAgentsCache = useRef(new Map<string, AgentSummary[]>())
   const [plusOpen, setPlusOpen] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounterRef = useRef(0)
@@ -2582,7 +2636,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       const agentBlock = linkedAgents.map((a) =>
         `- "${a.title}" (${a.branch}) — ID: ${a.id}`
       ).join("\n")
-      content = `${content}\n\n---\n\nLinked agents for cross-repo collaboration:\n${agentBlock}\n\nTo delegate work to a linked agent use:\n  curl -s -X POST ${getApiBase()}/api/agents/<ID>/messages -H "Content-Type: application/json" -d '{"content":"<task>"}'`
+      content = `${content}\n\n---\n\nLinked workspaces (separate agents in other repos):\n${agentBlock}\n\nTo delegate a task to a linked workspace, emit this tag in your response (do NOT use SendMessage — it is for sub-agents, not linked workspaces):\n  <huxflux:delegate agent="<AGENT_ID>">task description</huxflux:delegate>`
     }
 
     return content
@@ -2683,11 +2737,16 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (prevId && prevId !== agent.id) {
       void api.updateAgent(prevId, { draft: inputRef.current })
     }
+    // Save linked agents for the outgoing agent
+    if (prevId) linkedAgentsCache.current.set(prevId, linkedAgents)
     prevAgentIdRef.current = agent.id
     setActiveTab("chat")
     setIsAtBottom(true)
     bottomRef.current?.scrollIntoView({ behavior: "instant" })
     setInput(agent.draft ?? "")
+    // Restore linked agents for the incoming agent
+    setLinkedAgents(linkedAgentsCache.current.get(agent.id) ?? [])
+    setAttachments([])
   }, [agent.id])
 
   // Auto-scroll to bottom when streaming, but only if the user is already at the bottom

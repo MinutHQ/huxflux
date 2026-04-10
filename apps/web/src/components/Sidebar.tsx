@@ -178,11 +178,31 @@ function AgentPopover({ agent, y, port, sidebarWidth }: { agent: AgentSummary; y
                 href={agent.prStatus.url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-muted-foreground/60 flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
+                className="flex items-center gap-1 hover:text-muted-foreground transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleExternalClick(e) }}
+                title={
+                  agent.prStatus.merged ? "Merged"
+                  : agent.prStatus.mergeableState === "dirty" ? "Merge conflict"
+                  : agent.prStatus.hasChangeRequests ? "Changes requested"
+                  : agent.prStatus.mergeableState === "clean" ? "Ready to merge"
+                  : agent.prStatus.state === "open" && !agent.prStatus.draft && agent.prStatus.mergeableState !== "clean" ? "Blocked"
+                  : `PR #${agent.prStatus.number}`
+                }
               >
-                #{agent.prStatus.number}
-                <IconArrowUpRight size={11} />
+                {agent.prStatus.merged ? (
+                  <IconGitMerge size={12} className="text-purple-400" />
+                ) : agent.prStatus.mergeableState === "dirty" ? (
+                  <TablerIcons.IconAlertTriangle size={12} className="text-red-400" />
+                ) : agent.prStatus.hasChangeRequests ? (
+                  <TablerIcons.IconMessageX size={12} className="text-orange-400" />
+                ) : agent.prStatus.mergeableState === "clean" ? (
+                  <IconCheck size={12} className="text-emerald-400" />
+                ) : agent.prStatus.state === "open" && !agent.prStatus.draft && agent.prStatus.mergeableState !== "clean" ? (
+                  <TablerIcons.IconShieldX size={12} className="text-yellow-400" />
+                ) : (
+                  <IconGitPullRequest size={12} className="text-muted-foreground/60" />
+                )}
+                <span className="text-muted-foreground/60">#{agent.prStatus.number}</span>
               </a>
             </>
           )}
@@ -503,13 +523,22 @@ function PrIcon({ agent }: { agent: AgentSummary }) {
   if (pr.state === "closed") {
     return <IconGitPullRequestClosed size={11} className="text-red-400/70 shrink-0" />
   }
+  if (pr.mergeableState === "dirty") {
+    return <TablerIcons.IconAlertTriangle size={11} className="text-red-400/80 shrink-0" />
+  }
   if (pr.hasChangeRequests) {
-    return <IconGitPullRequest size={11} className="text-amber-400/80 shrink-0" />
+    return <TablerIcons.IconMessageX size={11} className="text-orange-400/80 shrink-0" />
+  }
+  if (pr.mergeableState === "clean") {
+    return <IconCheck size={11} className="text-emerald-400/70 shrink-0" />
   }
   if (pr.draft) {
     return <IconGitPullRequest size={11} className="text-muted-foreground/30 shrink-0" />
   }
-  return <IconGitPullRequest size={11} className="text-emerald-400/70 shrink-0" />
+  if (pr.state === "open" && !pr.draft) {
+    return <TablerIcons.IconShieldX size={11} className="text-yellow-400/70 shrink-0" />
+  }
+  return <IconGitPullRequest size={11} className="text-muted-foreground/60 shrink-0" />
 }
 
 const AgentRow = React.memo(function AgentRow({

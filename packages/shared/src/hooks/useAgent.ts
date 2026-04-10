@@ -360,9 +360,13 @@ export function useAgent(id: string | null) {
       // filter doesn't catch them (no top-level agentId field), so without this
       // check a newly-created agent B would overwrite agent A's cache entry.
       if (event.agent.id !== id) return
+      const parsed = {
+        ...event.agent,
+        prStatus: typeof event.agent.prStatus === "string" ? (() => { try { return JSON.parse(event.agent.prStatus) } catch { return undefined } })() : event.agent.prStatus,
+      }
       queryClient.setQueryData<Agent>(["agent", id], (old) => {
         if (!old) return old
-        return { ...old, ...event.agent }
+        return { ...old, ...parsed }
       })
     }
 

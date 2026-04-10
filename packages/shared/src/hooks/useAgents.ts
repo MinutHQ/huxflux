@@ -29,7 +29,11 @@ export function useAgents() {
 
   useAgentEvents(null, (event) => {
     if (event.type === "agent:updated") {
-      const updated = event.agent
+      const updated = {
+        ...event.agent,
+        // The broadcast sends raw DB rows where prStatus is a JSON string — parse it
+        prStatus: typeof event.agent.prStatus === "string" ? (() => { try { return JSON.parse(event.agent.prStatus) } catch { return undefined } })() : event.agent.prStatus,
+      }
       if (deletedAgentIds.has(updated.id)) return
       queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) => {
         if (!old) return old

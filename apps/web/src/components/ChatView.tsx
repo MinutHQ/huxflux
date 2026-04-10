@@ -2289,6 +2289,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [messageQueue, setMessageQueue] = useState<Array<{ id: string; agentId: string; display: string; api: string; planMode?: boolean }>>([])
   const [planMode, setPlanMode] = useState(false)
   const [awaitingPlanApproval, setAwaitingPlanApproval] = useState(false)
+  const planModeCache = useRef(new Map<string, boolean>())
+  const planApprovalCache = useRef(new Map<string, boolean>())
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState("")
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -2300,12 +2302,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const [branchSearch, setBranchSearch] = useState("")
   const branchSearchRef = useRef<HTMLInputElement>(null)
   const [attachments, setAttachments] = useState<{ name: string; path: string; mimeType: string }[]>([])
+  const attachmentsCache = useRef(new Map<string, { name: string; path: string; mimeType: string }[]>())
   const [linkedAgents, setLinkedAgents] = useState<AgentSummary[]>([])
   const linkedAgentsCache = useRef(new Map<string, AgentSummary[]>())
   const [plusOpen, setPlusOpen] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const dragCounterRef = useRef(0)
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
+  const [agentPickerSearch, setAgentPickerSearch] = useState("")
   const [lastOpenInApp, setLastOpenInApp] = useState(() => localStorage.getItem(OPEN_IN_KEY) ?? "finder")
   const [openInOpen, setOpenInOpen] = useState(false)
   const remoteMode = getFlag("remoteEditor") && isTauri && isRemoteServer()
@@ -2571,14 +2575,17 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault()
-    dragCounterRef.current++
+    e.stopPropagation()
     setIsDragOver(true)
   }
 
   function handleDragLeave(e: React.DragEvent) {
     e.preventDefault()
-    dragCounterRef.current--
-    if (dragCounterRef.current === 0) {
+    e.stopPropagation()
+    // Only clear if leaving the container (not entering a child)
+    const rect = e.currentTarget.getBoundingClientRect()
+    const { clientX: x, clientY: y } = e
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
       setIsDragOver(false)
     }
   }
@@ -2589,7 +2596,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
-    dragCounterRef.current = 0
+    e.stopPropagation()
     setIsDragOver(false)
     const files = Array.from(e.dataTransfer.files)
     if (files.length > 0) {
@@ -2737,16 +2744,23 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     if (prevId && prevId !== agent.id) {
       void api.updateAgent(prevId, { draft: inputRef.current })
     }
-    // Save linked agents for the outgoing agent
-    if (prevId) linkedAgentsCache.current.set(prevId, linkedAgents)
+    // Save per-agent state for the outgoing agent
+    if (prevId) {
+      linkedAgentsCache.current.set(prevId, linkedAgents)
+      planModeCache.current.set(prevId, planMode)
+      planApprovalCache.current.set(prevId, awaitingPlanApproval)
+      attachmentsCache.current.set(prevId, attachments)
+    }
     prevAgentIdRef.current = agent.id
     setActiveTab("chat")
     setIsAtBottom(true)
     bottomRef.current?.scrollIntoView({ behavior: "instant" })
     setInput(agent.draft ?? "")
-    // Restore linked agents for the incoming agent
+    // Restore per-agent state for the incoming agent
     setLinkedAgents(linkedAgentsCache.current.get(agent.id) ?? [])
-    setAttachments([])
+    setPlanMode(planModeCache.current.get(agent.id) ?? false)
+    setAwaitingPlanApproval(planApprovalCache.current.get(agent.id) ?? false)
+    setAttachments(attachmentsCache.current.get(agent.id) ?? [])
   }, [agent.id])
 
   // Auto-scroll to bottom when streaming, but only if the user is already at the bottom
@@ -2811,21 +2825,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const isInPlanMode = planMode || claudeInPlanMode
 
   return (
-    <div
-      className="flex flex-col h-full bg-background relative"
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      {isDragOver && (
-        <div className="absolute inset-0 bg-accent/20 border-2 border-dashed border-ring rounded-lg flex items-center justify-center pointer-events-none z-50">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
-            <IconPaperclip size={16} />
-            <span>Drop files to attach</span>
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col h-full bg-background relative">
       {/* Top metadata bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
@@ -3278,12 +3278,18 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               <div
                 className={cn(
                   "bg-card rounded-xl transition-colors relative",
-                  showPlanApproval
-                    ? "border-2 border-dashed border-emerald-500/60"
-                    : isInPlanMode
-                      ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
-                      : "border border-border focus-within:border-ring"
+                  isDragOver
+                    ? "border-2 border-dashed border-ring"
+                    : showPlanApproval
+                      ? "border-2 border-dashed border-emerald-500/60"
+                      : isInPlanMode
+                        ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
+                        : "border border-border focus-within:border-ring"
                 )}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
               >
                 {(pendingComments.length > 0 || attachments.length > 0 || linkedAgents.length > 0 || mentionAttachments.some((m) => m.type === "terminal")) && (
                   <div className="flex flex-wrap gap-2 px-4 pt-3">
@@ -3333,6 +3339,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   placeholder={showPlanApproval ? "Approve or dismiss the plan…" : agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
                   rows={2}
                   className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none overflow-y-auto"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) uploadFiles(files) }}
                   onPaste={(e) => {
                     // Handle pasted files/images from clipboard
                     const clipboardFiles = Array.from(e.clipboardData.items)
@@ -3447,7 +3455,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                           <span>Add attachment</span>
                           <span className="ml-auto text-[11px] text-muted-foreground/50 font-mono">⌘U</span>
                         </button>
-                        <Popover open={agentPickerOpen} onOpenChange={setAgentPickerOpen}>
+                        <Popover open={agentPickerOpen} onOpenChange={(o) => { setAgentPickerOpen(o); if (o) setAgentPickerSearch("") }}>
                           <PopoverTrigger asChild>
                             <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors">
                               <IconFolderSymlink size={15} className="text-muted-foreground shrink-0" />
@@ -3457,31 +3465,52 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                               )}
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent side="left" align="start" className="w-60 p-1">
-                            {allAgents.filter((a) => a.id !== agent.id).length === 0 ? (
-                              <p className="text-[12px] text-muted-foreground/50 px-3 py-2">No other agents</p>
-                            ) : (
-                              allAgents.filter((a) => a.id !== agent.id).map((a) => {
-                                const linked = linkedAgents.some((x) => x.id === a.id)
-                                return (
-                                  <button
-                                    key={a.id}
-                                    onClick={() => toggleLinkedAgent(a)}
-                                    className={cn(
-                                      "flex items-center gap-2.5 w-full px-3 py-2 text-[12px] rounded-md transition-colors text-left",
-                                      linked ? "bg-blue-500/10 text-blue-300" : "text-foreground hover:bg-accent"
-                                    )}
-                                  >
-                                    <IconFolderSymlink size={13} className={linked ? "text-blue-400" : "text-muted-foreground"} />
-                                    <div className="min-w-0">
-                                      <div className="font-medium truncate">{a.title}</div>
-                                      <div className="text-[10px] text-muted-foreground/50 font-mono truncate">{a.branch}</div>
-                                    </div>
-                                    {linked && <span className="ml-auto text-blue-400 shrink-0">✓</span>}
-                                  </button>
-                                )
-                              })
-                            )}
+                          <PopoverContent side="left" align="start" className="w-64 p-0">
+                            <input
+                              value={agentPickerSearch}
+                              onChange={(e) => setAgentPickerSearch(e.target.value)}
+                              placeholder="Search workspaces…"
+                              autoFocus
+                              className="w-full bg-transparent border-b border-border px-3 py-2 text-[12px] outline-none placeholder:text-muted-foreground/40"
+                            />
+                            <div className="max-h-48 overflow-y-auto p-1">
+                              {allAgents
+                                .filter((a) => a.id !== agent.id)
+                                .filter((a) => !agentPickerSearch || a.title.toLowerCase().includes(agentPickerSearch.toLowerCase()) || a.branch.toLowerCase().includes(agentPickerSearch.toLowerCase()))
+                                .length === 0 ? (
+                                <p className="text-[12px] text-muted-foreground/50 px-3 py-2">No workspaces found</p>
+                              ) : (
+                                allAgents
+                                  .filter((a) => a.id !== agent.id)
+                                  .filter((a) => !agentPickerSearch || a.title.toLowerCase().includes(agentPickerSearch.toLowerCase()) || a.branch.toLowerCase().includes(agentPickerSearch.toLowerCase()))
+                                  .map((a) => {
+                                    const linked = linkedAgents.some((x) => x.id === a.id)
+                                    return (
+                                      <button
+                                        key={a.id}
+                                        onClick={() => toggleLinkedAgent(a)}
+                                        className={cn(
+                                          "flex items-center gap-2.5 w-full px-3 py-1.5 text-[12px] rounded-md transition-colors text-left",
+                                          linked ? "bg-blue-500/10 text-blue-300" : "text-foreground hover:bg-accent"
+                                        )}
+                                      >
+                                        <IconFolderSymlink size={12} className={cn("shrink-0", linked ? "text-blue-400" : "text-muted-foreground/50")} />
+                                        <span className="truncate flex-1">{a.title}</span>
+                                        {linked && <IconCheck size={12} className="text-blue-400 shrink-0" />}
+                                      </button>
+                                    )
+                                  })
+                              )}
+                            </div>
+                            <div className="border-t border-border p-1">
+                              <button
+                                onClick={() => { setAgentPickerOpen(false); window.dispatchEvent(new CustomEvent("huxflux:new-agent")) }}
+                                className="flex items-center gap-2.5 w-full px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                              >
+                                <IconPlus size={12} className="shrink-0" />
+                                <span>New workspace</span>
+                              </button>
+                            </div>
                           </PopoverContent>
                         </Popover>
                       </PopoverContent>

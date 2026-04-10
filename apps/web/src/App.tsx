@@ -231,7 +231,7 @@ export default function App() {
   const sidebarProps = {
     agents,
     selectedId: workspace.sidebarSelectedId,
-    onSelect: (id: string) => { setShowHome(false); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) },
+    onSelect: (id: string) => { setShowHome(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) },
     onOpenSettings: () => setView("settings"),
     onAgentCreating: workspace.onAgentCreating,
     onAgentCreated: workspace.onAgentCreated,
@@ -372,7 +372,7 @@ export default function App() {
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         agents={agents}
-        onSelectAgent={(id) => { setShowHome(false); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) }}
+        onSelectAgent={(id) => { setShowHome(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) }}
       />
       {import.meta.env.DEV && (
         <div data-tauri-drag-region className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">

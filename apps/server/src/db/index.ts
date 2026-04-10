@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite"
 import { BetterSQLiteSession } from "drizzle-orm/better-sqlite3/session"
 import { BaseSQLiteDatabase, SQLiteSyncDialect } from "drizzle-orm/sqlite-core"
 import { extractTablesRelationalConfig, createTableRelationsHelpers } from "drizzle-orm/relations"
+import { getTableColumns, getTableName } from "drizzle-orm"
 import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
@@ -342,36 +343,53 @@ export function runMigrations() {
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
   if (pending.length === 0) {
     console.log(`[db] schema up to date (v${currentVersion})`)
-    return
-  }
-
-  console.log(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
-  for (const migration of pending) {
-    // Run DDL outside transactions — node:sqlite's shim silently swallows
-    // ALTER TABLE and other DDL inside transaction wrappers.
-    try {
-      sqlite.exec(migration.sql)
-    } catch (err) {
-      const msg = (err as Error).message ?? ""
-      // Ignore "duplicate column" errors — column may have been added manually
-      if (!msg.includes("duplicate column")) throw err
-      console.log(`[db] migration v${migration.version}: column already exists, skipping`)
+  } else {
+    console.log(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
+    for (const migration of pending) {
+      // Run DDL outside transactions — node:sqlite's shim silently swallows
+      // ALTER TABLE and other DDL inside transaction wrappers.
+      try {
+        sqlite.exec(migration.sql)
+      } catch (err) {
+        const msg = (err as Error).message ?? ""
+        // Ignore "duplicate column" errors — column may have been added manually
+        if (!msg.includes("duplicate column")) throw err
+        console.log(`[db] migration v${migration.version}: column already exists, skipping`)
+      }
+      raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+      console.log(`[db] applied migration v${migration.version}`)
     }
-    raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
-    console.log(`[db] applied migration v${migration.version}`)
+    console.log(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
   }
-  console.log(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
 
   repairSchema()
 }
 
 // Fix columns that were lost due to ALTER TABLE being silently swallowed
 // inside node:sqlite transactions in earlier versions of the migration runner.
+// Derives expected columns from the Drizzle schema so new migrations are
+// automatically covered without manual bookkeeping.
 function repairSchema() {
-  const cols = raw.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[]
-  const colNames = new Set(cols.map((c) => c.name))
-  if (!colNames.has("preceding_text")) {
-    sqlite.exec("ALTER TABLE tool_calls ADD COLUMN preceding_text TEXT")
-    console.log("[db] repaired: added missing preceding_text column")
+  const tables = [
+    schema.repos, schema.agents, schema.messages, schema.toolCalls,
+    schema.fileChanges, schema.terminalLines, schema.terminalTabs,
+    schema.prChatMessages, schema.wrappedSummaries,
+  ]
+
+  for (const table of tables) {
+    const tableName = getTableName(table)
+    const existing = new Set(
+      (raw.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[]).map((c) => c.name)
+    )
+    // Table doesn't exist yet — nothing to repair (CREATE TABLE migration will handle it)
+    if (existing.size === 0) continue
+
+    const columns = getTableColumns(table)
+    for (const col of Object.values(columns)) {
+      if (!existing.has(col.name)) {
+        sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.getSQLType()}`)
+        console.log(`[db] repaired: added missing ${tableName}.${col.name}`)
+      }
+    }
   }
 }

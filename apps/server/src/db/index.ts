@@ -322,6 +322,10 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_wrapped_period ON wrapped_summaries(period_key);
     `,
   },
+  {
+    version: 19,
+    sql: `ALTER TABLE messages ADD COLUMN sender TEXT;`,
+  },
 ]
 
 export function runMigrations() {

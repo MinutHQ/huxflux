@@ -176,7 +176,7 @@ function LinkedWorkspaceMessage({ sender, content }: { sender: string; content: 
       >
         <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/40", open && "rotate-90")} />
         <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
-        <span>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> answered</span>
+        <span>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> sent message</span>
       </button>
       {open && (
         <div className="ml-[22px] mt-1.5 pl-3 border-l border-blue-400/15">

@@ -274,7 +274,11 @@ async function persistAssistantMessage(
     }
   }
   // Strip delegate tags from displayed content
+  const hadDelegates = /<huxflux:delegate/.test(finalContent)
   finalContent = finalContent.replace(/<huxflux:delegate agent="[^"]*">[\s\S]*?<\/huxflux:delegate>\n?/g, "").trim()
+  if (hadDelegates && !finalContent) {
+    finalContent = "Delegated task to linked workspace."
+  }
 
   await db.update(messagesTable)
     .set({

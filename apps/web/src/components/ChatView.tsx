@@ -886,7 +886,7 @@ function extractLatestTodos(messages: Message[]): TodoItem[] {
   return []
 }
 
-function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
+function TasksBar({ todos, agentId, isStreaming }: { todos: TodoItem[]; agentId: string; isStreaming?: boolean }) {
   const storageKey = `huxflux-tasks-dismissed-${agentId}`
   const [collapsed, setCollapsed] = useState(false)
   const [dismissed, setDismissed] = useState(() => {
@@ -910,7 +910,7 @@ function TasksBar({ todos, agentId }: { todos: TodoItem[]; agentId: string }) {
     setDismissed(true)
   }
 
-  if (dismissed || todos.length === 0) return null
+  if (dismissed || todos.length === 0 || (!isStreaming && todos.every((t) => t.status === "completed" || t.status === "pending"))) return null
 
   const doneCount = todos.filter((t) => t.status === "completed").length
   const inProgressCount = todos.filter((t) => t.status === "in_progress").length
@@ -3218,7 +3218,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
             )}
             <div className="px-5 py-4">
             <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
-            <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} />
+            <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} isStreaming={uiIsStreaming} />
             {pendingQuestion && pendingQuestion.agentId === agent.id && pendingQuestion.questions.length > 0 && (
               <AskUserQuestionCard
                 questions={pendingQuestion.questions}

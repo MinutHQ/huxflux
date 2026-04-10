@@ -8,6 +8,7 @@ import { FileChangesView } from "@/components/FileChangesView"
 import { TerminalView } from "@/components/TerminalView"
 import { SettingsPage } from "@/components/SettingsPage"
 import { Onboarding } from "@/components/Onboarding"
+import { CommandPalette } from "@/components/CommandPalette"
 import { PRView } from "@/components/PRView"
 import { HomeView } from "@/components/HomeView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
@@ -44,6 +45,7 @@ export default function App() {
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
   const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
   const [showHome, setShowHome] = useState(() => !localStorage.getItem("huxflux-last-view"))
+  const [cmdkOpen, setCmdkOpen] = useState(false)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -81,6 +83,10 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent("huxflux:new-agent"))
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setCmdkOpen((v) => !v)
       }
     }
     window.addEventListener("keydown", onKey)
@@ -362,6 +368,12 @@ export default function App() {
   return (
     <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
+      <CommandPalette
+        open={cmdkOpen}
+        onClose={() => setCmdkOpen(false)}
+        agents={agents}
+        onSelectAgent={(id) => { setShowHome(false); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) }}
+      />
       {import.meta.env.DEV && (
         <div data-tauri-drag-region className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">
           Dev mode

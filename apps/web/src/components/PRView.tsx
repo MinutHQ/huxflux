@@ -2430,15 +2430,15 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <div className="py-3">
                 {messages.map((msg) => {
-                  if (msg.isReview && msg.comments && msg.comments.length > 0) {
+                  if (msg.isReview) {
                     return (
                       <div key={msg.id} className="px-4 py-3">
                         {msg.content && (
-                          <div className="mb-4 p-3 rounded-lg bg-secondary/40 border border-border text-[13px] text-foreground/80">
+                          <div className={`p-3 rounded-lg bg-secondary/40 border border-border text-[13px] text-foreground/80${msg.comments && msg.comments.length > 0 ? " mb-4" : ""}`}>
                             <MarkdownContent content={msg.content} />
                           </div>
                         )}
-                        <div className="space-y-2">
+                        {msg.comments && msg.comments.length > 0 && <div className="space-y-2">
                           {msg.comments.map((c) => {
                             const isQueued = pendingComments.some((p) => p.path === c.path && p.line === c.line && p.body === c.body)
                             return (
@@ -2472,7 +2472,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                               />
                             )
                           })}
-                        </div>
+                        </div>}
                       </div>
                     )
                   }

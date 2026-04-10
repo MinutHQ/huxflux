@@ -45,6 +45,9 @@ import {
   IconBolt,
   IconRefresh,
   IconChevronDown,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconLoader2,
 } from "@tabler/icons-react"
 
 // ── Status icons (Linear-style) ───────────────────────────────────────────────
@@ -1155,12 +1158,13 @@ function PRPopover({ pr, y, sidebarWidth }: { pr: PullRequest; y: number; sideba
   )
 }
 
-function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
+function PRRow({ pr, isSelected, onClick, onHover, onLeave, isBulkReviewing = false }: {
   pr: PullRequest
   isSelected: boolean
   onClick: () => void
   onHover: (y: number) => void
   onLeave: () => void
+  isBulkReviewing?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -1193,13 +1197,24 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
         )}
       >
         {/* Avatar */}
-        {pr.authorAvatar ? (
-          <img src={pr.authorAvatar} alt={pr.author} className="w-7 h-7 rounded-full shrink-0 mt-0.5 object-cover" />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-semibold text-muted-foreground/60 uppercase">
-            {pr.author?.slice(0, 1) ?? "?"}
-          </div>
-        )}
+        <div className="relative shrink-0 mt-0.5">
+          {pr.authorAvatar ? (
+            <img src={pr.authorAvatar} alt={pr.author} className="w-7 h-7 rounded-full object-cover" />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-semibold text-muted-foreground/60 uppercase">
+              {pr.author?.slice(0, 1) ?? "?"}
+            </div>
+          )}
+          {isBulkReviewing ? (
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-background flex items-center justify-center">
+              <IconLoader2 size={10} className="animate-spin text-primary" />
+            </div>
+          ) : pr.reviewReady && !pr.userReviewed ? (
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-background flex items-center justify-center">
+              <IconSparkles size={10} className="text-amber-400" />
+            </div>
+          ) : null}
+        </div>
         {/* Text content */}
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           {/* Title */}
@@ -1237,7 +1252,7 @@ function PRRow({ pr, isSelected, onClick, onHover, onLeave }: {
 
 // ── PR list ───────────────────────────────────────────────────────────────────
 
-function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, onHover, onLeave }: {
+function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, onHover, onLeave, bulkReviewingIds = new Set() }: {
   prsLoading: boolean
   prs: PullRequest[]
   hideReviewedPrs: boolean
@@ -1245,6 +1260,7 @@ function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, on
   onSelectPr: (id: string) => void
   onHover: (pr: PullRequest, y: number) => void
   onLeave: () => void
+  bulkReviewingIds?: Set<string>
 }) {
   const [repoFilter, setRepoFilter] = useState<string | null>(null)
 
@@ -1313,9 +1329,9 @@ function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, on
         </div>
       ) : (
         <div className="p-2 space-y-0.5">
-          <PRGroup label="Re-requested" labelColor="text-amber-400/80" prs={reRequested} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
-          <PRGroup label="Review requested" labelColor="text-muted-foreground/50" prs={toReview} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} />
-          <PRGroup label="Reviewed" labelColor="text-muted-foreground/40" prs={userReviewed} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} defaultCollapsed />
+          <PRGroup label="Re-requested" labelColor="text-amber-400/80" prs={reRequested} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} bulkReviewingIds={bulkReviewingIds} />
+          <PRGroup label="Review requested" labelColor="text-muted-foreground/50" prs={toReview} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} bulkReviewingIds={bulkReviewingIds} />
+          <PRGroup label="Reviewed" labelColor="text-muted-foreground/40" prs={userReviewed} selectedPrId={selectedPrId} onSelectPr={onSelectPr} onHover={onHover} onLeave={onLeave} defaultCollapsed bulkReviewingIds={bulkReviewingIds} />
         </div>
       )}
     </div>
@@ -1324,7 +1340,7 @@ function PRList({ prsLoading, prs, hideReviewedPrs, selectedPrId, onSelectPr, on
 
 // ── PR group (accordion) ─────────────────────────────────────────────────────
 
-function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, onLeave, defaultCollapsed = false }: {
+function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, onLeave, defaultCollapsed = false, bulkReviewingIds = new Set() }: {
   label: string
   labelColor: string
   prs: PullRequest[]
@@ -1333,6 +1349,7 @@ function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, on
   onHover: (pr: PullRequest, y: number) => void
   onLeave: () => void
   defaultCollapsed?: boolean
+  bulkReviewingIds?: Set<string>
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
   if (prs.length === 0) return null
@@ -1358,6 +1375,7 @@ function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, on
               onClick={() => onSelectPr(pr.id)}
               onHover={(y) => onHover(pr, y)}
               onLeave={onLeave}
+              isBulkReviewing={bulkReviewingIds.has(pr.id)}
             />
           ))}
         </div>
@@ -1368,18 +1386,20 @@ function PRGroup({ label, labelColor, prs, selectedPrId, onSelectPr, onHover, on
 
 // ── PR filter popover ────────────────────────────────────────────────────────
 
-function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRef }: {
+function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRef, concurrency, onConcurrencyChange }: {
   hideReviewed: boolean
   onToggleHideReviewed: () => void
   onClose: () => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
+  concurrency: number
+  onConcurrencyChange?: (n: number) => void
 }) {
   const pos = anchorRef.current?.getBoundingClientRect()
   return createPortal(
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="fixed z-50 w-56 bg-card border border-border rounded-xl shadow-xl p-3"
+        className="fixed z-50 w-56 bg-card border border-border rounded-xl shadow-xl p-3 space-y-2"
         style={{
           top: pos ? pos.bottom + 6 : 100,
           left: pos ? Math.max(8, pos.right - 224) : 100,
@@ -1397,6 +1417,26 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
           </div>
           <span className="text-[12px] text-foreground">Hide PRs ready to merge</span>
         </button>
+        {onConcurrencyChange && (
+          <div className="px-2 py-1.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-muted-foreground/60">Concurrent reviews</span>
+              <span className="text-[11px] font-mono text-foreground/80">{concurrency}</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={concurrency}
+              onChange={(e) => onConcurrencyChange(parseInt(e.target.value, 10))}
+              className="w-full h-1 accent-primary cursor-pointer"
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground/40 mt-0.5">
+              <span>1</span>
+              <span>10</span>
+            </div>
+          </div>
+        )}
       </div>
     </>,
     document.body
@@ -1432,9 +1472,15 @@ interface SidebarProps {
   showHome?: boolean
   onToggle?: () => void
   feedbackEnabled?: boolean
+  bulkReviewingIds?: Set<string>
+  isBulkReviewing?: boolean
+  onBulkReview?: () => void
+  onCancelBulkReview?: () => void
+  bulkReviewConcurrency?: number
+  onBulkReviewConcurrencyChange?: (n: number) => void
 }
 
-export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false }: SidebarProps) {
+export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false, bulkReviewingIds = new Set(), isBulkReviewing = false, onBulkReview, onCancelBulkReview, bulkReviewConcurrency = 5, onBulkReviewConcurrencyChange }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1801,6 +1847,26 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Pull Requests</span>
                 <div className="flex items-center gap-0.5">
+                  {isBulkReviewing ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={onCancelBulkReview}
+                      title="Cancel bulk review"
+                      className="text-destructive"
+                    >
+                      <IconPlayerStop size={13} />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={onBulkReview}
+                      title={`Review all (${bulkReviewConcurrency} concurrent)`}
+                    >
+                      <IconPlayerPlay size={13} />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -1826,9 +1892,19 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
                     onToggleHideReviewed={() => setHideReviewedPrs((v) => !v)}
                     onClose={() => setShowPrFilter(false)}
                     anchorRef={prFilterBtnRef}
+                    concurrency={bulkReviewConcurrency}
+                    onConcurrencyChange={onBulkReviewConcurrencyChange}
                   />
                 )}
               </div>
+              {isBulkReviewing && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <IconLoader2 size={11} className="animate-spin text-primary" />
+                  <span className="text-[10px] text-muted-foreground/60">
+                    Reviewing {bulkReviewingIds.size} PR{bulkReviewingIds.size !== 1 ? "s" : ""}...
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* PR list */}
@@ -1841,6 +1917,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
                 onSelectPr={onSelectPr}
                 onHover={(pr, y) => setHoveredPr({ pr, y })}
                 onLeave={() => setHoveredPr(null)}
+                bulkReviewingIds={bulkReviewingIds}
               />
             </div>
           </>

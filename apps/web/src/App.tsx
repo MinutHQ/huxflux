@@ -21,6 +21,7 @@ import { useWorkspace } from "@/hooks/useWorkspace"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
 import { usePRs } from "@/hooks/usePRs"
+import { useBulkReview } from "@/hooks/useBulkReview"
 import { getFlag } from "@/lib/flags"
 import { isTauri } from "@/lib/platform"
 import { useUpdater } from "@/hooks/useUpdater"
@@ -150,6 +151,8 @@ export default function App() {
     catch { return new Set() }
   })
 
+  const bulkReview = useBulkReview((prId) => setReviewedPrIds((prev) => new Set([...prev, prId])))
+
   const workspace = useWorkspace(agents)
   const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore, pendingQuestion: activePendingQuestion, clearPendingQuestion: activeClearPendingQuestion } = useAgent(workspace.resolvedActiveId)
 
@@ -259,6 +262,12 @@ export default function App() {
     showHome,
     onToggle: toggleSidebar,
     feedbackEnabled,
+    bulkReviewingIds: bulkReview.reviewingIds,
+    isBulkReviewing: bulkReview.isBulkReviewing,
+    onBulkReview: () => bulkReview.startBulkReview(prs),
+    onCancelBulkReview: bulkReview.cancelBulkReview,
+    bulkReviewConcurrency: bulkReview.concurrency,
+    onBulkReviewConcurrencyChange: bulkReview.updateConcurrency,
   }
 
   // key={terminalAgentId} ensures TerminalView is a distinct instance per root

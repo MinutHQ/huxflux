@@ -1745,6 +1745,34 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const isRerunRef = useRef(false)
   const fileDiffsRef = useRef<Record<string, string>>({})
 
+  // ── Eager cache load ───────────────────────────────────────────────────────
+  // Load cached review immediately so comments appear while API calls are
+  // still in flight (e.g. after bulk review).
+  const eagerCacheLoaded = useRef(false)
+  useEffect(() => {
+    if (!pr.repoId || eagerCacheLoaded.current) return
+    const key = `huxflux:review:${pr.repoId}:${pr.number}`
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+    try {
+      const data = JSON.parse(raw) as { reviews?: Array<{ content: string; verdict: ChatMessage["verdict"]; comments: ReviewComment[]; timestamp: string }> }
+      const reviews = data.reviews ?? (data as any).content ? [data] : []
+      if (!Array.isArray(reviews) || reviews.length === 0) return
+      const msgs: ChatMessage[] = (data.reviews ?? [data as any]).map((r: any, i: number) => ({
+        id: `review-cached-${pr.number}-${i}`,
+        role: "assistant" as const,
+        content: r.content,
+        isReview: true,
+        verdict: r.verdict,
+        comments: r.comments,
+        timestamp: r.timestamp,
+      }))
+      setMessages(msgs)
+      setHasReviewed(true)
+      eagerCacheLoaded.current = true
+    } catch { /* ignore */ }
+  }, [pr.repoId, pr.number])
+
   // ── Review cache (localStorage, backwards compat) ──────────────────────────
   const reviewCacheKey = pr.repoId ? `huxflux:review:${pr.repoId}:${pr.number}` : null
 

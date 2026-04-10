@@ -103,16 +103,22 @@ export function useBulkReview(onReviewDone?: (prId: string) => void) {
   }, [])
 
   const startBulkReview = useCallback(async (prs: PullRequest[], model?: string) => {
-    const eligible = prs.filter((p) => {
-      if (!p.repoId) return false
-      if (p.userReviewed) return false
+    const reviewable = prs.filter((p) => p.repoId && !p.userReviewed)
+    let eligible = reviewable.filter((p) => {
       const cached = localStorage.getItem(`huxflux:review:${p.repoId}:${p.number}`)
-      if (cached) return false
-      return true
+      return !cached
     })
 
+    // All reviewable PRs already have cached reviews — re-run them all
+    if (eligible.length === 0 && reviewable.length > 0) {
+      for (const p of reviewable) {
+        localStorage.removeItem(`huxflux:review:${p.repoId}:${p.number}`)
+      }
+      eligible = reviewable
+    }
+
     if (eligible.length === 0) {
-      toast.info("All PRs already have reviews")
+      toast.info("No PRs to review")
       return
     }
 

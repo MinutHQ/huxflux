@@ -3151,7 +3151,6 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           ) : (
             <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
               <div className="px-10 py-8">
-                <StatsBar messages={agent.messages} />
                 {hasMore && (
                   <div className="flex justify-center pb-4">
                     <button

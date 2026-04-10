@@ -510,8 +510,9 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
       `- Do not include the repo name or branch — just the task.`,
       ``,
-      `If you rename your git branch (e.g. git branch -m old new), emit this tag on its own line so the UI stays in sync:`,
+      `IMPORTANT: If you rename your git branch (e.g. git branch -m old new) or push to a different branch name, you MUST emit this tag on its own line immediately after:`,
       `  <huxflux:branch>new-branch-name</huxflux:branch>`,
+      `Without this tag, the UI will not know about the rename and PR detection will break.`,
       ``,
       `Answer format:`,
       `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -675,6 +676,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
             updatedAt: doneAt,
           })
           .where(eq(agentsTable.id, agentId))
+
         const finalAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
         if (finalAgent) broadcast({ type: "agent:updated", agent: finalAgent as any })
       } catch (err) {

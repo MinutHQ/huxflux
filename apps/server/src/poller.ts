@@ -1,4 +1,6 @@
 import { eq, notInArray, isNull, and } from "drizzle-orm"
+import { simpleGit } from "simple-git"
+import * as path from "node:path"
 import { db } from "./db/index.js"
 import { agents, repos } from "./db/schema.js"
 import { getPRStatus, findPRForBranch } from "./github/client.js"
@@ -13,6 +15,20 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
   if (!agent.branch) return // skip agents with empty branch
   const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
   if (!repo) return
+
+  // Sync branch name from actual git worktree (Claude may have renamed it)
+  if (!agent.noWorktree) {
+    try {
+      const worktreePath = path.join(repo.workspacesPath, agent.location)
+      const actualBranch = (await simpleGit(worktreePath).revparse(["--abbrev-ref", "HEAD"])).trim()
+      if (actualBranch && actualBranch !== agent.branch) {
+        db.update(agents).set({ branch: actualBranch, updatedAt: new Date().toISOString() }).where(eq(agents.id, agent.id)).run()
+        agent = { ...agent, branch: actualBranch }
+        const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
+        if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+      }
+    } catch { /* worktree may not exist */ }
+  }
 
   // Resolve GitHub URL from git remote (repo.remote is the remote name, e.g. "origin")
   const repoUrl = await getRemoteUrl(repo.path, repo.remote)
@@ -65,7 +81,7 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
 }
 
 export function startPoller(intervalMs = 60_000) {
-  const SKIP_STATUSES = ["backlog", "cancelled"]
+  const SKIP_STATUSES = ["backlog", "cancelled", "done"]
 
   async function run() {
     const rows = db.select().from(agents)

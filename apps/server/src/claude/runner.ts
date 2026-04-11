@@ -316,6 +316,24 @@ async function persistAssistantMessage(
     if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
   }
 
+  // Parse and strip any <huxflux:title> tags
+  const titleTagRe = /<huxflux:title>(.*?)<\/huxflux:title>/gs
+  let titleMatch: RegExpExecArray | null
+  let newTitle: string | null = null
+  while ((titleMatch = titleTagRe.exec(state.fullContent)) !== null) {
+    newTitle = titleMatch[1].trim()
+  }
+  if (newTitle) {
+    finalContent = finalContent.replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "").trim()
+    state.fullContent = state.fullContent.replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "").trim()
+    db.update(agentsTable)
+      .set({ title: newTitle, updatedAt: new Date().toISOString() })
+      .where(eq(agentsTable.id, agentId))
+      .run()
+    const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
+  }
+
   // Parse and execute <huxflux:delegate agent="ID">task</huxflux:delegate> tags.
   // Sends the task to the target agent via the local API (handles queuing + auth).
   const delegateRe = /<huxflux:delegate agent="([^"]+)">([\s\S]*?)<\/huxflux:delegate>/g
@@ -527,8 +545,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     const systemPrompt = [
       `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
       ``,
-      `You can rename yourself at any time using Bash:`,
-      `  curl -s -X PATCH ${apiBase}/api/agents/${agentId} -H "Content-Type: application/json" -d '{"title":"<new title>"}'`,
+      `To rename yourself, emit this tag on its own line in your response:`,
+      `  <huxflux:title>new title here</huxflux:title>`,
       ``,
       `Rename guidelines:`,
       `- Rename yourself as soon as you understand what you are working on.`,

@@ -398,6 +398,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const provider = getProvider(opts.provider ?? "claude")
   const model = provider.resolveModel(opts.model ?? "")
 
+  if (!provider.isAvailable()) {
+    throw new Error(`${provider.name} CLI is not installed. Install it to use this provider.`)
+  }
+
   // B1: Reject if a process is already running for this agent
   if (runningProcesses.has(agentId)) {
     throw new Error(`Agent ${agentId} already has a running process`)

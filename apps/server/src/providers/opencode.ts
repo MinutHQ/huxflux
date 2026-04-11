@@ -1,12 +1,30 @@
 import { execFileSync } from "node:child_process"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "./types.js"
 
-const MODELS = [
-  { id: "github-copilot/claude-sonnet-4.6", label: "Claude Sonnet 4.6", api: "github-copilot/claude-sonnet-4.6" },
-  { id: "github-copilot/gpt-5.4", label: "GPT-5.4", api: "github-copilot/gpt-5.4" },
-  { id: "github-copilot/gemini-2.5-pro", label: "Gemini 2.5 Pro", api: "github-copilot/gemini-2.5-pro" },
-  { id: "github-copilot/gpt-5.4-mini", label: "GPT-5.4 Mini", api: "github-copilot/gpt-5.4-mini" },
-]
+// Cached models fetched from `opencode models`
+let _models: Array<{ id: string; label: string; api: string }> | null = null
+let _modelsLastFetch = 0
+
+function fetchModels(bin: string): Array<{ id: string; label: string; api: string }> {
+  // Cache for 5 minutes
+  if (_models && Date.now() - _modelsLastFetch < 300_000) return _models
+  try {
+    const output = execFileSync(bin, ["models"], { encoding: "utf8", timeout: 10_000 })
+    _models = output.trim().split("\n").filter(Boolean).map((line) => {
+      const id = line.trim()
+      // Label: strip provider prefix for display
+      const label = id.includes("/") ? id.split("/").slice(1).join("/") : id
+      return { id, label, api: id }
+    })
+    _modelsLastFetch = Date.now()
+    return _models
+  } catch {
+    return [
+      { id: "opencode/minimax-m2.5-free", label: "minimax-m2.5-free", api: "opencode/minimax-m2.5-free" },
+      { id: "opencode/nemotron-3-super-free", label: "nemotron-3-super-free", api: "opencode/nemotron-3-super-free" },
+    ]
+  }
+}
 
 let _bin: string | null = null
 
@@ -124,11 +142,10 @@ export const opencodeProvider: ProviderAdapter = {
 
   resolveModel(model: string): string {
     if (!model) return ""  // use opencode default
-    const found = MODELS.find((m) => m.id === model || m.label === model || m.api === model)
-    return found?.api ?? model
+    return model  // OpenCode models are already in provider/model format
   },
 
   getModels() {
-    return MODELS
+    return fetchModels(this.resolveBinary())
   },
 }

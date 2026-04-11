@@ -1,12 +1,10 @@
 import type { ProviderId, ProviderAdapter } from "./types.js"
 import { claudeProvider } from "./claude.js"
 import { codexProvider } from "./codex.js"
-import { opencodeProvider } from "./opencode.js"
 
-const providers: Record<ProviderId, ProviderAdapter> = {
+const providers: Record<string, ProviderAdapter> = {
   claude: claudeProvider,
   codex: codexProvider,
-  opencode: opencodeProvider,
 }
 
 export function getProvider(id: string): ProviderAdapter {

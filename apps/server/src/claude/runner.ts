@@ -282,6 +282,7 @@ async function persistAssistantMessage(
   skeletonCreatedAt: string,
   startedAt: number,
   model: string,
+  providerId: string,
   worktreePath: string,
   branchFrom: string,
   flushTimer: { current: ReturnType<typeof setTimeout> | null },
@@ -289,10 +290,10 @@ async function persistAssistantMessage(
   // Cancel any pending flush — we're about to write the final state
   if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
 
-  // If the message contains ExitPlanMode (user-initiated or Claude-initiated),
-  // use its precedingText as the content — that's the actual plan.
-  // Otherwise, only the text after the last tool call becomes content.
-  let finalContent = state.pendingText
+  // For Claude: only text after the last tool call becomes content (pendingText).
+  // For other providers: use fullContent since they don't split text into precedingText.
+  // If ExitPlanMode exists, use its precedingText as the plan content.
+  let finalContent = providerId === "claude" ? state.pendingText : (state.fullContent || state.pendingText)
   const exitCall = state.collectedToolCalls.find((tc) => tc.tool === "ExitPlanMode")
   if (exitCall?.precedingText?.trim()) {
     finalContent = exitCall.precedingText.trim()
@@ -669,7 +670,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       // Persist the final message + emit message:done. Failures here must not
       // prevent the streaming flag from being cleared, so they're swallowed.
       try {
-        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, cwd, branchFrom, flushTimer)
+        await persistAssistantMessage(state, agentId, messageId, skeletonCreatedAt, startedAt, model, provider.id, cwd, branchFrom, flushTimer)
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(`[runner] persistAssistantMessage failed for ${agentId}:`, err)

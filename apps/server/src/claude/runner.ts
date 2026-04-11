@@ -645,19 +645,27 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
     proc.stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString()
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
+
+      // Split buffer into individual JSON objects. Claude uses newline-delimited JSON.
+      // Other providers (OpenCode) may concatenate JSON objects without newlines.
+      let lines: string[]
+      if (provider.id === "claude") {
+        lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+      } else {
+        // Split concatenated JSON: }{ → }\n{
+        lines = buffer.replace(/\}\s*\{/g, "}\n{").split("\n")
+        buffer = lines.pop() ?? ""
+      }
 
       for (const line of lines) {
         if (!line.trim()) continue
         if (provider.id === "claude") {
-          // Use the full-fidelity Claude event handler for backward compat
           try {
             const parsed = JSON.parse(line)
             handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
           } catch { /* non-JSON */ }
         } else {
-          // Use provider's normalized parser
           const event = provider.parseStreamLine(line)
           if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
         }
@@ -687,11 +695,17 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
-        if (provider.id === "claude") {
-          try { handleStreamEvent(JSON.parse(buffer.trim()), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON remainder */ }
-        } else {
-          const event = provider.parseStreamLine(buffer.trim())
-          if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+        const remaining = provider.id === "claude"
+          ? [buffer.trim()]
+          : buffer.trim().replace(/\}\s*\{/g, "}\n{").split("\n")
+        for (const part of remaining) {
+          if (!part.trim()) continue
+          if (provider.id === "claude") {
+            try { handleStreamEvent(JSON.parse(part), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON */ }
+          } else {
+            const event = provider.parseStreamLine(part)
+            if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+          }
         }
         buffer = ""
       }

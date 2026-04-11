@@ -501,6 +501,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     createdAt: skeletonCreatedAt,
   })
 
+  // Clear stale session ID when switching to a provider that doesn't support resume
+  if (!provider.capabilities.sessionResume && existingSessionId) {
+    db.update(agentsTable).set({ sessionId: null }).where(eq(agentsTable.id, agentId)).run()
+  }
+
   // Mark agent as streaming so all connected clients know immediately
   await db.update(agentsTable).set({ streaming: 1 }).where(eq(agentsTable.id, agentId))
   const streamingAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()

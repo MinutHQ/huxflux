@@ -77,10 +77,11 @@ function isRemoteServer(): boolean {
   } catch { return false }
 }
 
-const MODELS = [
-  { id: "claude-opus-4-6",           label: "Opus 4.6" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+// Fallback models when providers API hasn't loaded yet
+const FALLBACK_MODELS = [
+  { id: "claude-opus-4-6",           label: "Opus 4.6",   provider: "claude" },
+  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", provider: "claude" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  provider: "claude" },
 ]
 
 
@@ -2436,9 +2437,32 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     mentionActiveRef.current?.scrollIntoView({ block: "nearest" })
   }, [mentionIndex])
 
-  async function handleModelChange(model: string) {
-    await api.updateAgent(agent.id, { model } as Parameters<typeof api.updateAgent>[1])
-    queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, model } : old)
+  const { data: providers = [] } = useQuery({
+    queryKey: ["providers"],
+    queryFn: api.getProviders,
+    staleTime: 60_000,
+  })
+
+  // Build a flat model list from providers, falling back to hardcoded Claude models
+  const allModels = useMemo(() => {
+    if (providers.length === 0) return FALLBACK_MODELS
+    return providers
+      .filter((p) => p.available)
+      .flatMap((p) => p.models.map((m) => ({ id: m.api || m.id, label: m.label, provider: p.id })))
+  }, [providers])
+
+  // Current provider's capabilities
+  const currentProvider = providers.find((p) => p.id === (agent.provider ?? "claude"))
+  const capabilities = currentProvider?.capabilities ?? {}
+
+  async function handleModelChange(value: string) {
+    // value is "provider:model" format
+    const [providerId, ...modelParts] = value.split(":")
+    const modelId = modelParts.join(":")
+    const updates: Record<string, string> = { model: modelId }
+    if (providerId !== (agent.provider ?? "claude")) updates.provider = providerId
+    await api.updateAgent(agent.id, updates as Parameters<typeof api.updateAgent>[1])
+    queryClient.setQueryData<Agent>(["agent", agent.id], (old) => old ? { ...old, ...updates } : old)
   }
 
   const { data: filteredCommands = [] } = useQuery({
@@ -3399,40 +3423,62 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 />
                 <div className="flex items-center justify-between px-3 pb-3">
                   <div className="flex items-center gap-1">
-                    <Select value={agent.model} onValueChange={handleModelChange}>
+                    <Select value={`${agent.provider ?? "claude"}:${agent.model}`} onValueChange={handleModelChange}>
                       <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
                         <IconSparkles size={13} className="text-muted-foreground shrink-0" />
-                        <SelectValue />
+                        <SelectValue>{allModels.find((m) => m.id === agent.model)?.label ?? agent.model}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {MODELS.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                        ))}
+                        {(() => {
+                          const grouped = new Map<string, typeof allModels>()
+                          for (const m of allModels) {
+                            const list = grouped.get(m.provider) ?? []
+                            list.push(m)
+                            grouped.set(m.provider, list)
+                          }
+                          const entries = [...grouped.entries()]
+                          return entries.map(([providerId, models]) => (
+                            <React.Fragment key={providerId}>
+                              {entries.length > 1 && (
+                                <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
+                                  {providers.find((p) => p.id === providerId)?.name ?? providerId}
+                                </div>
+                              )}
+                              {models.map((m) => (
+                                <SelectItem key={`${providerId}:${m.id}`} value={`${providerId}:${m.id}`}>{m.label}</SelectItem>
+                              ))}
+                            </React.Fragment>
+                          ))
+                        })()}
                       </SelectContent>
                     </Select>
                     <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
                       <IconBolt size={13} />
                     </Button>
-                    <button
-                      onClick={() => setThinking(!thinking)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                        thinking ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
+                    {(capabilities.thinkingBlocks !== false) && (
+                      <button
+                        onClick={() => setThinking(!thinking)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
+                          thinking ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
+                        )}
+                      >
+                        <IconBrain size={13} />
+                        <span>Thinking</span>
+                      </button>
+                    )}
+                    {(capabilities.planMode !== false) && (
+                      <button
+                        onClick={() => setPlanMode(!planMode)}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
+                          isInPlanMode ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
                       )}
                     >
-                      <IconBrain size={13} />
-                      <span>Thinking</span>
-                    </button>
-                    <button
-                      onClick={() => setPlanMode(!planMode)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                        isInPlanMode ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
-                      )}
-                    >
-                      <IconMap size={13} />
-                      <span>Plan</span>
-                    </button>
+                        <IconMap size={13} />
+                        <span>Plan</span>
+                      </button>
+                    )}
                     <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
                       <IconLayoutGrid size={13} />
                     </Button>

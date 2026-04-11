@@ -1,10 +1,12 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Linking, TextInput } from "react-native"
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Linking } from "react-native"
 import { useLocalSearchParams } from "expo-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, useAgent, type PRDetails, type PRCheck, type PRThread, type PRIssueComment } from "@huxflux/shared"
+import { api, useAgent, type PRCheck } from "@huxflux/shared"
 import { useState } from "react"
 import { c, prColors } from "../../../theme"
 import { useModal } from "../../../components/Modal"
+import { ThreadCard } from "../../../components/ThreadCard"
+import { IssueCommentCard } from "../../../components/IssueCommentCard"
 
 function CheckRow({ check }: { check: PRCheck }) {
   const isPass    = check.conclusion === "success" || check.conclusion === "skipped"
@@ -42,140 +44,6 @@ function ReviewRow({ author, state }: { author: string; state: string }) {
       </View>
       <Text style={{ color: c.fgBright, fontSize: 13, flex: 1 }}>{author}</Text>
       <Text style={{ color: stateConfig.color, fontSize: 12 }}>{stateConfig.label}</Text>
-    </View>
-  )
-}
-
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60_000)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
-function ThreadCard({
-  thread,
-  repoId,
-  prNumber,
-  onUpdated,
-}: {
-  thread: PRThread
-  repoId: string
-  prNumber: number
-  onUpdated: () => void
-}) {
-  const modal = useModal()
-  const [replyText, setReplyText] = useState("")
-  const [sending, setSending] = useState(false)
-  const [resolving, setResolving] = useState(false)
-  const rootComment = thread.comments[0]
-  if (!rootComment) return null
-
-  async function handleReply() {
-    if (!replyText.trim() || !rootComment.databaseId) return
-    setSending(true)
-    try {
-      await api.replyToPRComment(repoId, prNumber, rootComment.databaseId, replyText.trim())
-      setReplyText("")
-      onUpdated()
-    } catch (e: any) {
-      modal.showAlert("Error", e.message)
-    } finally {
-      setSending(false)
-    }
-  }
-
-  async function handleResolve() {
-    setResolving(true)
-    try {
-      await api.resolveThread(thread.id)
-      onUpdated()
-    } catch (e: any) {
-      modal.showAlert("Error", e.message)
-    } finally {
-      setResolving(false)
-    }
-  }
-
-  return (
-    <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-      {/* File location */}
-      {thread.path && (
-        <Text style={{ color: c.fgSub, fontSize: 11, fontFamily: "monospace", marginBottom: 8 }}>
-          {thread.path}{thread.line ? `:${thread.line}` : ""}
-        </Text>
-      )}
-
-      {/* Comments */}
-      {thread.comments.map((comment, i) => (
-        <View key={comment.id} style={{ marginBottom: i < thread.comments.length - 1 ? 10 : 0 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: c.fgSub, fontSize: 9, fontWeight: "700" }}>{comment.author[0]?.toUpperCase()}</Text>
-            </View>
-            <Text style={{ color: c.fgBright, fontSize: 12, fontWeight: "600" }}>{comment.author}</Text>
-            <Text style={{ color: c.fgSub, fontSize: 10 }}>{timeAgo(comment.createdAt)}</Text>
-          </View>
-          <Text style={{ color: c.fg, fontSize: 13, lineHeight: 19, paddingLeft: 26 }}>{comment.body}</Text>
-        </View>
-      ))}
-
-      {/* Reply + resolve */}
-      <View style={{ marginTop: 10, gap: 8 }}>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TextInput
-            value={replyText}
-            onChangeText={setReplyText}
-            placeholder="Reply…"
-            placeholderTextColor={c.placeholder}
-            style={{
-              flex: 1, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8,
-              paddingHorizontal: 10, paddingVertical: 8, color: c.fg, fontSize: 13,
-            }}
-          />
-          <TouchableOpacity
-            onPress={handleReply}
-            disabled={sending || !replyText.trim()}
-            style={{
-              backgroundColor: replyText.trim() && !sending ? c.fgBright : c.secondary,
-              borderRadius: 8, paddingHorizontal: 12, justifyContent: "center",
-            }}
-          >
-            {sending
-              ? <ActivityIndicator size="small" color={c.bg} />
-              : <Text style={{ color: replyText.trim() ? c.bg : c.fgSub, fontSize: 12, fontWeight: "600" }}>Send</Text>
-            }
-          </TouchableOpacity>
-        </View>
-        {!thread.isResolved && (
-          <TouchableOpacity
-            onPress={handleResolve}
-            disabled={resolving}
-            style={{ alignSelf: "flex-start" }}
-          >
-            <Text style={{ color: c.success, fontSize: 12, fontWeight: "500" }}>
-              {resolving ? "Resolving…" : "Resolve thread"}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  )
-}
-
-function IssueCommentCard({ comment }: { comment: PRIssueComment }) {
-  return (
-    <View style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12, padding: 14, marginBottom: 10 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: c.fgSub, fontSize: 9, fontWeight: "700" }}>{comment.author[0]?.toUpperCase()}</Text>
-        </View>
-        <Text style={{ color: c.fgBright, fontSize: 12, fontWeight: "600" }}>{comment.author}</Text>
-        <Text style={{ color: c.fgSub, fontSize: 10 }}>{timeAgo(comment.createdAt)}</Text>
-      </View>
-      <Text style={{ color: c.fg, fontSize: 13, lineHeight: 19, paddingLeft: 26 }}>{comment.body}</Text>
     </View>
   )
 }

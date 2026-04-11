@@ -9,6 +9,8 @@ const GIT_ARCHIVE_ON_MERGE_KEY = "huxflux:git:archive-on-merge"
 export const COLLAPSED_SECTIONS_KEY = "huxflux:mobile:collapsed-sections"
 export const REPO_FILTER_KEY = "huxflux:mobile:repo-filter"
 export const GROUP_BY_KEY = "huxflux:mobile:group-by"
+export const HIDE_REVIEWED_PRS_KEY = "huxflux:mobile:hide-reviewed-prs"
+export const BULK_REVIEW_CONCURRENCY_KEY = "huxflux:bulk-review-concurrency"
 
 export const PREF_KEYS = [
   STRIP_KEY,
@@ -20,6 +22,8 @@ export const PREF_KEYS = [
   COLLAPSED_SECTIONS_KEY,
   REPO_FILTER_KEY,
   GROUP_BY_KEY,
+  HIDE_REVIEWED_PRS_KEY,
+  BULK_REVIEW_CONCURRENCY_KEY,
 ]
 
 function get(key: string, defaultVal: boolean): boolean {

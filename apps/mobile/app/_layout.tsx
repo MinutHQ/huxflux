@@ -126,6 +126,8 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="agent/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="pr-review" options={{ headerShown: false }} />
+        <Stack.Screen name="pr-diff" options={{ headerShown: false }} />
         <Stack.Screen name="servers" options={{ title: "Servers", presentation: "modal" }} />
         <Stack.Screen name="new-agent" options={{ title: "New Agent", presentation: "modal" }} />
         <Stack.Screen name="add-repo" options={{ title: "Add Repo", presentation: "modal" }} />

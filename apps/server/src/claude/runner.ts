@@ -269,6 +269,10 @@ function handleNormalizedEvent(
       emit(agentId, { type: "subagent:event", agentId, toolUseId: event.toolUseId, event: event.event })
       break
     case "error":
+      // Surface errors as message content so the user sees them
+      state.pendingText += `\n\nError: ${event.message}`
+      state.fullContent += `\n\nError: ${event.message}`
+      emit(agentId, { type: "message:chunk", agentId, messageId, delta: `\n\nError: ${event.message}` })
       emit(agentId, { type: "error", agentId, message: event.message })
       break
   }

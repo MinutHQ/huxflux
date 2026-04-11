@@ -9,11 +9,9 @@ import { getFileChanges } from "../git/worktrees.js"
 import { eq, sql } from "drizzle-orm"
 import { config } from "../config.js"
 import type { Message, ToolCall } from "../types.js"
-
-// Represents a streaming JSON line from `claude --output-format stream-json`
-// Using Record<string, unknown> as base to accommodate sub-agent events we haven't typed yet
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ClaudeStreamEvent = Record<string, any>
+import { getProvider } from "../providers/index.js"
+import { buildConversationContext } from "../providers/context.js"
+import type { NormalizedStreamEvent } from "../providers/types.js"
 
 interface RunnerOptions {
   agentId: string
@@ -22,12 +20,13 @@ interface RunnerOptions {
   planMode?: boolean
   delegateFrom?: string  // parent agent ID when this run was delegated
   sender?: string        // display name for the sender (for delegated messages)
+  provider?: string      // provider ID (defaults to agent's provider or "claude")
 }
 
 // Registry of running agent processes
 const runningProcesses = new Map<string, ReturnType<typeof spawn>>()
 
-// Resolve claude binary once at startup instead of on every message
+// Legacy: resolve claude binary for backward compat (used by PR review/chat, title gen)
 let _claudeBin: string | null = null
 export function getClaudeBin(): string {
   if (_claudeBin) return _claudeBin
@@ -214,6 +213,66 @@ function handleStreamEvent(
   }
 }
 
+/** Handle a provider-agnostic normalized stream event */
+function handleNormalizedEvent(
+  event: NormalizedStreamEvent,
+  state: StreamState,
+  agentId: string,
+  messageId: string,
+  scheduleFlush: () => void,
+): void {
+  switch (event.type) {
+    case "text":
+      state.pendingText += event.text
+      state.fullContent += event.text
+      emit(agentId, { type: "message:chunk", agentId, messageId, delta: event.text })
+      scheduleFlush()
+      break
+    case "thinking":
+      state.fullThinking += event.text
+      emit(agentId, { type: "message:thinking", agentId, messageId, delta: event.text })
+      scheduleFlush()
+      break
+    case "tool_use": {
+      const precedingText = state.pendingText || undefined
+      state.pendingText = ""
+      const tc: ToolCall = { id: event.id, tool: event.name, args: JSON.stringify(event.input), precedingText }
+      state.collectedToolCalls.push({ id: event.id, tool: event.name, args: JSON.stringify(event.input), precedingText })
+      state.toolCallOrderIdx++
+      db.insert(toolCallsTable).values({
+        id: event.id, messageId, tool: event.name,
+        args: JSON.stringify(event.input), orderIdx: state.toolCallOrderIdx - 1, precedingText,
+      }).run()
+      emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
+      break
+    }
+    case "tool_result": {
+      const tc = state.collectedToolCalls.find((t) => t.id === event.toolUseId)
+      if (tc) tc.result = event.content
+      if (event.toolUseId) {
+        db.update(toolCallsTable).set({ result: event.content }).where(eq(toolCallsTable.id, event.toolUseId)).run()
+      }
+      emit(agentId, { type: "tool:result", agentId, messageId, toolCallId: event.toolUseId, result: event.content })
+      break
+    }
+    case "usage":
+      state.inputTokens = event.inputTokens ?? null
+      state.outputTokens = event.outputTokens ?? null
+      state.cacheReadTokens = event.cacheReadTokens ?? null
+      state.cacheWriteTokens = event.cacheWriteTokens ?? null
+      break
+    case "session_init":
+      db.update(agentsTable).set({ sessionId: event.sessionId }).where(eq(agentsTable.id, agentId)).run()
+      break
+    case "subagent":
+      emit(agentId, { type: "subagent:event", agentId, toolUseId: event.toolUseId, event: event.event })
+      break
+    case "error":
+      emit(agentId, { type: "error", agentId, message: event.message })
+      break
+  }
+}
+
 // ── Message persistence ─────────────────────────────────────────────────────
 
 async function persistAssistantMessage(
@@ -336,7 +395,8 @@ async function persistAssistantMessage(
 
 export async function runClaude(userContent: string, opts: RunnerOptions): Promise<void> {
   const { agentId, worktreePath } = opts
-  const model = MODEL_ALIASES[opts.model ?? ""] ?? opts.model ?? "claude-sonnet-4-6"
+  const provider = getProvider(opts.provider ?? "claude")
+  const model = provider.resolveModel(opts.model ?? "")
 
   // B1: Reject if a process is already running for this agent
   if (runningProcesses.has(agentId)) {
@@ -449,52 +509,14 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
   const branchFrom = agentRow?.baseBranch ?? repoRow?.branchFrom ?? "HEAD"
 
-  // Install PreToolUse hook for AskUserQuestion in the user's global Claude settings.
-  // The hook script uses HUXFLUX_AGENT_ID, HUXFLUX_API_BASE, and HUXFLUX_AUTH env vars
-  // (set on spawn below) so one script works for all agents across all repos.
+  // Install provider-specific hooks (e.g. AskUserQuestion for Claude)
   const apiBase = `http://localhost:${config.boundPort}`
-  try {
-    const homeClaudeDir = `${process.env.HOME}/.claude`
-    const hooksDir = `${homeClaudeDir}/hooks`
-    await fs.mkdir(hooksDir, { recursive: true })
-
-    // Write a generic hook script that reads agent ID + auth from env
-    const scriptPath = `${hooksDir}/huxflux-ask-user.sh`
-    const authHeader = config.authToken ? `-H "Authorization: Bearer $HUXFLUX_AUTH"` : ""
-    const scriptContent = [
-      `#!/bin/bash`,
-      `# Huxflux AskUserQuestion hook — routes questions to the Hive UI`,
-      `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
-      `curl -sf --max-time 300 -X POST "$HUXFLUX_API_BASE/api/agents/$HUXFLUX_AGENT_ID/ask" \\`,
-      `  -H "Content-Type: application/json" ${authHeader} -d @-`,
-    ].join("\n")
-    await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
-
-    // Add hook entry to user-level ~/.claude/settings.json if not already present
-    const settingsPath = `${homeClaudeDir}/settings.json`
-    let settings: Record<string, unknown> = {}
-    try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) } catch { /* fresh */ }
-    const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
-    const preToolUse = (hooks.PreToolUse ?? []) as Array<{ matcher?: string; hooks?: unknown[] }>
-    const alreadyInstalled = preToolUse.some((h) =>
-      h.matcher === "AskUserQuestion" && Array.isArray(h.hooks) && h.hooks.some((hk: any) => typeof hk.command === "string" && hk.command.includes("huxflux-ask-user"))
-    )
-    if (!alreadyInstalled) {
-      preToolUse.push({
-        matcher: "AskUserQuestion",
-        hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
-      })
-      hooks.PreToolUse = preToolUse
-      settings.hooks = hooks
-      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
-    }
-  } catch (hookErr) {
-    console.error(`[runner] Failed to install AskUserQuestion hook:`, (hookErr as Error).message)
+  if (provider.installHooks && provider.capabilities.askUserQuestion) {
+    await provider.installHooks(agentId, cwd, apiBase, config.authToken)
   }
 
   return new Promise((resolve, reject) => {
-    // System prompt injected on every turn so Claude always knows its identity
-    // and can rename itself via the REST API.
+    // System prompt — provider-agnostic agent identity + instructions
     const agentTitle = agentRow?.title ?? agentId
     const agentBranch = agentRow?.branch ?? ""
     const systemPrompt = [
@@ -517,7 +539,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       `Answer format:`,
       `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
       `- Start each new idea or action on its own line.`,
-      ...(opts.planMode ? [
+      ...(opts.planMode && provider.capabilities.planMode ? [
         ``,
         `You are in plan mode. You MUST describe your full plan in your response text so the user can read it in the chat.`,
         `Do NOT only write to the plan file — output the plan steps directly in your message.`,
@@ -525,45 +547,44 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       ] : []),
     ].join("\n")
 
-    // Launch claude CLI: --print for non-interactive, --output-format stream-json for streaming JSON
-    // Use --continue for follow-up messages so Claude reuses the existing session context
-    // --permission-mode is per-invocation, so plan mode can use the same
-    // session — the approval message resumes with full plan context.
-    const resumeArgs = existingSessionId
-      ? ["--resume", existingSessionId]
-      : useContinue ? ["--continue"] : []
+    // Build conversation context for providers without session resume
+    const conversationContext = !provider.capabilities.sessionResume && isContinuation
+      ? buildConversationContext(agentId)
+      : undefined
 
-    const claudeArgs = [
-      "--print",
-      "--output-format", "stream-json",
-      "--verbose",
-      ...(opts.planMode ? ["--permission-mode", "plan"] : ["--dangerously-skip-permissions"]),
-      "--model", model,
-      "--append-system-prompt", systemPrompt,
-      ...resumeArgs,
-      userContent,
-    ]
-    const { bin, args } = config.sandbox
+    // Use provider adapter to build spawn arguments
+    const spawnResult = provider.buildSpawnArgs({
+      prompt: userContent,
+      model,
+      planMode: opts.planMode ?? false,
+      sessionId: provider.capabilities.sessionResume ? existingSessionId : null,
+      isContinuation: provider.capabilities.sessionContinue ? useContinue : false,
+      cwd,
+      systemPrompt,
+      conversationContext,
+    })
+
+    // Apply sandboxing if configured (currently Claude-only)
+    const { bin, args } = config.sandbox && provider.id === "claude"
       ? buildSandboxedCommand({
-          claudeBin,
-          claudeArgs,
+          claudeBin: spawnResult.bin,
+          claudeArgs: spawnResult.args,
           worktreePath: cwd,
           repoPath: repoRow?.path ?? null,
           cfg: config.sandbox,
         })
-      : { bin: claudeBin, args: claudeArgs }
+      : spawnResult
 
     const proc = spawn(bin, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        // Ensure common install locations are in PATH on both macOS and Linux
         PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
-        // Used by the AskUserQuestion hook script
         HUXFLUX_AGENT_ID: agentId,
         HUXFLUX_API_BASE: apiBase,
         HUXFLUX_AUTH: config.authToken,
+        ...spawnResult.env,
       },
     })
 
@@ -595,11 +616,16 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
       for (const line of lines) {
         if (!line.trim()) continue
-        try {
-          const parsed = JSON.parse(line)
-          handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
-        } catch {
-          // Non-JSON line — could be a warning, skip it
+        if (provider.id === "claude") {
+          // Use the full-fidelity Claude event handler for backward compat
+          try {
+            const parsed = JSON.parse(line)
+            handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
+          } catch { /* non-JSON */ }
+        } else {
+          // Use provider's normalized parser
+          const event = provider.parseStreamLine(line)
+          if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
         }
       }
     })
@@ -627,7 +653,12 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
-        try { handleStreamEvent(JSON.parse(buffer.trim()), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON remainder */ }
+        if (provider.id === "claude") {
+          try { handleStreamEvent(JSON.parse(buffer.trim()), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON remainder */ }
+        } else {
+          const event = provider.parseStreamLine(buffer.trim())
+          if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+        }
         buffer = ""
       }
 

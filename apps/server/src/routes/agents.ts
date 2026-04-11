@@ -10,6 +10,7 @@ import { stopAgent, isAgentRunning } from "../claude/runner.js"
 import { generateTitle, deriveTitle } from "./messages.js"
 import { killAgentTerminals } from "../ws/pty.js"
 import { parsePrStatus } from "../github/prStatus.js"
+import { getAvailableProviders } from "../providers/index.js"
 import { config } from "../config.js"
 import { getSettings } from "../settings.js"
 import { findPRForBranch } from "../github/client.js"
@@ -157,9 +158,10 @@ export async function agentsRoutes(app: FastifyInstance) {
       noWorktree?: boolean
       existingBranch?: boolean  // if true, branch already exists — skip -b and auto-link PR
       baseBranch?: string       // override repo.branchFrom for this agent
+      provider?: string         // CLI provider: "claude" | "codex" | "opencode"
     }
   }>("/api/agents", async (req, reply) => {
-    const { repoId, title, branch, model = getSettings().defaultModel ?? "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree, existingBranch, baseBranch } = req.body
+    const { repoId, title, branch, model = getSettings().defaultModel ?? "Sonnet 4.6", location, description, shareWorktreeWith, noWorktree, existingBranch, baseBranch, provider = getSettings().defaultProvider ?? "claude" } = req.body
     const now = new Date().toISOString()
     const id = uuid()
 
@@ -205,6 +207,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       parentAgentId: shareWorktreeWith ?? null,
       noWorktree: noWorktree ? 1 : null,
       baseBranch: baseBranch ?? null,
+      provider,
       createdAt: now,
       updatedAt: now,
     })
@@ -288,7 +291,7 @@ export async function agentsRoutes(app: FastifyInstance) {
   // PATCH /api/agents/:id — update status / metadata
   app.patch<{
     Params: { id: string }
-    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string; draft: string }>
+    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string; draft: string; model: string; provider: string }>
   }>("/api/agents/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
@@ -306,6 +309,8 @@ export async function agentsRoutes(app: FastifyInstance) {
       ...(body.pr !== undefined && { pr: body.pr }),
       ...(body.description !== undefined && { description: body.description }),
       ...(body.unread !== undefined && { unread: body.unread }),
+      ...(body.model !== undefined && { model: body.model }),
+      ...(body.provider !== undefined && { provider: body.provider }),
       ...(body.baseBranch !== undefined && { baseBranch: body.baseBranch }),
       ...(body.draft !== undefined && { draft: body.draft }),
       updatedAt: now,
@@ -693,5 +698,16 @@ export async function agentsRoutes(app: FastifyInstance) {
       : path.join(repo.workspacesPath, agent.location)
 
     return { path: worktreePath }
+  })
+
+  // GET /api/providers — list available CLI providers with capabilities and models
+  app.get("/api/providers", async () => {
+    return getAvailableProviders().map((p) => ({
+      id: p.id,
+      name: p.name,
+      available: p.isAvailable(),
+      capabilities: p.capabilities,
+      models: p.getModels(),
+    }))
   })
 }

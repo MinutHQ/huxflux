@@ -168,6 +168,7 @@ export interface Agent {
   prNumber?: number
   prStatus?: PRStatus
   model: string
+  provider?: string
   location: string
   unread?: number
   streaming?: boolean

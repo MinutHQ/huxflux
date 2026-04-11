@@ -70,11 +70,21 @@ async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number })
 export interface HuxfluxSettings {
   reviewPrompt?: string
   defaultModel?: string
+  defaultProvider?: string
+}
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  available: boolean
+  capabilities: Record<string, boolean>
+  models: Array<{ id: string; label: string; api: string }>
 }
 
 export const api = {
   // Server config / feature flags
   getServerConfig: () => req<{ githubEnabled: boolean; feedbackEnabled: boolean }>("/api/config"),
+  getProviders: () => req<ProviderInfo[]>("/api/providers"),
 
   // Settings
   getSettings: () => req<HuxfluxSettings>("/api/settings"),
@@ -89,6 +99,7 @@ export const api = {
     title: string
     branch: string
     model?: string
+    provider?: string
     location?: string
     description?: string
     shareWorktreeWith?: string

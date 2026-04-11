@@ -37,6 +37,7 @@ export const agents = sqliteTable("agents", {
   noWorktree: integer("no_worktree"), // 1 = run directly in repo.path, no git worktree
   deletedAt: text("deleted_at"), // soft delete — set instead of hard DELETE
   draft: text("draft"), // persisted chat input draft
+  provider: text("provider").notNull().default("claude"), // CLI provider: "claude" | "codex" | "opencode"
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

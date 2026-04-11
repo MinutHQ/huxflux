@@ -327,6 +327,10 @@ const MIGRATIONS: Migration[] = [
     version: 19,
     sql: `ALTER TABLE messages ADD COLUMN sender TEXT;`,
   },
+  {
+    version: 20,
+    sql: `ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';`,
+  },
 ]
 
 export function runMigrations() {

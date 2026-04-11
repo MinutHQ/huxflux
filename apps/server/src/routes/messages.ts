@@ -50,7 +50,7 @@ export function deriveTitle(content: string): string {
   return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…"
 }
 
-type QueuedMessage = { content: string; worktreePath: string; model: string; planMode?: boolean; sender?: string; delegateFrom?: string }
+type QueuedMessage = { content: string; worktreePath: string; model: string; planMode?: boolean; sender?: string; delegateFrom?: string; provider?: string }
 const agentQueues = new Map<string, QueuedMessage[]>()
 
 function enqueue(agentId: string, msg: QueuedMessage) {
@@ -63,7 +63,7 @@ function drainQueue(agentId: string, app: FastifyInstance) {
   if (!queue || queue.length === 0) return
   if (isAgentRunning(agentId)) return
   const next = queue.shift()!
-  runClaude(next.content, { agentId, worktreePath: next.worktreePath, model: next.model, planMode: next.planMode, delegateFrom: next.delegateFrom, sender: next.sender })
+  runClaude(next.content, { agentId, worktreePath: next.worktreePath, model: next.model, planMode: next.planMode, delegateFrom: next.delegateFrom, sender: next.sender, provider: next.provider })
     .catch((err) => app.log.error(`Claude runner error for agent ${agentId}: ${err}`))
     .finally(() => drainQueue(agentId, app))
 }
@@ -138,7 +138,7 @@ export async function messagesRoutes(app: FastifyInstance) {
       }
     }
 
-    const opts: QueuedMessage = { content, worktreePath: worktreePath ?? process.cwd(), model: agent.model, planMode, sender, delegateFrom }
+    const opts: QueuedMessage = { content, worktreePath: worktreePath ?? process.cwd(), model: agent.model, planMode, sender, delegateFrom, provider: (agent as any).provider }
 
     // If agent is busy, queue the message and return immediately
     if (isAgentRunning(id)) {
@@ -166,7 +166,7 @@ export async function messagesRoutes(app: FastifyInstance) {
     }
 
     // Fire and forget — streaming happens over WebSocket; drain queue when done
-    runClaude(content, { agentId: id, worktreePath: opts.worktreePath, model: opts.model, planMode: opts.planMode, delegateFrom: opts.delegateFrom, sender: opts.sender })
+    runClaude(content, { agentId: id, worktreePath: opts.worktreePath, model: opts.model, planMode: opts.planMode, delegateFrom: opts.delegateFrom, sender: opts.sender, provider: opts.provider })
       .catch((err) => app.log.error(`Claude runner error for agent ${id}: ${err}`))
       .finally(() => drainQueue(id, app))
 

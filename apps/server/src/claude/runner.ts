@@ -570,8 +570,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       ] : []),
     ].join("\n")
 
-    // Build conversation context for providers without session resume
-    const conversationContext = !provider.capabilities.sessionResume && isContinuation
+    // Build conversation context when provider can't resume from session,
+    // or when there's no session to resume (e.g. switched providers mid-conversation)
+    const canResume = provider.capabilities.sessionResume && existingSessionId
+    const conversationContext = isContinuation && !canResume
       ? buildConversationContext(agentId)
       : undefined
 
@@ -580,8 +582,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       prompt: userContent,
       model,
       planMode: opts.planMode ?? false,
-      sessionId: provider.capabilities.sessionResume ? existingSessionId : null,
-      isContinuation: provider.capabilities.sessionContinue ? useContinue : false,
+      sessionId: canResume ? existingSessionId : null,
+      isContinuation: canResume ? false : (provider.capabilities.sessionContinue ? useContinue : false),
       cwd,
       systemPrompt,
       conversationContext,

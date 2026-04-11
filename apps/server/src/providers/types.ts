@@ -1,4 +1,4 @@
-export type ProviderId = "claude" | "codex" | "opencode"
+export type ProviderId = "claude" | "codex"
 
 export interface ProviderCapabilities {
   sessionResume: boolean

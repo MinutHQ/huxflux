@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "./types.js"
 
 const MODELS = [
-  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", api: "anthropic/claude-sonnet-4-6" },
-  { id: "openai/gpt-4.1", label: "GPT-4.1", api: "openai/gpt-4.1" },
-  { id: "openai/o3", label: "o3", api: "openai/o3" },
-  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", api: "google/gemini-2.5-pro" },
+  { id: "github-copilot/claude-sonnet-4.6", label: "Claude Sonnet 4.6", api: "github-copilot/claude-sonnet-4.6" },
+  { id: "github-copilot/gpt-5.4", label: "GPT-5.4", api: "github-copilot/gpt-5.4" },
+  { id: "github-copilot/gemini-2.5-pro", label: "Gemini 2.5 Pro", api: "github-copilot/gemini-2.5-pro" },
+  { id: "github-copilot/gpt-5.4-mini", label: "GPT-5.4 Mini", api: "github-copilot/gpt-5.4-mini" },
 ]
 
 let _bin: string | null = null
@@ -65,8 +65,9 @@ export const opencodeProvider: ProviderAdapter = {
       : `${opts.systemPrompt}\n\nUser: ${opts.prompt}`
 
     const args = [
-      "-m", model,
+      "run",
       "--format", "json",
+      ...(model ? ["-m", model] : []),
       ...(opts.sessionId ? ["-s", opts.sessionId] : opts.isContinuation ? ["-c"] : []),
       prompt,
     ]
@@ -82,47 +83,47 @@ export const opencodeProvider: ProviderAdapter = {
       return null
     }
 
-    // OpenCode JSON output format — adapt to normalized events
-    if (event.type === "text" || event.type === "content" || event.type === "message") {
-      return { type: "text", text: event.text ?? event.content ?? event.message ?? "" }
-    }
-    if (event.type === "tool_use" || event.type === "tool_call") {
-      return {
-        type: "tool_use",
-        id: event.id ?? `oc-${Date.now()}`,
-        name: event.name ?? event.tool ?? "unknown",
-        input: event.input ?? event.arguments ?? {},
-      }
-    }
-    if (event.type === "tool_result") {
-      return { type: "tool_result", toolUseId: event.tool_use_id ?? event.id ?? "", content: event.content ?? event.output ?? "" }
-    }
-    if (event.type === "session" && event.id) {
-      return { type: "session_init", sessionId: event.id }
-    }
-    if (event.type === "usage") {
-      return {
-        type: "usage",
-        inputTokens: event.input_tokens,
-        outputTokens: event.output_tokens,
-      }
-    }
-    if (event.type === "error") {
-      return { type: "error", message: event.message ?? "Unknown error" }
-    }
-    if (event.type === "done" || event.type === "result") {
-      return { type: "done", result: event.message ?? event.result }
+    // OpenCode JSON event types:
+    // step_start, text, tool_call, tool_result, step_finish, error
+
+    if (event.type === "text" && event.part?.text) {
+      return { type: "text", text: event.part.text }
     }
 
-    // Fallback
-    if (typeof event.text === "string") return { type: "text", text: event.text }
-    if (typeof event.content === "string") return { type: "text", text: event.content }
+    if (event.type === "tool_call" && event.part) {
+      return {
+        type: "tool_use",
+        id: event.part.id ?? `oc-${Date.now()}`,
+        name: event.part.name ?? event.part.tool ?? "unknown",
+        input: event.part.input ?? event.part.arguments ?? {},
+      }
+    }
+
+    if (event.type === "tool_result" && event.part) {
+      return { type: "tool_result", toolUseId: event.part.toolCallID ?? event.part.id ?? "", content: event.part.text ?? event.part.output ?? "" }
+    }
+
+    if (event.type === "step_start" && event.sessionID) {
+      return { type: "session_init", sessionId: event.sessionID }
+    }
+
+    if (event.type === "step_finish" && event.part?.tokens) {
+      return {
+        type: "usage",
+        inputTokens: event.part.tokens.input,
+        outputTokens: event.part.tokens.output,
+      }
+    }
+
+    if (event.type === "error") {
+      return { type: "error", message: event.error?.data?.message ?? event.error?.message ?? "Unknown error" }
+    }
 
     return null
   },
 
   resolveModel(model: string): string {
-    if (!model) return "anthropic/claude-sonnet-4-6"
+    if (!model) return ""  // use opencode default
     const found = MODELS.find((m) => m.id === model || m.label === model || m.api === model)
     return found?.api ?? model
   },

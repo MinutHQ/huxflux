@@ -641,6 +641,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       }, 500)
     }
 
+    console.log(`[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${args.slice(0, 5).join(" ")}...`)
+
     proc.stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString()
       const lines = buffer.split("\n")
@@ -748,7 +750,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       }
     }
 
-    proc.on("close", async () => {
+    proc.on("close", async (code) => {
+      console.log(`[runner] ${provider.id} exited code=${code} fullContent=${state.fullContent.length}bytes pendingText=${state.pendingText.length}bytes`)
       await finalize()
       resolve()
     })

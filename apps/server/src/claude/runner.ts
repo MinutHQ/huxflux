@@ -648,6 +648,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     console.log(`[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${args.slice(0, 5).join(" ")}...`)
 
     proc.stdout.on("data", (chunk: Buffer) => {
+      if (provider.id !== "claude") console.log(`[runner] ${provider.id} stdout: ${chunk.toString().slice(0, 120)}...`)
       buffer += chunk.toString()
 
       // Split buffer into individual JSON objects. Claude uses newline-delimited JSON.

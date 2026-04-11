@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "./types.js"
 
 const MODELS = [
-  { id: "codex-default", label: "Default", api: "" },
-  { id: "o3", label: "o3", api: "o3" },
-  { id: "o4-mini", label: "o4-mini", api: "o4-mini" },
+  { id: "gpt-5.4", label: "GPT-5.4", api: "gpt-5.4" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", api: "gpt-5.4-mini" },
+  { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", api: "gpt-5.3-codex" },
+  { id: "gpt-5.2", label: "GPT-5.2", api: "gpt-5.2" },
 ]
 
 let _bin: string | null = null
@@ -119,7 +120,7 @@ export const codexProvider: ProviderAdapter = {
   },
 
   resolveModel(model: string): string {
-    if (!model || model === "codex-default") return ""  // empty = use codex default model
+    if (!model) return "gpt-5.4"
     const found = MODELS.find((m) => m.id === model || m.label === model || m.api === model)
     return found?.api ?? model
   },

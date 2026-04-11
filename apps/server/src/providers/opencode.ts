@@ -31,14 +31,25 @@ export const opencodeProvider: ProviderAdapter = {
   resolveBinary(): string {
     if (_bin) return _bin
     if (process.env.OPENCODE_BIN) { _bin = process.env.OPENCODE_BIN; return _bin }
+    // Check common install locations
+    const home = process.env.HOME ?? ""
+    const candidates = [
+      `${home}/.opencode/bin/opencode`,
+      `${home}/.local/bin/opencode`,
+      `${home}/go/bin/opencode`,
+    ]
+    for (const c of candidates) {
+      try { execFileSync("test", ["-x", c]); _bin = c; return _bin } catch { /* next */ }
+    }
     try { _bin = execFileSync("which", ["opencode"], { encoding: "utf8" }).trim() }
     catch { _bin = "opencode" }
     return _bin
   },
 
   isAvailable(): boolean {
+    const bin = this.resolveBinary()
     try {
-      execFileSync("which", ["opencode"], { encoding: "utf8" })
+      execFileSync("test", ["-x", bin])
       return true
     } catch {
       return false

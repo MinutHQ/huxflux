@@ -25,6 +25,7 @@ export const opencodeProvider: ProviderAdapter = {
     systemPromptFlag: false,
     allowedToolsRestriction: false,
     subAgentSupport: false,
+    effortLevels: [],
   } satisfies ProviderCapabilities,
 
   resolveBinary(): string {

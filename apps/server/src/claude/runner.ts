@@ -21,6 +21,7 @@ interface RunnerOptions {
   delegateFrom?: string  // parent agent ID when this run was delegated
   sender?: string        // display name for the sender (for delegated messages)
   provider?: string      // provider ID (defaults to agent's provider or "claude")
+  effort?: string        // effort level (e.g. "low", "medium", "high", "max")
 }
 
 // Registry of running agent processes
@@ -591,6 +592,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       isContinuation: canResume ? false : (provider.capabilities.sessionContinue ? useContinue : false),
       cwd,
       systemPrompt,
+      effort: opts.effort,
       conversationContext,
     })
 

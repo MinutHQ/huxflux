@@ -31,6 +31,7 @@ export const claudeProvider: ProviderAdapter = {
     systemPromptFlag: true,
     allowedToolsRestriction: true,
     subAgentSupport: true,
+    effortLevels: ["low", "medium", "high", "max"],
   } satisfies ProviderCapabilities,
 
   resolveBinary(): string {
@@ -68,6 +69,7 @@ export const claudeProvider: ProviderAdapter = {
       "--verbose",
       ...(opts.planMode ? ["--permission-mode", "plan"] : ["--dangerously-skip-permissions"]),
       "--model", model,
+      ...(opts.effort ? ["--effort", opts.effort] : []),
       "--append-system-prompt", opts.systemPrompt,
       ...(opts.allowedTools ? ["--allowedTools", opts.allowedTools.join(",")] : []),
       ...resumeArgs,

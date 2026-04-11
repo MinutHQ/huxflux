@@ -1363,6 +1363,12 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
             <span className="text-muted-foreground/25">·</span>
           </>
         )}
+        {msg.model && (
+          <>
+            <span className="text-[11px] text-muted-foreground/40">{msg.model}</span>
+            <span className="text-muted-foreground/25">·</span>
+          </>
+        )}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -2285,7 +2291,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   inputRef.current = input
   const prevAgentIdRef = useRef<string | null>(null)
   const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
-  const [thinking, setThinking] = useState(false)
+  const [effort, setEffort] = useState<"" | "low" | "medium" | "high" | "max">("")
   const [isSending, setIsSending] = useState(false)
   const [messageQueue, setMessageQueue] = useState<Array<{ id: string; agentId: string; display: string; api: string; planMode?: boolean }>>([])
   const [planMode, setPlanMode] = useState(false)
@@ -2673,7 +2679,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     return content
   }
 
-  async function sendContent(displayText: string, apiContent: string, opts?: { planMode?: boolean }) {
+  async function sendContent(displayText: string, apiContent: string, opts?: { planMode?: boolean; effort?: string }) {
     setIsSending(true)
     const optimisticMsg: Message = {
       id: `optimistic-${Date.now()}`,
@@ -2717,7 +2723,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
         setMessageQueue((prev) => [...prev, { id: `q-${Date.now()}`, agentId: agent.id, display: text, api: apiContent, planMode: isPlan || undefined }])
         return
       }
-      void sendContent(text, apiContent, isPlan ? { planMode: true } : undefined)
+      const sendOpts: { planMode?: boolean; effort?: string } = {}
+      if (isPlan) sendOpts.planMode = true
+      if (effort) sendOpts.effort = effort
+      void sendContent(text, apiContent, Object.keys(sendOpts).length > 0 ? sendOpts : undefined)
     })()
   }
 
@@ -3452,20 +3461,19 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         })()}
                       </SelectContent>
                     </Select>
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                      <IconBolt size={13} />
-                    </Button>
-                    {(capabilities.thinkingBlocks !== false) && (
-                      <button
-                        onClick={() => setThinking(!thinking)}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                          thinking ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
-                        )}
-                      >
-                        <IconBrain size={13} />
-                        <span>Thinking</span>
-                      </button>
+                    {(capabilities.effortLevels as string[] ?? []).length > 0 && (
+                      <Select value={effort || "default"} onValueChange={(v) => setEffort(v === "default" ? "" : v as typeof effort)}>
+                        <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
+                          <IconBrain size={13} className={cn("shrink-0", effort ? "text-foreground" : "text-muted-foreground/60")} />
+                          <SelectValue>{effort ? `Effort: ${effort}` : "Effort"}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">Auto</SelectItem>
+                          {(capabilities.effortLevels as string[]).map((lvl) => (
+                            <SelectItem key={lvl} value={lvl}>{lvl.charAt(0).toUpperCase() + lvl.slice(1)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     )}
                     {(capabilities.planMode !== false) && (
                       <button
@@ -3479,9 +3487,6 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         <span>Plan</span>
                       </button>
                     )}
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                      <IconLayoutGrid size={13} />
-                    </Button>
                   </div>
                   <div className="flex items-center gap-1">
                     <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={handleFileSelect} />

@@ -11,6 +11,7 @@ export interface ProviderCapabilities {
   systemPromptFlag: boolean
   allowedToolsRestriction: boolean
   subAgentSupport: boolean
+  effortLevels: string[]  // e.g. ["low","medium","high","max"] or [] if not supported
 }
 
 /** Normalized stream event — all providers emit these after parsing their raw output */
@@ -34,6 +35,7 @@ export interface SpawnOptions {
   cwd: string
   systemPrompt: string
   allowedTools?: string[]
+  effort?: string
   /** Full conversation history for providers without session resume */
   conversationContext?: string
 }

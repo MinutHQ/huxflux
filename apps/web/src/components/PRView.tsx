@@ -1879,8 +1879,13 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
                 }
                 return { id: m.id, role: m.role, content: m.content, isReview: m.isReview, timestamp: m.createdAt }
               })
-              setMessages(converted)
-              setHasReviewed(converted.some((m) => m.isReview))
+              // Only show the latest review round with actual comments
+              const lastReviewIdx = converted.findLastIndex((m) => m.isReview && m.comments && m.comments.length > 0)
+              const visible = lastReviewIdx >= 0
+                ? converted.slice(lastReviewIdx).filter((m) => !m.isReview || (m.comments && m.comments.length > 0))
+                : converted.filter((m) => !m.isReview || (m.comments && m.comments.length > 0))
+              setMessages(visible)
+              setHasReviewed(visible.some((m) => m.isReview))
             } else {
               // Fall back to localStorage cache
               const cached = loadCachedReviews()

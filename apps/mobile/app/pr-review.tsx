@@ -288,15 +288,14 @@ export default function PRReviewScreen() {
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
             <TouchableOpacity
               onPress={showSubmitOptions}
-              disabled={queuedComments.length === 0}
               style={{
                 flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
-                backgroundColor: queuedComments.length > 0 ? c.fgBright : c.secondary,
+                backgroundColor: c.fgBright,
                 borderRadius: 8, paddingVertical: 8,
               }}
             >
-              <Ionicons name="send-outline" size={14} color={queuedComments.length > 0 ? c.fgBrightFg : c.fgSub} />
-              <Text style={{ color: queuedComments.length > 0 ? c.fgBrightFg : c.fgSub, fontSize: 13, fontWeight: "600" }}>
+              <Ionicons name="send-outline" size={14} color={c.fgBrightFg} />
+              <Text style={{ color: c.fgBrightFg, fontSize: 13, fontWeight: "600" }}>
                 Submit{queuedComments.length > 0 ? ` (${queuedComments.length})` : ""}
               </Text>
             </TouchableOpacity>

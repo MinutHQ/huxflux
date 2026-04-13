@@ -2,7 +2,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId, getStorage } from "@huxflux/shared"
+import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, markAgentDeleted, type AgentSummary, type AgentStatus, type Repo, getActiveServer, getServers, setActiveServerId, getStorage } from "@huxflux/shared"
 import { c, statusColors } from "../../theme"
 import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -177,21 +177,28 @@ function AgentRow({ agent, isStreaming, repoName }: { agent: AgentSummary; isStr
 
 // ── Section headers ──────────────────────────────────────────────────────────
 
-function StatusSectionHeader({ status, count, collapsed, onToggle }: { status: AgentStatus; count: number; collapsed: boolean; onToggle: () => void }) {
+function StatusSectionHeader({ status, count, collapsed, onToggle, onArchiveAll }: { status: AgentStatus; count: number; collapsed: boolean; onToggle: () => void; onArchiveAll?: () => void }) {
   const sc = statusColors[status]
   const color = sc?.color ?? c.fgSub
   return (
-    <Pressable
-      onPress={onToggle}
-      style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
-    >
-      <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={color} />
-      <StatusIcon status={status} size={13} />
-      <Text style={{ color, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
-        {statusConfig[status].label}
-      </Text>
-      <Text style={{ color: c.placeholder, fontSize: 11, marginLeft: "auto" }}>{count}</Text>
-    </Pressable>
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <Pressable
+        onPress={onToggle}
+        style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
+      >
+        <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={color} />
+        <StatusIcon status={status} size={13} />
+        <Text style={{ color, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
+          {statusConfig[status].label}
+        </Text>
+        <Text style={{ color: c.placeholder, fontSize: 11, marginLeft: "auto" }}>{count}</Text>
+      </Pressable>
+      {onArchiveAll && count > 0 && (
+        <Pressable onPress={onArchiveAll} style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+          <Ionicons name="trash-outline" size={14} color={c.placeholder} />
+        </Pressable>
+      )}
+    </View>
   )
 }
 
@@ -217,6 +224,7 @@ type GroupBy = "status" | "repo"
 
 export default function AgentsScreen() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const insets = useSafeAreaInsets()
   const hydrated = useHydrated()
   const modal = useModal()
@@ -302,6 +310,25 @@ export default function AgentsScreen() {
       else next.add(key)
       return next
     })
+  }
+
+  function handleArchiveAll(status: AgentStatus) {
+    const targets = filteredAgents.filter((a) => a.status === status)
+    if (targets.length === 0) return
+    modal.showConfirm(
+      "Archive all",
+      `Archive ${targets.length} ${statusConfig[status].label.toLowerCase()} agent${targets.length !== 1 ? "s" : ""}?`,
+      "Archive",
+      () => {
+        const ids = targets.map((a) => a.id)
+        for (const id of ids) markAgentDeleted(id)
+        queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+          old ? old.filter((a) => !ids.includes(a.id)) : old
+        )
+        for (const id of ids) api.deleteAgent(id)
+      },
+      true
+    )
   }
 
   function showRepoFilter() {
@@ -490,6 +517,7 @@ export default function AgentsScreen() {
                 count={item.count}
                 collapsed={collapsed.has(item.status)}
                 onToggle={() => toggleCollapsed(item.status)}
+                onArchiveAll={(item.status === "done" || item.status === "cancelled") ? () => handleArchiveAll(item.status) : undefined}
               />
             )
           }

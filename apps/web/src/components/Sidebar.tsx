@@ -716,6 +716,7 @@ function StatusGroup({
   onHover,
   onLeave,
   onDelete,
+  onArchiveAll,
   agentPorts,
   repoNames,
   repoIcons,
@@ -727,6 +728,7 @@ function StatusGroup({
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
+  onArchiveAll?: () => void
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
   repoIcons?: Record<string, string | undefined>
@@ -736,18 +738,29 @@ function StatusGroup({
 
   return (
     <div className="mb-2.5">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
-      >
-        <StatusIcon status={status} size={14} />
-        <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
-          {config.label}
-        </span>
-        {agents.length > 0 && (
-          <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
+      <div className="group/status-header flex items-center">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex-1 flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+        >
+          <StatusIcon status={status} size={14} />
+          <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
+            {config.label}
+          </span>
+          {agents.length > 0 && (
+            <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
+          )}
+        </button>
+        {onArchiveAll && agents.length > 0 && (
+          <button
+            onClick={onArchiveAll}
+            className="opacity-0 group-hover/status-header:opacity-100 px-1.5 py-1 rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/40 transition-all mr-1"
+            title="Archive all"
+          >
+            <IconTrash size={13} />
+          </button>
         )}
-      </button>
+      </div>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent) => (
@@ -1621,6 +1634,24 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
     setTimeout(() => clearDeletingAgent(), 1500)
   }
 
+  function handleArchiveAll(status: AgentStatus) {
+    const targets = (grouped[status] ?? [])
+    if (targets.length === 0) return
+    const ids = targets.map((a) => a.id)
+    // Optimistically remove all from sidebar
+    for (const id of ids) markAgentDeleted(id)
+    queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+      old ? old.filter((a) => !ids.includes(a.id)) : old
+    )
+    // Fire deletes in background
+    for (const id of ids) {
+      api.deleteAgent(id).catch((err) =>
+        toast.error(`Archive failed: ${err instanceof Error ? err.message : "unknown"}`)
+      )
+    }
+    toast.success(`Archived ${targets.length} agent${targets.length !== 1 ? "s" : ""}`)
+  }
+
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border w-full overflow-hidden">
@@ -1817,6 +1848,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
                         onLeave={() => setHoveredAgent(null)}
                         onDelete={handleDeleteAgent}
+                        onArchiveAll={(status === "done" || status === "cancelled") ? () => handleArchiveAll(status) : undefined}
                         agentPorts={agentPorts}
                         repoNames={repoNames}
                         repoIcons={repoIcons}

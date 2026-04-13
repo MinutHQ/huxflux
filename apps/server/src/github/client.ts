@@ -483,10 +483,21 @@ export async function findPRForBranch(repoUrl: string, branch: string): Promise<
   return null
 }
 
-export async function mergePR(repoUrl: string, prNumber: number, method: "merge" | "squash" | "rebase" = "merge"): Promise<void> {
+export async function mergePR(repoUrl: string, prNumber: number, method?: "merge" | "squash" | "rebase"): Promise<void> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
-  await octokit.pulls.merge({ owner, repo, pull_number: prNumber, merge_method: method })
+
+  let mergeMethod = method
+  if (!mergeMethod) {
+    // Check which merge methods the repo allows and pick the best one
+    const { data: repoData } = await octokit.repos.get({ owner, repo })
+    if (repoData.allow_squash_merge) mergeMethod = "squash"
+    else if (repoData.allow_merge_commit) mergeMethod = "merge"
+    else if (repoData.allow_rebase_merge) mergeMethod = "rebase"
+    else mergeMethod = "merge" // fallback
+  }
+
+  await octokit.pulls.merge({ owner, repo, pull_number: prNumber, merge_method: mergeMethod })
 }
 
 export async function markPRReady(repoUrl: string, prNumber: number): Promise<void> {

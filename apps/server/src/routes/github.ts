@@ -725,7 +725,7 @@ export async function githubRoutes(app: FastifyInstance) {
     if (!repoUrl) return reply.code(400).send({ error: "Cannot resolve remote URL" })
 
     try {
-      await mergePR(repoUrl, agent.prNumber, req.body?.method ?? "merge")
+      await mergePR(repoUrl, agent.prNumber, req.body?.method)
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? String(err) })
     }
@@ -752,7 +752,7 @@ export async function githubRoutes(app: FastifyInstance) {
     const repoUrl = `https://github.com/${owner}/${repo}`
 
     try {
-      await mergePR(repoUrl, prNumber, req.body?.method ?? "merge")
+      await mergePR(repoUrl, prNumber, req.body?.method)
     } catch (err: any) {
       return reply.code(400).send({ error: err?.message ?? String(err) })
     }

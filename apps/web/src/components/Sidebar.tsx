@@ -738,29 +738,18 @@ function StatusGroup({
 
   return (
     <div className="mb-2.5">
-      <div className="group/status-header flex items-center">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex-1 flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
-        >
-          <StatusIcon status={status} size={14} />
-          <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
-            {config.label}
-          </span>
-          {agents.length > 0 && (
-            <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
-          )}
-        </button>
-        {onArchiveAll && agents.length > 0 && (
-          <button
-            onClick={onArchiveAll}
-            className="opacity-0 group-hover/status-header:opacity-100 px-1.5 py-1 rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/40 transition-all mr-1"
-            title="Archive all"
-          >
-            <IconTrash size={13} />
-          </button>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+      >
+        <StatusIcon status={status} size={14} />
+        <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
+          {config.label}
+        </span>
+        {agents.length > 0 && (
+          <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
         )}
-      </div>
+      </button>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent) => (
@@ -778,6 +767,15 @@ function StatusGroup({
               repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
             />
           ))}
+          {onArchiveAll && agents.length > 0 && (
+            <button
+              onClick={onArchiveAll}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground hover:bg-sidebar-accent/40 transition-colors text-[12px]"
+            >
+              <IconTrash size={12} />
+              Archive all
+            </button>
+          )}
         </div>
       )}
     </div>

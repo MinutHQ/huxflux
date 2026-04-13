@@ -478,6 +478,54 @@ function PRLoadingView({ pr }: { pr: PullRequest }) {
   )
 }
 
+function SubmitClosingView({ pr }: { pr: PullRequest }) {
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm" style={{ animation: "sc-fade-in 0.3s ease-out both" }}>
+      <style>{`
+        @keyframes sc-fade-in { from{opacity:0} to{opacity:1} }
+        @keyframes sc-scale-in { 0%{transform:scale(0) rotate(-90deg);opacity:0} 50%{transform:scale(1.15) rotate(8deg);opacity:1} 100%{transform:scale(1) rotate(0deg);opacity:1} }
+        @keyframes sc-check-draw { from{stroke-dashoffset:44} to{stroke-dashoffset:0} }
+        @keyframes sc-ring-out { 0%{transform:scale(0.8);opacity:0.5} 100%{transform:scale(2.5);opacity:0} }
+        @keyframes sc-float-up { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-20px)} }
+        @keyframes sc-shrink-out { 0%{transform:scale(1);opacity:1} 100%{transform:scale(0.9);opacity:0} }
+        @keyframes sc-particle-burst { 0%{transform:translate(0,0) scale(1);opacity:0.8} 100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0} }
+      `}</style>
+
+      <div className="relative" style={{ animation: "sc-shrink-out 0.5s ease-in 0.9s forwards" }}>
+        {/* Burst particles */}
+        {Array.from({ length: 12 }, (_, i) => {
+          const angle = (i / 12) * Math.PI * 2
+          const dist = 40 + (i % 3) * 15
+          return (
+            <div key={i} className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full" style={{
+              backgroundColor: i % 3 === 0 ? "rgb(52,211,153)" : i % 3 === 1 ? "rgb(96,165,250)" : "rgb(167,139,250)",
+              ["--dx" as string]: `${Math.cos(angle) * dist}px`,
+              ["--dy" as string]: `${Math.sin(angle) * dist}px`,
+              animation: `sc-particle-burst 0.7s ease-out ${0.2 + i * 0.03}s both`,
+            }} />
+          )
+        })}
+
+        {/* Ring pulse */}
+        <div className="absolute inset-[-12px] rounded-full border-2 border-emerald-400/30" style={{ animation: "sc-ring-out 0.8s ease-out 0.15s both" }} />
+        <div className="absolute inset-[-12px] rounded-full border-2 border-emerald-400/15" style={{ animation: "sc-ring-out 0.8s ease-out 0.4s both" }} />
+
+        {/* Checkmark circle */}
+        <div className="w-16 h-16 rounded-full bg-emerald-500/15 border-2 border-emerald-400/40 flex items-center justify-center" style={{ animation: "sc-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
+          <svg width="32" height="32" viewBox="0 0 32 32" className="text-emerald-400">
+            <path d="M9 16.5L14 21.5L23 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="44" style={{ animation: "sc-check-draw 0.4s ease-out 0.35s both" }} />
+          </svg>
+        </div>
+      </div>
+
+      <div style={{ animation: "sc-float-up 0.4s ease-in 0.95s forwards" }}>
+        <p className="text-sm font-semibold text-emerald-400 mt-5" style={{ animation: "sc-scale-in 0.4s ease-out 0.3s both" }}>Review submitted</p>
+        <p className="text-[11px] text-muted-foreground/50 mt-1 text-center font-mono" style={{ animation: "sc-scale-in 0.4s ease-out 0.45s both" }}>{pr.title}</p>
+      </div>
+    </div>
+  )
+}
+
 function ReviewingInlineView({ currentStep }: { currentStep: number }) {
   const step = REVIEW_STEPS[Math.min(currentStep, REVIEW_STEPS.length - 1)]
   return (
@@ -1653,9 +1701,10 @@ interface PRViewProps {
   pr: PullRequest
   onReviewDone?: () => void
   onUserReviewed?: () => void
+  onDismiss?: () => void
 }
 
-export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
+export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewProps) {
   // Tab state
   const [activeTab, setActiveTab] = useState<"conversations" | "review" | "changes">("review")
 
@@ -1665,6 +1714,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   const [hasReviewed, setHasReviewed] = useState(false)
   const [input, setInput] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const [submitClosing, setSubmitClosing] = useState(false)
   const { data: appSettings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings })
   const [model, setModel] = useState("")
   const [thinking, setThinking] = useState(false)
@@ -2239,6 +2289,9 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
       return { ...msg, comments: msg.comments.map((c) => c.status === "queued" ? { ...c, status: "sent" as const } : c) }
     }))
     onUserReviewed?.()
+    // Trigger closing animation then dismiss
+    setSubmitClosing(true)
+    setTimeout(() => onDismiss?.(), 1400)
   }
 
   const title = prDetails?.title ?? pr.title
@@ -2250,7 +2303,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed }: PRViewProps) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {submitClosing && <SubmitClosingView pr={pr} />}
 
       {/* ── Header ── */}
       <div className="px-4 pt-3 pb-2 border-b border-border shrink-0">

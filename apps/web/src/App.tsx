@@ -150,6 +150,7 @@ export default function App() {
     try { return new Set(JSON.parse(localStorage.getItem("huxflux:user-reviewed") ?? "[]")) }
     catch { return new Set() }
   })
+  const [submittedPrIds, setSubmittedPrIds] = useState<Set<string>>(new Set())
 
   const bulkReview = useBulkReview((prId) => setReviewedPrIds((prev) => new Set([...prev, prId])))
 
@@ -246,6 +247,7 @@ export default function App() {
       ...p,
       reviewReady: reviewedPrIds.has(p.id) || !!(p.repoId && localStorage.getItem(`huxflux:review:${p.repoId}:${p.number}`)),
       userReviewed: p.userReviewed || userReviewedPrIds.has(p.id),
+      reviewRequested: submittedPrIds.has(p.id) ? false : p.reviewRequested,
     })) : [],
     selectedPrId: workspace.selectedPrId,
     onSelectPr: (id: string) => { setShowHome(false); workspace.selectPr(id) },
@@ -305,7 +307,10 @@ export default function App() {
           const next = new Set([...userReviewedPrIds, selectedPr.id])
           setUserReviewedPrIds(next)
           localStorage.setItem("huxflux:user-reviewed", JSON.stringify([...next]))
+          setSubmittedPrIds((prev) => new Set([...prev, selectedPr.id]))
+          refetchPRs()
         }}
+        onDismiss={() => workspace.switchToAgentView()}
       />
     </div>
   ) : workspace.deletingAgent ? (

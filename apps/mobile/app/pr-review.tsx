@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Pressable, TextInput, KeyboardAvoidingView, Platform, Linking } from "react-native"
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Pressable, TextInput, KeyboardAvoidingView, Platform, Linking, Animated as RNAnimated } from "react-native"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, getStorage, type PRFileDiff } from "@huxflux/shared"
@@ -102,6 +102,10 @@ export default function PRReviewScreen() {
   const [activeTab, setActiveTab] = useState<Tab>("review")
   const [chatInput, setChatInput] = useState("")
   const [merging, setMerging] = useState(false)
+  const [submitClosing, setSubmitClosing] = useState(false)
+  const closingOpacity = useRef(new RNAnimated.Value(0)).current
+  const closingScale = useRef(new RNAnimated.Value(0.3)).current
+  const closingCheckScale = useRef(new RNAnimated.Value(0)).current
   const listRef = useRef<FlatList>(null)
 
   // PR details — only fetch when conversations tab is active (slow GitHub API call)
@@ -169,7 +173,20 @@ export default function PRReviewScreen() {
       await api.submitPRReview(repoId, prNumber, { event, body, comments })
       queryClient.invalidateQueries({ queryKey: ["prs"] })
       queryClient.invalidateQueries({ queryKey: ["pr-details-repo", repoId, prNumber] })
-      modal.showAlert("Review submitted")
+
+      // Show closing animation then navigate back
+      setSubmitClosing(true)
+      RNAnimated.parallel([
+        RNAnimated.timing(closingOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+        RNAnimated.spring(closingScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+      ]).start(() => {
+        RNAnimated.spring(closingCheckScale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start()
+        setTimeout(() => {
+          RNAnimated.timing(closingOpacity, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+            router.back()
+          })
+        }, 800)
+      })
     } catch (e: any) {
       modal.showAlert("Error", e.message)
     }
@@ -567,6 +584,38 @@ export default function PRReviewScreen() {
             )
           }
         />
+      )}
+
+      {/* Submit closing overlay */}
+      {submitClosing && (
+        <RNAnimated.View style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.85)",
+          alignItems: "center", justifyContent: "center",
+          opacity: closingOpacity,
+        }}>
+          <RNAnimated.View style={{
+            transform: [{ scale: closingScale }],
+            alignItems: "center",
+          }}>
+            <View style={{
+              width: 72, height: 72, borderRadius: 36,
+              backgroundColor: "rgba(52,211,153,0.15)",
+              borderWidth: 2, borderColor: "rgba(52,211,153,0.4)",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <RNAnimated.View style={{ transform: [{ scale: closingCheckScale }] }}>
+                <Ionicons name="checkmark" size={36} color="#34d399" />
+              </RNAnimated.View>
+            </View>
+            <Text style={{ color: "#34d399", fontSize: 15, fontWeight: "600", marginTop: 16 }}>
+              Review submitted
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 4, fontFamily: "monospace" }}>
+              #{prNumber}
+            </Text>
+          </RNAnimated.View>
+        </RNAnimated.View>
       )}
     </KeyboardAvoidingView>
   )

@@ -417,7 +417,7 @@ function ModelsSettings() {
 }
 
 function ProvidersSettings() {
-  const { data: providers = [] } = useQuery({ queryKey: ["providers"], queryFn: api.getProviders, staleTime: 30_000 })
+  const { data: providers = [], isLoading, isError } = useQuery({ queryKey: ["providers"], queryFn: api.getProviders, staleTime: 30_000 })
 
   const providerMeta: Record<string, { description: string; installHint: string }> = {
     claude: { description: "Anthropic's Claude Code CLI", installHint: "Run claude /login in your terminal to sign in." },
@@ -463,7 +463,9 @@ function ProvidersSettings() {
       })}
       {providers.length === 0 && (
         <div className="p-4 rounded-lg border border-border bg-card">
-          <p className="text-[12px] text-muted-foreground">Loading providers...</p>
+          <p className="text-[12px] text-muted-foreground">
+            {isLoading ? "Loading providers..." : isError ? "Failed to load providers. Make sure the server is updated." : "No providers found."}
+          </p>
         </div>
       )}
     </div>

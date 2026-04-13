@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto"
 import { eq, isNull, isNotNull, and, asc } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, repos, prChatMessages } from "../db/schema.js"
-import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, mergePR, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, deleteReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
+import { createPR, getPRStatus, getPRDetails, markPRReady, rerequestReview, mergePR, getAllowedMergeMethods, listReviewRequestedPRs, getPRFilesForOwnerRepo, getPRDetailsForOwnerRepo, replyToReviewComment, deleteReviewComment, submitPRReview, createSinglePRComment, resolveReviewThread, getPRFileContent } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
@@ -740,6 +740,13 @@ export async function githubRoutes(app: FastifyInstance) {
     broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
 
     return pr
+  })
+
+  // GET /api/prs/:owner/:repo/merge-methods — get allowed merge methods for a repo
+  app.get<{ Params: { owner: string; repo: string } }>("/api/prs/:owner/:repo/merge-methods", async (req) => {
+    const { owner, repo } = req.params
+    const methods = await getAllowedMergeMethods(`https://github.com/${owner}/${repo}`)
+    return { methods }
   })
 
   // POST /api/prs/:owner/:repo/:number/merge — merge a PR by owner/repo/number

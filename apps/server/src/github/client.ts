@@ -500,6 +500,17 @@ export async function mergePR(repoUrl: string, prNumber: number, method?: "merge
   await octokit.pulls.merge({ owner, repo, pull_number: prNumber, merge_method: mergeMethod })
 }
 
+export async function getAllowedMergeMethods(repoUrl: string): Promise<("merge" | "squash" | "rebase")[]> {
+  const octokit = getOctokit()
+  const { owner, repo } = parseRepo(repoUrl)
+  const { data } = await octokit.repos.get({ owner, repo })
+  const methods: ("merge" | "squash" | "rebase")[] = []
+  if (data.allow_squash_merge) methods.push("squash")
+  if (data.allow_merge_commit) methods.push("merge")
+  if (data.allow_rebase_merge) methods.push("rebase")
+  return methods
+}
+
 export async function markPRReady(repoUrl: string, prNumber: number): Promise<void> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)

@@ -291,6 +291,10 @@ export const api = {
     req<PRStatus>(`/api/agents/${agentId}/pr/rerequest-review`, { method: "POST" }),
   mergePR: (agentId: string, method?: "merge" | "squash" | "rebase") =>
     req<PRStatus>(`/api/agents/${agentId}/pr/merge`, { method: "POST", body: JSON.stringify({ method }) }),
+  getMergeMethods: (repoId: string) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ methods: ("merge" | "squash" | "rebase")[] }>(`/api/prs/${owner}/${repo}/merge-methods`)
+  },
   mergePRByRepo: (repoId: string, prNumber: number, method?: "merge" | "squash" | "rebase") => {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/merge`, { method: "POST", body: JSON.stringify({ method }) })

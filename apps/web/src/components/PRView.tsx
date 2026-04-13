@@ -288,6 +288,86 @@ const severityConfig = {
   nit:        { border: "border-border",        dot: "bg-muted-foreground/30",  label: "Nit",         labelColor: "text-muted-foreground/50",  icon: IconMessageCircle, iconColor: "text-muted-foreground/40" },
 }
 
+const MERGE_LABELS: Record<string, string> = { squash: "Squash and merge", merge: "Merge commit", rebase: "Rebase and merge" }
+
+function MergeButton({ repoId, prNumber }: { repoId: string; prNumber: number }) {
+  const [merging, setMerging] = useState(false)
+  const [method, setMethod] = useState<"merge" | "squash" | "rebase" | null>(null)
+  const [methods, setMethods] = useState<("merge" | "squash" | "rebase")[]>([])
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    api.getMergeMethods(repoId).then((r) => {
+      setMethods(r.methods)
+      if (r.methods.length > 0) setMethod(r.methods[0])
+    }).catch(() => setMethods(["merge"]))
+  }, [repoId])
+
+  const handleMerge = async (m?: "merge" | "squash" | "rebase") => {
+    setMerging(true)
+    setOpen(false)
+    try {
+      await api.mergePRByRepo(repoId, prNumber, m ?? method ?? undefined)
+      toast.success(`PR #${prNumber} merged`)
+    } catch (err) {
+      toast.error(`Merge failed: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setMerging(false)
+    }
+  }
+
+  if (methods.length <= 1) {
+    return (
+      <Button
+        size="sm"
+        className="h-5 px-2.5 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md shrink-0"
+        disabled={merging}
+        onClick={() => handleMerge()}
+      >
+        {merging ? "Merging…" : MERGE_LABELS[methods[0] ?? "merge"] ?? "Merge"}
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex items-center shrink-0">
+      <Button
+        size="sm"
+        className="h-5 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-l-md rounded-r-none border-r border-emerald-700 shrink-0"
+        disabled={merging}
+        onClick={() => handleMerge()}
+      >
+        {merging ? "Merging…" : MERGE_LABELS[method ?? "merge"] ?? "Merge"}
+      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            size="sm"
+            className="h-5 px-1 text-[11px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-r-md rounded-l-none shrink-0"
+            disabled={merging}
+          >
+            <IconChevronDown size={10} />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="end" className="w-44 p-1">
+          {methods.map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMethod(m); setOpen(false) }}
+              className={cn(
+                "w-full text-left px-2.5 py-1.5 text-[12px] rounded transition-colors",
+                m === method ? "bg-accent text-foreground font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {MERGE_LABELS[m]}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
 function ReviewCommentCard({
   comment,
   onDismiss,
@@ -2521,24 +2601,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                     {mergeableState === "clean" ? "Ready to merge" : mergeableState === "blocked" ? "Blocked" : "Unstable"}
                   </span>
                   {mergeableState === "clean" && pr.repoId && (
-                    <Button
-                      size="sm"
-                      className="h-5 px-2.5 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md shrink-0"
-                      disabled={merging}
-                      onClick={async () => {
-                        setMerging(true)
-                        try {
-                          await api.mergePRByRepo(pr.repoId, pr.number)
-                          toast.success(`PR #${pr.number} merged`)
-                        } catch (err) {
-                          toast.error(`Merge failed: ${err instanceof Error ? err.message : "unknown error"}`)
-                        } finally {
-                          setMerging(false)
-                        }
-                      }}
-                    >
-                      {merging ? "Merging…" : "Merge"}
-                    </Button>
+                    <MergeButton repoId={pr.repoId} prNumber={pr.number} />
                   )}
                 </>
               )}

@@ -290,10 +290,10 @@ export const api = {
   rerequestReview: (agentId: string) =>
     req<PRStatus>(`/api/agents/${agentId}/pr/rerequest-review`, { method: "POST" }),
   mergePR: (agentId: string, method?: "merge" | "squash" | "rebase") =>
-    req<PRStatus>(`/api/agents/${agentId}/pr/merge`, { method: "POST", body: JSON.stringify({ method: method ?? "squash" }) }),
+    req<PRStatus>(`/api/agents/${agentId}/pr/merge`, { method: "POST", body: JSON.stringify({ method: method ?? "merge" }) }),
   mergePRByRepo: (repoId: string, prNumber: number, method?: "merge" | "squash" | "rebase") => {
     const [owner, repo] = repoId.split("/")
-    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/merge`, { method: "POST", body: JSON.stringify({ method: method ?? "squash" }) })
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/merge`, { method: "POST", body: JSON.stringify({ method: method ?? "merge" }) })
   },
   uploadFile: (agentId: string, name: string, data: string, mimeType: string) =>
     req<{ path: string; name: string; mimeType: string }>(`/api/agents/${agentId}/upload`, {

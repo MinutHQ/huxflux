@@ -46,6 +46,7 @@ import {
   IconLoader2,
   IconCheck,
   IconFolder,
+  IconEye,
   IconCode,
   IconTerminal,
   IconDatabase,
@@ -2977,6 +2978,24 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors text-[11px] text-muted-foreground"
             >
               Create PR
+            </button>
+          )}
+          {!isStreaming && agent.messages.length > 0 && (
+            <button
+              onClick={async () => {
+                try {
+                  const settings = await api.getSettings() as { reviewPrompt?: string }
+                  const prompt = settings.reviewPrompt?.trim()
+                    || "Review the changes you've made. Look for bugs, security issues, performance problems, and code quality. Be thorough but concise."
+                  sendContent("Review my changes", prompt)
+                } catch {
+                  sendContent("Review my changes", "Review the changes you've made. Look for bugs, security issues, performance problems, and code quality. Be thorough but concise.")
+                }
+              }}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors text-[11px] text-muted-foreground"
+            >
+              <IconEye size={11} />
+              Review
             </button>
           )}
           <Popover open={openInOpen} onOpenChange={setOpenInOpen}>

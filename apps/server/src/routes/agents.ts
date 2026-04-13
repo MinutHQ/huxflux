@@ -21,7 +21,7 @@ import simpleGit from "simple-git"
 
 function runScript(script: string, cwd: string, agentId: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("sh", ["-c", script], { cwd, stdio: ["ignore", "pipe", "pipe"] })
+    const proc = spawn("sh", ["-c", script], { cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: "development" } })
     const persistLine = (line: string) => {
       if (!line.trim()) return
       const ts = new Date().toISOString()

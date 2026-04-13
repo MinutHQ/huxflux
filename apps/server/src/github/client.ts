@@ -409,7 +409,37 @@ export async function submitPRReview(
 ): Promise<void> {
   const octokit = getOctokit()
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
-  const mappedComments = comments.map((c) => ({
+
+  // Fetch PR files to validate comment line numbers against the diff
+  const { data: files } = await octokit.pulls.listFiles({ owner, repo, pull_number: prNumber, per_page: 300 })
+
+  const validComments: typeof comments = []
+  const fallbackLines: string[] = []
+
+  for (const c of comments) {
+    const file = files.find((f) => f.filename === c.path)
+    if (!file?.patch) {
+      // File not in diff — move to body
+      fallbackLines.push(`**\`${c.path}:${c.line}\`**\n${c.body}`)
+      continue
+    }
+    const snappedLine = findNearestDiffLine(file.patch, c.line)
+    if (snappedLine === null) {
+      fallbackLines.push(`**\`${c.path}:${c.line}\`**\n${c.body}`)
+      continue
+    }
+    const snappedStart = c.start_line && c.start_line !== c.line
+      ? findNearestDiffLine(file.patch, c.start_line)
+      : undefined
+    validComments.push({
+      ...c,
+      line: snappedLine,
+      body: snappedLine !== c.line ? `*(originally line ${c.line})*\n\n${c.body}` : c.body,
+      start_line: snappedStart && snappedStart !== snappedLine ? snappedStart : undefined,
+    })
+  }
+
+  const mappedComments = validComments.map((c) => ({
     path: c.path,
     line: c.line,
     side: "RIGHT" as const,
@@ -417,8 +447,9 @@ export async function submitPRReview(
     ...(c.start_line && c.start_line !== c.line ? { start_line: c.start_line, start_side: "RIGHT" as const } : {}),
   }))
 
-  // GitHub 422s if body and comments are both empty — use a fallback body
-  const reviewBody = body || (mappedComments.length === 0 ? getDefaultReviewBody(event) : body)
+  // Append any comments that couldn't be placed inline to the review body
+  const parts = [body, ...fallbackLines].filter(Boolean)
+  const reviewBody = parts.join("\n\n") || (mappedComments.length === 0 ? getDefaultReviewBody(event) : "")
 
   await octokit.pulls.createReview({
     owner,

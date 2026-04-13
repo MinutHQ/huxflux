@@ -349,6 +349,7 @@ export default function App() {
           onTabSelect={workspace.selectTab}
           onTabClose={workspace.closeTab}
           onNewTab={() => activeAgent && workspace.createTab(activeAgent)}
+          onNewTabWithMessage={(msg) => activeAgent && workspace.createTabWithMessage(activeAgent, msg)}
           onTabTitleChange={workspace.renameTab}
           pendingComments={workspace.pendingComments}
           onRemoveComment={(id: string) => workspace.setPendingComments((prev) => prev.filter((c) => c.id !== id))}

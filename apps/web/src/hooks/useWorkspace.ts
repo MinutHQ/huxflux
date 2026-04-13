@@ -304,6 +304,37 @@ export function useWorkspace(agents: AgentSummary[]) {
     selectTab,
     closeTab,
     createTab,
+    createTabWithMessage: useCallback(async (agent: Agent, message: string) => {
+      const rootAgentId = tabs[0]?.agentId ?? agent.id
+      try {
+        const created = await api.createAgent({
+          title: "Review",
+          branch: agent.branch,
+          model: agent.model,
+          shareWorktreeWith: rootAgentId,
+        })
+        queryClient.setQueryData(["agent", created.id], {
+          ...created,
+          messages: created.messages ?? [],
+          fileChanges: created.fileChanges ?? [],
+          terminalOutput: created.terminalOutput ?? [],
+        })
+        queryClient.invalidateQueries({ queryKey: ["agents"] })
+        const newTab: ChatTab = { agentId: created.id, title: "Review", isChild: true }
+        setTabs(prev => {
+          const hasCurrentAgent = prev.some(t => t.agentId === agent.id)
+          const base = hasCurrentAgent ? prev : [{ agentId: agent.id, title: agent.title }, ...prev]
+          return [...base, newTab]
+        })
+        setActiveTabId(created.id)
+        setOpenFileTab(null)
+        setPendingComments([])
+        // Send the initial message to the new agent
+        await api.sendMessage(created.id, { content: message })
+      } catch (err) {
+        toast.error(`Failed to create review tab: ${err instanceof Error ? err.message : "unknown"}`)
+      }
+    }, [queryClient, tabs]),
     renameTab,
     onAgentCreating,
     clearPendingAgent,

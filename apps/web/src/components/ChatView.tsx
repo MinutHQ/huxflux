@@ -2261,9 +2261,11 @@ interface ChatViewProps {
   onClearPendingQuestion?: () => void
   /** Hide the header bar and tab bar — used for embedded views like task refinement */
   hideChrome?: boolean
+  /** Create a new tab and send an initial message to it */
+  onNewTabWithMessage?: (message: string) => void
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, onNewTabWithMessage }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2980,16 +2982,16 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               Create PR
             </button>
           )}
-          {!isStreaming && agent.messages.length > 0 && (
+          {!isStreaming && agent.messages.length > 0 && onNewTabWithMessage && (
             <button
               onClick={async () => {
                 try {
                   const settings = await api.getSettings() as { reviewPrompt?: string }
                   const prompt = settings.reviewPrompt?.trim()
                     || "Review the changes you've made. Look for bugs, security issues, performance problems, and code quality. Be thorough but concise."
-                  sendContent("Review my changes", prompt)
+                  onNewTabWithMessage(prompt)
                 } catch {
-                  sendContent("Review my changes", "Review the changes you've made. Look for bugs, security issues, performance problems, and code quality. Be thorough but concise.")
+                  onNewTabWithMessage("Review the changes you've made. Look for bugs, security issues, performance problems, and code quality. Be thorough but concise.")
                 }
               }}
               className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-secondary border border-border hover:bg-accent transition-colors text-[11px] text-muted-foreground"

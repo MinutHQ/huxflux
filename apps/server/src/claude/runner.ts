@@ -651,6 +651,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
+        NODE_ENV: "development", // agents need devDependencies (lint, types) — don't inherit production
         PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
         HUXFLUX_AGENT_ID: agentId,
         HUXFLUX_API_BASE: apiBase,

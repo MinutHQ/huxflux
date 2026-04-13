@@ -167,23 +167,34 @@ export default function ServersScreen() {
     const parsed = parseConnectionString(data)
     if (!parsed) {
       modal.showAlert("Invalid QR code", "This QR code doesn't contain a valid server connection.")
+      setScanned(false)
       return
     }
 
     const token = parsed.token ?? ""
     if (!token) {
       modal.showAlert("No token", "QR code doesn't include an auth token.")
+      setScanned(false)
       return
     }
 
     const result = await validateAuth(parsed.url, token)
-    if (result === "unreachable") { modal.showAlert("Unreachable", "Could not reach server."); return }
-    if (result === "unauthorized") { modal.showAlert("Unauthorized", "Invalid auth token."); return }
+    if (result === "unreachable") {
+      modal.showAlert("Unreachable", "Could not reach server.")
+      setScanned(false)
+      return
+    }
+    if (result === "unauthorized") {
+      modal.showAlert("Unauthorized", "Invalid auth token.")
+      setScanned(false)
+      return
+    }
 
     const serverName = new URL(parsed.url).hostname
     const server = addServer({ name: serverName, url: parsed.url, token })
     if (servers.length === 0) setActiveServerId(server.id)
     refresh()
+    modal.showAlert("Connected", `Server "${serverName}" added successfully.`)
   }
 
   return (

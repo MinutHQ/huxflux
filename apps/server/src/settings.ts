@@ -8,6 +8,9 @@ export interface HuxfluxSettings {
   reviewPrompt?: string
   defaultModel?: string
   defaultProvider?: string
+  jiraBaseUrl?: string    // e.g. "https://mycompany.atlassian.net"
+  jiraEmail?: string      // e.g. "user@company.com"
+  jiraApiToken?: string   // API token from id.atlassian.com
 }
 
 export function getSettings(): HuxfluxSettings {

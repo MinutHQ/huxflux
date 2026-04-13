@@ -45,6 +45,7 @@ import {
   IconCheck,
   IconSearch,
   IconFolder,
+  IconWorld,
 } from "@tabler/icons-react"
 import { getFlag, setFlag } from "@/lib/flags"
 import { useServers } from "@/hooks/useServers"
@@ -59,6 +60,7 @@ type Section =
   | "git"
   | "review"
   | "servers"
+  | "integrations"
   | "experimental"
   | "advanced"
   | "updates"
@@ -101,6 +103,7 @@ const navMain = [
   { id: "appearance" as Section, label: "Appearance", icon: IconPalette },
   { id: "git" as Section, label: "Git", icon: IconGitBranch },
   { id: "review" as Section, label: "Review", icon: IconSparkles },
+  { id: "integrations" as Section, label: "Integrations", icon: IconWorld },
   { id: "servers" as Section, label: "Servers", icon: IconCloud },
 ]
 
@@ -1313,10 +1316,120 @@ function PlaceholderSettings({ title }: { title: string }) {
   )
 }
 
+function IntegrationsSettings() {
+  const [jiraBaseUrl, setJiraBaseUrl] = useState("")
+  const [jiraEmail, setJiraEmail] = useState("")
+  const [jiraApiToken, setJiraApiToken] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; method?: string; displayName?: string; error?: string } | null>(null)
+
+  useEffect(() => {
+    api.getSettings().then((s: any) => {
+      setJiraBaseUrl(s.jiraBaseUrl ?? "")
+      setJiraEmail(s.jiraEmail ?? "")
+      setJiraApiToken(s.jiraApiToken ?? "")
+      setLoading(false)
+    })
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    await api.updateSettings({ jiraBaseUrl: jiraBaseUrl || undefined, jiraEmail: jiraEmail || undefined, jiraApiToken: jiraApiToken || undefined } as any)
+    setSaving(false)
+  }
+
+  const test = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await api.getJiraStatus()
+      setTestResult(result)
+    } catch (err: any) {
+      setTestResult({ ok: false, error: err.message })
+    }
+    setTesting(false)
+  }
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-muted-foreground/50 text-sm"><IconLoader2 size={16} className="animate-spin" /> Loading...</div>
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <div className="text-sm font-medium text-foreground">Jira</div>
+        <div className="text-[12px] text-muted-foreground leading-relaxed">
+          Connect to Jira Cloud to sync tasks. Create an API token at{" "}
+          <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">
+            id.atlassian.com
+          </a>.
+          If not configured, falls back to acli (Atlassian CLI).
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Instance URL</label>
+          <input
+            value={jiraBaseUrl}
+            onChange={(e) => setJiraBaseUrl(e.target.value)}
+            placeholder="https://mycompany.atlassian.net"
+            className="w-full bg-card border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-ring transition-colors"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Email</label>
+          <input
+            value={jiraEmail}
+            onChange={(e) => setJiraEmail(e.target.value)}
+            placeholder="you@company.com"
+            className="w-full bg-card border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-ring transition-colors"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">API Token</label>
+          <input
+            type="password"
+            value={jiraApiToken}
+            onChange={(e) => setJiraApiToken(e.target.value)}
+            placeholder="••••••••"
+            className="w-full bg-card border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-ring transition-colors"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={save} disabled={saving} className="text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button onClick={test} disabled={testing} className="text-xs font-medium px-3 py-1.5 rounded-md bg-card border border-border text-foreground hover:bg-accent transition-colors disabled:opacity-50">
+          {testing ? "Testing..." : "Test connection"}
+        </button>
+      </div>
+
+      {testResult && (
+        <div className={cn(
+          "text-xs px-3 py-2 rounded-md border",
+          testResult.ok
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+            : "bg-red-500/10 border-red-500/30 text-red-400"
+        )}>
+          {testResult.ok ? (
+            <>Connected{testResult.method === "api" ? ` as ${testResult.displayName}` : " via acli"}</>
+          ) : (
+            <>{testResult.error}</>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ExperimentalSettings() {
   const [prReview, setPrReview] = useState(() => getFlag("prReview"))
   const [refine, setRefine] = useState(() => getFlag("refine"))
   const [remoteEditor, setRemoteEditor] = useState(() => getFlag("remoteEditor"))
+  const [tasks, setTasks] = useState(() => getFlag("tasks"))
 
   return (
     <div className="space-y-6">
@@ -1346,6 +1459,15 @@ function ExperimentalSettings() {
           </div>
         </div>
         <Switch checked={remoteEditor} onCheckedChange={(v) => { setFlag("remoteEditor", v); setRemoteEditor(v) }} />
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Tasks</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Show a Tasks board in the sidebar for managing work items with Kanban columns. Syncs with Jira via acli. Reload required after toggling.
+          </div>
+        </div>
+        <Switch checked={tasks} onCheckedChange={(v) => { setFlag("tasks", v); setTasks(v) }} />
       </div>
     </div>
   )
@@ -1475,6 +1597,7 @@ const sectionContent: Record<Section, React.ReactNode> = {
   git: <GitSettings />,
   review: <ReviewSettings />,
   servers: <ServersSettings />,
+  integrations: <IntegrationsSettings />,
   experimental: <ExperimentalSettings />,
   advanced: <PlaceholderSettings title="Advanced" />,
   updates: <UpdatesSettings />,
@@ -1488,6 +1611,7 @@ const sectionTitles: Record<Section, string> = {
   git: "Git",
   review: "Review",
   servers: "Servers",
+  integrations: "Integrations",
   experimental: "Experimental",
   advanced: "Advanced",
   updates: "Check for updates",

@@ -334,7 +334,67 @@ const MIGRATIONS: Migration[] = [
   {
     version: 21,
     sql: `ALTER TABLE pr_chat_messages ADD COLUMN review_head_sha TEXT;`,
+    sql: `
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        parent_id TEXT,
+        jira_key TEXT,
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'backlog',
+        priority TEXT,
+        assignee TEXT,
+        project_key TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE TABLE IF NOT EXISTS task_agents (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_task_agents_unique ON task_agents(task_id, agent_id);
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        author TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
+    `,
   },
+  {
+    version: 22,
+    sql: `
+      ALTER TABLE tasks ADD COLUMN sprint_name TEXT;
+      ALTER TABLE tasks ADD COLUMN sprint_state TEXT;
+    `,
+  },
+  {
+    version: 23,
+    sql: `
+      ALTER TABLE tasks ADD COLUMN repo_id TEXT REFERENCES repos(id);
+      ALTER TABLE task_comments ADD COLUMN agent_id TEXT;
+      CREATE TABLE IF NOT EXISTS task_dependencies (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        depends_on_task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        UNIQUE(task_id, depends_on_task_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_dependencies(task_id);
+      CREATE INDEX IF NOT EXISTS idx_task_deps_dep ON task_dependencies(depends_on_task_id);
+    `,
+  },
+  {
+    version: 24,
+    sql: `ALTER TABLE agents ADD COLUMN task_id TEXT;`,
+  },
+  {
 ]
 
 export function runMigrations() {

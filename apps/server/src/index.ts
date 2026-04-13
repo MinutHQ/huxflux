@@ -24,6 +24,7 @@ import { settingsRoutes } from "./routes/settings.js"
 import { statsRoutes } from "./routes/stats.js"
 import { wrappedRoutes } from "./routes/wrapped.js"
 import { systemRoutes } from "./routes/system.js"
+import { tasksRoutes } from "./routes/tasks.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -83,6 +84,7 @@ await app.register(settingsRoutes)
 await app.register(statsRoutes)
 await app.register(wrappedRoutes)
 await app.register(systemRoutes)
+await app.register(tasksRoutes)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))

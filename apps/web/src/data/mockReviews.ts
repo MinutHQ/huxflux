@@ -18,6 +18,7 @@ export interface ReviewComment {
   severity: "blocking" | "suggestion" | "nit"
   path?: string
   line?: number
+  patch?: string  // unified diff patch for this file — used by @pierre/diffs
   codeContext?: CodeLine[]
   body: string
   status: "pending" | "queued" | "dismissed" | "sent"

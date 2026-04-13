@@ -9,12 +9,14 @@ type Flags = {
   prReview: boolean
   refine: boolean
   remoteEditor: boolean
+  tasks: boolean
 }
 
 const DEFAULTS: Flags = {
   prReview: false,
   refine: false,
   remoteEditor: false,
+  tasks: false,
 }
 
 function load(): Flags {

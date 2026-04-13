@@ -3,7 +3,7 @@ import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
-import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable } from "../db/schema.js"
+import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable, tasks as tasksTable, taskComments as taskCommentsTable, taskAgents as taskAgentsTable, taskDependencies as taskDepsTable } from "../db/schema.js"
 import { emit, broadcast } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
 import { eq, sql } from "drizzle-orm"
@@ -22,6 +22,7 @@ interface RunnerOptions {
   sender?: string        // display name for the sender (for delegated messages)
   provider?: string      // provider ID (defaults to agent's provider or "claude")
   effort?: string        // effort level (e.g. "low", "medium", "high", "max")
+  taskContext?: string   // appended to system prompt for task-aware agents (refinement)
 }
 
 // Registry of running agent processes
@@ -363,6 +364,16 @@ async function persistAssistantMessage(
     finalContent = "Delegated task to linked workspace."
   }
 
+  // Parse and execute <huxflux:task-*> tags for task system integration
+  await parseTaskTags(finalContent, agentId)
+  finalContent = finalContent
+    .replace(/<huxflux:task-comment[^>]*>[\s\S]*?<\/huxflux:task-comment>\n?/g, "")
+    .replace(/<huxflux:task-update[^>]*>[\s\S]*?<\/huxflux:task-update>\n?/g, "")
+    .replace(/<huxflux:task-create[^>]*>[\s\S]*?<\/huxflux:task-create>\n?/g, "")
+    .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
+    .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
+    .trim()
+
   await db.update(messagesTable)
     .set({
       content: finalContent,
@@ -408,6 +419,24 @@ async function persistAssistantMessage(
   // Emit message:done immediately after the message is persisted with durationMs
   // set — this clears the client loading state regardless of what happens next.
   emit(agentId, { type: "message:done", agentId, messageId, message: builtMessage })
+
+  // If this is a working agent linked to a task, auto-post its response as a task comment.
+  // Skip for refine agents (noWorktree=1) — their messages table is the source of truth.
+  const agentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (agentRow?.taskId && finalContent && !agentRow.noWorktree) {
+    const commentId = uuid()
+    const now = new Date().toISOString()
+    db.insert(taskCommentsTable).values({
+      id: commentId,
+      taskId: agentRow.taskId,
+      agentId,
+      author: agentRow.title,
+      role: "ai",
+      content: finalContent,
+      createdAt: now,
+    }).run()
+    broadcast({ type: "task:comment", taskId: agentRow.taskId, comment: { id: commentId, author: agentRow.title, role: "ai", content: finalContent, agentId, createdAt: now } })
+  }
 
   // Refresh file changes after emitting so the client query cache is warm
   // by the time it re-fetches. Failures here don't affect the done signal.
@@ -552,33 +581,39 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     // System prompt — provider-agnostic agent identity + instructions
     const agentTitle = agentRow?.title ?? agentId
     const agentBranch = agentRow?.branch ?? ""
-    const systemPrompt = [
-      `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
-      ``,
-      `To rename yourself, emit this tag on its own line in your response:`,
-      `  <huxflux:title>new title here</huxflux:title>`,
-      ``,
-      `Rename guidelines:`,
-      `- Rename yourself as soon as you understand what you are working on.`,
-      `- Use a short, specific title (max ~50 chars) that describes the actual task, not generic descriptions.`,
-      `- Update the title again if the focus of the work changes significantly.`,
-      `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
-      `- Do not include the repo name or branch — just the task.`,
-      ``,
-      `IMPORTANT: If you rename your git branch (e.g. git branch -m old new) or push to a different branch name, you MUST emit this tag on its own line immediately after:`,
-      `  <huxflux:branch>new-branch-name</huxflux:branch>`,
-      `Without this tag, the UI will not know about the rename and PR detection will break.`,
-      ``,
-      `Answer format:`,
-      `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
-      `- Start each new idea or action on its own line.`,
-      ...(opts.planMode && provider.capabilities.planMode ? [
-        ``,
-        `You are in plan mode. You MUST describe your full plan in your response text so the user can read it in the chat.`,
-        `Do NOT only write to the plan file — output the plan steps directly in your message.`,
-        `After describing the plan, call ExitPlanMode.`,
-      ] : []),
-    ].join("\n")
+    const systemPrompt = opts.taskContext
+      ? [
+          `You are a Huxflux refinement assistant.`,
+          ``,
+          opts.taskContext,
+        ].join("\n")
+      : [
+          `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
+          ``,
+          `To rename yourself, emit this tag on its own line in your response:`,
+          `  <huxflux:title>new title here</huxflux:title>`,
+          ``,
+          `Rename guidelines:`,
+          `- Rename yourself as soon as you understand what you are working on.`,
+          `- Use a short, specific title (max ~50 chars) that describes the actual task, not generic descriptions.`,
+          `- Update the title again if the focus of the work changes significantly.`,
+          `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
+          `- Do not include the repo name or branch — just the task.`,
+          ``,
+          `IMPORTANT: If you rename your git branch (e.g. git branch -m old new) or push to a different branch name, you MUST emit this tag on its own line immediately after:`,
+          `  <huxflux:branch>new-branch-name</huxflux:branch>`,
+          `Without this tag, the UI will not know about the rename and PR detection will break.`,
+          ``,
+          `Answer format:`,
+          `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
+          `- Start each new idea or action on its own line.`,
+          ...(opts.planMode && provider.capabilities.planMode ? [
+            ``,
+            `You are in plan mode. You MUST describe your full plan in your response text so the user can read it in the chat.`,
+            `Do NOT only write to the plan file — output the plan steps directly in your message.`,
+            `After describing the plan, call ExitPlanMode.`,
+          ] : []),
+        ].join("\n")
 
     // Build conversation context when provider can't resume from session,
     // or when there's no session to resume (e.g. switched providers mid-conversation)
@@ -781,4 +816,78 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       reject(err)
     })
   })
+}
+
+// ── Task tag parsing ──────────────────────────────────────────────────────────
+
+async function parseTaskTags(content: string, agentId: string) {
+  // <huxflux:task-comment taskId="...">content</huxflux:task-comment>
+  const commentRe = /<huxflux:task-comment\s+taskId="([^"]+)">([\s\S]*?)<\/huxflux:task-comment>/g
+  for (const match of content.matchAll(commentRe)) {
+    const [, taskId, commentContent] = match
+    const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    const id = uuid()
+    const now = new Date().toISOString()
+    db.insert(taskCommentsTable).values({
+      id,
+      taskId,
+      agentId,
+      author: agent?.title ?? "Agent",
+      role: "ai",
+      content: commentContent.trim(),
+      createdAt: now,
+    }).run()
+    broadcast({ type: "task:comment", taskId, comment: { id, author: agent?.title ?? "Agent", role: "ai", content: commentContent.trim(), agentId, createdAt: now } })
+  }
+
+  // <huxflux:task-update taskId="..." field="description">new content</huxflux:task-update>
+  const updateRe = /<huxflux:task-update\s+taskId="([^"]+)"\s+field="([^"]+)">([\s\S]*?)<\/huxflux:task-update>/g
+  for (const match of content.matchAll(updateRe)) {
+    const [, taskId, field, value] = match
+    if (field === "description") {
+      db.update(tasksTable).set({ description: value.trim(), updatedAt: new Date().toISOString() }).where(eq(tasksTable.id, taskId)).run()
+      broadcast({ type: "task:updated", taskId })
+    }
+  }
+
+  // <huxflux:task-create parentId="..." repoId="...">{"title":"...", "description":"..."}</huxflux:task-create>
+  const createRe = /<huxflux:task-create\s+parentId="([^"]+)"(?:\s+repoId="([^"]*)")?\s*>([\s\S]*?)<\/huxflux:task-create>/g
+  for (const match of content.matchAll(createRe)) {
+    const [, parentId, repoId, jsonStr] = match
+    try {
+      const data = JSON.parse(jsonStr.trim())
+      const now = new Date().toISOString()
+      db.insert(tasksTable).values({
+        id: uuid(),
+        parentId,
+        repoId: repoId || null,
+        title: data.title,
+        description: data.description ?? null,
+        status: "backlog",
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      broadcast({ type: "task:updated", taskId: parentId })
+    } catch { /* skip malformed JSON */ }
+  }
+
+  // <huxflux:task-status taskId="..." status="ready"/>
+  const statusRe = /<huxflux:task-status\s+taskId="([^"]+)"\s+status="([^"]+)"\s*\/>/g
+  for (const match of content.matchAll(statusRe)) {
+    const [, taskId, status] = match
+    db.update(tasksTable).set({ status, updatedAt: new Date().toISOString() }).where(eq(tasksTable.id, taskId)).run()
+    broadcast({ type: "task:updated", taskId })
+  }
+
+  // <huxflux:task-dependency taskId="..." dependsOn="..."/>
+  const depRe = /<huxflux:task-dependency\s+taskId="([^"]+)"\s+dependsOn="([^"]+)"\s*\/>/g
+  for (const match of content.matchAll(depRe)) {
+    const [, taskId, dependsOnTaskId] = match
+    const existing = db.select().from(taskDepsTable).where(eq(taskDepsTable.taskId, taskId)).all()
+    if (!existing.some((e: { dependsOnTaskId: string }) => e.dependsOnTaskId === dependsOnTaskId)) {
+      db.insert(taskDepsTable).values({ id: uuid(), taskId, dependsOnTaskId }).run()
+      broadcast({ type: "task:updated", taskId })
+    }
+  }
 }

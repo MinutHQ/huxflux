@@ -105,6 +105,7 @@ export interface PRChatMessage {
   content: string
   isReview: boolean
   reviewHeadSha?: string
+  commitSha?: string | null
   createdAt: string
 }
 
@@ -171,6 +172,7 @@ export interface Agent {
   prStatus?: PRStatus
   model: string
   provider?: string
+  taskId?: string | null  // set for refine agents — hidden from sidebar
   location: string
   unread?: number
   streaming?: boolean
@@ -228,3 +230,46 @@ export const statusConfig: Record<AgentStatus, { label: string; color: string; d
 }
 
 export const statusOrder: AgentStatus[] = ["in-progress", "in-review", "backlog", "done", "cancelled"]
+
+// ── Tasks ────────────────────────────────────────────────────────────────────
+
+export type TaskStatus = "backlog" | "refining" | "ready" | "in-progress" | "in-review" | "done"
+
+export interface TaskComment {
+  id: string
+  author: string
+  role: "ai" | "user"
+  content: string
+  agentId?: string | null
+  createdAt: string
+}
+
+export interface TaskAgent {
+  agentId: string
+  agentTitle: string
+  agentStatus: AgentStatus
+  agentBranch: string
+}
+
+export interface TaskItem {
+  id: string
+  parentId: string | null
+  jiraKey: string | null
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: string | null
+  assignee: string | null
+  projectKey: string | null
+  repoId?: string | null
+  repoName?: string | null
+  refineAgentId?: string | null
+  agents: TaskAgent[]
+  comments: TaskComment[]
+  subtasks: TaskItem[]
+  dependencies?: string[]  // IDs of sibling tasks this depends on
+  sprintName?: string | null
+  sprintState?: string | null
+  createdAt: string
+  updatedAt: string
+}

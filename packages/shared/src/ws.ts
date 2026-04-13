@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { getActiveServer } from "./serverStore"
-import type { AgentSummary, Message, ToolCall, FileChange } from "./types"
+import type { AgentSummary, Message, ToolCall, FileChange, TaskComment } from "./types"
 
 export type ServerEvent =
   | { type: "agent:updated";    agent: AgentSummary }
@@ -16,6 +16,8 @@ export type ServerEvent =
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
   | { type: "ask:question";      agentId: string; toolUseId: string; questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
+  | { type: "task:comment";      taskId: string; comment: TaskComment }
+  | { type: "task:updated";      taskId: string }
   | { type: "error";            agentId?: string; message: string }
   | { type: "ws:reconnected" }
 

@@ -36,9 +36,9 @@ function runScript(script: string, cwd: string, agentId: string): Promise<void> 
 }
 
 export async function agentsRoutes(app: FastifyInstance) {
-  // GET /api/agents — list with diffSummary computed from file_changes (excludes child tabs and soft-deleted)
+  // GET /api/agents — list (excludes child tabs, soft-deleted, and task refine agents)
   app.get("/api/agents", async () => {
-    const rows = db.select().from(agents).where(and(isNull(agents.parentAgentId), isNull(agents.deletedAt))).all()
+    const rows = db.select().from(agents).where(and(isNull(agents.parentAgentId), isNull(agents.deletedAt), isNull(agents.taskId))).all()
     if (rows.length === 0) return []
 
     const allFiles = db.select().from(fileChanges)
@@ -711,3 +711,4 @@ export async function agentsRoutes(app: FastifyInstance) {
     }))
   })
 }
+// force reload 1776007878

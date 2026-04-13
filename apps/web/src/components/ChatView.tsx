@@ -2258,9 +2258,11 @@ interface ChatViewProps {
     questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>
   } | null
   onClearPendingQuestion?: () => void
+  /** Hide the header bar and tab bar — used for embedded views like task refinement */
+  hideChrome?: boolean
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2860,7 +2862,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   return (
     <div className="flex flex-col h-full bg-background relative">
       {/* Top metadata bar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+      {!hideChrome && <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
           <>
             <span className="text-[12px] text-muted-foreground/50 font-medium truncate shrink-0 max-w-[120px]">{repoName}</span>
@@ -3036,10 +3038,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
             </PopoverContent>
           </Popover>
         </div>
-      </div>
+      </div>}
 
       {/* Tab bar */}
-      <div className="flex items-center border-b border-border shrink-0 px-2 overflow-x-auto">
+      {!hideChrome && <div className="flex items-center border-b border-border shrink-0 px-2 overflow-x-auto">
         {tabs.length > 1 ? (
           // Multi-tab mode: show each agent as a tab
           tabs.map((tab) => {
@@ -3166,7 +3168,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
         >
           <IconPlus size={13} />
         </button>
-      </div>
+      </div>}
 
       {/* Content */}
       {activeTab === "file" && openFileTab ? (
@@ -3475,7 +3477,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         </SelectContent>
                       </Select>
                     )}
-                    {(capabilities.planMode !== false) && (
+                    {!hideChrome && (capabilities.planMode !== false) && (
                       <button
                         onClick={() => setPlanMode(!planMode)}
                         className={cn(
@@ -3506,7 +3508,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                           <span>Add attachment</span>
                           <span className="ml-auto text-[11px] text-muted-foreground/50 font-mono">⌘U</span>
                         </button>
-                        <Popover open={agentPickerOpen} onOpenChange={(o) => { setAgentPickerOpen(o); if (o) setAgentPickerSearch("") }}>
+                        {!hideChrome && <Popover open={agentPickerOpen} onOpenChange={(o) => { setAgentPickerOpen(o); if (o) setAgentPickerSearch("") }}>
                           <PopoverTrigger asChild>
                             <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors">
                               <IconFolderSymlink size={15} className="text-muted-foreground shrink-0" />
@@ -3563,7 +3565,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                               </button>
                             </div>
                           </PopoverContent>
-                        </Popover>
+                        </Popover>}
                       </PopoverContent>
                     </Popover>
                     {isStreaming && (

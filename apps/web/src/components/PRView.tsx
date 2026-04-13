@@ -9,6 +9,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
 import { Popover, PopoverTrigger, PopoverContent } from "@huxflux/ui"
 import type { PullRequest, ReviewComment, PRFile } from "@/data/mockReviews"
+import { FileDiff } from "@pierre/diffs/react"
+import { processFile } from "@pierre/diffs"
 import { mockReviewResults } from "@/data/mockReviews"
 import { api } from "@huxflux/shared"
 import { toast } from "sonner"
@@ -81,6 +83,7 @@ interface ChatMessage {
   isReview?: boolean
   verdict?: "approve" | "request_changes" | "comment"
   comments?: ReviewComment[]
+  commitSha?: string | null
   timestamp: string
 }
 
@@ -122,10 +125,108 @@ function buildCodeContext(patch: string, targetLine: number): { lineNumber: numb
     }
   }
   const idx = allLines.findIndex((l) => l.lineNumber === targetLine)
-  if (idx === -1) return []
-  const start = Math.max(0, idx - 3)
-  const end = Math.min(allLines.length - 1, idx + 3)
+  if (idx === -1) {
+    // Fallback: find the closest line if exact match fails
+    let closest = 0
+    let closestDist = Infinity
+    for (let i = 0; i < allLines.length; i++) {
+      const dist = Math.abs(allLines[i].lineNumber - targetLine)
+      if (dist < closestDist) { closest = i; closestDist = dist }
+    }
+    if (closestDist > 20) return [] // too far, no context
+    const start = Math.max(0, closest - 5)
+    const end = Math.min(allLines.length - 1, closest + 5)
+    return allLines.slice(start, end + 1).map((l) => ({ ...l, highlighted: l.lineNumber === targetLine }))
+  }
+  // Show more context: 6 lines before, 4 after
+  const start = Math.max(0, idx - 6)
+  const end = Math.min(allLines.length - 1, idx + 4)
   return allLines.slice(start, end + 1).map((l) => ({ ...l, highlighted: l.lineNumber === targetLine }))
+}
+
+/** Extract ~8 lines around the target line from the patch, as a valid mini-hunk */
+function extractRelevantHunk(patch: string, targetLine?: number): string {
+  if (!targetLine || !patch) return patch
+  const patchLines = patch.split("\n")
+
+  // Walk the patch tracking new-file line numbers
+  let currentNewLine = 0
+  const mapped: { patchIdx: number; newLine: number | null; raw: string }[] = []
+
+  for (let i = 0; i < patchLines.length; i++) {
+    const line = patchLines[i]
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+    if (hunkMatch) {
+      currentNewLine = parseInt(hunkMatch[1], 10) - 1
+      mapped.push({ patchIdx: i, newLine: null, raw: line })
+      continue
+    }
+    if (line.startsWith("-")) {
+      mapped.push({ patchIdx: i, newLine: null, raw: line })
+    } else if (line.startsWith("+") || line.startsWith(" ")) {
+      currentNewLine++
+      mapped.push({ patchIdx: i, newLine: currentNewLine, raw: line })
+    } else {
+      mapped.push({ patchIdx: i, newLine: null, raw: line })
+    }
+  }
+
+  // Find the target line in our mapped array
+  const targetIdx = mapped.findIndex((m) => m.newLine === targetLine)
+  if (targetIdx === -1) return patch
+
+  // Take ~5 lines before and ~4 after the target (including deletion lines)
+  const BEFORE = 5
+  const AFTER = 4
+  const start = Math.max(0, targetIdx - BEFORE)
+  const end = Math.min(mapped.length - 1, targetIdx + AFTER)
+  const slice = mapped.slice(start, end + 1)
+
+  // Build a new hunk header based on the first context/add line
+  const firstWithLine = slice.find((s) => s.newLine !== null)
+  const newStart = firstWithLine?.newLine ?? targetLine
+  const addCount = slice.filter((s) => s.raw.startsWith("+") || s.raw.startsWith(" ")).length
+  const delCount = slice.filter((s) => s.raw.startsWith("-") || s.raw.startsWith(" ")).length
+  const hunkHeader = `@@ -${newStart},${delCount} +${newStart},${addCount} @@`
+
+  // Filter out any existing @@ lines in the slice
+  const bodyLines = slice.filter((s) => !s.raw.startsWith("@@")).map((s) => s.raw)
+
+  return [hunkHeader, ...bodyLines].join("\n")
+}
+
+/** Renders a file diff for a review comment using @pierre/diffs */
+function ReviewDiff({ patch, path, targetLine }: { patch: string; path?: string; targetLine?: number }) {
+  const fileDiff = useMemo(() => {
+    if (!patch) return null
+    try {
+      let relevantPatch = extractRelevantHunk(patch, targetLine)
+      const fileName = path?.split("/").pop() ?? "file"
+      // processFile needs diff headers — add them if missing
+      if (!relevantPatch.startsWith("diff ") && !relevantPatch.startsWith("---")) {
+        relevantPatch = `--- a/${fileName}\n+++ b/${fileName}\n${relevantPatch}`
+      }
+      return processFile(relevantPatch, { newFile: { name: fileName } })
+    } catch {
+      return null
+    }
+  }, [patch, path, targetLine])
+
+  if (!fileDiff) return null
+
+  return (
+    <FileDiff
+      fileDiff={fileDiff}
+      options={{
+        theme: "vesper",
+        diffStyle: "unified",
+        lineDiffType: "word",
+        diffIndicators: "bars",
+        disableFileHeader: true,
+        hunkSeparators: "none",
+      }}
+    />
+  )
 }
 
 function relativeTime(iso: string): string {
@@ -194,6 +295,7 @@ function ReviewCommentCard({
   onQueue,
   onDequeue,
   isQueued,
+  onFileClick,
 }: {
   comment: ReviewComment
   onDismiss: (id: string) => void
@@ -201,6 +303,7 @@ function ReviewCommentCard({
   onQueue: (id: string) => void
   onDequeue: (id: string) => void
   isQueued: boolean
+  onFileClick?: (path: string, line?: number) => void
 }) {
   const cfg = severityConfig[comment.severity]
   const Icon = cfg.icon
@@ -217,10 +320,13 @@ function ReviewCommentCard({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-secondary/40">
         <Icon size={11} className={cn("shrink-0", cfg.iconColor)} />
         {comment.type === "inline" && comment.path ? (
-          <code className="text-[11px] font-mono text-muted-foreground truncate flex-1">
+          <button
+            onClick={() => onFileClick?.(comment.path!, comment.line)}
+            className="text-[11px] font-mono text-muted-foreground truncate flex-1 text-left hover:text-foreground transition-colors"
+          >
             {comment.path}
             {comment.line && <span className="text-muted-foreground/40">:{comment.line}</span>}
-          </code>
+          </button>
         ) : (
           <span className="text-[11px] text-muted-foreground flex-1">General comment</span>
         )}
@@ -229,8 +335,13 @@ function ReviewCommentCard({
         </span>
       </div>
 
-      {/* Code context */}
-      {comment.codeContext && comment.codeContext.length > 0 && (
+      {/* Code context — rendered via @pierre/diffs */}
+      {comment.patch && (
+        <div className="border-b border-border/50 overflow-x-auto text-[12px]">
+          <ReviewDiff patch={comment.patch} path={comment.path} targetLine={comment.line} />
+        </div>
+      )}
+      {!comment.patch && comment.codeContext && comment.codeContext.length > 0 && (
         <div className="bg-[#0d0d0d] border-b border-border/50 overflow-x-auto">
           <table className="min-w-full text-[11px] font-mono">
             <tbody>
@@ -275,35 +386,37 @@ function ReviewCommentCard({
           </div>
         )}
         {!isDismissed && !isSent && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => onDismiss(comment.id)}
-              className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors"
-            >
-              Dismiss
-            </button>
-            <button
-              onClick={() => onAddToChat(comment.id)}
-              className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors"
-            >
-              Add to chat
-            </button>
+          <div className="flex items-center gap-1.5">
             {isQueued ? (
               <button
                 onClick={() => onDequeue(comment.id)}
-                className="ml-auto flex items-center gap-1 text-[11px] text-blue-400 hover:text-red-400 transition-colors"
+                className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-red-400 transition-colors"
               >
                 <IconCheck size={11} />
-                Remove from review
+                Queued
               </button>
             ) : (
               <button
                 onClick={() => onQueue(comment.id)}
-                className="ml-auto text-[11px] font-medium text-muted-foreground/60 hover:text-foreground border border-border hover:border-foreground/30 rounded px-2 py-0.5 transition-colors"
+                className="text-[11px] font-medium text-muted-foreground/60 hover:text-foreground border border-border hover:border-foreground/30 rounded px-2 py-0.5 transition-colors"
               >
                 Queue for review
               </button>
             )}
+            <span className="text-muted-foreground/20 mx-0.5">·</span>
+            <button
+              onClick={() => onAddToChat(comment.id)}
+              className="text-[11px] text-muted-foreground/40 hover:text-foreground transition-colors"
+            >
+              Add to chat
+            </button>
+            <span className="text-muted-foreground/20">·</span>
+            <button
+              onClick={() => onDismiss(comment.id)}
+              className="text-[11px] text-muted-foreground/40 hover:text-foreground transition-colors"
+            >
+              Dismiss
+            </button>
           </div>
         )}
         {isDismissed && (
@@ -1313,7 +1426,7 @@ function FileDiffAccordion({
     : "text-muted-foreground/50"
 
   return (
-    <div className="rounded-lg border border-border" id={`file-${file.path.replace(/\//g, "-")}`}>
+    <div className="rounded-lg border border-border" id={`file-${file.path.replace(/\//g, "-")}`} data-file-path={file.path}>
       {/* File header */}
       <div className="flex items-center gap-2 px-3 py-2 bg-secondary/40 hover:bg-secondary/60 transition-colors rounded-t-lg">
         <button onClick={onToggleExpand} className="flex items-center gap-2 flex-1 min-w-0 text-left">
@@ -1746,7 +1859,24 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
   const [loadingDetails, setLoadingDetails] = useState(!!pr.repoId)
 
   // Changes tab state
+  const scrollToFilePathRef = useRef<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
+
+  const handleFileClick = useCallback((path: string, _line?: number) => {
+    setActiveTab("changes")
+    setExpandedFiles((prev) => {
+      const next = new Set(prev)
+      next.add(path)
+      return next
+    })
+    scrollToFilePathRef.current = path
+    // Scroll after React re-renders with the expanded file
+    setTimeout(() => {
+      const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`)
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+      scrollToFilePathRef.current = null
+    }, 100)
+  }, [])
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">(
     () => (localStorage.getItem("huxflux:pr-diff-style") as "unified" | "split") ?? "unified"
   )
@@ -1925,11 +2055,12 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                       severity: (["blocking", "suggestion", "nit"].includes(c.severity) ? c.severity : "suggestion") as ReviewComment["severity"],
                       path: c.path,
                       line: c.line,
+                      patch: c.path ? (fileDiffsRef.current[c.path] ?? fileDiffs[c.path] ?? "") : undefined,
                       codeContext: c.path && c.line ? buildCodeContext(fileDiffsRef.current[c.path] ?? fileDiffs[c.path] ?? "", c.line) : undefined,
                       body: c.body ?? "",
                       status: "pending" as const,
                     }))
-                    return { id: m.id, role: "assistant", content: reviewData.summary || summaryText, isReview: true, verdict: (["approve", "request_changes", "comment"].includes(reviewData.verdict) ? reviewData.verdict : "comment") as ChatMessage["verdict"], comments, timestamp: m.createdAt }
+                    return { id: m.id, role: "assistant", content: reviewData.summary || summaryText, isReview: true, verdict: (["approve", "request_changes", "comment"].includes(reviewData.verdict) ? reviewData.verdict : "comment") as ChatMessage["verdict"], comments, commitSha: m.commitSha, timestamp: m.createdAt }
                   }
                 }
                 return { id: m.id, role: m.role, content: m.content, isReview: m.isReview, timestamp: m.createdAt }
@@ -1990,6 +2121,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         ...msg,
         comments: msg.comments.map((c) => ({
           ...c,
+          patch: c.path ? (fileDiffs[c.path] ?? "") : undefined,
           codeContext: c.path && c.line ? buildCodeContext(fileDiffs[c.path] ?? "", c.line) : c.codeContext,
         })),
       }
@@ -2098,6 +2230,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
           severity: (["blocking", "suggestion", "nit"].includes(c.severity) ? c.severity : "suggestion") as ReviewComment["severity"],
           path: c.path,
           line: c.line,
+          patch: c.path ? (fileDiffs[c.path] ?? "") : undefined,
           codeContext: c.path && c.line ? buildCodeContext(fileDiffs[c.path] ?? "", c.line) : undefined,
           body: c.body ?? "",
           status: "pending" as const,
@@ -2136,10 +2269,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
 
   function handleRerun() {
     if (reviewing || isSending) return
-    clearReviewCache()
-    if (pr.repoId) {
-      api.clearPRChatMessages(pr.repoId, pr.number).catch(() => {})
-    }
+    // Don't clear history — just trigger a new review run
+    // Previous reviews stay visible as collapsed sections
     isRerunRef.current = true
     triggerReview()
   }
@@ -2530,8 +2661,48 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                     <span>New commits have been pushed since this review — results may be out of date.</span>
                   </div>
                 )}
-                {messages.map((msg) => {
+                {messages.map((msg, msgIdx) => {
                   if (msg.isReview) {
+                    // Find if this is the latest review (last isReview message)
+                    const isLatestReview = !messages.slice(msgIdx + 1).some((m) => m.isReview)
+                    const reviewTime = msg.timestamp ? new Date(msg.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""
+
+                    // Previous reviews are collapsed
+                    if (!isLatestReview) {
+                      return (
+                        <details key={msg.id} className="px-4 py-1">
+                          <summary className="text-[11px] text-muted-foreground/40 cursor-pointer hover:text-muted-foreground transition-colors py-1.5">
+                            Previous review {reviewTime && `· ${reviewTime}`} · {msg.comments?.length ?? 0} comments
+                            {msg.commitSha && prDetails?.headSha && msg.commitSha !== prDetails.headSha && (
+                              <span className="ml-1.5 text-amber-400/60">(outdated)</span>
+                            )}
+                            {msg.commitSha && <span className="ml-1.5 font-mono text-muted-foreground/20">{msg.commitSha.slice(0, 7)}</span>}
+                          </summary>
+                          <div className="py-2">
+                            {msg.content && (
+                              <div className={`p-3 rounded-lg bg-secondary/40 border border-border text-[13px] text-foreground/80${msg.comments && msg.comments.length > 0 ? " mb-4" : ""}`}>
+                                <MarkdownContent content={msg.content} />
+                              </div>
+                            )}
+                            {msg.comments && msg.comments.length > 0 && <div className="space-y-2">
+                              {msg.comments.map((c) => (
+                                <ReviewCommentCard
+                                  key={c.id}
+                                  comment={{ ...c, status: "dismissed" }}
+                                  onDismiss={() => {}}
+                                  onAddToChat={() => {}}
+                                  onQueue={() => {}}
+                                  onDequeue={() => {}}
+                                  isQueued={false}
+                                  onFileClick={handleFileClick}
+                                />
+                              ))}
+                            </div>}
+                          </div>
+                        </details>
+                      )
+                    }
+
                     return (
                       <div key={msg.id} className="px-4 py-3">
                         {msg.content && (
@@ -2570,6 +2741,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                                 onQueue={() => addCommentFromReview(c)}
                                 onDequeue={() => removeCommentFromReview(c)}
                                 isQueued={isQueued}
+                                onFileClick={handleFileClick}
                               />
                             )
                           })}

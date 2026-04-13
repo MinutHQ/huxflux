@@ -25,6 +25,7 @@ export function useAgents() {
     queryFn: api.getAgents,
     staleTime: 5_000,
     enabled: !!serverUrl,
+    select: (data) => data.filter((a) => !a.taskId), // hide refine agents from sidebar
   })
 
   useAgentEvents(null, (event) => {

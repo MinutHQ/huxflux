@@ -48,6 +48,7 @@ import {
   IconPlayerPlay,
   IconPlayerStop,
   IconLoader2,
+  IconLayoutKanban,
 } from "@tabler/icons-react"
 
 // ── Status icons (Linear-style) ───────────────────────────────────────────────
@@ -1481,6 +1482,8 @@ interface SidebarProps {
   agentPorts?: Record<string, number | null>
   onHome?: () => void
   showHome?: boolean
+  onTasks?: () => void
+  showTasks?: boolean
   onToggle?: () => void
   feedbackEnabled?: boolean
   bulkReviewingIds?: Set<string>
@@ -1491,7 +1494,7 @@ interface SidebarProps {
   onBulkReviewConcurrencyChange?: (n: number) => void
 }
 
-export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onToggle, feedbackEnabled = false, bulkReviewingIds = new Set(), isBulkReviewing = false, onBulkReview, onCancelBulkReview, bulkReviewConcurrency = 5, onBulkReviewConcurrencyChange }: SidebarProps) {
+export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onTasks, showTasks = false, onToggle, feedbackEnabled = false, bulkReviewingIds = new Set(), isBulkReviewing = false, onBulkReview, onCancelBulkReview, bulkReviewConcurrency = 5, onBulkReviewConcurrencyChange }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1542,6 +1545,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
 
   const prReviewEnabled = getFlag("prReview")
   const refineEnabled = getFlag("refine")
+  const tasksEnabled = getFlag("tasks")
   const unreadPrCount = prs.filter((p) => p.unread).length
 
   // Filter agents by repo
@@ -1669,6 +1673,24 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
             >
               <IconHome size={14} />
               Home
+            </button>
+          </div>
+        )}
+
+        {/* Tasks button (experimental) */}
+        {tasksEnabled && onTasks && (
+          <div className="px-2 pt-1 shrink-0">
+            <button
+              onClick={onTasks}
+              className={cn(
+                "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                showTasks
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-accent/50"
+              )}
+            >
+              <IconLayoutKanban size={14} />
+              Tasks
             </button>
           </div>
         )}

@@ -118,7 +118,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
 
   const shell = process.env.SHELL ?? "/bin/bash"
 
-  const ptyProcess = pty.spawn(shell, [], {
+  const ptyProcess = pty.spawn(shell, ["-l"], {
     name: "xterm-256color",
     cols: 120,
     rows: 30,

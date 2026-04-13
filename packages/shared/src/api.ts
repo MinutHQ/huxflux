@@ -11,6 +11,7 @@ import type {
   OpenPRWithRepo,
   PRFileDiff,
   PRChatMessage,
+  TaskItem,
 } from "./types"
 
 export interface WrappedSummary {
@@ -307,6 +308,37 @@ export const api = {
   // System
   getSystemSshInfo: () =>
     req<{ host: string; port: number; user: string; configured: boolean }>("/api/system/ssh-info"),
+
+  // Tasks
+  getTasks: () => req<TaskItem[]>("/api/tasks"),
+  createTask: (body: { title: string; description?: string; status?: string; priority?: string; assignee?: string; projectKey?: string; parentId?: string; jiraKey?: string }) =>
+    req<TaskItem[]>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  updateTask: (id: string, body: Partial<{ title: string; description: string | null; status: string; priority: string | null; assignee: string | null; sortOrder: number }>) =>
+    req<TaskItem[]>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteTask: (id: string) =>
+    req<TaskItem[]>(`/api/tasks/${id}`, { method: "DELETE" }),
+  linkTaskAgent: (taskId: string, agentId: string) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/agents`, { method: "POST", body: JSON.stringify({ agentId }) }),
+  unlinkTaskAgent: (taskId: string, agentId: string) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/agents/${agentId}`, { method: "DELETE" }),
+  addTaskComment: (taskId: string, body: { author: string; role: string; content: string }) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/comments`, { method: "POST", body: JSON.stringify(body) }),
+  syncTasks: (jql?: string) =>
+    req<TaskItem[] | { error: string }>("/api/tasks/sync", { method: "POST", body: JSON.stringify({ jql }), timeoutMs: 30_000 }),
+  transitionTask: (taskId: string, status: string) =>
+    req<{ ok?: boolean; error?: string }>(`/api/tasks/${taskId}/jira-transition`, { method: "POST", body: JSON.stringify({ status }) }),
+  getJiraStatus: () =>
+    req<{ method: string; ok: boolean; displayName?: string; error?: string }>("/api/tasks/jira-status"),
+  refineTask: (taskId: string, message?: string) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/reply`, { method: "POST", body: JSON.stringify({ content: message ?? "Please analyze this task and help me refine it. Explore the relevant code, then ask any clarifying questions." }), timeoutMs: 60_000 }),
+  startTaskWork: (taskId: string) =>
+    req<{ agentId: string; tasks: TaskItem[] }>(`/api/tasks/${taskId}/start-work`, { method: "POST", body: JSON.stringify({}), timeoutMs: 30_000 }),
+  replyToTaskAgent: (taskId: string, content: string) =>
+    req<{ agentId: string; tasks: TaskItem[] }>(`/api/tasks/${taskId}/reply`, { method: "POST", body: JSON.stringify({ content }) }),
+  addTaskDependency: (taskId: string, dependsOnTaskId: string) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/dependencies`, { method: "POST", body: JSON.stringify({ dependsOnTaskId }) }),
+  removeTaskDependency: (taskId: string, depId: string) =>
+    req<TaskItem[]>(`/api/tasks/${taskId}/dependencies/${depId}`, { method: "DELETE" }),
 
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {

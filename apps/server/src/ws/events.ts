@@ -20,4 +20,6 @@ export type ServerEvent =
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
   | { type: "ask:question";     agentId: string; toolUseId: string; questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
+  | { type: "task:comment";      taskId: string; comment: { id: string; author: string; role: string; content: string; agentId?: string; createdAt: string } }
+  | { type: "task:updated";      taskId: string }
   | { type: "error";            agentId?: string; message: string }

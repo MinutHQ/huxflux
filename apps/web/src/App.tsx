@@ -12,6 +12,7 @@ import { CommandPalette } from "@/components/CommandPalette"
 import { PRView } from "@/components/PRView"
 import { HomeView } from "@/components/HomeView"
 import { RefineView, loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
+import { TasksView } from "@/components/TasksView"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
 import { useAgents, useAgent, connectBackgroundServer, parseConnectionString, getServers, setActiveServerId, addServer, useServerConfig, api } from "@huxflux/shared"
 import { useQuery } from "@tanstack/react-query"
@@ -46,6 +47,7 @@ export default function App() {
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
   const [selectedRefineId, setSelectedRefineId] = useState<string | null>(null)
   const [showHome, setShowHome] = useState(() => !localStorage.getItem("huxflux-last-view"))
+  const [showTasks, setShowTasks] = useState(false)
   const [cmdkOpen, setCmdkOpen] = useState(false)
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
@@ -189,7 +191,7 @@ export default function App() {
     : null
 
   // Show onboarding if no servers configured
-  if (servers.length === 0 && !onboardingDone) {
+  if (servers.length === 0) {
     return (
       <>
         <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
@@ -235,7 +237,7 @@ export default function App() {
   const sidebarProps = {
     agents,
     selectedId: workspace.sidebarSelectedId,
-    onSelect: (id: string) => { setShowHome(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) },
+    onSelect: (id: string) => { setShowHome(false); setShowTasks(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) },
     onOpenSettings: () => setView("settings"),
     onAgentCreating: workspace.onAgentCreating,
     onAgentCreated: workspace.onAgentCreated,
@@ -250,7 +252,7 @@ export default function App() {
       reviewRequested: submittedPrIds.has(p.id) ? false : p.reviewRequested,
     })) : [],
     selectedPrId: workspace.selectedPrId,
-    onSelectPr: (id: string) => { setShowHome(false); workspace.selectPr(id) },
+    onSelectPr: (id: string) => { setShowHome(false); setShowTasks(false); workspace.selectPr(id) },
     onSwitchToAgents: workspace.switchToAgentView,
     onSwitchToReview: workspace.switchToReviewView,
     prsLoading,
@@ -260,8 +262,10 @@ export default function App() {
     onSelectRefine: (id: string) => { setShowHome(false); setSelectedRefineId(id) },
     onNewRefine: handleNewRefine,
     agentPorts,
-    onHome: () => { setShowHome(true); localStorage.removeItem("huxflux-last-view") },
+    onHome: () => { setShowHome(true); setShowTasks(false); localStorage.removeItem("huxflux-last-view") },
     showHome,
+    onTasks: () => { setShowTasks(true); setShowHome(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "tasks") },
+    showTasks,
     onToggle: toggleSidebar,
     feedbackEnabled,
     bulkReviewingIds: bulkReview.reviewingIds,
@@ -287,7 +291,9 @@ export default function App() {
     />
   )
 
-  const mainContent = showHome ? (
+  const mainContent = showTasks ? (
+    <TasksView />
+  ) : showHome ? (
     <HomeView />
   ) : selectedRefineId ? (
     <div className="flex-1 min-w-0 h-full overflow-hidden flex">
@@ -386,7 +392,7 @@ export default function App() {
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         agents={agents}
-        onSelectAgent={(id) => { setShowHome(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) }}
+        onSelectAgent={(id) => { setShowHome(false); setShowTasks(false); setSelectedRefineId(null); localStorage.setItem("huxflux-last-view", "agent"); workspace.selectAgent(id) }}
       />
       {import.meta.env.DEV && (
         <div data-tauri-drag-region className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">

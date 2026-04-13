@@ -391,6 +391,14 @@ function findNearestDiffLine(patch: string, targetLine: number): number | null {
   return lines.reduce((best, l) => Math.abs(l - targetLine) < Math.abs(best - targetLine) ? l : best, lines[0])
 }
 
+function getDefaultReviewBody(event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"): string {
+  switch (event) {
+    case "APPROVE": return "LGTM"
+    case "REQUEST_CHANGES": return "Changes requested"
+    case "COMMENT": return "Review submitted"
+  }
+}
+
 export async function submitPRReview(
   owner: string,
   repo: string,
@@ -400,23 +408,26 @@ export async function submitPRReview(
   comments: Array<{ path: string; line: number; body: string; start_line?: number }>,
 ): Promise<void> {
   const octokit = getOctokit()
-  // GitHub does not allow inline comments on APPROVE reviews
-  const inlineComments = event === "APPROVE" ? [] : comments
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
+  const mappedComments = comments.map((c) => ({
+    path: c.path,
+    line: c.line,
+    side: "RIGHT" as const,
+    body: c.body,
+    ...(c.start_line && c.start_line !== c.line ? { start_line: c.start_line, start_side: "RIGHT" as const } : {}),
+  }))
+
+  // GitHub 422s if body and comments are both empty — use a fallback body
+  const reviewBody = body || (mappedComments.length === 0 ? getDefaultReviewBody(event) : body)
+
   await octokit.pulls.createReview({
     owner,
     repo,
     pull_number: prNumber,
     commit_id: pr.head.sha,
     event,
-    body,
-    comments: inlineComments.map((c) => ({
-      path: c.path,
-      line: c.line,
-      side: "RIGHT" as const,
-      body: c.body,
-      ...(c.start_line && c.start_line !== c.line ? { start_line: c.start_line, start_side: "RIGHT" as const } : {}),
-    })),
+    body: reviewBody,
+    comments: mappedComments,
   })
 }
 

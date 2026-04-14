@@ -1223,7 +1223,8 @@ function UpdatesSettings() {
       } else {
         setResult("none")
       }
-    } catch {
+    } catch (err) {
+      console.error("[updater] check failed:", err)
       setResult("error")
     } finally {
       setChecking(false)
@@ -1278,7 +1279,7 @@ function UpdatesSettings() {
           <p className="text-[12px] text-emerald-400">You're on the latest version.</p>
         )}
         {result === "error" && (
-          <p className="text-[12px] text-red-400">Failed to check for updates. Check your connection.</p>
+          <p className="text-[12px] text-red-400">Failed to check for updates. No releases found or endpoint unreachable.</p>
         )}
         {result === "available" && updateInfo && (
           <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">

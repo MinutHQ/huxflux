@@ -215,7 +215,7 @@ fi
 # ── Generate latest.json ──────────────────────────────────────────────────────
 
 PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-LATEST_JSON_FILE="/tmp/huxflux-latest-${TAG}.json"
+LATEST_JSON_FILE="/tmp/latest.json"
 
 # Strip trailing comma from last entry
 PLATFORM_ENTRIES="${PLATFORM_ENTRIES%,$'\n'}"$'\n'
@@ -244,13 +244,13 @@ if [[ "$RELEASE_EXISTS" == "false" ]]; then
     --title "Huxflux ${TAG}" \
     --notes "The macOS app is unsigned — right-click the .dmg → Open to bypass Gatekeeper." \
     "${UPLOAD_FILES[@]}" \
-    "$LATEST_JSON_FILE#latest.json"
+    "$LATEST_JSON_FILE"
 else
   GITHUB_TOKEN="" gh release upload "$TAG" \
     --repo "$RELEASES_REPO" \
     --clobber \
     "${UPLOAD_FILES[@]}" \
-    "$LATEST_JSON_FILE#latest.json"
+    "$LATEST_JSON_FILE"
 fi
 
 rm -f "$LATEST_JSON_FILE"

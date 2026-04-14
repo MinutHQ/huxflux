@@ -162,14 +162,16 @@ function handleStreamEvent(
         })
         state.toolCallOrderIdx++
         // Persist tool call to DB immediately so it survives reloads
-        db.insert(toolCallsTable).values({
-          id: block.id,
-          messageId,
-          tool: block.name,
-          args: JSON.stringify(block.input),
-          orderIdx: state.toolCallOrderIdx - 1,
-          precedingText,
-        }).run()
+        try {
+          db.insert(toolCallsTable).values({
+            id: block.id,
+            messageId,
+            tool: block.name,
+            args: JSON.stringify(block.input),
+            orderIdx: state.toolCallOrderIdx - 1,
+            precedingText,
+          }).run()
+        } catch { /* duplicate ID from provider replaying events */ }
         emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
       }
     }
@@ -241,10 +243,12 @@ function handleNormalizedEvent(
       const tc: ToolCall = { id: event.id, tool: event.name, args: JSON.stringify(event.input), precedingText }
       state.collectedToolCalls.push({ id: event.id, tool: event.name, args: JSON.stringify(event.input), precedingText })
       state.toolCallOrderIdx++
-      db.insert(toolCallsTable).values({
-        id: event.id, messageId, tool: event.name,
-        args: JSON.stringify(event.input), orderIdx: state.toolCallOrderIdx - 1, precedingText,
-      }).run()
+      try {
+        db.insert(toolCallsTable).values({
+          id: event.id, messageId, tool: event.name,
+          args: JSON.stringify(event.input), orderIdx: state.toolCallOrderIdx - 1, precedingText,
+        }).run()
+      } catch { /* duplicate ID from provider replaying events */ }
       emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
       break
     }

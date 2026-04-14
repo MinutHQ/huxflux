@@ -199,6 +199,7 @@ export async function getPRDetails(repoUrl: string, prNumber: number): Promise<P
     createdAt: pr.created_at,
     branch: pr.head.ref,
     baseBranch: pr.base.ref,
+    headSha: pr.head.sha,
     state: pr.state as "open" | "closed",
     merged: pr.merged ?? false,
     draft: pr.draft ?? false,

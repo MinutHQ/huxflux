@@ -64,6 +64,7 @@ export interface PRDetails extends PRStatus {
   createdAt: string
   branch: string
   baseBranch: string
+  headSha: string
   reviews: PRReview[]
   checks: PRCheck[]
   threads: PRThread[]
@@ -103,6 +104,7 @@ export interface PRChatMessage {
   role: "user" | "assistant"
   content: string
   isReview: boolean
+  reviewHeadSha?: string
   createdAt: string
 }
 

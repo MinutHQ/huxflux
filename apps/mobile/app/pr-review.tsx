@@ -108,11 +108,11 @@ export default function PRReviewScreen() {
   const closingCheckScale = useRef(new RNAnimated.Value(0)).current
   const listRef = useRef<FlatList>(null)
 
-  // PR details — only fetch when conversations tab is active (slow GitHub API call)
+  // PR details — fetch for conversations tab and to detect outdated reviews
   const { data: prDetails, isLoading: loadingDetails } = useQuery({
     queryKey: ["pr-details-repo", repoId, prNumber],
     queryFn: () => api.getPRDetailsForRepo(repoId, prNumber),
-    enabled: !!repoId && prNumber > 0 && activeTab === "conversations",
+    enabled: !!repoId && prNumber > 0,
     staleTime: 30_000,
   })
 
@@ -248,6 +248,8 @@ export default function PRReviewScreen() {
     : hasChanges ? "Changes requested"
     : readyToMerge ? "Ready to merge"
     : "In review"
+
+  const isReviewOutdated = !!(review.reviewHeadSha && prDetails?.headSha && review.reviewHeadSha !== prDetails.headSha)
 
   // ── Render helpers ──────────────────────────────────────────────────────
 
@@ -392,6 +394,12 @@ export default function PRReviewScreen() {
             }}
             contentContainerStyle={{ paddingBottom: 16 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            ListHeaderComponent={isReviewOutdated && review.hasReviewed ? (
+              <View style={{ marginHorizontal: 16, marginTop: 12, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(234, 179, 8, 0.1)", borderWidth: 1, borderColor: "rgba(234, 179, 8, 0.3)", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Ionicons name="warning-outline" size={14} color="#eab308" />
+                <Text style={{ color: "#eab308", fontSize: 12, flex: 1 }}>New commits pushed since this review — results may be out of date.</Text>
+              </View>
+            ) : null}
             ListEmptyComponent={
               !review.loaded ? (
                 <View style={{ padding: 32, alignItems: "center" }}>

@@ -338,6 +338,7 @@ export async function githubRoutes(app: FastifyInstance) {
               role: "assistant",
               content: accumulatedText,
               isReview: 1,
+              reviewHeadSha: details.headSha,
               createdAt: new Date().toISOString(),
             }).run()
           } catch { /* non-fatal */ }
@@ -506,7 +507,7 @@ export async function githubRoutes(app: FastifyInstance) {
         .where(and(eq(prChatMessages.repoId, repoId), eq(prChatMessages.prNumber, prNumber)))
         .orderBy(asc(prChatMessages.createdAt))
         .all()
-        .map((m) => ({ ...m, isReview: m.isReview === 1 }))
+        .map((m) => ({ ...m, isReview: m.isReview === 1, reviewHeadSha: m.reviewHeadSha ?? undefined }))
     }
   )
 

@@ -331,6 +331,10 @@ const MIGRATIONS: Migration[] = [
     version: 20,
     sql: `ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT 'claude';`,
   },
+  {
+    version: 21,
+    sql: `ALTER TABLE pr_chat_messages ADD COLUMN review_head_sha TEXT;`,
+  },
 ]
 
 export function runMigrations() {

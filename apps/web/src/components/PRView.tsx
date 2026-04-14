@@ -1740,7 +1740,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
   const [currentUser, setCurrentUser] = useState<string | undefined>()
   const [checks, setChecks] = useState<NonNullable<PullRequest["checks"]>>([])
   const [mergeableState, setMergeableState] = useState<string>("")
-  const [prDetails, setPrDetails] = useState<{ title: string; body?: string; author: string; avatarUrl?: string; createdAt: string; url: string } | null>(null)
+  const [prDetails, setPrDetails] = useState<{ title: string; body?: string; author: string; avatarUrl?: string; createdAt: string; url: string; headSha?: string } | null>(null)
+  const [reviewHeadSha, setReviewHeadSha] = useState<string | undefined>()
   const [loadingFiles, setLoadingFiles] = useState(!!pr.repoId)
   const [loadingDetails, setLoadingDetails] = useState(!!pr.repoId)
 
@@ -1900,6 +1901,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         avatarUrl: details.avatarUrl,
         createdAt: details.createdAt,
         url: (details as any).url ?? pr.url ?? "",
+        headSha: details.headSha,
       })
 
       if (!initRef.current) {
@@ -1908,6 +1910,9 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         if (pr.repoId) {
           api.getPRChatMessages(pr.repoId!, pr.number).then((dbMsgs) => {
             if (dbMsgs.length > 0) {
+              // Track the head SHA of the latest review
+              const lastReviewMsg = [...dbMsgs].reverse().find((m) => m.isReview)
+              if (lastReviewMsg?.reviewHeadSha) setReviewHeadSha(lastReviewMsg.reviewHeadSha)
               // Convert DB messages to ChatMessage format
               const converted = dbMsgs.map((m): ChatMessage => {
                 if (m.isReview) {
@@ -2105,6 +2110,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         }
         setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, ...reviewMsg } : m))
         saveReviewCache({ id: msgId, role: "assistant", timestamp: new Date().toISOString(), ...reviewMsg } as ChatMessage)
+        // The review was just run against the current head, so it's up to date
+        if (prDetails?.headSha) setReviewHeadSha(prDetails.headSha)
         const reviewDesc = reviewMsg.verdict === "approve" ? "AI suggests: Approve" : reviewMsg.verdict === "request_changes" ? "AI suggests: Request changes" : `${comments.length} comment${comments.length !== 1 ? "s" : ""}`
         toast.success(`Review ready: ${pr.title}`, { description: reviewDesc })
         if (getSoundEnabled()) playSound(getSoundPref())
@@ -2299,6 +2306,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
   const avatarUrl = prDetails?.avatarUrl ?? pr.authorAvatar
   const prUrl = prDetails?.url ?? pr.url
   const createdAt = prDetails?.createdAt ?? ""
+  const isReviewOutdated = !!(reviewHeadSha && prDetails?.headSha && reviewHeadSha !== prDetails.headSha)
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -2516,6 +2524,12 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
           {!(reviewing && !isRerunRef.current) && (messages.length > 0 || isSending) && (
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <div className="py-3">
+                {isReviewOutdated && hasReviewed && (
+                  <div className="mx-4 mb-3 flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-[12px] text-yellow-400">
+                    <IconAlertTriangle size={14} className="shrink-0" />
+                    <span>New commits have been pushed since this review — results may be out of date.</span>
+                  </div>
+                )}
                 {messages.map((msg) => {
                   if (msg.isReview) {
                     return (

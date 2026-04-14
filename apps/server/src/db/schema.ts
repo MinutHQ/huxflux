@@ -103,6 +103,7 @@ export const prChatMessages = sqliteTable("pr_chat_messages", {
   role: text("role").notNull(),            // "user" | "assistant"
   content: text("content").notNull().default(""),
   isReview: integer("is_review").default(0), // 1 = agentic review result
+  reviewHeadSha: text("review_head_sha"), // PR head SHA at time of review
   createdAt: text("created_at").notNull(),
 })
 

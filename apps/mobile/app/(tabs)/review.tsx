@@ -1,4 +1,4 @@
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable } from "react-native"
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Pressable, Image } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -9,6 +9,8 @@ import { useHydrated } from "../_layout"
 import { useMobilePRs, type MobilePR } from "../../hooks/useMobilePRs"
 import { useBulkReview } from "../../hooks/useBulkReview"
 import { HIDE_REVIEWED_PRS_KEY } from "../../lib/prefs"
+
+const COLLAPSED_REVIEW_SECTIONS_KEY = "huxflux:mobile:collapsed-review-sections"
 
 // ── PR row ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,13 @@ function PRRow({ pr, isReviewing }: { pr: MobilePR; isReviewing: boolean }) {
       style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.border, flexDirection: "row", alignItems: "center", gap: 12 }}
     >
       {isReviewing && <ActivityIndicator size="small" color="#f59e0b" />}
+      {pr.authorAvatar ? (
+        <Image source={{ uri: pr.authorAvatar }} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.secondary }} />
+      ) : (
+        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="person" size={14} color={c.fgSub} />
+        </View>
+      )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }} numberOfLines={1}>{pr.title}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
@@ -72,21 +81,27 @@ function PRRow({ pr, isReviewing }: { pr: MobilePR; isReviewing: boolean }) {
 
 // ── Section header ──────────────────────────────────────────────────────────
 
-function SectionHeader({ title, count }: { title: string; count: number }) {
+function SectionHeader({ title, count, color, collapsed, onToggle }: { title: string; count: number; color: string; collapsed: boolean; onToggle: () => void }) {
   return (
-    <View style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}>
-      <Text style={{ color: c.fgSub, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
+    <Pressable
+      onPress={onToggle}
+      style={{ paddingHorizontal: 14, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
+    >
+      <Ionicons name={collapsed ? "chevron-forward" : "chevron-down"} size={12} color={color} />
+      <Text style={{ color, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>
         {title}
       </Text>
       <Text style={{ color: c.placeholder, fontSize: 11, marginLeft: "auto" }}>{count}</Text>
-    </View>
+    </Pressable>
   )
 }
 
 // ── Main screen ─────────────────────────────────────────────────────────────
 
+type SectionKey = "reRequested" | "toReview" | "reviewed"
+
 type ListItem =
-  | { kind: "section"; title: string; count: number }
+  | { kind: "section"; key: SectionKey; title: string; count: number; color: string }
   | { kind: "pr"; pr: MobilePR }
 
 export default function ReviewScreen() {
@@ -96,6 +111,7 @@ export default function ReviewScreen() {
   const { prs, sections, isLoading, refetch, githubEnabled } = useMobilePRs()
   const [refreshing, setRefreshing] = useState(false)
   const [hideReviewed, setHideReviewed] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<SectionKey>>(new Set(["reviewed"]))
 
   const { reviewingIds, isBulkReviewing, startBulkReview, cancelBulkReview } = useBulkReview(() => {
     refetch()
@@ -106,6 +122,10 @@ export default function ReviewScreen() {
     if (!hydrated) return
     const saved = getStorage().getItem(HIDE_REVIEWED_PRS_KEY)
     if (saved === "true") setHideReviewed(true)
+    const savedCollapsed = getStorage().getItem(COLLAPSED_REVIEW_SECTIONS_KEY)
+    if (savedCollapsed) {
+      try { setCollapsed(new Set(JSON.parse(savedCollapsed) as SectionKey[])) } catch { /* ignore */ }
+    }
   }, [hydrated])
 
   // Persist pref
@@ -113,6 +133,20 @@ export default function ReviewScreen() {
     if (!hydrated) return
     getStorage().setItem(HIDE_REVIEWED_PRS_KEY, String(hideReviewed))
   }, [hydrated, hideReviewed])
+
+  useEffect(() => {
+    if (!hydrated) return
+    getStorage().setItem(COLLAPSED_REVIEW_SECTIONS_KEY, JSON.stringify([...collapsed]))
+  }, [hydrated, collapsed])
+
+  const toggleCollapsed = useCallback((key: SectionKey) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
 
   const server = getActiveServer()
 
@@ -125,23 +159,29 @@ export default function ReviewScreen() {
   const items = useMemo(() => {
     const list: ListItem[] = []
 
-    if (sections.toReview.length > 0) {
-      list.push({ kind: "section", title: "To Review", count: sections.toReview.length })
-      for (const pr of sections.toReview) list.push({ kind: "pr", pr })
+    if (sections.reRequested.length > 0) {
+      list.push({ kind: "section", key: "reRequested", title: "Re-requested", count: sections.reRequested.length, color: "#f59e0b" })
+      if (!collapsed.has("reRequested")) {
+        for (const pr of sections.reRequested) list.push({ kind: "pr", pr })
+      }
     }
 
-    if (sections.reRequested.length > 0) {
-      list.push({ kind: "section", title: "Re-requested", count: sections.reRequested.length })
-      for (const pr of sections.reRequested) list.push({ kind: "pr", pr })
+    if (sections.toReview.length > 0) {
+      list.push({ kind: "section", key: "toReview", title: "To Review", count: sections.toReview.length, color: "#60a5fa" })
+      if (!collapsed.has("toReview")) {
+        for (const pr of sections.toReview) list.push({ kind: "pr", pr })
+      }
     }
 
     if (!hideReviewed && sections.reviewed.length > 0) {
-      list.push({ kind: "section", title: "Reviewed", count: sections.reviewed.length })
-      for (const pr of sections.reviewed) list.push({ kind: "pr", pr })
+      list.push({ kind: "section", key: "reviewed", title: "Reviewed", count: sections.reviewed.length, color: c.fgSub })
+      if (!collapsed.has("reviewed")) {
+        for (const pr of sections.reviewed) list.push({ kind: "pr", pr })
+      }
     }
 
     return list
-  }, [sections, hideReviewed])
+  }, [sections, hideReviewed, collapsed])
 
   if (!hydrated || isLoading) {
     return (
@@ -254,12 +294,20 @@ export default function ReviewScreen() {
       <FlatList
         data={items}
         keyExtractor={(item) => {
-          if (item.kind === "section") return `s-${item.title}`
+          if (item.kind === "section") return `s-${item.key}`
           return item.pr.id
         }}
         renderItem={({ item }) => {
           if (item.kind === "section") {
-            return <SectionHeader title={item.title} count={item.count} />
+            return (
+              <SectionHeader
+                title={item.title}
+                count={item.count}
+                color={item.color}
+                collapsed={collapsed.has(item.key)}
+                onToggle={() => toggleCollapsed(item.key)}
+              />
+            )
           }
           return <PRRow pr={item.pr} isReviewing={reviewingIds.has(item.pr.id)} />
         }}

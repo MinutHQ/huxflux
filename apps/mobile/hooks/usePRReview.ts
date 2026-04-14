@@ -135,6 +135,13 @@ export function usePRReview(repoId: string, prNumber: number) {
     return filterToLatestRound(converted)
   }, [serverMessages, patches])
 
+  // Track the head SHA the latest review was based on
+  const reviewHeadSha = useMemo(() => {
+    if (!serverMessages) return undefined
+    const lastReview = [...serverMessages].reverse().find((m) => m.isReview)
+    return lastReview?.reviewHeadSha
+  }, [serverMessages])
+
   const messages = localMessages.length > 0 ? localMessages : serverConverted
   const hasReviewed = messages.some((m) => m.isReview && m.comments && m.comments.length > 0)
   const loaded = !isLoading
@@ -245,6 +252,7 @@ export function usePRReview(repoId: string, prNumber: number) {
     isSending,
     hasReviewed,
     loaded,
+    reviewHeadSha,
     triggerReview,
     sendChat,
     updateCommentStatus,

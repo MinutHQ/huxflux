@@ -67,6 +67,7 @@ export interface PRDetails extends PRStatus {
   createdAt: string
   branch: string
   baseBranch: string
+  headSha: string
   reviews: PRReview[]
   checks: PRCheck[]
   threads: PRThread[]

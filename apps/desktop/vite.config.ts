@@ -15,7 +15,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(webRoot, 'src'),
     },
-    dedupe: ["react", "react-dom", "@tanstack/react-query"],
+    dedupe: ["react", "react-dom", "@tanstack/react-query", "@tanstack/react-router"],
   },
   server: {
     port: 1420,

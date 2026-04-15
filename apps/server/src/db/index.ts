@@ -394,7 +394,6 @@ const MIGRATIONS: Migration[] = [
     version: 24,
     sql: `ALTER TABLE agents ADD COLUMN task_id TEXT;`,
   },
-  {
 ]
 
 export function runMigrations() {

@@ -6,10 +6,11 @@ import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import { statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
 import type { PullRequest } from "@/data/mockReviews"
-import type { PendingAgent } from "@/hooks/useWorkspace"
+// PendingAgent/DeletingAgent types are inferred from useWorkspaceContext
 import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
-import { useQueryClient, useQuery } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
+import { useNavigate, useMatchRoute } from "@tanstack/react-router"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
@@ -17,6 +18,7 @@ import { getFlag } from "@/lib/flags"
 import { openExternal, handleExternalClick } from "@/lib/platform"
 import { toast } from "sonner"
 import { TitleBar } from "@/components/TitleBar"
+import { useWorkspaceContext } from "@/hooks/useWorkspaceContext"
 import {
   IconChevronRight,
   IconPlus,
@@ -1459,31 +1461,12 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
 
 interface SidebarProps {
   agents: AgentSummary[]
-  selectedId: string
-  onSelect: (id: string) => void
   onOpenSettings: () => void
-  onAgentCreating: (info: PendingAgent) => void
-  onAgentCreated: (id: string) => void
-  clearPendingAgent: () => void
-  pendingAgent: PendingAgent | null
-  onAgentDeleting: (agentId: string, info: { title: string; branch: string; repoName: string }) => void
-  clearDeletingAgent: () => void
   prs: PullRequest[]
   prsLoading?: boolean
   onRefetchPRs?: () => void
-  selectedPrId: string | null
-  onSelectPr: (id: string) => void
-  onSwitchToAgents?: () => void
-  onSwitchToReview?: () => void
   refineSessions?: RefineSession[]
-  selectedRefineId?: string | null
-  onSelectRefine?: (id: string) => void
   onNewRefine?: (ticketId: string) => void
-  agentPorts?: Record<string, number | null>
-  onHome?: () => void
-  showHome?: boolean
-  onTasks?: () => void
-  showTasks?: boolean
   onToggle?: () => void
   feedbackEnabled?: boolean
   bulkReviewingIds?: Set<string>
@@ -1494,7 +1477,7 @@ interface SidebarProps {
   onBulkReviewConcurrencyChange?: (n: number) => void
 }
 
-export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentCreating, onAgentCreated, clearPendingAgent, pendingAgent, onAgentDeleting, clearDeletingAgent, prs, prsLoading = false, onRefetchPRs, selectedPrId, onSelectPr, onSwitchToAgents, onSwitchToReview, refineSessions = [], selectedRefineId, onSelectRefine, onNewRefine, agentPorts = {}, onHome, showHome = false, onTasks, showTasks = false, onToggle, feedbackEnabled = false, bulkReviewingIds = new Set(), isBulkReviewing = false, onBulkReview, onCancelBulkReview, bulkReviewConcurrency = 5, onBulkReviewConcurrencyChange }: SidebarProps) {
+export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRefetchPRs, refineSessions = [], onNewRefine, onToggle, feedbackEnabled = false, bulkReviewingIds = new Set(), isBulkReviewing = false, onBulkReview, onCancelBulkReview, bulkReviewConcurrency = 5, onBulkReviewConcurrencyChange }: SidebarProps) {
   const [hoveredAgent, setHoveredAgent] = useState<{ agent: AgentSummary; y: number } | null>(null)
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
@@ -1531,6 +1514,27 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
   const sidebarContainerRef = useRef<HTMLDivElement>(null)
   const { data: repos = [] } = useRepos()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const matchRoute = useMatchRoute()
+  const workspace = useWorkspaceContext()
+
+  // Derive active state from route
+  const showHome = !!matchRoute({ to: "/", fuzzy: false })
+  const showTasks = !!matchRoute({ to: "/tasks", fuzzy: true })
+  const agentMatch = matchRoute({ to: "/agent/$agentId", fuzzy: false }) as { agentId: string } | false
+  const selectedId = agentMatch ? agentMatch.agentId : ""
+  const reviewMatch = matchRoute({ to: "/review/$prId", fuzzy: false }) as { prId: string } | false
+  const selectedPrId = reviewMatch ? reviewMatch.prId : null
+  const refineMatch = matchRoute({ to: "/refine/$sessionId", fuzzy: false }) as { sessionId: string } | false
+  const selectedRefineId = refineMatch ? refineMatch.sessionId : null
+
+  const { pendingAgent, onAgentCreating, onAgentCreated, clearPendingAgent, onAgentDeleting, clearDeletingAgent } = workspace
+  const agentPorts: Record<string, number | null> = {}
+
+  // Navigation helpers
+  const onSelect = (id: string) => navigate({ to: "/agent/$agentId", params: { agentId: id } })
+  const onSelectPr = (id: string) => navigate({ to: "/review/$prId", params: { prId: id } })
+  const onSelectRefine = (id: string) => navigate({ to: "/refine/$sessionId", params: { sessionId: id } })
 
   useEffect(() => {
     function onOpenShortcuts() { setShowShortcuts(true) }
@@ -1599,6 +1603,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
     const repoName = repos.find(r => r.id === repoId)?.name ?? ""
     const savedMs = getWorktreeDuration(repoId)
     onAgentCreating({ title, branch, repoName, estimatedMs: savedMs })
+    navigate({ to: "/agent/setup" })
     const t0 = Date.now()
     try {
       const agent = await api.createAgent({
@@ -1610,15 +1615,18 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
       })
       saveWorktreeDuration(repoId, Date.now() - t0)
       onAgentCreated(agent.id)
+      navigate({ to: "/agent/$agentId", params: { agentId: agent.id } })
     } catch (err) {
       toast.error((err as Error).message || "Failed to create agent")
       clearPendingAgent()
+      navigate({ to: "/" })
     }
   }
 
   function handleDeleteAgent(agent: AgentSummary) {
     const repoName = agent.repoId ? (repos.find(r => r.id === agent.repoId)?.name ?? "") : ""
     onAgentDeleting(agent.id, { title: agent.title, branch: agent.branch, repoName })
+    navigate({ to: "/agent/teardown" })
     // Tombstone the id so a late `agent:updated` event can't resurrect it
     // before the server's `agent:deleted` broadcast arrives.
     markAgentDeleted(agent.id)
@@ -1633,7 +1641,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
       toast.error(`Delete failed: ${err instanceof Error ? err.message : "unknown"}`)
     )
     // Clear animation after it finishes
-    setTimeout(() => clearDeletingAgent(), 1500)
+    setTimeout(() => { clearDeletingAgent(); navigate({ to: "/" }) }, 1500)
   }
 
   function handleArchiveAll(status: AgentStatus) {
@@ -1660,28 +1668,26 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
         <TitleBar />
 
         {/* Home button */}
-        {onHome && (
-          <div className="px-2 pt-2 shrink-0">
-            <button
-              onClick={onHome}
-              className={cn(
-                "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
-                showHome
-                  ? "bg-sidebar-accent text-foreground"
-                  : "text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-accent/50"
-              )}
-            >
-              <IconHome size={14} />
-              Home
-            </button>
-          </div>
-        )}
+        <div className="px-2 pt-2 shrink-0">
+          <button
+            onClick={() => navigate({ to: "/" })}
+            className={cn(
+              "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+              showHome
+                ? "bg-sidebar-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-accent/50"
+            )}
+          >
+            <IconHome size={14} />
+            Home
+          </button>
+        </div>
 
         {/* Tasks button (experimental) */}
-        {tasksEnabled && onTasks && (
+        {tasksEnabled && (
           <div className="px-2 pt-1 shrink-0">
             <button
-              onClick={onTasks}
+              onClick={() => navigate({ to: "/tasks" })}
               className={cn(
                 "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
                 showTasks
@@ -1699,7 +1705,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
         {(prReviewEnabled || refineEnabled) && (
           <div className="px-2 pt-2 pb-1.5 flex gap-1 shrink-0">
             <button
-              onClick={() => { setTab("agents"); onSwitchToAgents?.() }}
+              onClick={() => { setTab("agents") }}
               className={cn(
                 "flex-1 py-1 rounded-md text-[12px] font-medium transition-colors",
                 tab === "agents"
@@ -1711,7 +1717,7 @@ export function Sidebar({ agents, selectedId, onSelect, onOpenSettings, onAgentC
             </button>
             {prReviewEnabled && (
               <button
-                onClick={() => { setTab("review"); onSwitchToReview?.() }}
+                onClick={() => { setTab("review") }}
                 className={cn(
                   "flex-1 py-1 rounded-md text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5",
                   tab === "review"

@@ -715,13 +715,13 @@ function RefinementStartInput({ onSend }: { onSend: (content: string) => void })
 
 // ── Main View ────────────────────────────────────────────────────────────────
 
-export function TasksView() {
+export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
   const queryClient = useQueryClient()
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ["tasks"],
     queryFn: () => api.getTasks(),
   })
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId ?? null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [addingTask, setAddingTask] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState("")

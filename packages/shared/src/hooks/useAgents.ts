@@ -44,6 +44,14 @@ export function useAgents() {
         return old.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
       })
     }
+    if (event.type === "message:done") {
+      const agentId = (event as { agentId?: string }).agentId
+      if (agentId) {
+        queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+          old ? old.map((a) => a.id === agentId ? { ...a, streaming: false } : a) : old
+        )
+      }
+    }
     if (event.type === "agent:deleted") {
       markAgentDeleted(event.agentId)
       queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>

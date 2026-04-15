@@ -47,8 +47,6 @@ export function useWorkspace(agents: AgentSummary[]) {
           ?? localStorage.getItem(serverKey("huxflux-active-agent"))
     } catch { return null }
   })
-  const [selectedPrId, setSelectedPrId] = useState<string | null>(null)
-  const [lastPrId, setLastPrId] = useState<string | null>(null)
   const lastAgentId = useRef<string | null>(null)
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
@@ -141,32 +139,8 @@ export function useWorkspace(agents: AgentSummary[]) {
       }).catch(() => {})
     }
     setJustDeleted(false)
-    setSelectedPrId(null)
     setOpenFileTab(null)
     setPendingComments([])
-  }
-
-  function selectPr(id: string) {
-    if (activeTabId) lastAgentId.current = activeTabId
-    setLastPrId(id)
-    setSelectedPrId(id)
-    setTabs([])
-    setActiveTabId(null)
-    setOpenFileTab(null)
-  }
-
-  function switchToAgentView() {
-    const targetId = lastAgentId.current ?? agents[0]?.id
-    if (targetId) selectAgent(targetId)
-  }
-
-  function switchToReviewView() {
-    if (lastPrId) {
-      selectPr(lastPrId)
-    } else {
-      setActiveTabId(null)
-      setSelectedPrId(null)
-    }
   }
 
   function selectTab(agentId: string) {
@@ -249,7 +223,6 @@ export function useWorkspace(agents: AgentSummary[]) {
 
   function onAgentCreating(info: PendingAgent) {
     setPendingAgent(info)
-    setSelectedPrId(null)
   }
 
   function clearPendingAgent() {
@@ -263,7 +236,6 @@ export function useWorkspace(agents: AgentSummary[]) {
     setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
     setActiveTabId(id)
     setRootAgentId(id)
-    setSelectedPrId(null)
   }
 
   // Validate restored activeTabId — clear if it no longer exists in agents OR current tabs.
@@ -279,7 +251,7 @@ export function useWorkspace(agents: AgentSummary[]) {
   // Don't auto-select an agent during or right after a deletion
   const resolvedActiveId = (deletingAgent || justDeleted)
     ? null
-    : activeTabId ?? (selectedPrId ? null : agents[0]?.id ?? null)
+    : activeTabId ?? agents[0]?.id ?? null
   const sidebarSelectedId = tabs.length > 0 ? tabs[0].agentId : ""
 
   return {
@@ -288,7 +260,6 @@ export function useWorkspace(agents: AgentSummary[]) {
     rootAgentId,
     resolvedActiveId,
     sidebarSelectedId,
-    selectedPrId,
     openFileTab,
     pendingComments,
     pendingAgent,
@@ -298,9 +269,6 @@ export function useWorkspace(agents: AgentSummary[]) {
     setOpenFileTab,
     setPendingComments,
     selectAgent,
-    selectPr,
-    switchToAgentView,
-    switchToReviewView,
     selectTab,
     closeTab,
     createTab,

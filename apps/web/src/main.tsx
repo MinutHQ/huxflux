@@ -14,7 +14,8 @@ watchSystemTheme()
 if (!!import.meta.env.TAURI_PLATFORM || '__TAURI_INTERNALS__' in window) {
   document.documentElement.classList.add("tauri")
 }
-import App from "./App.tsx"
+import { RouterProvider } from "@tanstack/react-router"
+import { createAppRouter } from "./router"
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
 
 // Initialize shared library with web-specific platform adapters
@@ -29,11 +30,13 @@ const queryClient = new QueryClient({
   },
 })
 
+const router = createAppRouter(queryClient)
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <RouterProvider router={router} />
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>

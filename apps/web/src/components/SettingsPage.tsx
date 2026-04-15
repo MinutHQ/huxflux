@@ -52,7 +52,7 @@ import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
 import { parseConnectionString, type HuxfluxServer } from "@huxflux/shared"
 
-type Section =
+export type Section =
   | "general"
   | "models"
   | "providers"
@@ -2145,17 +2145,24 @@ export function QuickStartDialog({ onClose, onAdded }: { onClose: () => void; on
 
 interface SettingsPageProps {
   onBack: () => void
+  section?: Section
+  repoId?: string | null
+  onSectionChange?: (section: Section) => void
+  onRepoChange?: (repoId: string | null) => void
 }
 
-export function SettingsPage({ onBack }: SettingsPageProps) {
-  const [section, setSection] = useState<Section>("general")
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null)
+export function SettingsPage({ onBack, section: sectionProp, repoId: repoIdProp, onSectionChange, onRepoChange }: SettingsPageProps) {
+  const [sectionLocal, setSectionLocal] = useState<Section>("general")
+  const [selectedRepoIdLocal, setSelectedRepoIdLocal] = useState<string | null>(null)
+  const section = sectionProp ?? sectionLocal
+  const selectedRepoId = repoIdProp !== undefined ? repoIdProp : selectedRepoIdLocal
+  const setSection = onSectionChange ?? setSectionLocal
+  const setSelectedRepoId = onRepoChange ?? setSelectedRepoIdLocal
   const [showAddRepo, setShowAddRepo] = useState(false)
   const { data: repos = [] } = useRepos()
 
   function handleSectionClick(id: Section) {
     setSection(id)
-    setSelectedRepoId(null)
   }
 
   const activeRepo = selectedRepoId ? repos.find((r) => r.id === selectedRepoId) : null

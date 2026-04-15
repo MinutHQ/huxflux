@@ -1,10 +1,10 @@
 // Canonical derivation of "is this agent currently streaming".
 //
-// Two-factor: the server's streaming flag (projection of the in-memory
-// runningProcesses Map + startup reset + API override) AND, when messages are
-// available, the last assistant message not yet having a durationMs. Either
-// factor falsy → not streaming. This eliminates the drift between "server
-// thinks it's running" and "the message is already finalized on disk".
+// Two-factor: the DB streaming flag (set to 1 when the CLI spawns, cleared
+// to 0 when it exits) AND, when messages are available, the last assistant
+// message not yet having a durationMs. Either factor falsy → not streaming.
+// The durationMs check prevents showing a loading indicator when the agent
+// is between turns (e.g. processing tool results before the next response).
 
 interface MinimalMessage {
   role: string

@@ -891,28 +891,17 @@ function extractLatestTodos(messages: Message[]): TodoItem[] {
 function TasksBar({ todos, agentId, isStreaming }: { todos: TodoItem[]; agentId: string; isStreaming?: boolean }) {
   const storageKey = `huxflux-tasks-dismissed-${agentId}`
   const [collapsed, setCollapsed] = useState(false)
-  const [dismissed, setDismissed] = useState(() => {
-    const stored = localStorage.getItem(storageKey)
-    return stored !== null && parseInt(stored) >= todos.length
-  })
-  const prevCountRef = useRef(todos.length)
-
-  useEffect(() => {
-    if (todos.length > prevCountRef.current) {
-      prevCountRef.current = todos.length
-      localStorage.removeItem(storageKey)
-      setDismissed(false)
-    } else {
-      prevCountRef.current = todos.length
-    }
-  }, [todos.length, storageKey])
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === "true")
 
   function handleDismiss() {
-    localStorage.setItem(storageKey, String(todos.length))
+    localStorage.setItem(storageKey, "true")
     setDismissed(true)
   }
 
-  if (dismissed || todos.length === 0 || (!isStreaming && todos.every((t) => t.status === "completed" || t.status === "pending"))) return null
+  if (dismissed || todos.length === 0) return null
+
+  const allDone = todos.every((t) => t.status === "completed")
+  if (allDone && !isStreaming) return null
 
   const doneCount = todos.filter((t) => t.status === "completed").length
   const inProgressCount = todos.filter((t) => t.status === "in_progress").length

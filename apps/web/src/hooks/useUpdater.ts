@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { isTauri } from "@/lib/platform"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,16 +55,19 @@ export function useUpdater(): UpdaterState {
         }
       })
       // Update installed — try to relaunch
+      console.log("[updater] download+install complete, attempting relaunch")
       try {
         const { relaunch } = await import("@tauri-apps/plugin-process")
         await relaunch()
       } catch (err) {
         console.error("[updater] relaunch failed:", err)
+        toast.error("Relaunch failed", { description: `${err}. Quit and reopen manually.`, duration: 10000 })
         setNeedsManualRestart(true)
         setIsInstalling(false)
       }
     } catch (err) {
       console.error("[updater] download/install failed:", err)
+      toast.error("Update failed", { description: `${err}`, duration: 10000 })
       setIsInstalling(false)
       setProgress(null)
     }

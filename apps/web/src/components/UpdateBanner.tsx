@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { IconX, IconDownload, IconClock } from "@tabler/icons-react"
+import { IconX, IconDownload, IconClock, IconCheck } from "@tabler/icons-react"
 
 interface UpdateBannerProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7,10 +7,11 @@ interface UpdateBannerProps {
   isInstalling: boolean
   progress: number | null
   isIdle: boolean
+  needsManualRestart?: boolean
   onInstall: () => void
 }
 
-export function UpdateBanner({ update, isInstalling, progress, isIdle, onInstall }: UpdateBannerProps) {
+export function UpdateBanner({ update, isInstalling, progress, isIdle, needsManualRestart, onInstall }: UpdateBannerProps) {
   const [dismissed, setDismissed] = useState(false)
   const [pendingIdle, setPendingIdle] = useState(false)
 
@@ -27,7 +28,21 @@ export function UpdateBanner({ update, isInstalling, progress, isIdle, onInstall
     <div data-tauri-drag-region className="flex items-center gap-3 px-4 py-2 bg-primary text-primary-foreground text-[12px] shrink-0">
       <IconDownload size={13} className="shrink-0" />
 
-      {isInstalling ? (
+      {needsManualRestart ? (
+        <>
+          <IconCheck size={13} className="shrink-0" />
+          <span className="flex-1 min-w-0">
+            Update installed. Quit and reopen Huxflux to finish updating.
+          </span>
+          <button
+            aria-label="Dismiss"
+            onClick={() => setDismissed(true)}
+            className="shrink-0 text-primary-foreground/60 hover:text-primary-foreground transition-colors"
+          >
+            <IconX size={13} />
+          </button>
+        </>
+      ) : isInstalling ? (
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <span className="shrink-0">
             {progress === 100 ? "Restarting…" : `Downloading update… ${progress ?? 0}%`}

@@ -8,6 +8,7 @@ interface UpdaterState {
   update: Update | null
   isInstalling: boolean
   progress: number | null  // 0–100
+  needsManualRestart: boolean
   downloadAndInstall: () => Promise<void>
 }
 
@@ -15,6 +16,7 @@ export function useUpdater(): UpdaterState {
   const [update, setUpdate] = useState<Update | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
+  const [needsManualRestart, setNeedsManualRestart] = useState(false)
 
   useEffect(() => {
     if (!isTauri) return
@@ -51,13 +53,21 @@ export function useUpdater(): UpdaterState {
           setProgress(100)
         }
       })
-      const { relaunch } = await import("@tauri-apps/plugin-process")
-      await relaunch()
-    } catch {
+      // Update installed — try to relaunch
+      try {
+        const { relaunch } = await import("@tauri-apps/plugin-process")
+        await relaunch()
+      } catch (err) {
+        console.error("[updater] relaunch failed:", err)
+        setNeedsManualRestart(true)
+        setIsInstalling(false)
+      }
+    } catch (err) {
+      console.error("[updater] download/install failed:", err)
       setIsInstalling(false)
       setProgress(null)
     }
   }
 
-  return { update, isInstalling, progress, downloadAndInstall }
+  return { update, isInstalling, progress, needsManualRestart, downloadAndInstall }
 }

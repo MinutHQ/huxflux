@@ -67,6 +67,17 @@ fi
 
 TARGET_DIR="$REPO_ROOT/apps/desktop/src-tauri/target"
 
+# ── Bump version in tauri.conf.json ──────────────────────────────────────────
+
+TAURI_CONF="$REPO_ROOT/apps/desktop/src-tauri/tauri.conf.json"
+CURRENT_TAURI_VERSION="$(grep -o '"version": "[^"]*"' "$TAURI_CONF" | head -1 | cut -d'"' -f4)"
+if [[ "$CURRENT_TAURI_VERSION" != "$VERSION" ]]; then
+  echo "==> Bumping tauri.conf.json version: $CURRENT_TAURI_VERSION → $VERSION"
+  sed -i '' "s/\"version\": \"${CURRENT_TAURI_VERSION}\"/\"version\": \"${VERSION}\"/" "$TAURI_CONF"
+  git -C "$REPO_ROOT" add "$TAURI_CONF"
+  git -C "$REPO_ROOT" commit -m "chore: bump desktop version to ${VERSION}"
+fi
+
 # Accumulate files to upload and latest.json platform entries
 UPLOAD_FILES=()
 PLATFORM_ENTRIES=""

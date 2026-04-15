@@ -222,7 +222,7 @@ PLATFORM_ENTRIES="${PLATFORM_ENTRIES%,$'\n'}"$'\n'
 
 cat > "$LATEST_JSON_FILE" <<JSON
 {
-  "version": "${TAG}",
+  "version": "${VERSION}",
   "notes": "",
   "pub_date": "${PUB_DATE}",
   "platforms": {

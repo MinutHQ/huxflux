@@ -21,6 +21,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
 // Initialize shared library with web-specific platform adapters
 configureStorage(localStorage)
 configureAgentErrorHandler((message) => {
+  if (/abort/i.test(message)) return
   toast.error("Agent error", { description: message, duration: 6000 })
 })
 

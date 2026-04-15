@@ -333,8 +333,8 @@ const MIGRATIONS: Migration[] = [
   },
   {
     version: 21,
-    sql: `ALTER TABLE pr_chat_messages ADD COLUMN review_head_sha TEXT;`,
     sql: `
+      ALTER TABLE pr_chat_messages ADD COLUMN review_head_sha TEXT;
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         parent_id TEXT,

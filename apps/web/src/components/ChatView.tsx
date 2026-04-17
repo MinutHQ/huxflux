@@ -9,6 +9,7 @@ import { api, getApiBase, getActiveServer } from "@huxflux/shared"
 import { isTauri, handleExternalClick } from "@/lib/platform"
 import { getFlag } from "@/lib/flags"
 import { DiffView } from "@/components/DiffView"
+import { StackedDiffView, PRView as PRTabView } from "@/components/FileChangesView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -51,6 +52,7 @@ import {
   IconTerminal,
   IconDatabase,
   IconClipboard,
+  IconGitPullRequest,
 } from "@tabler/icons-react"
 import type { AgentSummary } from "@/data/mock"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
@@ -1058,6 +1060,31 @@ const MarkdownContent = React.memo(function MarkdownContent({ content }: { conte
 // ── Typing indicator ──────────────────────────────────────────────────────────
 
 // ── AskUserQuestion card ─────────────────────────────────────────────────────
+
+function CloseTabButton({ onConfirm }: { onConfirm: () => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <span
+          role="button"
+          onClick={(e) => e.stopPropagation()}
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-foreground transition-all"
+        >
+          <IconX size={11} />
+        </span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-3" sideOffset={4} onClick={(e) => e.stopPropagation()}>
+        <p className="text-[12px] text-foreground font-medium mb-1">Close tab?</p>
+        <p className="text-[11px] text-muted-foreground mb-3">The conversation will be permanently deleted.</p>
+        <div className="flex items-center gap-2 justify-end">
+          <Button variant="ghost" size="xs" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="destructive" size="xs" onClick={() => { setOpen(false); onConfirm() }}>Delete</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 function AskUserQuestionCard({
   questions,
@@ -2250,11 +2277,13 @@ interface ChatViewProps {
   onClearPendingQuestion?: () => void
   /** Hide the header bar and tab bar — used for embedded views like task refinement */
   hideChrome?: boolean
+  /** Hide only the top metadata bar (branches, open-in) — used when header is rendered externally */
+  hideHeader?: boolean
   /** Create a new tab and send an initial message to it */
   onNewTabWithMessage?: (message: string) => void
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, onNewTabWithMessage }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, hideHeader = false, onNewTabWithMessage }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2284,7 +2313,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const inputRef = useRef(input)
   inputRef.current = input
   const prevAgentIdRef = useRef<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"chat" | "file">("chat")
+  const [activeTab, setActiveTab] = useState<"chat" | "file" | "diff-browser" | "pr">("chat")
   const [effort, setEffort] = useState<"" | "low" | "medium" | "high" | "max">("")
   const [isSending, setIsSending] = useState(false)
   const [messageQueue, setMessageQueue] = useState<Array<{ id: string; agentId: string; display: string; api: string; planMode?: boolean }>>([])
@@ -2753,7 +2782,9 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   }, [isStreaming, agent.id])
 
   useEffect(() => {
-    if (openFileTab) setActiveTab("file")
+    if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")
+    else if (openFileTab?.type === "pr") setActiveTab("pr")
+    else if (openFileTab) setActiveTab("file")
   }, [openFileTab])
 
   // Debounce-save draft on any input change (catches slash/mention completions too)
@@ -2854,7 +2885,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   return (
     <div className="flex flex-col h-full bg-background relative">
       {/* Top metadata bar */}
-      {!hideChrome && <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+      {!hideChrome && !hideHeader && <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
           <>
             <span className="text-[12px] text-muted-foreground/50 font-medium truncate shrink-0 max-w-[120px]">{repoName}</span>
@@ -3051,7 +3082,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       </div>}
 
       {/* Tab bar */}
-      {!hideChrome && <div className="flex items-center border-b border-border shrink-0 px-2 overflow-x-auto">
+      {!hideChrome && <div className="relative flex items-center shrink-0 px-2 pb-1.5 pt-1 overflow-x-auto gap-1">
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-foreground/[0.04] to-transparent pointer-events-none" />
         {tabs.length > 1 ? (
           // Multi-tab mode: show each agent as a tab
           tabs.map((tab) => {
@@ -3062,10 +3094,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                 key={tab.agentId}
                 onClick={() => { onTabSelect?.(tab.agentId); setActiveTab("chat") }}
                 className={cn(
-                  "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer shrink-0",
+                  "group flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer shrink-0",
                   isActive
-                    ? "border-foreground text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
                 )}
               >
                 <IconSparkles size={12} className="shrink-0" />
@@ -3098,14 +3130,8 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                     <IconPencil size={11} />
                   </button>
                 )}
-                {tabs.length > 1 && (
-                  <span
-                    role="button"
-                    onClick={(e) => { e.stopPropagation(); onTabClose?.(tab.agentId) }}
-                    className="opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-foreground transition-all"
-                  >
-                    <IconX size={11} />
-                  </span>
+                {tab.isChild && (
+                  <CloseTabButton onConfirm={() => onTabClose?.(tab.agentId)} />
                 )}
               </div>
             )
@@ -3115,10 +3141,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           <div
             onClick={() => setActiveTab("chat")}
             className={cn(
-              "group flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px cursor-pointer",
+              "group flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer",
               activeTab === "chat"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
             )}
           >
             <IconSparkles size={12} className="shrink-0" />
@@ -3149,14 +3175,56 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
           </div>
         )}
 
-        {openFileTab && (
+        {openFileTab && openFileTab.type === "diff-browser" && (
+          <button
+            onClick={() => setActiveTab("diff-browser")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap shrink-0",
+              activeTab === "diff-browser"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            <IconFileCode size={12} />
+            <span>All changes</span>
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); closeFileTab() }}
+              className="ml-1 text-muted-foreground/40 hover:text-foreground transition-colors"
+            >
+              <IconX size={11} />
+            </span>
+          </button>
+        )}
+        {openFileTab && openFileTab.type === "pr" && (
+          <button
+            onClick={() => setActiveTab("pr")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap shrink-0",
+              activeTab === "pr"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            <IconGitPullRequest size={12} />
+            <span>Pull request</span>
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); closeFileTab() }}
+              className="ml-1 text-muted-foreground/40 hover:text-foreground transition-colors"
+            >
+              <IconX size={11} />
+            </span>
+          </button>
+        )}
+        {openFileTab && openFileTab.type !== "diff-browser" && openFileTab.type !== "pr" && (
           <button
             onClick={() => setActiveTab("file")}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px shrink-0",
+              "flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap shrink-0",
               activeTab === "file"
-                ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
             )}
           >
             <IconFileCode size={12} />
@@ -3181,7 +3249,21 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
       </div>}
 
       {/* Content */}
-      {activeTab === "file" && openFileTab ? (
+      {activeTab === "pr" ? (
+        <div className="flex-1 min-h-0">
+          <PRTabView agentId={agent.id} onAddComment={() => {}} />
+        </div>
+      ) : activeTab === "diff-browser" ? (
+        <div className="flex-1 min-h-0">
+          <StackedDiffView
+            agentId={agent.id}
+            fileChanges={agent.fileChanges}
+            search=""
+            showFileList
+            onOpenFile={() => {}}
+          />
+        </div>
+      ) : activeTab === "file" && openFileTab && openFileTab.type !== "diff-browser" ? (
         <div className="flex-1 min-h-0">
           {openFileTab.type === "diff" ? (
             <DiffView agentId={agent.id} file={openFileTab.file} />

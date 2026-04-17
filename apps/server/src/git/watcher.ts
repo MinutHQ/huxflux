@@ -1,5 +1,6 @@
 import chokidar, { type FSWatcher } from "chokidar"
 import { simpleGit } from "simple-git"
+import * as fs from "node:fs"
 import { getFileChanges } from "./worktrees.js"
 import { emit, broadcast } from "../ws/handler.js"
 import { db } from "../db/index.js"
@@ -17,6 +18,12 @@ const DEBOUNCE_MS = 600
 
 async function refresh(agentId: string, worktreePath: string, branchFrom: string) {
   try {
+    // Worktree may have been deleted (child agent removed) — stop watching
+    if (!fs.existsSync(worktreePath)) {
+      unwatchWorktree(agentId)
+      return
+    }
+
     const [files, branchSummary] = await Promise.all([
       getFileChanges(worktreePath, branchFrom),
       simpleGit(worktreePath).branch().catch(() => null),

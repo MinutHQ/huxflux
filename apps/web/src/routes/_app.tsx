@@ -172,21 +172,23 @@ function AppLayout() {
             <Sidebar {...sidebarProps} />
           </ResizablePanel>
 
-          <ResizableHandle />
+          <ResizableHandle className="w-0 bg-transparent" />
 
-          <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="flex min-w-0 relative">
-            {sidebarCollapsed && (
-              <button
-                onClick={toggleSidebar}
-                title="Show sidebar (⌘B)"
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
-              >
-                <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 1l6 5-6 5" />
-                </svg>
-              </button>
-            )}
-            <Outlet />
+          <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10 py-1 pr-1">
+            <div className="flex h-full bg-background rounded-xl shadow-[-4px_0_16px_-4px_rgba(0,0,0,0.12)] overflow-hidden">
+              {sidebarCollapsed && (
+                <button
+                  onClick={toggleSidebar}
+                  title="Show sidebar (⌘B)"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
+                >
+                  <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 1l6 5-6 5" />
+                  </svg>
+                </button>
+              )}
+              <Outlet />
+            </div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </WorkspaceProvider>

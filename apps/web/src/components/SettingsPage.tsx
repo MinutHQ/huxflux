@@ -48,6 +48,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react"
 import { getFlag, setFlag } from "@/lib/flags"
+import { getDiffViewMode, setDiffViewMode, type DiffViewMode } from "@/components/FileChangesView"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
 import { parseConnectionString, type HuxfluxServer } from "@huxflux/shared"
@@ -514,6 +515,7 @@ function AppearanceSettings() {
   const [theme, setTheme] = useState<Theme>(getTheme)
   const [activeColorTheme, setActiveColorTheme] = useState(getColorTheme)
   const [activeLightColorTheme, setActiveLightColorTheme] = useState(getLightColorTheme)
+  const [diffViewMode, setDiffViewModeState] = useState(() => getDiffViewMode())
 
   const isLight = theme === "light" || (theme === "system" && typeof window !== "undefined" && !window.matchMedia("(prefers-color-scheme: dark)").matches)
 
@@ -567,6 +569,20 @@ function AppearanceSettings() {
           ))}
         </div>
       </div>
+
+      <SettingRow>
+        <SettingInfo label="Diff view mode" description="How file changes are displayed in the workspace" />
+        <Select value={diffViewMode} onValueChange={(v: DiffViewMode) => { setDiffViewModeState(v); setDiffViewMode(v) }}>
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tree">File tree</SelectItem>
+            <SelectItem value="stacked">Stacked diffs</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
     </div>
   )
 }
@@ -1478,6 +1494,8 @@ function ExperimentalSettings() {
 
 function ReviewSettings() {
   const [prompt, setPrompt] = useState("")
+  const [reviewModel, setReviewModel] = useState("")
+  const [reviewProvider, setReviewProvider] = useState("")
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [slashQuery, setSlashQuery] = useState<string | null>(null)
@@ -1485,9 +1503,21 @@ function ReviewSettings() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const { data: providers = [] } = useQuery({
+    queryKey: ["providers"],
+    queryFn: () => api.getProviders(),
+    staleTime: 60_000,
+  })
+
+  const availableProviders = providers.filter(p => p.available)
+  const selectedProvider = availableProviders.find(p => p.id === reviewProvider) ?? availableProviders[0]
+  const models = selectedProvider?.models ?? []
+
   useEffect(() => {
     api.getSettings().then((s) => {
       setPrompt(s.reviewPrompt ?? "")
+      setReviewModel(s.reviewModel ?? "")
+      setReviewProvider(s.reviewProvider ?? "")
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -1588,6 +1618,53 @@ function ReviewSettings() {
           {saved ? "Saved" : ""}
         </div>
       </div>
+
+      <SettingRow>
+        <SettingInfo label="Provider" description="Which provider to use for AI code reviews" />
+        <Select
+          value={reviewProvider || "default"}
+          onValueChange={(v) => {
+            const val = v === "default" ? "" : v
+            setReviewProvider(val)
+            setReviewModel("")
+            setSaved(false)
+            api.updateSettings({ reviewProvider: val, reviewModel: "" }).then(() => setSaved(true))
+          }}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Default</SelectItem>
+            {availableProviders.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
+      <SettingRow>
+        <SettingInfo label="Model" description="Which model to use for AI code reviews" />
+        <Select
+          value={reviewModel || "default"}
+          onValueChange={(v) => {
+            const val = v === "default" ? "" : v
+            setReviewModel(val)
+            setSaved(false)
+            api.updateSettings({ reviewModel: val }).then(() => setSaved(true))
+          }}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Default</SelectItem>
+            {models.map((m) => (
+              <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
     </div>
   )
 }

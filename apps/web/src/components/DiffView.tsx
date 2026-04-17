@@ -1,18 +1,34 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@huxflux/ui"
 import type { FileChange } from "@/data/mock"
 import { api } from "@huxflux/shared"
+import { getTheme } from "@/lib/theme"
 import { IconCopy, IconEye, IconLayoutColumns, IconLayoutRows } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile } from "@pierre/diffs"
 import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
 
+export function getDiffTheme(): "vesper" | "github-light" {
+  const theme = getTheme()
+  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+  return isDark ? "vesper" : "github-light"
+}
+
+function useDiffTheme() {
+  return useSyncExternalStore(
+    (cb) => { window.addEventListener("huxflux:theme-change", cb); return () => window.removeEventListener("huxflux:theme-change", cb) },
+    getDiffTheme,
+    () => "vesper" as const
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DiffView({ agentId, file }: { agentId: string; file: FileChange }) {
+export function DiffView({ agentId, file, hideHeader }: { agentId: string; file: FileChange; hideHeader?: boolean }) {
   const [viewed, setViewed] = useState(false)
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
+  const diffTheme = useDiffTheme()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // When hunk expansion inserts rows, the viewport scrolls up before any
@@ -99,7 +115,7 @@ export function DiffView({ agentId, file }: { agentId: string; file: FileChange 
   return (
     <div className="flex flex-col h-full bg-background">
       {/* File header */}
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border bg-card shrink-0 text-[11px]">
+      {!hideHeader && <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border bg-card shrink-0 text-[11px]">
         <span className="text-muted-foreground font-mono truncate">
           {file.path.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
         </span>
@@ -126,7 +142,7 @@ export function DiffView({ agentId, file }: { agentId: string; file: FileChange 
             <IconCopy size={13} />
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Diff content */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
@@ -135,7 +151,7 @@ export function DiffView({ agentId, file }: { agentId: string; file: FileChange 
           <FileDiff
             fileDiff={fileDiff}
             options={{
-              theme: "vesper",
+              theme: diffTheme,
               diffStyle,
               lineDiffType: "word",
               diffIndicators: "bars",

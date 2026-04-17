@@ -6,6 +6,8 @@ const SETTINGS_FILE = path.join(DATA_DIR, "settings.json")
 
 export interface HuxfluxSettings {
   reviewPrompt?: string
+  reviewModel?: string
+  reviewProvider?: string
   defaultModel?: string
   defaultProvider?: string
   jiraBaseUrl?: string    // e.g. "https://mycompany.atlassian.net"

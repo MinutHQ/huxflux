@@ -395,26 +395,11 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   }
 
   return (
-    <div className="flex flex-col h-full bg-background border-t border-border">
-      {/* Top tab bar: Setup / Run / terminal tabs / + */}
-      <div className="flex items-center px-3 border-b border-border shrink-0 bg-background">
-        <div className="flex items-center flex-1 min-w-0">
-          {(["setup", "run"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => onTabChange(tab)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize -mb-px shrink-0",
-                activeTab === tab
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab === "run" && <IconPlayerPlay size={12} />}
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-
+    <div className="flex flex-col h-full bg-background">
+      {/* Top tab bar */}
+      <div className="relative flex items-center px-2 pb-1.5 pt-1 shrink-0 gap-1">
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-foreground/[0.04] to-transparent pointer-events-none" />
+        <div className="flex items-center flex-1 min-w-0 gap-1 relative">
           {/* Terminal tabs */}
           {terminalTabs.map((tab, idx) => {
             const isActive = activeTab === "terminal" && activeTerminalId === tab.terminalId
@@ -423,43 +408,38 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
             return (
               <div
                 key={tab.terminalId}
+                onClick={() => handleTabSelect(tab.terminalId)}
+                onDoubleClick={(e) => { e.preventDefault(); startRename(tab) }}
                 className={cn(
-                  "flex items-center border-b-2 -mb-px transition-colors",
-                  isActive ? "border-foreground" : "border-transparent"
+                  "flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors cursor-pointer shrink-0",
+                  isActive
+                    ? "bg-accent text-foreground"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
                 )}
               >
-                <button
-                  onClick={() => handleTabSelect(tab.terminalId)}
-                  onDoubleClick={(e) => { e.preventDefault(); startRename(tab) }}
-                  className={cn(
-                    "flex items-center gap-1.5 pl-3 pr-1.5 py-2 text-xs font-medium transition-colors",
-                    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <IconTerminal2 size={12} className="shrink-0" />
-                  {isRenaming ? (
-                    <input
-                      ref={renameInputRef}
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={commitRename}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitRename()
-                        if (e.key === "Escape") setRenamingId(null)
-                        e.stopPropagation()
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="bg-transparent outline-none border-none text-xs font-medium w-20 min-w-0"
-                      autoFocus
-                    />
-                  ) : (
-                    <span className="max-w-[100px] truncate">{displayLabel}</span>
-                  )}
-                </button>
+                <IconTerminal2 size={12} className="shrink-0" />
+                {isRenaming ? (
+                  <input
+                    ref={renameInputRef}
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitRename()
+                      if (e.key === "Escape") setRenamingId(null)
+                      e.stopPropagation()
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-transparent outline-none border-none text-[12px] font-medium w-20 min-w-0"
+                    autoFocus
+                  />
+                ) : (
+                  <span className="max-w-[100px] truncate">{displayLabel}</span>
+                )}
                 {terminalTabs.length > 1 && (
                   <button
                     onClick={(e) => { e.stopPropagation(); closeTerminal(tab.terminalId) }}
-                    className="pr-2 py-2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                    className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"
                   >
                     <IconX size={10} />
                   </button>
@@ -471,51 +451,13 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
           {/* Add terminal button */}
           <button
             onClick={addTerminal}
-            className="flex items-center justify-center w-7 h-7 ml-0.5 text-muted-foreground/50 hover:text-foreground transition-colors shrink-0"
+            className="p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors shrink-0"
             title="New terminal"
           >
-            <IconPlus size={12} />
+            <IconPlus size={13} />
           </button>
         </div>
 
-        {repo?.runScript && (
-          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-            {isRunning ? (
-              <>
-                {detectedPort && (
-                  <a
-                    href={`http://localhost:${detectedPort}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={handleExternalClick}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
-                  >
-                    <IconWorld size={11} className="text-emerald-400" />
-                    Open
-                    <span className="font-mono text-emerald-400">:{detectedPort}</span>
-                  </a>
-                )}
-                <button
-                  onClick={handleStop}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
-                >
-                  <IconPlayerStop size={11} className="text-red-400" />
-                  Stop
-                  <kbd className="text-muted-foreground/50 font-mono text-[10px]">⌘R</kbd>
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={handleRun}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
-              >
-                <IconPlayerPlayFilled size={11} />
-                Run
-                <kbd className="text-muted-foreground/50 font-mono text-[10px]">⌘R</kbd>
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Terminal area */}

@@ -1664,7 +1664,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
 
   return (
     <>
-      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border w-full overflow-hidden">
+      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
         <TitleBar />
 
         {/* Home button */}

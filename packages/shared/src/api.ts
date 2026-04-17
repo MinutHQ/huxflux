@@ -70,6 +70,8 @@ async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number })
 
 export interface HuxfluxSettings {
   reviewPrompt?: string
+  reviewModel?: string
+  reviewProvider?: string
   defaultModel?: string
   defaultProvider?: string
 }

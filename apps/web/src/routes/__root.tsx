@@ -110,7 +110,7 @@ function RootComponent() {
   }, [servers, activeId])
 
   return (
-    <div className="h-screen bg-background text-foreground overflow-hidden flex flex-col">
+    <div className="h-screen bg-sidebar text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
       <CommandPalette
         open={cmdkOpen}

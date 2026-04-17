@@ -15,7 +15,7 @@ export interface ChatTab {
   isChild?: boolean
 }
 
-export type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string }
+export type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string } | { type: "diff-browser" } | { type: "pr" }
 
 export interface PendingAgent {
   title: string
@@ -48,6 +48,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     } catch { return null }
   })
   const lastAgentId = useRef<string | null>(null)
+  const closedTabIds = useRef(new Set<string>())
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
@@ -117,6 +118,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     if (isAlreadyInTabs) {
       setActiveTabId(id)
     } else {
+      closedTabIds.current.clear()
       setTabs([{ agentId: id, title: a?.title ?? "Agent" }])
       setActiveTabId(id)
       // Fetch persisted child sessions from server and restore as tabs
@@ -129,7 +131,9 @@ export function useWorkspace(agents: AgentSummary[]) {
             old ?? { ...s, messages: [], fileChanges: [], terminalOutput: [] }
           )
         }
-        const childTabs: ChatTab[] = sessions.map(s => ({ agentId: s.id, title: s.title, isChild: true }))
+        const childTabs: ChatTab[] = sessions
+          .filter(s => !closedTabIds.current.has(s.id))
+          .map(s => ({ agentId: s.id, title: s.title, isChild: true }))
         setTabs(prev => {
           if (prev[0]?.agentId !== id) return prev // user switched away
           const existingIds = new Set(prev.map(t => t.agentId))
@@ -150,14 +154,16 @@ export function useWorkspace(agents: AgentSummary[]) {
   }
 
   function closeTab(agentId: string) {
+    const tab = tabs.find(t => t.agentId === agentId)
+    if (!tab?.isChild) return
+
+    closedTabIds.current.add(agentId)
+    api.deleteAgent(agentId).catch(() => {})
+    queryClient.removeQueries({ queryKey: ["agent", agentId] })
     setTabs(prev => {
       const next = prev.filter(t => t.agentId !== agentId)
       if (agentId === activeTabId) {
-        if (next.length > 0) {
-          setActiveTabId(next[next.length - 1].agentId)
-        } else {
-          setActiveTabId(agents[0]?.id ?? null)
-        }
+        setActiveTabId(next.length > 0 ? next[next.length - 1].agentId : agents[0]?.id ?? null)
       }
       return next
     })
@@ -272,13 +278,14 @@ export function useWorkspace(agents: AgentSummary[]) {
     selectTab,
     closeTab,
     createTab,
-    createTabWithMessage: useCallback(async (agent: Agent, message: string) => {
+    createTabWithMessage: useCallback(async (agent: Agent, message: string, opts?: { model?: string; provider?: string }) => {
       const rootAgentId = tabs[0]?.agentId ?? agent.id
       try {
         const created = await api.createAgent({
           title: "Review",
           branch: agent.branch,
-          model: agent.model,
+          model: opts?.model || agent.model,
+          provider: opts?.provider || undefined,
           shareWorktreeWith: rootAgentId,
         })
         queryClient.setQueryData(["agent", created.id], {

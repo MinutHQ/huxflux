@@ -11,6 +11,7 @@ import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
+import { useDraggable } from "@dnd-kit/core"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
@@ -582,6 +583,11 @@ const AgentRow = React.memo(function AgentRow({
   const [draft, setDraft] = useState("")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `agent-drag-${agent.id}`,
+    data: { agentId: agent.id, title: agent.title },
+  })
+
   function handleMouseEnter() {
     if (ref.current) {
       const rect = ref.current.getBoundingClientRect()
@@ -625,17 +631,20 @@ const AgentRow = React.memo(function AgentRow({
   return (
     <>
       <button
-        ref={ref}
+        ref={(el) => { (ref as React.MutableRefObject<HTMLButtonElement | null>).current = el; setDragRef(el) }}
         onClick={onClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={onLeave}
+        {...listeners}
+        {...attributes}
         className={cn(
           "w-full min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-all",
           isSelected
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "hover:bg-sidebar-accent/60 text-muted-foreground hover:text-foreground",
-          isCancelled && "opacity-50"
+          isCancelled && "opacity-50",
+          isDragging && "opacity-30"
         )}
       >
         <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>

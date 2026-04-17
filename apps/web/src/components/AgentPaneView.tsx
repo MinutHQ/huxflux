@@ -10,7 +10,7 @@ import { useAgent, api } from "@huxflux/shared"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { PaneWorkspaceProvider, usePaneWorkspaceContext } from "@/hooks/usePaneWorkspaceContext"
-import { useAppContext } from "@/routes/_app"
+import { useAppContext } from "@/hooks/useAppContext"
 
 interface AgentPaneViewProps {
   agentId: string

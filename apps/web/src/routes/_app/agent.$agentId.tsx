@@ -5,7 +5,7 @@ import { useAgents } from "@huxflux/shared"
 import { PaneContainer } from "@/components/PaneContainer"
 import { HomeView } from "@/components/HomeView"
 import { usePaneLayoutContext } from "@/hooks/usePaneLayoutContext"
-import { useIsDragging } from "../_app"
+import { useIsDragging } from "@/hooks/useAppContext"
 import { getDiffTheme } from "@/components/DiffView"
 import { Route as appRoute } from "../_app"
 

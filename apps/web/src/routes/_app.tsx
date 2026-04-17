@@ -1,5 +1,5 @@
 import { createRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
 import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
@@ -27,31 +27,8 @@ export const Route = createRoute({
   component: AppLayout,
 })
 
-// Context for data that app-level routes need
-interface AppContextValue {
-  prs: ReturnType<typeof usePRs>["prs"]
-  prsLoading: boolean
-  refetchPRs: () => void
-  reviewedPrIds: Set<string>
-  setReviewedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  userReviewedPrIds: Set<string>
-  setUserReviewedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  submittedPrIds: Set<string>
-  setSubmittedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  bulkReview: ReturnType<typeof useBulkReview>
-  refineSessions: RefineSession[]
-  setRefineSessions: React.Dispatch<React.SetStateAction<RefineSession[]>>
-  feedbackEnabled: boolean
-  githubEnabled: boolean
-}
-
-const AppContext = createContext<AppContextValue | null>(null)
-
-export function useAppContext(): AppContextValue {
-  const ctx = useContext(AppContext)
-  if (!ctx) throw new Error("useAppContext must be used within AppLayout")
-  return ctx
-}
+import { AppContext, type AppContextValue, DndDraggingContext, DndJustDraggedContext } from "@/hooks/useAppContext"
+export { useAppContext, useIsDragging, useDndJustDragged } from "@/hooks/useAppContext"
 
 function AppLayout() {
   const navigate = useNavigate()
@@ -267,8 +244,3 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
-const DndDraggingContext = createContext(false)
-export function useIsDragging() { return useContext(DndDraggingContext) }
-
-const DndJustDraggedContext = createContext<React.RefObject<boolean>>({ current: false })
-export function useDndJustDragged() { return useContext(DndJustDraggedContext) }

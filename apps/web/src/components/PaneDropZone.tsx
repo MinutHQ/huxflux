@@ -11,8 +11,6 @@ interface PaneDropZoneProps {
 function EdgeZone({ id, position, isDragging }: { id: string; position: "left" | "right" | "top" | "bottom"; isDragging: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { position } })
 
-  if (!isDragging) return null
-
   const positionClass = {
     left: "left-0 top-0 bottom-0 w-[20%]",
     right: "right-0 top-0 bottom-0 w-[20%]",
@@ -23,11 +21,15 @@ function EdgeZone({ id, position, isDragging }: { id: string; position: "left" |
   return (
     <div
       ref={setNodeRef}
-      className={cn("absolute z-30 transition-colors", positionClass)}
+      className={cn(
+        "absolute z-30",
+        positionClass,
+        isDragging ? "pointer-events-auto" : "pointer-events-none"
+      )}
     >
-      {isOver && (
+      {isDragging && isOver && (
         <div className={cn(
-          "absolute inset-1 rounded-md border-2 border-dashed border-primary/50 bg-primary/10 transition-all",
+          "absolute inset-1 rounded-md border-2 border-dashed border-primary/50 bg-primary/10",
           position === "left" && "right-1/2",
           position === "right" && "left-1/2",
           position === "top" && "bottom-1/2",
@@ -41,14 +43,15 @@ function EdgeZone({ id, position, isDragging }: { id: string; position: "left" |
 function CenterZone({ id, isDragging }: { id: string; isDragging: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { position: "center" } })
 
-  if (!isDragging) return null
-
   return (
     <div
       ref={setNodeRef}
-      className="absolute z-20 inset-[20%]"
+      className={cn(
+        "absolute z-20 inset-[20%]",
+        isDragging ? "pointer-events-auto" : "pointer-events-none"
+      )}
     >
-      {isOver && (
+      {isDragging && isOver && (
         <div className="absolute inset-0 rounded-md border-2 border-dashed border-primary/50 bg-primary/10" />
       )}
     </div>

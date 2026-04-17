@@ -372,6 +372,7 @@ function GeneralSettings() {
 }
 
 const MODELS = [
+  { id: "Opus 4.7",    label: "Claude Opus 4.7",    api: "claude-opus-4-7",              context: "200K" },
   { id: "Sonnet 4.6",  label: "Claude Sonnet 4.6",  api: "claude-sonnet-4-6",           context: "200K" },
   { id: "Opus 4.6",    label: "Claude Opus 4.6",    api: "claude-opus-4-6",              context: "200K" },
   { id: "Haiku 4.5",   label: "Claude Haiku 4.5",   api: "claude-haiku-4-5-20251001",    context: "200K" },

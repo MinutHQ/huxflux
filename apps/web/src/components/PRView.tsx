@@ -57,12 +57,14 @@ import { useQuery } from "@tanstack/react-query"
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODELS = [
+  { id: "claude-opus-4-7",           label: "Opus 4.7" },
   { id: "claude-opus-4-6",           label: "Opus 4.6" },
   { id: "claude-sonnet-4-6",         label: "Sonnet 4.6" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
 ]
 
 const MODEL_ALIAS_TO_ID: Record<string, string> = {
+  "Opus 4.7": "claude-opus-4-7",
   "Opus 4.6": "claude-opus-4-6",
   "Sonnet 4.6": "claude-sonnet-4-6",
   "Haiku 4.5": "claude-haiku-4-5-20251001",

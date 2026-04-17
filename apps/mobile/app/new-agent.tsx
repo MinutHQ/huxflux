@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import {
-  View, Text, TouchableOpacity,
+  View, Text, TouchableOpacity, TextInput,
   ActivityIndicator, Animated, Easing, StyleSheet,
 } from "react-native"
+import { Ionicons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
+import { setSetupMessage } from "../lib/setupMessage"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRepos, api, type Repo } from "@huxflux/shared"
 import { useModal } from "../components/Modal"
@@ -60,7 +62,8 @@ type CreatingState = {
   repoName: string
 }
 
-function SetupOverlay({ creating }: { creating: CreatingState }) {
+function SetupOverlay({ creating, onQueueMessage, queuedMessage }: { creating: CreatingState; onQueueMessage?: (msg: string) => void; queuedMessage?: string | null }) {
+  const [setupInput, setSetupInput] = useState("")
   const float = useRef(new Animated.Value(0)).current
   const ring1Scale = useRef(new Animated.Value(0.8)).current
   const ring1Opacity = useRef(new Animated.Value(0.5)).current
@@ -291,6 +294,59 @@ function SetupOverlay({ creating }: { creating: CreatingState }) {
           </View>
         </View>
       </View>
+
+      {/* Chat input */}
+      {onQueueMessage && (
+        <View style={{ width: "100%", maxWidth: 320, marginTop: 12, paddingHorizontal: 16 }}>
+          {queuedMessage ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.card, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingHorizontal: 14, paddingVertical: 10 }}>
+              <ActivityIndicator size="small" color="#fbbf24" />
+              <Text style={{ color: c.fgSub, fontSize: 12, flex: 1 }} numberOfLines={1}>
+                Will send: <Text style={{ color: c.fg }}>{queuedMessage}</Text>
+              </Text>
+            </View>
+          ) : (
+            <View style={{ backgroundColor: c.card, borderRadius: 12, borderWidth: 1, borderColor: c.border, overflow: "hidden" }}>
+              <TextInput
+                value={setupInput}
+                onChangeText={setSetupInput}
+                placeholder="Type your first message..."
+                placeholderTextColor={c.fgSub + "50"}
+                multiline
+                style={{ color: c.fg, fontSize: 13, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6, maxHeight: 100 }}
+                returnKeyType="send"
+                blurOnSubmit
+                onSubmitEditing={() => {
+                  const text = setupInput.trim()
+                  if (text) {
+                    onQueueMessage(text)
+                    setSetupInput("")
+                  }
+                }}
+              />
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingBottom: 8 }}>
+                <Text style={{ color: c.fgSub, fontSize: 9, opacity: 0.5 }}>Sent once agent is ready</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const text = setupInput.trim()
+                    if (text) {
+                      onQueueMessage(text)
+                      setSetupInput("")
+                    }
+                  }}
+                  disabled={!setupInput.trim()}
+                  style={{
+                    width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center",
+                    backgroundColor: setupInput.trim() ? c.link : c.secondary,
+                  }}
+                >
+                  <Ionicons name="send" size={13} color={setupInput.trim() ? "#fff" : c.fgSub} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </Animated.View>
   )
 }
@@ -438,12 +494,19 @@ export default function NewAgentScreen() {
   const { data: repos = [], isLoading } = useRepos()
   const [creating, setCreating] = useState<CreatingState | null>(null)
   const [direct, setDirect] = useState(false)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const handleQueueMessage = useCallback((msg: string) => {
+    setQueuedMessage(msg)
+    setSetupMessage(msg)
+  }, [])
 
   async function handleSelectRepo(repo: Repo) {
     if (creating) return
     const name = randomBeeName()
     const prefix = repo.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
     const branch = `${prefix}${name}`
+    setQueuedMessage(null)
+    setSetupMessage(null)
     setCreating({ repoId: repo.id, name, branch, repoName: repo.name })
     try {
       const agent = await api.createAgent({
@@ -458,6 +521,8 @@ export default function NewAgentScreen() {
     } catch (e: any) {
       modal.showAlert("Error", e.message)
       setCreating(null)
+      setQueuedMessage(null)
+      setSetupMessage(null)
     }
   }
 
@@ -509,7 +574,7 @@ export default function NewAgentScreen() {
         />
       )}
 
-      {creating && <SetupOverlay creating={creating} />}
+      {creating && <SetupOverlay creating={creating} onQueueMessage={handleQueueMessage} queuedMessage={queuedMessage} />}
     </View>
   )
 }

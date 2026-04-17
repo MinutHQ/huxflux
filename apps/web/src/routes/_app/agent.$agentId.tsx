@@ -114,6 +114,8 @@ function AgentRoute() {
           githubEnabled={githubEnabled}
           pendingQuestion={activePendingQuestion}
           onClearPendingQuestion={activeClearPendingQuestion}
+          initialMessage={workspace.queuedSetupMessage}
+          onConsumeInitialMessage={() => workspace.setQueuedSetupMessage(null)}
         />
       </ResizablePanel>
 

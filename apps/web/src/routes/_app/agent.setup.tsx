@@ -19,7 +19,11 @@ function SetupRoute() {
 
   return (
     <div className="flex-1 min-w-0 overflow-hidden">
-      <SetupView pending={workspace.pendingAgent} />
+      <SetupView
+        pending={workspace.pendingAgent}
+        onQueueMessage={workspace.setQueuedSetupMessage}
+        queuedMessage={workspace.queuedSetupMessage}
+      />
     </div>
   )
 }

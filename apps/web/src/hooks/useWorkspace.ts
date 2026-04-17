@@ -51,6 +51,7 @@ export function useWorkspace(agents: AgentSummary[]) {
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
+  const [queuedSetupMessage, setQueuedSetupMessage] = useState<string | null>(null)
   const [deletingAgent, setDeletingAgent] = useState<DeletingAgent | null>(null)
   const [justDeleted, setJustDeleted] = useState(false)
 
@@ -223,10 +224,12 @@ export function useWorkspace(agents: AgentSummary[]) {
 
   function onAgentCreating(info: PendingAgent) {
     setPendingAgent(info)
+    setQueuedSetupMessage(null)
   }
 
   function clearPendingAgent() {
     setPendingAgent(null)
+    setQueuedSetupMessage(null)
   }
 
   function onAgentCreated(id: string) {
@@ -307,5 +310,7 @@ export function useWorkspace(agents: AgentSummary[]) {
     onAgentCreating,
     clearPendingAgent,
     onAgentCreated,
+    queuedSetupMessage,
+    setQueuedSetupMessage,
   }
 }

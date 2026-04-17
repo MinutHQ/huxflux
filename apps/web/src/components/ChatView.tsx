@@ -1803,7 +1803,9 @@ const SETUP_STEPS: SetupStep[] = [
   { label: "Initializing environment", icon: "◈" },
 ]
 
-export function SetupView({ pending }: { pending: { title: string; branch: string; repoName: string; estimatedMs: number } }) {
+export function SetupView({ pending, onQueueMessage, queuedMessage }: { pending: { title: string; branch: string; repoName: string; estimatedMs: number }; onQueueMessage?: (msg: string) => void; queuedMessage?: string | null }) {
+  const [setupInput, setSetupInput] = useState("")
+  const setupTextareaRef = useRef<HTMLTextAreaElement>(null)
   const [visibleSteps, setVisibleSteps] = useState(0)
   const [completedSteps, setCompletedSteps] = useState(0)
   const [typedTitle, setTypedTitle] = useState("")
@@ -2027,6 +2029,66 @@ export function SetupView({ pending }: { pending: { title: string; branch: strin
           </div>
         </div>
       </div>
+
+      {/* Chat input — lets user type while agent is being set up */}
+      {onQueueMessage && (
+        <div
+          className="w-full max-w-md z-10 mt-2"
+          style={{ animation: "sv-fade-up 0.6s ease-out 0.8s both" }}
+        >
+          {queuedMessage ? (
+            <div className="rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm px-4 py-3 text-[12px] text-muted-foreground/60 flex items-center gap-2">
+              <IconLoader2 size={13} className="animate-spin text-amber-400/60 shrink-0" />
+              <span className="truncate">Will send: <span className="text-foreground/70">{queuedMessage}</span></span>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden focus-within:border-amber-400/30 transition-colors">
+              <textarea
+                ref={setupTextareaRef}
+                value={setupInput}
+                onChange={(e) => {
+                  setSetupInput(e.target.value)
+                  e.target.style.height = "auto"
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    const text = setupInput.trim()
+                    if (text) {
+                      onQueueMessage(text)
+                      setSetupInput("")
+                    }
+                  }
+                }}
+                placeholder="Type your first message while the agent sets up..."
+                className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/30 resize-none px-4 pt-3 pb-2 focus:outline-none"
+                rows={1}
+                autoFocus
+              />
+              <div className="flex items-center justify-between px-3 pb-2">
+                <span className="text-[10px] text-muted-foreground/30">Message will be sent once agent is ready</span>
+                <button
+                  onClick={() => {
+                    const text = setupInput.trim()
+                    if (text) {
+                      onQueueMessage(text)
+                      setSetupInput("")
+                    }
+                  }}
+                  disabled={!setupInput.trim()}
+                  className={cn(
+                    "p-1.5 rounded-lg transition-colors",
+                    setupInput.trim() ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-muted text-muted-foreground/30"
+                  )}
+                >
+                  <IconSend size={13} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -2253,9 +2315,13 @@ interface ChatViewProps {
   hideChrome?: boolean
   /** Create a new tab and send an initial message to it */
   onNewTabWithMessage?: (message: string) => void
+  /** Message queued during agent setup — sent automatically on mount */
+  initialMessage?: string | null
+  /** Called after the initial message is consumed */
+  onConsumeInitialMessage?: () => void
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, onNewTabWithMessage }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2752,6 +2818,17 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     void sendContent(next.display, next.api, next.planMode ? { planMode: true } : undefined)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, agent.id])
+
+  // Send message that was queued during agent setup
+  const initialMessageSent = useRef(false)
+  useEffect(() => {
+    if (initialMessage && !initialMessageSent.current) {
+      initialMessageSent.current = true
+      onConsumeInitialMessage?.()
+      void sendContent(initialMessage, initialMessage)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessage])
 
   useEffect(() => {
     if (openFileTab) setActiveTab("file")

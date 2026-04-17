@@ -14,6 +14,7 @@ import { File as ExpoFile } from "expo-file-system"
 import { c } from "../../../theme"
 import { useModal } from "../../../components/Modal"
 import { prefs } from "../../../lib/prefs"
+import { consumeSetupMessage } from "../../../lib/setupMessage"
 import FilesPane from "./files"
 import PRPane from "./pr"
 
@@ -912,6 +913,17 @@ export default function AgentChatScreen() {
     }
     doSend(content)
   }
+
+  // Send message queued during agent setup
+  const setupMsgSent = useRef(false)
+  useEffect(() => {
+    if (setupMsgSent.current || !activeSessionId) return
+    const msg = consumeSetupMessage()
+    if (msg) {
+      setupMsgSent.current = true
+      doSend(msg)
+    }
+  }, [activeSessionId])
 
   if (isError && !agent) {
     return (

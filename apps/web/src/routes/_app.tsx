@@ -1,6 +1,6 @@
 import { createRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react"
-import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
+import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
 import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
@@ -208,6 +208,7 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const layout = usePaneLayoutContext()
   const [draggingAgent, setDraggingAgent] = useState<{ id: string; title: string } | null>(null)
+  const justDraggedRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -222,6 +223,10 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
 
   function handleDragEnd(event: DragEndEvent) {
     setDraggingAgent(null)
+    // Suppress the click that fires on pointer-up after a drag
+    justDraggedRef.current = true
+    setTimeout(() => { justDraggedRef.current = false }, 50)
+
     const { over, active } = event
     if (!over) return
 
@@ -232,26 +237,24 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
     const position = (over.data.current as { position?: string })?.position
     if (!position) return
 
-    // Parse "paneId:position" from droppable id
     const colonIdx = droppableId.lastIndexOf(":")
     if (colonIdx === -1) return
     const paneId = droppableId.slice(0, colonIdx)
 
     if (position === "center") {
       layout.replaceAgent(paneId, agentId)
-      navigate({ to: "/agent/$agentId", params: { agentId } })
     } else {
       const direction = (position === "left" || position === "right") ? "horizontal" : "vertical"
       layout.splitPane(paneId, direction, agentId, position as any)
-      navigate({ to: "/agent/$agentId", params: { agentId } })
     }
   }
 
-  // Expose isDragging to PaneContainer via context
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <DndDraggingContext.Provider value={!!draggingAgent}>
+      <DndJustDraggedContext.Provider value={justDraggedRef}>
         {children}
+      </DndJustDraggedContext.Provider>
       </DndDraggingContext.Provider>
       <DragOverlay>
         {draggingAgent && (
@@ -266,3 +269,6 @@ function DndWrapper({ children }: { children: React.ReactNode }) {
 
 const DndDraggingContext = createContext(false)
 export function useIsDragging() { return useContext(DndDraggingContext) }
+
+const DndJustDraggedContext = createContext<React.RefObject<boolean>>({ current: false })
+export function useDndJustDragged() { return useContext(DndJustDraggedContext) }

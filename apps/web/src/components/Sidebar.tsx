@@ -12,6 +12,7 @@ import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
 import { useDraggable } from "@dnd-kit/core"
+import { useDndJustDragged } from "@/routes/_app"
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
@@ -1540,8 +1541,12 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const { pendingAgent, onAgentCreating, onAgentCreated, clearPendingAgent, onAgentDeleting, clearDeletingAgent } = workspace
   const agentPorts: Record<string, number | null> = {}
 
-  // Navigation helpers
-  const onSelect = (id: string) => navigate({ to: "/agent/$agentId", params: { agentId: id } })
+  // Navigation helpers — skip if a drag just ended (click fires after pointer-up)
+  const justDraggedRef = useDndJustDragged()
+  const onSelect = (id: string) => {
+    if (justDraggedRef.current) return
+    navigate({ to: "/agent/$agentId", params: { agentId: id } })
+  }
   const onSelectPr = (id: string) => navigate({ to: "/review/$prId", params: { prId: id } })
   const onSelectRefine = (id: string) => navigate({ to: "/refine/$sessionId", params: { sessionId: id } })
 

@@ -1,6 +1,6 @@
 import { createRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { DndContext, PointerSensor, useSensor, useSensors, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
+
 import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
@@ -11,7 +11,7 @@ import { useNotifications } from "@/hooks/useNotifications"
 import { usePRs } from "@/hooks/usePRs"
 import { useBulkReview } from "@/hooks/useBulkReview"
 import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
-import { PaneLayoutProvider, usePaneLayoutContext } from "@/hooks/usePaneLayoutContext"
+import { PaneLayoutProvider } from "@/hooks/usePaneLayoutContext"
 import { getFlag } from "@/lib/flags"
 import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { Route as rootRoute } from "./__root"
@@ -27,8 +27,8 @@ export const Route = createRoute({
   component: AppLayout,
 })
 
-import { AppContext, type AppContextValue, DndDraggingContext, DndJustDraggedContext } from "@/hooks/useAppContext"
-export { useAppContext, useIsDragging, useDndJustDragged } from "@/hooks/useAppContext"
+import { AppContext, type AppContextValue } from "@/hooks/useAppContext"
+export { useAppContext } from "@/hooks/useAppContext"
 
 function AppLayout() {
   const navigate = useNavigate()
@@ -137,8 +137,7 @@ function AppLayout() {
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
       <PaneLayoutProvider agents={agents} initialAgentId={agents[0]?.id ?? null}>
-        <DndWrapper>
-          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
             <ResizablePanel
               id="huxflux-sidebar-panel"
               panelRef={sidebarRef}
@@ -172,75 +171,10 @@ function AppLayout() {
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
-        </DndWrapper>
       </PaneLayoutProvider>
       </WorkspaceProvider>
     </AppContext.Provider>
   )
 }
 
-// ── Drag & Drop Wrapper ──────────────────────────────────────────────────────
-
-function DndWrapper({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate()
-  const layout = usePaneLayoutContext()
-  const [draggingAgent, setDraggingAgent] = useState<{ id: string; title: string } | null>(null)
-  const justDraggedRef = useRef(false)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
-
-  function handleDragStart(event: DragStartEvent) {
-    const data = event.active.data.current as { agentId?: string; title?: string } | undefined
-    if (data?.agentId) {
-      setDraggingAgent({ id: data.agentId, title: data.title ?? "Agent" })
-    }
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    setDraggingAgent(null)
-    // Suppress the click that fires on pointer-up after a drag
-    justDraggedRef.current = true
-    setTimeout(() => { justDraggedRef.current = false }, 50)
-
-    const { over, active } = event
-    if (!over) return
-
-    const agentId = (active.data.current as { agentId?: string })?.agentId
-    if (!agentId) return
-
-    const droppableId = over.id as string
-    const position = (over.data.current as { position?: string })?.position
-    if (!position) return
-
-    const colonIdx = droppableId.lastIndexOf(":")
-    if (colonIdx === -1) return
-    const paneId = droppableId.slice(0, colonIdx)
-
-    if (position === "center") {
-      layout.replaceAgent(paneId, agentId)
-    } else {
-      const direction = (position === "left" || position === "right") ? "horizontal" : "vertical"
-      layout.splitPane(paneId, direction, agentId, position as any)
-    }
-  }
-
-  return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <DndDraggingContext.Provider value={!!draggingAgent}>
-      <DndJustDraggedContext.Provider value={justDraggedRef}>
-        {children}
-      </DndJustDraggedContext.Provider>
-      </DndDraggingContext.Provider>
-      <DragOverlay>
-        {draggingAgent && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border shadow-lg text-[12px] font-medium text-foreground">
-            {draggingAgent.title}
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
-  )
-}
 

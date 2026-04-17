@@ -27,10 +27,3 @@ export function useAppContext(): AppContextValue {
   if (!ctx) throw new Error("useAppContext must be used within AppLayout")
   return ctx
 }
-
-// DnD state contexts
-export const DndDraggingContext = createContext(false)
-export function useIsDragging() { return useContext(DndDraggingContext) }
-
-export const DndJustDraggedContext = createContext<React.RefObject<boolean>>({ current: false })
-export function useDndJustDragged() { return useContext(DndJustDraggedContext) }

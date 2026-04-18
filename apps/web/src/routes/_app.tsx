@@ -1,5 +1,6 @@
 import { createRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+
 import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
@@ -10,6 +11,7 @@ import { useNotifications } from "@/hooks/useNotifications"
 import { usePRs } from "@/hooks/usePRs"
 import { useBulkReview } from "@/hooks/useBulkReview"
 import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
+import { PaneLayoutProvider } from "@/hooks/usePaneLayoutContext"
 import { getFlag } from "@/lib/flags"
 import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { Route as rootRoute } from "./__root"
@@ -25,31 +27,8 @@ export const Route = createRoute({
   component: AppLayout,
 })
 
-// Context for data that app-level routes need
-interface AppContextValue {
-  prs: ReturnType<typeof usePRs>["prs"]
-  prsLoading: boolean
-  refetchPRs: () => void
-  reviewedPrIds: Set<string>
-  setReviewedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  userReviewedPrIds: Set<string>
-  setUserReviewedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  submittedPrIds: Set<string>
-  setSubmittedPrIds: React.Dispatch<React.SetStateAction<Set<string>>>
-  bulkReview: ReturnType<typeof useBulkReview>
-  refineSessions: RefineSession[]
-  setRefineSessions: React.Dispatch<React.SetStateAction<RefineSession[]>>
-  feedbackEnabled: boolean
-  githubEnabled: boolean
-}
-
-const AppContext = createContext<AppContextValue | null>(null)
-
-export function useAppContext(): AppContextValue {
-  const ctx = useContext(AppContext)
-  if (!ctx) throw new Error("useAppContext must be used within AppLayout")
-  return ctx
-}
+import { AppContext, type AppContextValue } from "@/hooks/useAppContext"
+export { useAppContext } from "@/hooks/useAppContext"
 
 function AppLayout() {
   const navigate = useNavigate()
@@ -157,39 +136,45 @@ function AppLayout() {
   return (
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
+      <PaneLayoutProvider agents={agents} initialAgentId={agents[0]?.id ?? null}>
         <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
-          <ResizablePanel
-            id="huxflux-sidebar-panel"
-            panelRef={sidebarRef}
-            defaultSize="18"
-            minSize="12"
-            maxSize="28"
-            collapsible
-            collapsedSize="0"
-            onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
-            className="overflow-hidden"
-          >
-            <Sidebar {...sidebarProps} />
-          </ResizablePanel>
+            <ResizablePanel
+              id="huxflux-sidebar-panel"
+              panelRef={sidebarRef}
+              defaultSize="18"
+              minSize="12"
+              maxSize="28"
+              collapsible
+              collapsedSize="0"
+              onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
+              className="overflow-hidden"
+            >
+              <Sidebar {...sidebarProps} />
+            </ResizablePanel>
 
-          <ResizableHandle />
+            <ResizableHandle className="w-0 bg-transparent" />
 
-          <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="flex min-w-0 relative">
-            {sidebarCollapsed && (
-              <button
-                onClick={toggleSidebar}
-                title="Show sidebar (⌘B)"
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
-              >
-                <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M1 1l6 5-6 5" />
-                </svg>
-              </button>
-            )}
-            <Outlet />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10 py-1 pr-1">
+              <div className="flex h-full bg-background rounded-xl shadow-[-4px_0_16px_-4px_rgba(0,0,0,0.12)] overflow-hidden">
+                {sidebarCollapsed && (
+                  <button
+                    onClick={toggleSidebar}
+                    title="Show sidebar (⌘B)"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
+                  >
+                    <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 1l6 5-6 5" />
+                    </svg>
+                  </button>
+                )}
+                <Outlet />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+      </PaneLayoutProvider>
       </WorkspaceProvider>
     </AppContext.Provider>
   )
 }
+
+

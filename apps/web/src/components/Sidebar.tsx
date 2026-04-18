@@ -11,6 +11,7 @@ import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
+
 import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
@@ -1666,7 +1667,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
 
   return (
     <>
-      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border w-full overflow-hidden">
+      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
         <TitleBar />
 
         {/* Home button */}

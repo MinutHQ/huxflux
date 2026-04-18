@@ -1,7 +1,7 @@
 import { createRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { PRView } from "@/components/PRView"
 import { getFlag } from "@/lib/flags"
-import { useAppContext } from "../_app"
+import { useAppContext } from "@/hooks/useAppContext"
 import { Route as appRoute } from "../_app"
 
 export const Route = createRoute({

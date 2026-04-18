@@ -537,7 +537,8 @@ export async function agentsRoutes(app: FastifyInstance) {
     unwatchWorktree(req.params.id)
 
     // Remove worktree from disk (frees space) but keep DB record
-    if (agent.repoId && !agent.noWorktree) {
+    // Skip for child agents — they share the parent's worktree
+    if (agent.repoId && !agent.noWorktree && !agent.parentAgentId) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
       if (repo) {
         const worktreePath = path.join(repo.workspacesPath, agent.location)

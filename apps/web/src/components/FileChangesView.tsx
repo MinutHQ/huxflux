@@ -1,12 +1,14 @@
-import { useState } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ScrollArea } from "@huxflux/ui"
-import { Button } from "@huxflux/ui"
-import { cn } from "@huxflux/ui"
+import { ScrollArea, Button, cn, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
 import type { Agent, FileChange, PRDetails, PRReview, PRCheck, PRComment, PRThread } from "@/data/mock"
 import { api } from "@huxflux/shared"
 import { handleExternalClick } from "@/lib/platform"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { DiffView } from "@/components/DiffView"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   IconFileText,
   IconChevronDown,
@@ -21,7 +23,34 @@ import {
   IconArrowUpRight,
   IconFolder,
   IconFiles,
+  IconFilter,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconAlertTriangle,
 } from "@tabler/icons-react"
+
+// ── Diff view preferences (localStorage) ─────────────────────────────────────
+
+const DIFF_VIEW_MODE_KEY = "huxflux:diff:view-mode"
+const DIFF_FILE_LIST_KEY = "huxflux:diff:file-list"
+
+export type DiffViewMode = "tree" | "stacked"
+
+export function getDiffViewMode(): DiffViewMode {
+  return (localStorage.getItem(DIFF_VIEW_MODE_KEY) as DiffViewMode) || "tree"
+}
+
+export function setDiffViewMode(mode: DiffViewMode) {
+  localStorage.setItem(DIFF_VIEW_MODE_KEY, mode)
+}
+
+export function getDiffFileList(): boolean {
+  return localStorage.getItem(DIFF_FILE_LIST_KEY) !== "false"
+}
+
+export function setDiffFileList(show: boolean) {
+  localStorage.setItem(DIFF_FILE_LIST_KEY, String(show))
+}
 
 // ── Changes list ──────────────────────────────────────────────────────────────
 
@@ -124,15 +153,11 @@ function ChangesView({
                         <span className="text-red-400">-{file.deletions}</span>
                       </span>
                       <span className={cn(
-                        "w-3.5 h-3.5 rounded-sm border flex items-center justify-center text-[9px] font-bold shrink-0",
-                        isAddOnly
-                          ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10"
-                          : isDelOnly
-                          ? "border-red-400/40 text-red-400 bg-red-400/10"
-                          : "border-amber-400/40 text-amber-400 bg-amber-400/10"
-                      )}>
-                        {isAddOnly ? "+" : isDelOnly ? "−" : "M"}
-                      </span>
+                        "w-2 h-2 rounded-full shrink-0",
+                        isAddOnly ? "bg-emerald-400"
+                          : isDelOnly ? "bg-red-400"
+                          : "bg-amber-400"
+                      )} />
                     </div>
                   </button>
                 )
@@ -256,9 +281,59 @@ function ThreadBlock({ thread, onAddComment }: { thread: PRThread; onAddComment:
   )
 }
 
-function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: PRComment) => void }) {
-  const [rerequesting, setRerequesting] = useState(false)
+/** Strip HTML tags from text, preserving code blocks */
+function stripHtml(text: string): string {
+  // Extract code/pre blocks, strip all other HTML (tags + their content for inline tags)
+  const codeBlocks: string[] = []
+  // Preserve ```...``` and `...` markdown code blocks
+  let result = text.replace(/```[\s\S]*?```|`[^`]+`/g, (m) => {
+    codeBlocks.push(m)
+    return `\x00CODE${codeBlocks.length - 1}\x00`
+  })
+  // Preserve <pre>/<code> HTML blocks by converting to markdown
+  result = result.replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, (_, content) => {
+    const cleaned = content.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    codeBlocks.push("```\n" + cleaned + "\n```")
+    return `\x00CODE${codeBlocks.length - 1}\x00`
+  })
+  result = result.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_, content) => {
+    const cleaned = content.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    codeBlocks.push("`" + cleaned + "`")
+    return `\x00CODE${codeBlocks.length - 1}\x00`
+  })
+  // Remove inline HTML tags AND their content (e.g. <sub>text</sub>)
+  result = result.replace(/<(sub|sup|details|summary|picture|source|img|table|thead|tbody|tr|td|th)[^>]*>[\s\S]*?<\/\1>/gi, "")
+  // Remove self-closing / void tags
+  result = result.replace(/<(?:img|br|hr|input)[^>]*\/?>/gi, "")
+  // Strip remaining tags but keep their text content (div, p, span, a, etc)
+  result = result.replace(/<\/?[a-z][a-z0-9]*[^>]*>/gi, "")
+  // Decode entities
+  result = result.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+  // Restore code blocks
+  result = result.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[parseInt(i)])
+  // Clean up excessive newlines
+  result = result.replace(/\n{3,}/g, "\n\n")
+  return result.trim()
+}
+
+function MarkdownComment({ body }: { body: string }) {
+  return (
+    <div className="text-[12px] text-muted-foreground leading-relaxed prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_code]:text-[11px] [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripHtml(body)}</ReactMarkdown>
+    </div>
+  )
+}
+
+export function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: PRComment) => void }) {
   const [markingReady, setMarkingReady] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeMethod, setMergeMethod] = useState<"merge" | "squash" | "rebase">("squash")
+  const [bypassRules, setBypassRules] = useState(false)
+  const [mergeMenuOpen, setMergeMenuOpen] = useState(false)
+  const [checksExpanded, setChecksExpanded] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<{ threadId: string; commentId: number } | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [submittingReply, setSubmittingReply] = useState(false)
   const queryClient = useQueryClient()
 
   async function handleMarkReady() {
@@ -275,16 +350,45 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
     }
   }
 
-  async function handleRerequestReview() {
-    setRerequesting(true)
+  async function handleMerge(method: "merge" | "squash" | "rebase" = mergeMethod) {
+    setMerging(true)
     try {
-      await api.rerequestReview(agentId)
+      await api.mergePR(agentId, method)
       queryClient.invalidateQueries({ queryKey: ["pr-details", agentId] })
-      toast.success("Review re-requested")
+      queryClient.invalidateQueries({ queryKey: ["agent", agentId] })
+      toast.success("PR merged")
     } catch (err) {
-      toast.error(`Failed to re-request review: ${err instanceof Error ? err.message : "unknown error"}`)
+      toast.error(`Merge failed: ${err instanceof Error ? err.message : "unknown error"}`)
     } finally {
-      setRerequesting(false)
+      setMerging(false)
+    }
+  }
+
+  async function handleResolveThread(threadId: string) {
+    try {
+      await api.resolveThread(threadId)
+      queryClient.invalidateQueries({ queryKey: ["pr-details", agentId] })
+      toast.success("Thread resolved")
+    } catch (err) {
+      toast.error(`Failed to resolve: ${err instanceof Error ? err.message : "unknown error"}`)
+    }
+  }
+
+  async function handleReply() {
+    if (!replyingTo || !replyText.trim()) return
+    setSubmittingReply(true)
+    try {
+      const agent = queryClient.getQueryData<Agent>(["agent", agentId])
+      if (!agent?.repoId || !agent?.prNumber) throw new Error("No PR info")
+      await api.replyToPRComment(agent.repoId, agent.prNumber, replyingTo.commentId, replyText.trim())
+      queryClient.invalidateQueries({ queryKey: ["pr-details", agentId] })
+      setReplyingTo(null)
+      setReplyText("")
+      toast.success("Reply posted")
+    } catch (err) {
+      toast.error(`Failed to reply: ${err instanceof Error ? err.message : "unknown error"}`)
+    } finally {
+      setSubmittingReply(false)
     }
   }
 
@@ -295,40 +399,23 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
     staleTime: 30_000,
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground/40 text-xs">
-        Loading…
-      </div>
-    )
-  }
+  if (isLoading) return <div className="flex items-center justify-center h-full text-muted-foreground/40 text-xs">Loading...</div>
+  if (error || !pr) return <div className="flex items-center justify-center h-full text-muted-foreground/40 text-xs">No PR data</div>
 
-  if (error || !pr) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground/40 text-xs">
-        No PR data
-      </div>
-    )
-  }
-
-  const banner = statusBanner(pr)
+  const isMergeable = pr.mergeableState === "clean" && !pr.merged && !pr.draft
+  const successChecks = pr.checks.filter(c => c.conclusion === "success").length
+  const failedChecks = pr.checks.filter(c => c.conclusion === "failure").length
+  const pendingChecks = pr.checks.filter(c => c.status !== "completed").length
+  const approvalCount = pr.reviews.filter(r => r.state === "APPROVED").length
+  const changesCount = pr.reviews.filter(r => r.state === "CHANGES_REQUESTED").length
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-3 space-y-4">
-
+      <div className="p-3 space-y-3">
         {/* PR title + link */}
-        <div className="space-y-1.5">
-          <a
-            href={pr.url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={handleExternalClick}
-            className="flex items-start gap-1.5 group"
-          >
-            <span className="text-[13px] font-medium text-foreground leading-snug group-hover:underline">
-              {pr.title}
-            </span>
+        <div className="space-y-1">
+          <a href={pr.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="flex items-start gap-1.5 group">
+            <span className="text-[13px] font-medium text-foreground leading-snug group-hover:underline">{pr.title}</span>
             <IconArrowUpRight size={12} className="text-muted-foreground/50 shrink-0 mt-0.5" />
           </a>
           <div className="flex items-center gap-2">
@@ -338,80 +425,192 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
           </div>
         </div>
 
-        {/* Status banner */}
-        <div className={cn("flex items-center justify-center px-3 py-2 rounded-lg border text-[12px] font-medium", banner.cls)}>
-          {banner.label}
-        </div>
-
-        {/* Mark ready for review */}
-        {pr.draft && !pr.merged && (
-          <Button
-            size="sm"
-            className="w-full text-[12px]"
-            onClick={handleMarkReady}
-            disabled={markingReady}
-          >
-            {markingReady ? "Marking ready…" : "Mark ready for review"}
-          </Button>
-        )}
-
-        {/* Re-request review */}
-        {(pr.hasChangeRequests || pr.hasDismissedReviews) && !pr.merged && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-[12px]"
-            onClick={handleRerequestReview}
-            disabled={rerequesting}
-          >
-            {rerequesting ? "Re-requesting…" : "Re-request review"}
-          </Button>
-        )}
-
-        {/* Reviews */}
-        {pr.reviews.length > 0 && (
-          <div>
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Reviews</div>
-            <div className="space-y-1.5">
-              {pr.reviews.map((review) => (
-                <div key={review.author} className="flex items-center gap-2">
-                  <ReviewIcon state={review.state} />
-                  {review.avatarUrl && (
-                    <img src={review.avatarUrl} alt={review.author} className="w-4 h-4 rounded-full" />
-                  )}
-                  <span className="text-[12px] text-foreground flex-1">{review.author}</span>
-                  <span className={cn(
-                    "text-[10px] font-medium uppercase tracking-wide",
-                    review.state === "APPROVED" && "text-emerald-400",
-                    review.state === "CHANGES_REQUESTED" && "text-red-400",
-                    review.state === "DISMISSED" && "text-zinc-400",
-                    review.state === "PENDING" && "text-zinc-400",
-                  )}>
-                    {review.state === "CHANGES_REQUESTED" ? "Changes" : review.state.toLowerCase()}
-                  </span>
+        {/* Status cards (GitHub-style stacked) */}
+        <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+          {/* Reviews */}
+          <div className="px-3 py-2.5">
+            <div className="flex items-start gap-2.5">
+              {changesCount > 0 ? (
+                <IconCircleX size={18} className="text-red-400 shrink-0 mt-0.5" />
+              ) : (pr.mergeableState === "blocked" || approvalCount === 0) ? (
+                <IconCircleDashed size={18} className="text-muted-foreground/50 shrink-0 mt-0.5" />
+              ) : (
+                <IconCircleCheck size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium text-foreground">
+                  {changesCount > 0 ? "Changes requested" : (pr.mergeableState === "blocked" && approvalCount > 0) ? "Review required" : approvalCount > 0 ? "Approved" : "Review required"}
                 </div>
-              ))}
+                <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                  {changesCount > 0 && `${changesCount} change${changesCount > 1 ? "s" : ""} requested`}
+                  {changesCount === 0 && approvalCount > 0 && pr.mergeableState === "blocked" && `${approvalCount} approval${approvalCount > 1 ? "s" : ""}, more required`}
+                  {changesCount === 0 && approvalCount > 0 && pr.mergeableState !== "blocked" && `${approvalCount} approving review${approvalCount > 1 ? "s" : ""}`}
+                  {changesCount === 0 && approvalCount === 0 && "No reviews yet"}
+                </div>
+              </div>
+            </div>
+            {/* Reviewer list */}
+            {pr.reviews.length > 0 && (
+              <div className="mt-2 ml-7 space-y-1.5">
+                {pr.reviews.map((r) => (
+                  <div key={r.author} className="flex items-center gap-2">
+                    {r.avatarUrl ? (
+                      <img src={r.avatarUrl} alt={r.author} className="w-4 h-4 rounded-full shrink-0" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full bg-muted shrink-0" />
+                    )}
+                    <span className="text-[11px] font-medium text-foreground">{r.author}</span>
+                    <span className={cn(
+                      "text-[10px]",
+                      r.state === "APPROVED" && "text-emerald-400",
+                      r.state === "CHANGES_REQUESTED" && "text-red-400",
+                      (r.state === "PENDING" || r.state === "COMMENTED" || r.state === "DISMISSED") && "text-muted-foreground/50",
+                    )}>
+                      {r.state === "APPROVED" ? "Approved" : r.state === "CHANGES_REQUESTED" ? "Requested changes" : r.state === "DISMISSED" ? "Dismissed" : "Pending"}
+                    </span>
+                    {r.state === "CHANGES_REQUESTED" && !pr.merged && (
+                      <button
+                        onClick={() => api.rerequestReview(agentId).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["pr-details", agentId] })
+                          toast.success(`Re-requested review from ${r.author}`)
+                        }).catch(() => toast.error("Failed to re-request"))}
+                        className="text-[10px] text-primary hover:underline ml-auto"
+                      >
+                        re-request
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Checks */}
+          {pr.checks.length > 0 && (
+            <div className="px-3 py-2.5">
+              <button onClick={() => setChecksExpanded(!checksExpanded)} className="w-full flex items-start gap-2.5 text-left">
+                {failedChecks > 0 ? (
+                  <IconCircleX size={18} className="text-red-400 shrink-0 mt-0.5" />
+                ) : pendingChecks > 0 ? (
+                  <IconClock size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                ) : (
+                  <IconCircleCheck size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-medium text-foreground">
+                    {failedChecks > 0 ? `${failedChecks} check${failedChecks > 1 ? "s" : ""} failed` : pendingChecks > 0 ? "Checks in progress" : "All checks passed"}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                    {successChecks > 0 && `${successChecks} passed`}
+                    {pendingChecks > 0 && `${successChecks > 0 ? ", " : ""}${pendingChecks} pending`}
+                    {failedChecks > 0 && `${successChecks > 0 || pendingChecks > 0 ? ", " : ""}${failedChecks} failed`}
+                  </div>
+                </div>
+                <IconChevronDown size={13} className={cn("text-muted-foreground/40 shrink-0 mt-1 transition-transform", checksExpanded && "rotate-180")} />
+              </button>
+              {checksExpanded && (
+                <div className="mt-2 ml-7 space-y-1">
+                  {pr.checks.map((check, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <CheckIcon check={check} />
+                      <span className="text-[11px] text-foreground flex-1 truncate">{check.name}</span>
+                      {check.url && (
+                        <a href={check.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="text-muted-foreground/40 hover:text-muted-foreground">
+                          <IconArrowUpRight size={10} />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Merge status */}
+          <div className="px-3 py-2.5 flex items-start gap-2.5">
+            {pr.merged ? (
+              <IconCircleCheck size={18} className="text-purple-400 shrink-0 mt-0.5" />
+            ) : pr.mergeableState === "dirty" ? (
+              <IconAlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+            ) : pr.mergeableState === "blocked" ? (
+              <IconAlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+            ) : isMergeable ? (
+              <IconCircleCheck size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <IconCircleDashed size={18} className="text-muted-foreground/50 shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-foreground">
+                {pr.merged ? "Merged" : pr.mergeableState === "dirty" ? "Merge conflict" : pr.mergeableState === "blocked" ? "Merging is blocked" : isMergeable ? "Ready to merge" : pr.draft ? "Draft" : "Pending"}
+              </div>
+              <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                {pr.merged ? "This PR has been merged" : pr.mergeableState === "dirty" ? "Resolve conflicts before merging" : pr.mergeableState === "blocked" ? "Requirements not met" : isMergeable ? "All checks passed and requirements met" : pr.draft ? "Mark as ready for review first" : "Waiting for reviews and checks"}
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Checks */}
-        {pr.checks.length > 0 && (
-          <div>
-            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">Checks</div>
-            <div className="space-y-1.5">
-              {pr.checks.map((check, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <CheckIcon check={check} />
-                  <span className="text-[12px] text-foreground flex-1 truncate">{check.name}</span>
-                  {check.url && (
-                    <a href={check.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="text-muted-foreground/40 hover:text-muted-foreground">
-                      <IconArrowUpRight size={11} />
-                    </a>
-                  )}
+        {/* Actions */}
+        {!pr.merged && (
+          <div className="space-y-2">
+            {pr.draft ? (
+              <Button size="sm" className="w-full text-[12px]" onClick={handleMarkReady} disabled={markingReady}>
+                {markingReady ? "Marking ready..." : "Mark ready for review"}
+              </Button>
+            ) : (
+              <>
+                {!isMergeable && (
+                  <button
+                    onClick={() => setBypassRules(!bypassRules)}
+                    className="flex items-center gap-2 text-[11px] text-red-400/80 cursor-pointer select-none"
+                  >
+                    <div className={cn(
+                      "w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors",
+                      bypassRules ? "bg-red-400 border-red-400" : "border-muted-foreground/30"
+                    )}>
+                      {bypassRules && <IconCheck size={10} className="text-background" />}
+                    </div>
+                    Merge without waiting for requirements (bypass rules)
+                  </button>
+                )}
+                <div className="flex items-center">
+                  <Button
+                    size="sm"
+                    className="text-[12px] flex-1 rounded-r-none"
+                    onClick={() => handleMerge(mergeMethod)}
+                    disabled={merging || (!isMergeable && !bypassRules)}
+                  >
+                    {merging ? "Merging..." : `${mergeMethod.charAt(0).toUpperCase() + mergeMethod.slice(1)} merge`}
+                  </Button>
+                  <Popover open={mergeMenuOpen} onOpenChange={setMergeMenuOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
+                        disabled={merging || (!isMergeable && !bypassRules)}
+                      >
+                        <IconChevronDown size={12} />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-44 p-1" sideOffset={4}>
+                      {(["squash", "merge", "rebase"] as const).map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => { setMergeMethod(m); setMergeMenuOpen(false) }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded hover:bg-accent transition-colors",
+                            mergeMethod === m && "font-medium text-foreground"
+                          )}
+                        >
+                          {mergeMethod === m && <IconCheck size={12} />}
+                          <span className={mergeMethod !== m ? "pl-5" : ""}>{m.charAt(0).toUpperCase() + m.slice(1)} merge</span>
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         )}
 
@@ -419,23 +618,71 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
         {pr.threads.length > 0 && (
           <div>
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
-              Review threads
-              <span className="ml-1.5 text-muted-foreground/50 normal-case font-normal">{pr.threads.length}</span>
+              Threads <span className="text-muted-foreground/50 normal-case font-normal">{pr.threads.length}</span>
             </div>
             <div className="space-y-2">
               {pr.threads.map((thread) => (
-                <ThreadBlock key={thread.id} thread={thread} onAddComment={onAddComment} />
+                <div key={thread.id} className={cn("rounded-lg border overflow-hidden", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
+                  {thread.comments.map((c) => (
+                    <div key={c.id} className="px-3 py-2 border-b border-border last:border-b-0">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full" />}
+                        <span className="text-[11px] font-medium text-foreground">{c.author}</span>
+                        {c.path && <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto">{c.path}{c.line ? `:${c.line}` : ""}</span>}
+                      </div>
+                      <MarkdownComment body={c.body} />
+                    </div>
+                  ))}
+                  {/* Reply + resolve actions */}
+                  <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/30">
+                    {replyingTo?.threadId === thread.id ? (
+                      <div className="flex-1 flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply() } if (e.key === "Escape") setReplyingTo(null) }}
+                          placeholder="Reply..."
+                          className="flex-1 bg-background border border-border rounded px-2 py-1 text-[11px] outline-none focus:border-ring"
+                          disabled={submittingReply}
+                        />
+                        <Button size="xs" onClick={handleReply} disabled={submittingReply || !replyText.trim()} className="text-[10px]">Send</Button>
+                        <Button variant="ghost" size="xs" onClick={() => setReplyingTo(null)} className="text-[10px]">Cancel</Button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => {
+                            const lastComment = thread.comments[thread.comments.length - 1]
+                            setReplyingTo({ threadId: thread.id, commentId: lastComment.databaseId ?? 0 })
+                            setReplyText("")
+                          }}
+                          className="text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-accent"
+                        >
+                          Reply
+                        </button>
+                        {!thread.isResolved && (
+                          <button
+                            onClick={() => handleResolveThread(thread.id)}
+                            className="text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-accent"
+                          >
+                            Resolve
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* General discussion comments */}
+        {/* Discussion comments */}
         {pr.issueComments.length > 0 && (
           <div>
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
-              Discussion
-              <span className="ml-1.5 text-muted-foreground/50 normal-case font-normal">{pr.issueComments.length}</span>
+              Discussion <span className="text-muted-foreground/50 normal-case font-normal">{pr.issueComments.length}</span>
             </div>
             <div className="space-y-3">
               {pr.issueComments.map((c) => (
@@ -447,9 +694,7 @@ function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: 
                       <IconArrowUpRight size={11} />
                     </a>
                   </div>
-                  <p className="text-[12px] text-muted-foreground leading-relaxed pl-5 whitespace-pre-wrap line-clamp-4">
-                    {c.body}
-                  </p>
+                  <div className="pl-5"><MarkdownComment body={c.body} /></div>
                 </div>
               ))}
             </div>
@@ -511,16 +756,38 @@ function fileColor(name: string): string {
   return colorMap[ext ?? ""] ?? "text-zinc-500"
 }
 
+// Build a set of all directory paths that contain a changed file
+function getChangedPaths(changes: FileChange[]): Set<string> {
+  const paths = new Set<string>()
+  for (const f of changes) {
+    paths.add(f.path)
+    const parts = f.path.split("/")
+    for (let i = 1; i < parts.length; i++) {
+      paths.add(parts.slice(0, i).join("/"))
+    }
+  }
+  return paths
+}
+
 function TreeNode({
   entry,
   depth,
   onSelect,
+  changesMap,
+  changedPaths,
+  changedOnly,
 }: {
   entry: FileTreeEntry
   depth: number
   onSelect: (path: string) => void
+  changesMap: Map<string, FileChange>
+  changedPaths: Set<string>
+  changedOnly: boolean
 }) {
-  const [open, setOpen] = useState(depth < 1)
+  const [open, setOpen] = useState(depth < 2)
+  const change = changesMap.get(entry.path)
+
+  if (changedOnly && !changedPaths.has(entry.path)) return null
 
   if (entry.type === "directory") {
     return (
@@ -535,70 +802,534 @@ function TreeNode({
           <span className="text-[12px] text-muted-foreground truncate">{entry.name}</span>
         </button>
         {open && entry.children?.map((child) => (
-          <TreeNode key={child.path} entry={child} depth={depth + 1} onSelect={onSelect} />
+          <TreeNode key={child.path} entry={child} depth={depth + 1} onSelect={onSelect} changesMap={changesMap} changedPaths={changedPaths} changedOnly={changedOnly} />
         ))}
       </div>
     )
   }
 
+  const isAddOnly = change && change.deletions === 0
+  const isDelOnly = change && change.additions === 0
+
   return (
     <button
       onClick={() => onSelect(entry.path)}
-      className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors"
+      className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors group"
       style={{ paddingLeft: `${26 + depth * 16}px` }}
     >
       <span className={cn("text-[10px] shrink-0 leading-none", fileColor(entry.name))}>◆</span>
-      <span className="text-[12px] text-muted-foreground truncate">{entry.name}</span>
+      <span className={cn("text-[12px] truncate flex-1 min-w-0", change ? "text-foreground" : "text-muted-foreground")}>{entry.name}</span>
+      {change && (
+        <span className="flex items-center gap-1.5 shrink-0">
+          <span className="font-mono text-[10px]">
+            <span className="text-emerald-400">+{change.additions}</span>
+            {" "}
+            <span className="text-red-400">-{change.deletions}</span>
+          </span>
+          <span className={cn(
+            "w-2 h-2 rounded-full shrink-0",
+            isAddOnly ? "bg-emerald-400"
+              : isDelOnly ? "bg-red-400"
+              : "bg-amber-400"
+          )} />
+        </span>
+      )}
     </button>
   )
 }
 
-function AllFilesView({
+function filterTree(entries: FileTreeEntry[], query: string): FileTreeEntry[] {
+  const q = query.toLowerCase()
+  return entries.reduce<FileTreeEntry[]>((acc, entry) => {
+    if (entry.type === "file") {
+      if (entry.name.toLowerCase().includes(q) || entry.path.toLowerCase().includes(q)) acc.push(entry)
+    } else {
+      const filteredChildren = filterTree(entry.children ?? [], query)
+      if (filteredChildren.length > 0) acc.push({ ...entry, children: filteredChildren })
+    }
+    return acc
+  }, [])
+}
+
+// ── Lazy diff — only renders when scrolled into view ─────────────────────────
+
+function LazyDiff({ agentId, file, hideHeader }: { agentId: string; file: FileChange; hideHeader?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [inView, setInView] = useState(false)
+  const [ready, setReady] = useState(false)
+  const heightRef = useRef<number>(0)
+
+  // Track visibility — mount when in view, unmount when far away
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "300px" }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // Stagger mount with requestIdleCallback to avoid blocking main thread
+  useEffect(() => {
+    if (!inView) { setReady(false); return }
+    const id = "requestIdleCallback" in window
+      ? (window as any).requestIdleCallback(() => setReady(true), { timeout: 150 })
+      : setTimeout(() => setReady(true), 50)
+    return () => {
+      if ("cancelIdleCallback" in window) (window as any).cancelIdleCallback(id)
+      else clearTimeout(id)
+    }
+  }, [inView])
+
+  // Remember height so unmounting doesn't cause layout shift
+  const onRef = useCallback((el: HTMLDivElement | null) => {
+    if (el && el.offsetHeight > 0) heightRef.current = el.offsetHeight
+  }, [])
+
+  const showDiff = inView && ready
+
+  return (
+    <div
+      ref={ref}
+      style={!showDiff && heightRef.current > 0 ? { height: heightRef.current } : undefined}
+      className="max-h-[500px] overflow-auto"
+    >
+      {showDiff ? (
+        <div ref={onRef}>
+          <DiffView agentId={agentId} file={file} hideHeader={hideHeader} />
+        </div>
+      ) : (
+        <div className="h-24 flex items-center justify-center text-xs text-muted-foreground/40">
+          {inView ? "Rendering..." : ""}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Stacked diff view ────────────────────────────────────────────────────────
+
+export function StackedDiffView({
   agentId,
-  onFileContentSelect,
+  fileChanges,
+  search,
+  showFileList,
+  onOpenFile,
 }: {
   agentId: string
-  onFileContentSelect: (path: string) => void
+  fileChanges: FileChange[]
+  search: string
+  showFileList: boolean
+  onOpenFile: (file: FileChange) => void
 }) {
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
+  const [activeFile, setActiveFile] = useState<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+
+  const filtered = search
+    ? fileChanges.filter(f => f.path.toLowerCase().includes(search.toLowerCase()))
+    : fileChanges
+
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (i) => expandedFiles.has(filtered[i].path) ? 400 : 32,
+    overscan: 3,
+  })
+
+  // Re-measure when files expand/collapse
+  useEffect(() => {
+    virtualizer.measure()
+  }, [expandedFiles])
+
+  function toggleFile(path: string) {
+    setExpandedFiles(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  function scrollToFile(path: string) {
+    setActiveFile(path)
+    const idx = filtered.findIndex(f => f.path === path)
+    if (idx === -1) return
+    if (!expandedFiles.has(path)) {
+      setExpandedFiles(prev => new Set([...prev, path]))
+    }
+    virtualizer.scrollToIndex(idx, { align: "start" })
+  }
+
+  function expandAll() {
+    setExpandedFiles(new Set(filtered.map(f => f.path)))
+  }
+
+  function collapseAll() {
+    setExpandedFiles(new Set())
+  }
+
+  return (
+    <div className="flex h-full">
+      {/* Virtualized stacked diffs */}
+      <div ref={scrollContainerRef} className="flex-1 min-w-0 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
+            <IconFiles size={22} className="text-muted-foreground/30" />
+            <p className="text-xs text-muted-foreground/40">{search ? "No matches" : "No changes"}</p>
+          </div>
+        ) : (
+          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const file = filtered[virtualRow.index]
+              const name = file.path.split("/").pop() ?? file.path
+              const dir = file.path.split("/").slice(0, -1).join("/")
+              const isExpanded = expandedFiles.has(file.path)
+              const isAddOnly = file.deletions === 0
+              const isDelOnly = file.additions === 0
+
+              return (
+                <div
+                  key={file.path}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(virtualRow.index, el)
+                    virtualizer.measureElement(el)
+                  }}
+                  data-index={virtualRow.index}
+                  className="absolute left-0 right-0 px-2 py-1"
+                  style={{ top: virtualRow.start }}
+                >
+                  <div className="rounded-lg border border-border/50 overflow-hidden bg-card">
+                    <button
+                      onClick={() => toggleFile(file.path)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors"
+                    >
+                      <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", isExpanded && "rotate-90")} />
+                      <span className={cn(
+                        "w-2 h-2 rounded-full shrink-0",
+                        isAddOnly ? "bg-emerald-400"
+                          : isDelOnly ? "bg-red-400"
+                          : "bg-amber-400"
+                      )} />
+                      <span className="text-[12px] font-mono truncate flex-1 min-w-0">
+                        {dir && <span className="text-muted-foreground/50">{dir}/</span>}
+                        <span className="text-foreground font-medium">{name}</span>
+                      </span>
+                      <span className="font-mono text-[10px] shrink-0">
+                        <span className="text-emerald-400">+{file.additions}</span>
+                        {" "}
+                        <span className="text-red-400">-{file.deletions}</span>
+                      </span>
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); onOpenFile(file) }}
+                        className="text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+                        title="Open in tab"
+                      >
+                        <IconArrowUpRight size={12} />
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <LazyDiff agentId={agentId} file={file} hideHeader />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* File list sidebar (right) */}
+      {showFileList && (
+        <div className="w-48 shrink-0 border-l border-border flex flex-col">
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border shrink-0">
+            <span className="text-[10px] text-muted-foreground/50 font-medium uppercase tracking-wider">Files</span>
+            <div className="flex items-center gap-0.5">
+              <button onClick={expandAll} className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors" title="Expand all">
+                <IconChevronDown size={12} />
+              </button>
+              <button onClick={collapseAll} className="p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors" title="Collapse all">
+                <IconChevronRight size={12} />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="py-1">
+              {filtered.map((file) => {
+                const name = file.path.split("/").pop() ?? file.path
+                const isAddOnly = file.deletions === 0
+                const isDelOnly = file.additions === 0
+                const isExpanded = expandedFiles.has(file.path)
+                return (
+                  <button
+                    key={file.path}
+                    onClick={() => scrollToFile(file.path)}
+                    className={cn(
+                      "w-full flex items-center gap-1.5 px-2.5 py-1 text-left transition-colors",
+                      activeFile === file.path ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn(
+                      "w-2 h-2 rounded-full shrink-0",
+                      isAddOnly ? "bg-emerald-400"
+                        : isDelOnly ? "bg-red-400"
+                        : "bg-amber-400"
+                    )} />
+                    <span className={cn("text-[11px] truncate", isExpanded && "font-medium")}>{name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Unified file tree ────────────────────────────────────────────────────────
+
+const STACKED_DIFF_THRESHOLD = 100
+
+function UnifiedFileTree({
+  agentId,
+  fileChanges,
+  onFileContentSelect,
+  onFileSelect,
+  onOpenDiffBrowser,
+  onOpenPRTab,
+  hasPR,
+  prView,
+}: {
+  agentId: string
+  fileChanges: FileChange[]
+  onFileContentSelect: (path: string) => void
+  onFileSelect: (file: FileChange) => void
+  onOpenDiffBrowser?: () => void
+  onOpenPRTab?: () => void
+  hasPR?: boolean
+  prView?: React.ReactNode
+}) {
+  const [changedOnly, setChangedOnly] = useState(true)
+  const [diffMode, setDiffMode] = useState(() => getDiffViewMode() === "stacked")
+  const [showFileList, setShowFileList] = useState(() => getDiffFileList())
+  const [search, setSearch] = useState("")
   const { data: tree, isLoading } = useQuery({
     queryKey: ["file-tree", agentId],
     queryFn: () => api.getFileTree(agentId),
     staleTime: 30_000,
+    enabled: !changedOnly && !diffMode,
   })
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-xs text-muted-foreground/40">Loading…</p>
-      </div>
-    )
-  }
+  const changesMap = new Map(fileChanges.map((f) => [f.path, f]))
+  const changedPaths = getChangedPaths(fileChanges)
 
-  if (!tree || tree.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-2">
-        <IconFiles size={22} className="text-muted-foreground/30" />
-        <p className="text-xs text-muted-foreground/40">No files</p>
-      </div>
-    )
-  }
+  const rawTree = changedOnly ? buildTreeFromChanges(fileChanges) : (tree as FileTreeEntry[] | undefined)
+  const displayTree = rawTree && search ? filterTree(rawTree, search) : rawTree
+
+  const [activeView, setActiveView] = useState<"all" | "diff" | "pr">(diffMode ? "diff" : "all")
+  const tooManyFiles = fileChanges.length > STACKED_DIFF_THRESHOLD
+
+  function switchToAll() { setActiveView("all"); setChangedOnly(false); setDiffMode(false); setDiffViewMode("tree") }
+  function switchToDiff() { setActiveView("diff"); setChangedOnly(true); setDiffMode(true); setDiffViewMode("stacked") }
+  function switchToPR() { setActiveView("pr") }
 
   return (
-    <div className="flex-1 min-h-0">
-      <ScrollArea className="h-full">
-        <div className="py-1">
-          {tree.map((entry) => (
-            <TreeNode
-              key={entry.path}
-              entry={entry as FileTreeEntry}
-              depth={0}
-              onSelect={onFileContentSelect}
-            />
-          ))}
+    <div className="flex flex-col h-full">
+      {/* Tab bar */}
+      <div className="flex items-center gap-2 px-2.5 pt-2 pb-1 shrink-0">
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          <button
+            onClick={switchToAll}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+              activeView === "all"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            All
+          </button>
+          <button
+            onClick={switchToDiff}
+            onDoubleClick={(e) => { e.preventDefault(); onOpenDiffBrowser?.() }}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+              activeView === "diff"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            Diff
+            {fileChanges.length > 0 && (
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                activeView === "diff" ? "bg-background/60 text-foreground" : "bg-accent/60 text-muted-foreground"
+              )}>
+                {fileChanges.length}
+              </span>
+            )}
+          </button>
+          {hasPR && (
+            <button
+              onClick={switchToPR}
+              onDoubleClick={(e) => { e.preventDefault(); onOpenPRTab?.() }}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+                activeView === "pr"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <IconGitPullRequest size={12} />
+              PR
+            </button>
+          )}
         </div>
-      </ScrollArea>
+
+        {/* Diff mode actions */}
+        {activeView === "diff" && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenDiffBrowser && (
+              <Button variant="ghost" size="icon-xs" title="Open in full view" onClick={onOpenDiffBrowser}>
+                <IconArrowUpRight size={13} />
+              </Button>
+            )}
+            {!tooManyFiles && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title={showFileList ? "Hide file list" : "Show file list"}
+                onClick={() => { const next = !showFileList; setShowFileList(next); setDiffFileList(next) }}
+                className={cn(showFileList && "text-primary")}
+              >
+                <IconLayoutSidebarLeftExpand size={13} />
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Search — only in All/Diff view */}
+      {activeView !== "pr" && (
+        <div className="flex items-center gap-1.5 mx-2.5 mb-1.5 bg-muted/50 rounded-md px-2 py-1 border border-transparent focus-within:border-border transition-colors">
+          <IconSearch size={12} className="text-muted-foreground/40 shrink-0" />
+          <input
+            type="text"
+            placeholder="Search files..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/40"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="text-muted-foreground/40 hover:text-muted-foreground">
+              <IconChevronRight size={10} className="rotate-45" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Content */}
+      {activeView === "pr" && prView ? (
+        <div className="flex-1 min-h-0">{prView}</div>
+      ) : activeView === "diff" ? (
+        <div className="flex-1 min-h-0">
+          {tooManyFiles ? (
+            /* Too many files — show simple list, open one-by-one in tabs */
+            <ScrollArea className="h-full">
+              <div className="py-1">
+                {(search ? fileChanges.filter(f => f.path.toLowerCase().includes(search.toLowerCase())) : fileChanges).map((file) => {
+                  const name = file.path.split("/").pop() ?? file.path
+                  const dir = file.path.split("/").slice(0, -1).join("/")
+                  const isAddOnly = file.deletions === 0
+                  const isDelOnly = file.additions === 0
+                  return (
+                    <button
+                      key={file.path}
+                      onClick={() => onFileSelect(file)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/40 transition-colors"
+                    >
+                      <span className={cn("w-2 h-2 rounded-full shrink-0", isAddOnly ? "bg-emerald-400" : isDelOnly ? "bg-red-400" : "bg-amber-400")} />
+                      <span className="text-[12px] font-mono truncate flex-1 min-w-0">
+                        {dir && <span className="text-muted-foreground/50">{dir}/</span>}
+                        <span className="text-foreground font-medium">{name}</span>
+                      </span>
+                      <span className="font-mono text-[10px] shrink-0">
+                        <span className="text-emerald-400">+{file.additions}</span>{" "}
+                        <span className="text-red-400">-{file.deletions}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </ScrollArea>
+          ) : (
+            <StackedDiffView agentId={agentId} fileChanges={fileChanges} search={search} showFileList={showFileList} onOpenFile={onFileSelect} />
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0">
+          <ScrollArea className="h-full">
+            {isLoading && !changedOnly ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-xs text-muted-foreground/40">Loading...</p>
+              </div>
+            ) : !displayTree || displayTree.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2">
+                <IconFiles size={22} className="text-muted-foreground/30" />
+                <p className="text-xs text-muted-foreground/40">{search ? "No matches" : changedOnly ? "No changes" : "No files"}</p>
+              </div>
+            ) : (
+              <div className="py-1">
+                {displayTree.map((entry) => (
+                  <TreeNode
+                    key={entry.path}
+                    entry={entry}
+                    depth={0}
+                    onSelect={onFileContentSelect}
+                    changesMap={changesMap}
+                    changedPaths={changedPaths}
+                    changedOnly={changedOnly}
+                  />
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      )}
     </div>
   )
+}
+
+/** Build a minimal file tree from a flat list of changed file paths */
+function buildTreeFromChanges(files: FileChange[]): FileTreeEntry[] {
+  const root: FileTreeEntry[] = []
+  for (const file of files) {
+    const parts = file.path.split("/")
+    let children = root
+    let currentPath = ""
+    for (let i = 0; i < parts.length; i++) {
+      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i]
+      const isLast = i === parts.length - 1
+      let existing = children.find((c) => c.name === parts[i])
+      if (!existing) {
+        existing = {
+          name: parts[i],
+          path: currentPath,
+          type: isLast ? "file" : "directory",
+          children: isLast ? undefined : [],
+        }
+        children.push(existing)
+      }
+      if (!isLast) children = existing.children!
+    }
+  }
+  return root
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -609,80 +1340,90 @@ interface FileChangesViewProps {
   onFileSelect: (file: FileChange | null) => void
   onFileContentSelect: (path: string) => void
   onAddComment: (c: PRComment) => void
+  onOpenDiffBrowser?: () => void
+  onOpenPRTab?: () => void
+  /** When provided, tab state is controlled externally */
+  tab?: "files" | "changes" | "pr"
+  onTabChange?: (tab: "files" | "changes" | "pr") => void
+  /** Hide the internal tab header (when tabs are rendered elsewhere) */
+  hideHeader?: boolean
 }
 
-export function FileChangesView({ agent, selectedFile, onFileSelect, onFileContentSelect, onAddComment }: FileChangesViewProps) {
-  const [tab, setTab] = useState<"files" | "changes" | "pr">("files")
+export function FileChangesView({ agent, selectedFile, onFileSelect, onFileContentSelect, onAddComment, tab: tabProp, onTabChange, hideHeader, onOpenDiffBrowser, onOpenPRTab }: FileChangesViewProps) {
+  const [tabLocal, setTabLocal] = useState<"files" | "changes" | "pr">("files")
+  const tab = tabProp ?? tabLocal
+  const setTab = onTabChange ?? setTabLocal
   const hasPR = !!agent.prNumber
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center px-2 py-2 border-b border-border shrink-0 gap-1">
-        <button
-          onClick={() => setTab("files")}
-          className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
-            tab === "files"
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
-          )}
-        >
-          All files
-        </button>
-
-        <button
-          onClick={() => setTab("changes")}
-          className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
-            tab === "changes"
-              ? "bg-accent text-foreground"
-              : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
-          )}
-        >
-          Changes
-          {agent.fileChanges.length > 0 && (
-            <span className={cn(
-              "text-[10px] px-1.5 py-0.5 rounded font-medium",
-              tab === "changes" ? "bg-background/60 text-foreground" : "bg-accent/60 text-muted-foreground"
-            )}>
-              {agent.fileChanges.length}
-            </span>
-          )}
-        </button>
-
-        {hasPR && (
+      {/* Header — hidden when tabs are rendered in the workspace header */}
+      {!hideHeader && (
+        <div className="flex items-center px-2 py-2 border-b border-border shrink-0 gap-1">
           <button
-            onClick={() => setTab("pr")}
+            onClick={() => setTab("files")}
             className={cn(
               "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
-              tab === "pr"
+              tab === "files"
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
             )}
           >
-            <IconGitPullRequest size={12} />
-            Pull request
+            All files
           </button>
-        )}
 
-        <button className="ml-auto p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
-          <IconSearch size={14} />
-        </button>
-      </div>
+          <button
+            onClick={() => setTab("changes")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+              tab === "changes"
+                ? "bg-accent text-foreground"
+                : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            Changes
+            {agent.fileChanges.length > 0 && (
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                tab === "changes" ? "bg-background/60 text-foreground" : "bg-accent/60 text-muted-foreground"
+              )}>
+                {agent.fileChanges.length}
+              </span>
+            )}
+          </button>
+
+          {hasPR && (
+            <button
+              onClick={() => setTab("pr")}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+                tab === "pr"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <IconGitPullRequest size={12} />
+              Pull request
+            </button>
+          )}
+
+          <button className="ml-auto p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            <IconSearch size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col flex-1 min-h-0">
-        {tab === "files" ? (
-          <AllFilesView agentId={agent.id} onFileContentSelect={onFileContentSelect} />
-        ) : tab === "changes" ? (
-          <ChangesView
-            files={agent.fileChanges}
-            selectedFile={selectedFile}
-            onFileSelect={onFileSelect}
-          />
-        ) : (
-          <PRView agentId={agent.id} onAddComment={onAddComment} />
-        )}
+        <UnifiedFileTree
+          agentId={agent.id}
+          fileChanges={agent.fileChanges}
+          onFileContentSelect={onFileContentSelect}
+          onFileSelect={(file) => onFileSelect(file)}
+          onOpenDiffBrowser={onOpenDiffBrowser}
+          onOpenPRTab={onOpenPRTab}
+          hasPR={hasPR}
+          prView={<PRView agentId={agent.id} onAddComment={onAddComment} />}
+        />
       </div>
     </div>
   )

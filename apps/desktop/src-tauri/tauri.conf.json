@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm vite --port 1420",
-    "beforeBuildCommand": "pnpm vite build"
+    "beforeBuildCommand": "pnpm vite build --mode production"
   },
   "app": {
     "windows": [

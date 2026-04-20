@@ -64,39 +64,19 @@ export async function agentsRoutes(app: FastifyInstance) {
     })
   })
 
-  // GET /api/agents/:id/ports — get listening ports for this agent's worktree
-  app.get<{ Params: { id: string } }>("/api/agents/:id/ports", async (req, reply) => {
-    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
-    if (!agent || !agent.repoId) return { ports: [] }
-    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
-    if (!repo) return { ports: [] }
-    const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
-    const { getWorktreePorts } = await import("../git/processes.js")
-    return { ports: getWorktreePorts(worktreePath) }
+  // GET /api/agents/:id/ports — get listening ports from DB (instant)
+  app.get<{ Params: { id: string } }>("/api/agents/:id/ports", async (req) => {
+    const { getAgentPortsFromDB } = await import("../git/processes.js")
+    return { ports: getAgentPortsFromDB(req.params.id) }
   })
 
-  // GET /api/ports — all listening ports across all active agents
+  // GET /api/ports — all listening ports from DB (instant)
   app.get("/api/ports", async () => {
-    const { getWorktreePorts } = await import("../git/processes.js")
-    const activeAgents = db.select().from(agents)
-      .where(and(isNull(agents.deletedAt), isNull(agents.parentAgentId), isNull(agents.taskId)))
-      .all()
-      .filter(a => a.repoId && a.status === "in-progress")
-
-    const result: Array<{ agentId: string; agentTitle: string; port: number }> = []
-    for (const agent of activeAgents) {
-      const repo = db.select().from(repos).where(eq(repos.id, agent.repoId!)).get()
-      if (!repo) continue
-      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
-      const ports = getWorktreePorts(worktreePath)
-      for (const port of ports) {
-        result.push({ agentId: agent.id, agentTitle: agent.title, port })
-      }
-    }
-    return result
+    const { getAllPortsFromDB } = await import("../git/processes.js")
+    return getAllPortsFromDB()
   })
 
-  // POST /api/agents/:id/kill-processes — kill all processes in the agent's worktree
+  // POST /api/agents/:id/kill-processes — kill processes in a worktree (async)
   app.post<{ Params: { id: string } }>("/api/agents/:id/kill-processes", async (req, reply) => {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (!agent || !agent.repoId) return reply.code(404).send({ error: "Not found" })
@@ -104,8 +84,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
     const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
     const { killWorktreeProcesses } = await import("../git/processes.js")
-    const result = killWorktreeProcesses(worktreePath)
-    return result
+    return await killWorktreeProcesses(worktreePath)
   })
 
   // GET /api/agents/:id/sessions — list child chat sessions (same worktree, different Claude sessions)
@@ -406,7 +385,7 @@ export async function agentsRoutes(app: FastifyInstance) {
           const worktreePath = path.join(repo.workspacesPath, updated.location)
           try {
             const { killWorktreeProcesses } = await import("../git/processes.js")
-            const result = killWorktreeProcesses(worktreePath)
+            const result = await killWorktreeProcesses(worktreePath)
             if (result.killed > 0) {
               app.log.info(`[auto-kill] killed ${result.killed} process(es) in ${updated.location}`)
             }

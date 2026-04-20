@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from "react"
+import React, { useRef, useState, useEffect, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import * as TablerIcons from "@tabler/icons-react"
 import { ScrollArea } from "@huxflux/ui"
@@ -8,7 +8,7 @@ import { statusConfig, type AgentSummary, type AgentStatus } from "@/data/mock"
 import type { PullRequest } from "@/data/mockReviews"
 // PendingAgent/DeletingAgent types are inferred from useWorkspaceContext
 import type { RefineSession } from "@/components/RefineView"
-import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
+import { api, useRepos, markAgentDeleted, useAgentEvents } from "@huxflux/shared"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
 
@@ -1460,24 +1460,24 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
 
 // ── Active processes panel ────────────────────────────────────────────────────
 
-function ActiveProcesses({ agents }: { agents: AgentSummary[] }) {
+function ActiveProcesses({ agents: _agents }: { agents: AgentSummary[] }) {
   const [collapsed, setCollapsed] = useState(true)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const hasActiveAgents = agents.some(a => a.status === "in-progress" && a.repoId)
-  const { data: ports = [], refetch: refetchPorts } = useQuery({
+  // Load ports from DB on mount, then update via WS events
+  const { data: ports = [] } = useQuery({
     queryKey: ["all-ports"],
     queryFn: () => api.getAllPorts(),
-    enabled: hasActiveAgents,
-    refetchInterval: 5_000,
-    staleTime: 3_000,
+    staleTime: 30_000,
   })
 
-  // Refetch ports when agents change status (start/stop streaming)
-  useEffect(() => {
-    if (hasActiveAgents) refetchPorts()
-  }, [agents.map(a => `${a.id}:${a.status}:${a.streaming}`).join(",")])
+  // Listen for real-time port changes via WebSocket
+  useAgentEvents(null, useCallback((event) => {
+    if (event.type === "ports:changed") {
+      queryClient.setQueryData(["all-ports"], (event as any).ports ?? [])
+    }
+  }, [queryClient]))
 
   if (ports.length === 0) return null
 
@@ -1608,25 +1608,16 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
 
   const { pendingAgent, onAgentCreating, onAgentCreated, clearPendingAgent, onAgentDeleting, clearDeletingAgent } = workspace
 
-  // Poll ports for active agents
-  const activeAgentIds = agents.filter(a => a.status === "in-progress" && a.repoId).map(a => a.id)
-  const { data: agentPortsData } = useQuery({
-    queryKey: ["agent-ports", activeAgentIds.join(",")],
-    queryFn: async () => {
-      const results: Record<string, number | null> = {}
-      for (const id of activeAgentIds) {
-        try {
-          const { ports } = await api.getAgentPorts(id)
-          results[id] = ports.length > 0 ? ports[0] : null
-        } catch { results[id] = null }
-      }
-      return results
-    },
-    enabled: activeAgentIds.length > 0,
-    refetchInterval: 15_000,
-    staleTime: 10_000,
+  // Derive per-agent ports from the all-ports query (DB-backed, no polling)
+  const { data: allPortsData = [] } = useQuery({
+    queryKey: ["all-ports"],
+    queryFn: () => api.getAllPorts(),
+    staleTime: 30_000,
   })
-  const agentPorts: Record<string, number | null> = agentPortsData ?? {}
+  const agentPorts: Record<string, number | null> = {}
+  for (const p of allPortsData) {
+    if (!agentPorts[p.agentId]) agentPorts[p.agentId] = p.port
+  }
 
   // Navigation helpers
   const onSelect = (id: string) => navigate({ to: "/agent/$agentId", params: { agentId: id } })

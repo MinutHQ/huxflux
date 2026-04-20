@@ -18,6 +18,7 @@ export type ServerEvent =
   | { type: "ask:question";      agentId: string; toolUseId: string; questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
   | { type: "task:comment";      taskId: string; comment: TaskComment }
   | { type: "task:updated";      taskId: string }
+  | { type: "ports:changed";    ports: Array<{ agentId: string; agentTitle: string; port: number }> }
   | { type: "error";            agentId?: string; message: string }
   | { type: "ws:reconnected" }
 

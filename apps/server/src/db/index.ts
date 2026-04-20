@@ -411,6 +411,16 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_worktree_pool_repo ON worktree_pool(repo_id);
     `,
   },
+  {
+    version: 27,
+    sql: `
+      CREATE TABLE IF NOT EXISTS agent_ports (
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        port INTEGER NOT NULL,
+        PRIMARY KEY (agent_id, port)
+      );
+    `,
+  },
 ]
 
 export function runMigrations() {

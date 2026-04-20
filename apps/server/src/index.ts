@@ -107,6 +107,10 @@ resetStreamingFlags()
 import { initializePools } from "./git/pool.js"
 initializePools().catch((err) => console.error("[pool] initialization failed:", err))
 
+// Start background port scanner (async, never blocks event loop)
+import { startPortScanner } from "./git/processes.js"
+startPortScanner()
+
 // Re-attach file watchers and do an initial scan for all active agents
 {
   const activeAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()

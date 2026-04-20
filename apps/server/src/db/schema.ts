@@ -18,6 +18,11 @@ export const repos = sqliteTable("repos", {
   createdAt: text("created_at").notNull(),
 })
 
+export const agentPorts = sqliteTable("agent_ports", {
+  agentId: text("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  port: integer("port").notNull(),
+})
+
 export const worktreePool = sqliteTable("worktree_pool", {
   id: text("id").primaryKey(),
   repoId: text("repo_id").notNull().references(() => repos.id, { onDelete: "cascade" }),

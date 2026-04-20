@@ -9,7 +9,7 @@ import type { PullRequest } from "@/data/mockReviews"
 // PendingAgent/DeletingAgent types are inferred from useWorkspaceContext
 import type { RefineSession } from "@/components/RefineView"
 import { api, useRepos, markAgentDeleted } from "@huxflux/shared"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
 
 import { ServerSwitcher } from "@/components/ServerSwitcher"
@@ -1530,7 +1530,26 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const selectedRefineId = refineMatch ? refineMatch.sessionId : null
 
   const { pendingAgent, onAgentCreating, onAgentCreated, clearPendingAgent, onAgentDeleting, clearDeletingAgent } = workspace
-  const agentPorts: Record<string, number | null> = {}
+
+  // Poll ports for active agents
+  const activeAgentIds = agents.filter(a => a.status === "in-progress" && a.repoId).map(a => a.id)
+  const { data: agentPortsData } = useQuery({
+    queryKey: ["agent-ports", activeAgentIds.join(",")],
+    queryFn: async () => {
+      const results: Record<string, number | null> = {}
+      for (const id of activeAgentIds) {
+        try {
+          const { ports } = await api.getAgentPorts(id)
+          results[id] = ports.length > 0 ? ports[0] : null
+        } catch { results[id] = null }
+      }
+      return results
+    },
+    enabled: activeAgentIds.length > 0,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  })
+  const agentPorts: Record<string, number | null> = agentPortsData ?? {}
 
   // Navigation helpers
   const onSelect = (id: string) => navigate({ to: "/agent/$agentId", params: { agentId: id } })

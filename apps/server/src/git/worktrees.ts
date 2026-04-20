@@ -72,6 +72,17 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
       throw err
     }
   }
+
+  // Ensure .huxflux_attachments is gitignored in the worktree
+  const gitignorePath = path.join(worktreePath, ".gitignore")
+  try {
+    const existing = existsSync(gitignorePath) ? (await import("node:fs/promises")).then(fs => fs.readFile(gitignorePath, "utf8")) : Promise.resolve("")
+    const content = await existing
+    if (!content.includes(".huxflux_attachments")) {
+      const { appendFile } = await import("node:fs/promises")
+      await appendFile(gitignorePath, `${content.endsWith("\n") || !content ? "" : "\n"}.huxflux_attachments\n`)
+    }
+  } catch { /* non-critical */ }
 }
 
 export async function removeWorktree(repoPath: string, worktreePath: string): Promise<void> {

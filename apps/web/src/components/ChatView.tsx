@@ -2893,9 +2893,17 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   const canSend = hasInput && !isSending
 
-  // Detect plan mode from tool calls in the latest messages
-  const lastAssistantMsg = [...agent.messages].reverse().find((m) => m.role === "assistant")
-  const hasExitPlanMode = lastAssistantMsg?.toolCalls?.some((tc) => tc.tool === "ExitPlanMode") ?? false
+  // Check if there's an unapproved ExitPlanMode — scan backwards for ExitPlanMode
+  // that isn't followed by a user message containing "approved" or "Plan approved"
+  const hasExitPlanMode = (() => {
+    for (let i = agent.messages.length - 1; i >= 0; i--) {
+      const msg = agent.messages[i]
+      // If user already responded after an ExitPlanMode, the plan was handled
+      if (msg.role === "user" && /plan approved|approved/i.test(msg.content)) return false
+      if (msg.role === "assistant" && msg.toolCalls?.some((tc) => tc.tool === "ExitPlanMode")) return true
+    }
+    return false
+  })()
   // Check if Claude entered plan mode (in any recent message) and hasn't exited yet
   const claudeInPlanMode = (() => {
     for (let i = agent.messages.length - 1; i >= 0; i--) {
@@ -2908,9 +2916,9 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   // Show approve/dismiss when:
   // 1. User-initiated: awaitingPlanApproval flag is set, OR
-  // 2. Claude-initiated: last assistant message has ExitPlanMode
-  // Streaming must be done and the message must have content (the plan).
-  const showPlanApproval = !isStreaming && !!lastAssistantMsg?.content && (awaitingPlanApproval || hasExitPlanMode)
+  // 2. Claude-initiated: an ExitPlanMode exists without subsequent user approval
+  // Streaming must be done and there must be plan content to show.
+  const showPlanApproval = !isStreaming && (awaitingPlanApproval || hasExitPlanMode)
   // Show plan mode indicator when Claude is actively planning (entered but not exited)
   const isInPlanMode = planMode || claudeInPlanMode
 

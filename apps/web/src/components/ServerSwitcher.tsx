@@ -224,7 +224,7 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
                   </button>
                 )}
                 <button
-                  onClick={() => remove(server.id)}
+                  onClick={(e) => { e.stopPropagation(); remove(server.id) }}
                   className="p-1 text-muted-foreground/40 hover:text-red-400 transition-colors rounded shrink-0"
                 >
                   <IconTrash size={12} />

@@ -596,6 +596,12 @@ function GitSettings() {
   const [autoPush, setAutoPushState] = useState(() => localStorage.getItem(GIT_AUTO_PUSH_KEY) === "true")
   const [deleteBranch, setDeleteBranchState] = useState(() => localStorage.getItem(GIT_DELETE_BRANCH_KEY) === "true")
   const [archiveOnMerge, setArchiveOnMergeState] = useState(() => localStorage.getItem(GIT_ARCHIVE_ON_MERGE_KEY) !== "false")
+  const [killOnDone, setKillOnDone] = useState(false)
+  const [killLoaded, setKillLoaded] = useState(false)
+
+  useEffect(() => {
+    api.getSettings().then((s) => { setKillOnDone(s.killProcessesOnDone ?? false); setKillLoaded(true) }).catch(() => setKillLoaded(true))
+  }, [])
 
   return (
     <div>
@@ -610,6 +616,10 @@ function GitSettings() {
       <SettingRow>
         <SettingInfo label="Archive on merge" description="Automatically archive agents when their PR is merged" />
         <Switch checked={archiveOnMerge} onCheckedChange={(v) => { setArchiveOnMergeState(v); localStorage.setItem(GIT_ARCHIVE_ON_MERGE_KEY, String(v)) }} />
+      </SettingRow>
+      <SettingRow>
+        <SettingInfo label="Kill processes on done" description="Automatically stop dev servers and processes when agent is marked done or cancelled" />
+        <Switch disabled={!killLoaded} checked={killOnDone} onCheckedChange={(v) => { setKillOnDone(v); api.updateSettings({ killProcessesOnDone: v }) }} />
       </SettingRow>
     </div>
   )

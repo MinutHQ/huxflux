@@ -74,6 +74,7 @@ export interface HuxfluxSettings {
   reviewProvider?: string
   defaultModel?: string
   defaultProvider?: string
+  killProcessesOnDone?: boolean
 }
 
 export interface ProviderInfo {

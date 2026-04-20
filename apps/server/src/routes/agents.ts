@@ -64,6 +64,17 @@ export async function agentsRoutes(app: FastifyInstance) {
     })
   })
 
+  // GET /api/agents/:id/ports — get listening ports for this agent's worktree
+  app.get<{ Params: { id: string } }>("/api/agents/:id/ports", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent || !agent.repoId) return { ports: [] }
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return { ports: [] }
+    const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+    const { getWorktreePorts } = await import("../git/processes.js")
+    return { ports: getWorktreePorts(worktreePath) }
+  })
+
   // GET /api/agents/:id/sessions — list child chat sessions (same worktree, different Claude sessions)
   app.get<{ Params: { id: string } }>("/api/agents/:id/sessions", async (req, reply) => {
     const rows = db.select().from(agents)
@@ -349,6 +360,26 @@ export async function agentsRoutes(app: FastifyInstance) {
         } catch (err) {
           try { await git.rebase(["--abort"]) } catch { /* already clean */ }
           app.log.error(`Rebase onto ${newBaseRaw} failed for agent ${id}: ${(err as Error).message}`)
+        }
+      }
+    }
+
+    // Auto-kill processes when agent moves to done/cancelled
+    if (body.status && (body.status === "done" || body.status === "cancelled") && updated.repoId) {
+      const settings = getSettings()
+      if (settings.killProcessesOnDone) {
+        const repo = db.select().from(repos).where(eq(repos.id, updated.repoId)).get()
+        if (repo && !updated.noWorktree) {
+          const worktreePath = path.join(repo.workspacesPath, updated.location)
+          try {
+            const { killWorktreeProcesses } = await import("../git/processes.js")
+            const result = killWorktreeProcesses(worktreePath)
+            if (result.killed > 0) {
+              app.log.info(`[auto-kill] killed ${result.killed} process(es) in ${updated.location}`)
+            }
+          } catch (err) {
+            app.log.warn(`[auto-kill] failed for ${updated.location}: ${err}`)
+          }
         }
       }
     }

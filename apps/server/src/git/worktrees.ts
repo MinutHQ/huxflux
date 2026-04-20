@@ -73,14 +73,24 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     }
   }
 
-  // Ensure .huxflux_attachments is gitignored in the worktree
-  const gitignorePath = path.join(worktreePath, ".gitignore")
+  // Exclude .huxflux_attachments via .git/info/exclude (local-only, never committed)
   try {
-    const existing = existsSync(gitignorePath) ? (await import("node:fs/promises")).then(fs => fs.readFile(gitignorePath, "utf8")) : Promise.resolve("")
-    const content = await existing
-    if (!content.includes(".huxflux_attachments")) {
-      const { appendFile } = await import("node:fs/promises")
-      await appendFile(gitignorePath, `${content.endsWith("\n") || !content ? "" : "\n"}.huxflux_attachments\n`)
+    const { readFile, appendFile, mkdir: mkdirFs } = await import("node:fs/promises")
+    const excludePath = path.join(worktreePath, ".git", "info", "exclude")
+    // Worktrees use a .git file pointing to the main repo — resolve the actual git dir
+    const dotGit = path.join(worktreePath, ".git")
+    let gitDir = dotGit
+    if (existsSync(dotGit)) {
+      const content = await readFile(dotGit, "utf8").catch(() => "")
+      const match = content.match(/^gitdir:\s*(.+)/m)
+      if (match) gitDir = path.resolve(worktreePath, match[1].trim())
+    }
+    const infoDir = path.join(gitDir, "info")
+    await mkdirFs(infoDir, { recursive: true })
+    const excludeFile = path.join(infoDir, "exclude")
+    const existing = await readFile(excludeFile, "utf8").catch(() => "")
+    if (!existing.includes(".huxflux_attachments")) {
+      await appendFile(excludeFile, `${existing.endsWith("\n") || !existing ? "" : "\n"}.huxflux_attachments\n`)
     }
   } catch { /* non-critical */ }
 }

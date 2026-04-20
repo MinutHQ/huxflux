@@ -92,6 +92,7 @@ export async function reposRoutes(app: FastifyInstance) {
       ...(body.archiveScript !== undefined && { archiveScript: body.archiveScript }),
       ...(body.preferences !== undefined && { preferences: body.preferences }),
       ...(body.icon !== undefined && { icon: body.icon }),
+      ...(body.poolSize !== undefined && { poolSize: body.poolSize ?? 0 }),
     }).where(eq(repos.id, id))
     const updated = db.select().from(repos).where(eq(repos.id, id)).get()
     if (!updated) return reply.code(404).send({ error: "Not found" })

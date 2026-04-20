@@ -3,96 +3,57 @@ import * as path from "node:path"
 import { simpleGit } from "simple-git"
 import { existsSync } from "node:fs"
 import { db } from "../db/index.js"
-import { repos, worktreePool } from "../db/schema.js"
-import { eq, and } from "drizzle-orm"
+import { repos, agents } from "../db/schema.js"
+import { eq, and, isNull } from "drizzle-orm"
 import { createWorktree, removeWorktree } from "./worktrees.js"
+import { broadcast } from "../ws/handler.js"
+import { getSettings } from "../settings.js"
 
 function poolLocation(): string {
   return `pool-${uuid().slice(0, 8)}`
 }
 
-/**
- * Claim a worktree from the pool for a new agent.
- * Returns the worktree location (relative to workspacesPath), or null if pool is empty.
- * After claiming, a background task replenishes the pool.
- */
-export async function claimPooledWorktree(
-  repoId: string,
-  targetBranch: string,
-  baseBranch: string
-): Promise<{ location: string; worktreePath: string } | null> {
-  const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
-  if (!repo || !repo.poolSize || repo.poolSize <= 0) return null
-
-  // Find an available pooled worktree
-  const pooled = db.select().from(worktreePool)
-    .where(eq(worktreePool.repoId, repoId))
+/** Count backlog agents that are pooled (have no messages yet) for a repo */
+function getPooledAgentCount(repoId: string): number {
+  // Pooled agents: status=backlog, repoId matches, not deleted, not a child/task agent
+  const rows = db.select().from(agents)
+    .where(and(
+      eq(agents.repoId, repoId),
+      eq(agents.status, "backlog"),
+      isNull(agents.deletedAt),
+      isNull(agents.parentAgentId),
+      isNull(agents.taskId),
+    ))
     .all()
-
-  if (pooled.length === 0) return null
-
-  // Claim the first one
-  const claimed = pooled[0]
-  const worktreePath = path.join(repo.workspacesPath, claimed.location)
-
-  // Verify it exists on disk
-  if (!existsSync(worktreePath)) {
-    db.delete(worktreePool).where(eq(worktreePool.id, claimed.id)).run()
-    return null
-  }
-
-  // Update the worktree to the target branch and make it fresh
-  try {
-    const git = simpleGit(worktreePath)
-    // Fetch latest
-    await git.fetch(["--no-tags", "origin"]).catch(() => {})
-    // Create and checkout the target branch from the base
-    await git.raw(["checkout", "-B", targetBranch, baseBranch]).catch(async () => {
-      // If baseBranch doesn't resolve, try without it
-      await git.raw(["checkout", "-B", targetBranch])
-    })
-  } catch (err) {
-    console.error(`[pool] failed to prepare pooled worktree ${claimed.location}:`, err)
-    db.delete(worktreePool).where(eq(worktreePool.id, claimed.id)).run()
-    return null
-  }
-
-  // Remove from pool
-  db.delete(worktreePool).where(eq(worktreePool.id, claimed.id)).run()
-
-  // Replenish in background
-  replenishPool(repoId).catch((err) =>
-    console.error(`[pool] replenish failed for repo ${repoId}:`, err)
-  )
-
-  return { location: claimed.location, worktreePath }
+  return rows.length
 }
 
 /**
- * Ensure the pool has enough worktrees for a repo.
- * Creates worktrees up to the pool size limit.
+ * Ensure the pool has enough backlog agents for a repo.
+ * Creates worktrees + agents up to the pool size limit.
  */
 export async function replenishPool(repoId: string): Promise<void> {
   const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
   if (!repo || !repo.poolSize || repo.poolSize <= 0) return
 
-  const current = db.select().from(worktreePool)
-    .where(eq(worktreePool.repoId, repoId))
-    .all()
-
-  const needed = repo.poolSize - current.length
+  const currentCount = getPooledAgentCount(repoId)
+  const needed = repo.poolSize - currentCount
   if (needed <= 0) return
 
-  console.log(`[pool] creating ${needed} worktree(s) for repo ${repo.name}`)
+  const settings = getSettings()
+  const defaultModel = settings.defaultModel ?? "claude-sonnet-4-6"
+
+  console.log(`[pool] creating ${needed} agent(s) for repo ${repo.name}`)
 
   for (let i = 0; i < needed; i++) {
+    const id = uuid()
     const location = poolLocation()
     const worktreePath = path.join(repo.workspacesPath, location)
-    // Use a temporary branch name — it will be replaced when claimed
-    const tempBranch = `pool/${location}`
+    const branch = `pool/${location}`
+    const now = new Date().toISOString()
 
     try {
-      await createWorktree(repo.path, tempBranch, worktreePath, repo.branchFrom)
+      await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
 
       // Run setup script if configured
       if (repo.setupScript) {
@@ -101,24 +62,32 @@ export async function replenishPool(repoId: string): Promise<void> {
           const proc = spawn("sh", ["-c", repo.setupScript!], {
             cwd: worktreePath,
             stdio: "ignore",
-            env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: worktreePath, HUXFLUX_REPO: repo.path },
+            env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: worktreePath, HUXFLUX_REPO: repo.path, HUXFLUX_AGENT_ID: id },
           })
           proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
           proc.on("error", reject)
         })
       }
 
-      db.insert(worktreePool).values({
-        id: uuid(),
+      db.insert(agents).values({
+        id,
         repoId,
+        title: "Ready",
+        status: "backlog",
+        branch,
+        baseBranch: repo.branchFrom,
+        model: defaultModel,
         location,
-        branch: tempBranch,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       }).run()
 
-      console.log(`[pool] created pooled worktree ${location} for repo ${repo.name}`)
+      const created = db.select().from(agents).where(eq(agents.id, id)).get()
+      if (created) broadcast({ type: "agent:updated", agent: created as any })
+
+      console.log(`[pool] created pooled agent ${id} (${location}) for repo ${repo.name}`)
     } catch (err) {
-      console.error(`[pool] failed to create pooled worktree:`, err)
+      console.error(`[pool] failed to create pooled agent:`, err)
     }
   }
 }
@@ -137,21 +106,41 @@ export async function initializePools(): Promise<void> {
 }
 
 /**
- * Clean up pool worktrees for a repo (e.g. when pool size is reduced to 0).
+ * Called when an agent moves from backlog to in-progress.
+ * Replenishes the pool in the background.
+ */
+export function onAgentStarted(repoId: string): void {
+  replenishPool(repoId).catch((err) =>
+    console.error(`[pool] replenish after start failed:`, err)
+  )
+}
+
+/**
+ * Clean up pooled backlog agents for a repo (when pool size is reduced to 0).
  */
 export async function drainPool(repoId: string): Promise<void> {
   const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
   if (!repo) return
 
-  const pooled = db.select().from(worktreePool)
-    .where(eq(worktreePool.repoId, repoId))
+  const pooled = db.select().from(agents)
+    .where(and(
+      eq(agents.repoId, repoId),
+      eq(agents.status, "backlog"),
+      isNull(agents.deletedAt),
+      isNull(agents.parentAgentId),
+      isNull(agents.taskId),
+    ))
     .all()
 
-  for (const p of pooled) {
-    const worktreePath = path.join(repo.workspacesPath, p.location)
+  const keepCount = repo.poolSize ?? 0
+  const toRemove = pooled.slice(keepCount)
+
+  for (const agent of toRemove) {
+    const worktreePath = path.join(repo.workspacesPath, agent.location)
     try {
       await removeWorktree(repo.path, worktreePath)
     } catch { /* already gone */ }
-    db.delete(worktreePool).where(eq(worktreePool.id, p.id)).run()
+    db.update(agents).set({ deletedAt: new Date().toISOString() }).where(eq(agents.id, agent.id)).run()
+    broadcast({ type: "agent:deleted", agentId: agent.id })
   }
 }

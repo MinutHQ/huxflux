@@ -1461,18 +1461,23 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
 // ── Active processes panel ────────────────────────────────────────────────────
 
 function ActiveProcesses({ agents }: { agents: AgentSummary[] }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const hasActiveAgents = agents.some(a => a.status === "in-progress" && a.repoId)
-  const { data: ports = [] } = useQuery({
+  const { data: ports = [], refetch: refetchPorts } = useQuery({
     queryKey: ["all-ports"],
     queryFn: () => api.getAllPorts(),
     enabled: hasActiveAgents,
-    refetchInterval: 10_000,
-    staleTime: 8_000,
+    refetchInterval: 5_000,
+    staleTime: 3_000,
   })
+
+  // Refetch ports when agents change status (start/stop streaming)
+  useEffect(() => {
+    if (hasActiveAgents) refetchPorts()
+  }, [agents.map(a => `${a.id}:${a.status}:${a.streaming}`).join(",")])
 
   if (ports.length === 0) return null
 
@@ -1494,27 +1499,24 @@ function ActiveProcesses({ agents }: { agents: AgentSummary[] }) {
       {!collapsed && (
         <div className="pb-1.5">
           {ports.map((p) => (
-            <div
+            <button
               key={`${p.agentId}-${p.port}`}
-              className="group flex items-center gap-2 px-3 py-1 mx-1 rounded-md hover:bg-sidebar-accent/40 transition-colors"
+              onClick={() => navigate({ to: "/agent/$agentId", params: { agentId: p.agentId } })}
+              className="group w-full flex items-center gap-2 px-3 py-1.5 mx-1 rounded-md hover:bg-sidebar-accent/40 transition-colors text-left"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <a
-                href={`http://localhost:${p.port}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] font-mono text-emerald-400 hover:underline shrink-0"
-                onClick={(e) => { e.stopPropagation(); handleExternalClick(e) }}
+              <span
+                className="text-[11px] font-mono text-emerald-400 shrink-0 cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); window.open(`http://localhost:${p.port}`, "_blank") }}
+                title={`Open localhost:${p.port}`}
               >
                 :{p.port}
-              </a>
-              <button
-                onClick={() => navigate({ to: "/agent/$agentId", params: { agentId: p.agentId } })}
-                className="text-[10px] text-muted-foreground/50 hover:text-foreground truncate flex-1 text-left transition-colors"
-              >
+              </span>
+              <span className="text-[10px] text-muted-foreground/50 truncate flex-1">
                 {p.agentTitle}
-              </button>
-              <button
+              </span>
+              <span
+                role="button"
                 onClick={async (e) => {
                   e.stopPropagation()
                   await api.killAgentProcesses(p.agentId)
@@ -1524,8 +1526,8 @@ function ActiveProcesses({ agents }: { agents: AgentSummary[] }) {
                 title="Stop process"
               >
                 <IconX size={10} />
-              </button>
-            </div>
+              </span>
+            </button>
           ))}
         </div>
       )}

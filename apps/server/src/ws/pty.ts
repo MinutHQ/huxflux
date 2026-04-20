@@ -123,7 +123,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     cols: 120,
     rows: 30,
     cwd,
-    env: { ...process.env, NODE_ENV: "development" } as Record<string, string>,
+    env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: cwd, HUXFLUX_REPO: repo?.path ?? "", HUXFLUX_AGENT_ID: agentId } as Record<string, string>,
   })
 
   const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }

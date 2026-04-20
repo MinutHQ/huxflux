@@ -114,6 +114,27 @@ interface StreamState {
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
+  firedDelegates: Set<string> // track delegate tags already fired during streaming
+}
+
+function checkAndFireDelegates(state: StreamState, agentId: string): void {
+  const delegateRe = /<huxflux:delegate agent="([^"]+)">([\s\S]*?)<\/huxflux:delegate>/g
+  let match: RegExpExecArray | null
+  while ((match = delegateRe.exec(state.fullContent)) !== null) {
+    const targetAgentId = match[1].trim()
+    const task = match[2].trim()
+    const key = `${targetAgentId}:${task.slice(0, 50)}`
+    if (!targetAgentId || !task || state.firedDelegates.has(key)) continue
+    state.firedDelegates.add(key)
+    const sourceTitle = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.title ?? "Another agent"
+    const body = JSON.stringify({ content: task, sender: sourceTitle, delegateFrom: agentId })
+    console.log(`[delegate] streaming: firing delegate from ${agentId} to ${targetAgentId}`)
+    fetch(`http://localhost:${config.boundPort}/api/agents/${targetAgentId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
+      body,
+    }).catch((err) => console.error(`[delegate] Failed to send to ${targetAgentId}:`, err))
+  }
 }
 
 function handleStreamEvent(
@@ -231,6 +252,8 @@ function handleNormalizedEvent(
       state.pendingText += event.text
       state.fullContent += event.text
       emit(agentId, { type: "message:chunk", agentId, messageId, delta: event.text })
+      // Fire delegate tags as soon as they're complete (don't wait for response end)
+      checkAndFireDelegates(state, agentId)
       scheduleFlush()
       break
     case "thinking":
@@ -345,16 +368,19 @@ async function persistAssistantMessage(
     if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
   }
 
-  // Parse and execute <huxflux:delegate agent="ID">task</huxflux:delegate> tags.
-  // Sends the task to the target agent via the local API (handles queuing + auth).
+  // Fire any delegate tags that weren't caught during streaming (e.g. emitted at the very end).
+  // Tags already fired during streaming are tracked in state.firedDelegates and skipped.
   const delegateRe = /<huxflux:delegate agent="([^"]+)">([\s\S]*?)<\/huxflux:delegate>/g
   let delegateMatch: RegExpExecArray | null
   const sourceTitle = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.title ?? "Another agent"
   while ((delegateMatch = delegateRe.exec(state.fullContent)) !== null) {
     const targetAgentId = delegateMatch[1].trim()
     const task = delegateMatch[2].trim()
-    if (targetAgentId && task) {
+    const key = `${targetAgentId}:${task.slice(0, 50)}`
+    if (targetAgentId && task && !state.firedDelegates.has(key)) {
+      state.firedDelegates.add(key)
       const body = JSON.stringify({ content: task, sender: sourceTitle, delegateFrom: agentId })
+      console.log(`[delegate] persist: firing delegate from ${agentId} to ${targetAgentId}`)
       fetch(`http://localhost:${config.boundPort}/api/agents/${targetAgentId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
@@ -526,6 +552,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     outputTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
+    firedDelegates: new Set(),
   }
   const startedAt = Date.now()
 

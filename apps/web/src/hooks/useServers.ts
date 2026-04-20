@@ -49,10 +49,18 @@ export function useServers() {
   const remove = useCallback((id: string) => {
     const wasActive = getActiveServerId() === id
     removeServer(id)
-    // Only reload when the active server was removed — WS must reconnect to the
-    // new active server. For non-active removals the event update is sufficient.
-    if (wasActive) window.location.reload()
-  }, [])
+    const remaining = getServers()
+    if (remaining.length === 0) {
+      // No servers left — reload to trigger onboarding
+      window.location.reload()
+    } else if (wasActive) {
+      // Active server removed — reload to reconnect WS
+      window.location.reload()
+    } else {
+      // Non-active removed — just refresh state
+      refresh()
+    }
+  }, [refresh])
 
   const setActive = useCallback((id: string) => {
     const prev = getActiveServer()

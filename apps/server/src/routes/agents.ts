@@ -19,9 +19,9 @@ import { existsSync } from "node:fs"
 import { spawn } from "node:child_process"
 import simpleGit from "simple-git"
 
-function runScript(script: string, cwd: string, agentId: string): Promise<void> {
+function runScript(script: string, cwd: string, agentId: string, repoPath?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("sh", ["-c", script], { cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: cwd, HUXFLUX_AGENT_ID: agentId } })
+    const proc = spawn("sh", ["-c", script], { cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: cwd, HUXFLUX_AGENT_ID: agentId, HUXFLUX_REPO: repoPath ?? "" } })
     const persistLine = (line: string) => {
       if (!line.trim()) return
       const ts = new Date().toISOString()
@@ -225,7 +225,7 @@ export async function agentsRoutes(app: FastifyInstance) {
         }
         if (repo.setupScript) {
           try {
-            await runScript(repo.setupScript, worktreePath, id)
+            await runScript(repo.setupScript, worktreePath, id, repo.path)
           } catch (err) {
             app.log.warn(`Setup script failed: ${err}`)
           }

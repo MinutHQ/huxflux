@@ -394,6 +394,20 @@ const MIGRATIONS: Migration[] = [
     version: 24,
     sql: `ALTER TABLE agents ADD COLUMN task_id TEXT;`,
   },
+  {
+    version: 25,
+    sql: `
+      ALTER TABLE repos ADD COLUMN pool_size INTEGER DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS worktree_pool (
+        id TEXT PRIMARY KEY,
+        repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+        location TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_worktree_pool_repo ON worktree_pool(repo_id);
+    `,
+  },
 ]
 
 export function runMigrations() {

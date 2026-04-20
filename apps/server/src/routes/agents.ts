@@ -4,6 +4,7 @@ import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
+import { claimPooledWorktree } from "../git/pool.js"
 import { watchWorktree, unwatchWorktree, refreshWorktree } from "../git/watcher.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
@@ -214,20 +215,29 @@ export async function agentsRoutes(app: FastifyInstance) {
           await db.delete(agents).where(eq(agents.id, id))
           return reply.code(400).send({ error: `Repo path does not exist on disk: ${repo.path}` })
         }
-        const worktreePath = path.join(repo.workspacesPath, agentLocation)
-        try {
-          await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
-        } catch (err) {
-          app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
-          // Roll back the agent row so we don't leave an orphaned record
-          await db.delete(agents).where(eq(agents.id, id))
-          return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
-        }
-        if (repo.setupScript) {
+
+        // Try to claim a pooled worktree first (instant start)
+        const pooled = await claimPooledWorktree(agentRepoId, branch, baseBranch ?? repo.branchFrom)
+        if (pooled) {
+          // Update agent location to the pooled worktree
+          db.update(agents).set({ location: pooled.location }).where(eq(agents.id, id)).run()
+          agentLocation = pooled.location
+        } else {
+          // No pool available — create worktree the normal way
+          const worktreePath = path.join(repo.workspacesPath, agentLocation)
           try {
-            await runScript(repo.setupScript, worktreePath, id, repo.path)
+            await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
           } catch (err) {
-            app.log.warn(`Setup script failed: ${err}`)
+            app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
+            await db.delete(agents).where(eq(agents.id, id))
+            return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
+          }
+          if (repo.setupScript) {
+            try {
+              await runScript(repo.setupScript, path.join(repo.workspacesPath, agentLocation), id, repo.path)
+            } catch (err) {
+              app.log.warn(`Setup script failed: ${err}`)
+            }
           }
         }
       }

@@ -14,6 +14,15 @@ export const repos = sqliteTable("repos", {
   archiveScript: text("archive_script"),
   preferences: text("preferences"), // JSON blob: Record<string, string>
   icon: text("icon"),
+  poolSize: integer("pool_size").default(0),
+  createdAt: text("created_at").notNull(),
+})
+
+export const worktreePool = sqliteTable("worktree_pool", {
+  id: text("id").primaryKey(),
+  repoId: text("repo_id").notNull().references(() => repos.id, { onDelete: "cascade" }),
+  location: text("location").notNull(),
+  branch: text("branch").notNull(),
   createdAt: text("created_at").notNull(),
 })
 

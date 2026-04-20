@@ -204,6 +204,7 @@ export interface Repo {
   archiveScript?: string
   preferences?: string  // JSON blob: Record<string, string>
   icon?: string
+  poolSize?: number
   createdAt: string
 }
 

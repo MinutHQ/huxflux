@@ -19,12 +19,28 @@ export function CommandPalette({ open, onClose, agents, onSelectAgent }: Command
 
   const filtered = useMemo(() => {
     if (!query.trim()) return agents
-    const q = query.toLowerCase()
+    const q = query.toLowerCase().trim()
+
+    // Match GitHub PR URL: extract PR number
+    const prUrlMatch = q.match(/github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/)
+    if (prUrlMatch) {
+      const prNum = parseInt(prUrlMatch[1])
+      return agents.filter((a) => a.prNumber === prNum)
+    }
+
+    // Match PR number shorthand: #123
+    const prNumMatch = q.match(/^#(\d+)$/)
+    if (prNumMatch) {
+      const prNum = parseInt(prNumMatch[1])
+      return agents.filter((a) => a.prNumber === prNum)
+    }
+
     return agents.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
         a.branch.toLowerCase().includes(q) ||
-        a.status.toLowerCase().includes(q)
+        a.status.toLowerCase().includes(q) ||
+        (a.prNumber && `#${a.prNumber}`.includes(q))
     )
   }, [agents, query])
 
@@ -87,7 +103,7 @@ export function CommandPalette({ open, onClose, agents, onSelectAgent }: Command
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search agents by name or branch…"
+              placeholder="Search agents by name, branch, or PR link…"
               className="flex-1 bg-transparent py-3.5 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none"
             />
             <kbd className="text-[10px] text-muted-foreground/30 border border-border rounded px-1.5 py-0.5 font-mono">ESC</kbd>

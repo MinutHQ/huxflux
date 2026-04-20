@@ -103,6 +103,10 @@ runMigrations()
 // stream is a leftover that would otherwise show stuck loading indicators.
 resetStreamingFlags()
 
+// Initialize worktree pools for repos that have pooling enabled
+import { initializePools } from "./git/pool.js"
+initializePools().catch((err) => console.error("[pool] initialization failed:", err))
+
 // Re-attach file watchers and do an initial scan for all active agents
 {
   const activeAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()

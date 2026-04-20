@@ -11,7 +11,7 @@ import { useNotifications } from "@/hooks/useNotifications"
 import { usePRs } from "@/hooks/usePRs"
 import { useBulkReview } from "@/hooks/useBulkReview"
 import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
-import { PaneLayoutProvider } from "@/hooks/usePaneLayoutContext"
+
 import { getFlag } from "@/lib/flags"
 import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { Route as rootRoute } from "./__root"
@@ -136,7 +136,6 @@ function AppLayout() {
   return (
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
-      <PaneLayoutProvider agents={agents} initialAgentId={agents[0]?.id ?? null}>
         <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
             <ResizablePanel
               id="huxflux-sidebar-panel"
@@ -171,7 +170,6 @@ function AppLayout() {
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
-      </PaneLayoutProvider>
       </WorkspaceProvider>
     </AppContext.Provider>
   )

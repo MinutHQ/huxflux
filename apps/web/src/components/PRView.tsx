@@ -16,7 +16,7 @@ import { api } from "@huxflux/shared"
 import { toast } from "sonner"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref, getDesktopNotif } from "@/lib/notificationPrefs"
-import type { PRThread, PRIssueComment, PRChatMessage } from "@huxflux/shared"
+import type { PRThread, PRIssueComment } from "@huxflux/shared"
 import {
   IconSend,
   IconPlus,
@@ -25,16 +25,12 @@ import {
   IconPlayerStop,
   IconSparkles,
   IconEye,
-  IconGitPullRequest,
   IconCheck,
-  IconBrandGithub,
   IconAlertCircle,
   IconBulb,
   IconMessageCircle,
   IconRefresh,
   IconFileCode,
-  IconPlus as IconPlusFile,
-  IconMinus,
   IconX,
   IconLoader2,
   IconMessageCircle2,
@@ -43,7 +39,6 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconCopy,
-  IconGitBranch,
   IconCircleCheck,
   IconCircleX,
   IconClock,
@@ -208,7 +203,7 @@ function ReviewDiff({ patch, path, targetLine }: { patch: string; path?: string;
       if (!relevantPatch.startsWith("diff ") && !relevantPatch.startsWith("---")) {
         relevantPatch = `--- a/${fileName}\n+++ b/${fileName}\n${relevantPatch}`
       }
-      return processFile(relevantPatch, { newFile: { name: fileName } })
+      return processFile(relevantPatch, { newFile: { name: fileName, contents: "" } })
     } catch {
       return null
     }
@@ -225,7 +220,7 @@ function ReviewDiff({ patch, path, targetLine }: { patch: string; path?: string;
         lineDiffType: "word",
         diffIndicators: "bars",
         disableFileHeader: true,
-        hunkSeparators: "none",
+        hunkSeparators: "simple",
       }}
     />
   )
@@ -1330,7 +1325,7 @@ function DiffWithInlineComments({
             if (!t || !t.comments.length) return null
             const root = t.comments[0]
             const isCollapsed = collapsed.has(t.id)
-            const resolvedLabel = t.isResolved ? " · Resolved" : ""
+            // resolved state is available via t.isResolved
 
             // Collapsed view
             if (isCollapsed) {
@@ -1464,7 +1459,7 @@ function FileDiffAccordion({
   threads,
   repoId,
   prNumber,
-  agentId,
+  agentId: _agentId,
   currentUser,
   viewed,
   onToggleViewed,
@@ -1915,7 +1910,6 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
   const [thinking, setThinking] = useState(false)
   const [reviewStep, setReviewStep] = useState(0)
   const [attachedThreads, setAttachedThreads] = useState<PRThread[]>([])
-  const [merging, setMerging] = useState(false)
 
   // Initialize model from settings
   useEffect(() => {
@@ -2070,10 +2064,6 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
       existing.push({ content: msg.content, verdict: msg.verdict, comments: msg.comments ?? [], timestamp: msg.timestamp })
       localStorage.setItem(reviewCacheKey, JSON.stringify({ reviews: existing }))
     } catch { /* storage full */ }
-  }
-
-  function clearReviewCache() {
-    if (reviewCacheKey) localStorage.removeItem(reviewCacheKey)
   }
 
   // ── Load PR details ────────────────────────────────────────────────────────

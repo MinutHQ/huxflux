@@ -4,9 +4,8 @@ import type { IDisposable } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { cn } from "@huxflux/ui"
 import type { Agent } from "@/data/mock"
-import { IconTerminal2, IconPlayerPlay, IconPlayerPlayFilled, IconSettings, IconWorld, IconPlayerStop, IconPlus, IconX } from "@tabler/icons-react"
+import { IconTerminal2, IconPlayerPlayFilled, IconSettings, IconPlus, IconX } from "@tabler/icons-react"
 import { getActiveServer, useRepos, api } from "@huxflux/shared"
-import { handleExternalClick } from "@/lib/platform"
 import { colorThemes, getColorTheme } from "@/lib/colorThemes"
 import "@xterm/xterm/css/xterm.css"
 
@@ -108,8 +107,8 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
   const [activeTerminalId, setActiveTerminalId] = useState<string>("t1")
   const [tabsLoaded, setTabsLoaded] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
-  const [detectedPort, setDetectedPort] = useState<number | null>(null)
+  const [_isRunning, setIsRunning] = useState(false)
+  const [_detectedPort, setDetectedPort] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const renameInputRef = useRef<HTMLInputElement>(null)
@@ -376,22 +375,6 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         session.ws.send(JSON.stringify({ type: "input", data: repo.runScript + "\r" }))
       }
     }, 300)
-  }
-
-  function handleStop() {
-    const key = `${agent.id}:${activeTerminalId}`
-    const session = globalSessions.get(key)
-    if (session?.ws?.readyState === WebSocket.OPEN) {
-      session.ws.send(JSON.stringify({ type: "input", data: "\x03" }))
-    }
-    if (session) {
-      session.isRunning = false
-      session.port = null
-      session.outputBuf = ""
-    }
-    setIsRunning(false)
-    setDetectedPort(null)
-    onPortChange?.(agent.id, null)
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   IconRefresh,
   IconExternalLink,
-  IconX,
   IconGitBranch,
   IconCircleDot,
   IconChecklist,
@@ -29,13 +28,11 @@ import {
   IconUrgent,
   IconSend,
   IconSparkles,
-  IconChevronRight,
 } from "@tabler/icons-react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api, useAgentEvents, useAgent } from "@huxflux/shared"
-import type { Message } from "@huxflux/shared"
-import type { TaskItem, TaskStatus, TaskComment } from "@huxflux/shared"
+import type { TaskItem, TaskStatus } from "@huxflux/shared"
 import ReactMarkdown from "react-markdown"
 import { handleExternalClick } from "@/lib/platform"
 import { ChatView } from "@/components/ChatView"
@@ -97,8 +94,8 @@ function KanbanColumn({
   onTaskClick,
 }: {
   column: (typeof COLUMNS)[number]
-  tasks: Task[]
-  onTaskClick: (task: Task) => void
+  tasks: TaskItem[]
+  onTaskClick: (task: TaskItem) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
 
@@ -130,7 +127,7 @@ function KanbanColumn({
 
 // ── Draggable Card ───────────────────────────────────────────────────────────
 
-function TaskCard({ task, onClick, isDragOverlay }: { task: Task; onClick?: () => void; isDragOverlay?: boolean }) {
+function TaskCard({ task, onClick, isDragOverlay }: { task: TaskItem; onClick?: () => void; isDragOverlay?: boolean }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     data: task,
@@ -264,6 +261,22 @@ function SubtasksList({ subtasks, onSelect }: { subtasks: TaskItem[]; onSelect: 
 
 // ── Shared Task Content ──────────────────────────────────────────────────────
 
+/** Walk a stack of nested TaskItems and rebuild from the bottom up with updates applied */
+function applyNestedUpdate(stack: TaskItem[], updates: Partial<TaskItem>): TaskItem {
+  if (stack.length === 0) throw new Error("empty stack")
+  // Start from the deepest item (already updated)
+  let child = { ...stack[stack.length - 1], ...updates }
+  // Walk up the stack, replacing matching subtask at each level
+  for (let i = stack.length - 2; i >= 0; i--) {
+    const parent = stack[i]
+    child = {
+      ...parent,
+      subtasks: parent.subtasks.map((s) => (s.id === child.id ? child : s)),
+    }
+  }
+  return child
+}
+
 // ── Full-screen Task View ─────────────────────────────────────────────────────
 
 function TaskFullView({ task, onBack, onUpdate, queryClient }: {
@@ -289,7 +302,6 @@ function TaskFullView({ task, onBack, onUpdate, queryClient }: {
   }
 
   const current = findItem([task], stackIds[stackIds.length - 1]) ?? task
-  const isRoot = stackIds.length === 1
 
   const handleFieldUpdate = useCallback(async (updates: Partial<TaskItem>) => {
     const updated = { ...current, ...updates }
@@ -322,7 +334,6 @@ function TaskFullView({ task, onBack, onUpdate, queryClient }: {
     return result.agentId ?? null
   }, [queryClient])
 
-  const columnDef = COLUMNS.find((c) => c.id === current.status)
 
   // Breadcrumb path
   const breadcrumbs = stackIds.map((id) => findItem([task], id)).filter(Boolean) as TaskItem[]
@@ -723,8 +734,7 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
   })
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId ?? null)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [addingTask, setAddingTask] = useState(false)
-  const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [_addingTask, setAddingTask] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [activeSprintOnly, setActiveSprintOnly] = useState(false)
 
@@ -753,10 +763,6 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
 
   const setTasks = useCallback((updater: (prev: TaskItem[]) => TaskItem[]) => {
     queryClient.setQueryData<TaskItem[]>(["tasks"], (prev) => updater(prev ?? []))
-  }, [queryClient])
-
-  const invalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["tasks"] })
   }, [queryClient])
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
@@ -788,12 +794,6 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
       if (jiraStatus) api.transitionTask(taskId, jiraStatus)
     }
   }, [setTasks, queryClient])
-
-  const handleCreateTask = useCallback(async (data: { title: string; description?: string; priority?: string; status?: string }) => {
-    setAddingTask(false)
-    const updated = await api.createTask(data)
-    queryClient.setQueryData(["tasks"], updated)
-  }, [queryClient])
 
   const activeTask = activeId ? tasks.find((t) => t.id === activeId) ?? null : null
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null

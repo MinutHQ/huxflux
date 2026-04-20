@@ -4,8 +4,8 @@ import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useAgents, useRepos, isAgentStreaming } from "@huxflux/shared"
 import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
-import type { Agent, Message, FileChange, ToolCall, PRStatus, PRComment } from "@/data/mock"
-import { api, getApiBase, getActiveServer } from "@huxflux/shared"
+import type { Agent, Message, ToolCall, PRStatus, PRComment } from "@/data/mock"
+import { api, getActiveServer } from "@huxflux/shared"
 import { isTauri, handleExternalClick } from "@/lib/platform"
 import { getFlag } from "@/lib/flags"
 import { DiffView } from "@/components/DiffView"
@@ -22,14 +22,12 @@ import {
   IconPlus,
   IconBrain,
   IconCopy,
-  IconRefresh,
   IconGitBranch,
   IconPaperclip,
   IconX,
   IconFileCode,
   IconSparkles,
   IconBolt,
-  IconLayoutGrid,
   IconTerminal2,
   IconFileText,
   IconKey,
@@ -411,45 +409,6 @@ function ThinkingBlock({ text }: { text: string }) {
           <p className="text-[12px] font-mono text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">{text}</p>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── Stats bar ─────────────────────────────────────────────────────────────────
-
-function StatsBar({ messages }: { messages: Message[] }) {
-  const [collapsed, setCollapsed] = useState(false)
-  let toolCount = 0
-  let subagentCount = 0
-  for (const m of messages) {
-    if (m.toolCalls) {
-      for (const tc of m.toolCalls) {
-        toolCount++
-        if (tc.tool === "Agent") { subagentCount++; toolCount += (tc.subCalls?.length ?? 0) }
-      }
-    }
-  }
-  if (toolCount === 0) return null
-
-  const parts = [
-    `${toolCount} tool call${toolCount !== 1 ? "s" : ""}`,
-    `${messages.length} message${messages.length !== 1 ? "s" : ""}`,
-    subagentCount > 0 ? `${subagentCount} subagent` : null,
-  ].filter(Boolean).join(", ")
-
-  return (
-    <div className="flex items-center gap-2 mb-4 text-[12px] text-muted-foreground/60">
-      <button onClick={() => setCollapsed(!collapsed)} className="flex items-center gap-1.5 hover:text-muted-foreground transition-colors">
-        <IconChevronDown size={12} className={cn("transition-transform", collapsed && "-rotate-90")} />
-        <span>{parts}</span>
-      </button>
-      <div className="ml-auto flex items-center gap-0.5">
-        {[IconCopy, IconFileText, IconRefresh, IconTerminal2, IconSearch].map((Icon, i) => (
-          <button key={i} className="p-1 hover:text-muted-foreground transition-colors rounded hover:bg-accent/40">
-            <Icon size={12} />
-          </button>
-        ))}
-      </div>
     </div>
   )
 }
@@ -2308,12 +2267,7 @@ function ContextRing({ messages }: { messages: Message[] }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string }
-
-interface ChatTab {
-  agentId: string
-  title: string
-}
+import type { OpenFile, ChatTab } from "@/hooks/useWorkspace"
 
 interface ChatViewProps {
   agent: Agent
@@ -2335,6 +2289,7 @@ interface ChatViewProps {
   githubEnabled?: boolean
   pendingQuestion?: {
     toolUseId: string
+    agentId?: string
     questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>
   } | null
   onClearPendingQuestion?: () => void
@@ -2404,7 +2359,6 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const linkedAgentsCache = useRef(new Map<string, AgentSummary[]>())
   const [plusOpen, setPlusOpen] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
-  const dragCounterRef = useRef(0)
   const [agentPickerOpen, setAgentPickerOpen] = useState(false)
   const [agentPickerSearch, setAgentPickerSearch] = useState("")
   const [lastOpenInApp, setLastOpenInApp] = useState(() => localStorage.getItem(OPEN_IN_KEY) ?? "finder")
@@ -3345,8 +3299,10 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
         <div className="flex-1 min-h-0">
           {openFileTab.type === "diff" ? (
             <DiffView agentId={agent.id} file={openFileTab.file} />
-          ) : (
+          ) : openFileTab.type === "content" ? (
             <FileContentView agentId={agent.id} filePath={openFileTab.path} />
+          ) : (
+            null
           )}
         </div>
       ) : (
@@ -3633,7 +3589,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         })()}
                       </SelectContent>
                     </Select>
-                    {(capabilities.effortLevels as string[] ?? []).length > 0 && (
+                    {(((capabilities.effortLevels ?? []) as unknown as string[]).length > 0) && (
                       <Select value={effort || "default"} onValueChange={(v) => setEffort(v === "default" ? "" : v as typeof effort)}>
                         <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
                           <IconBrain size={13} className={cn("shrink-0", effort ? "text-foreground" : "text-muted-foreground/60")} />
@@ -3641,7 +3597,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="default">Auto</SelectItem>
-                          {(capabilities.effortLevels as string[]).map((lvl) => (
+                          {(capabilities.effortLevels as unknown as string[]).map((lvl) => (
                             <SelectItem key={lvl} value={lvl}>{lvl.charAt(0).toUpperCase() + lvl.slice(1)}</SelectItem>
                           ))}
                         </SelectContent>

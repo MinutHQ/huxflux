@@ -308,7 +308,7 @@ export function useWorkspace(agents: AgentSummary[]) {
         setOpenFileTab(null)
         setPendingComments([])
         // Send the initial message to the new agent
-        await api.sendMessage(created.id, { content: message })
+        await api.sendMessage(created.id, message)
       } catch (err) {
         toast.error(`Failed to create review tab: ${err instanceof Error ? err.message : "unknown"}`)
       }

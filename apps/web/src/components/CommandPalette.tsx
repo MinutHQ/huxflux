@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@huxflux/ui"
-import { IconSearch, IconGitBranch, IconSparkles } from "@tabler/icons-react"
+import { IconSearch, IconGitBranch } from "@tabler/icons-react"
 import type { AgentSummary } from "@huxflux/shared"
 
 interface CommandPaletteProps {

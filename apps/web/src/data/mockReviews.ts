@@ -48,6 +48,7 @@ export interface PullRequest {
   description: string
   url?: string
   agentId?: string
+  checks?: Array<{ name: string; status: string; conclusion: string | null }>
 }
 
 export const mockFileDiffs: Record<string, string> = {

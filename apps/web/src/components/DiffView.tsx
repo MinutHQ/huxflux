@@ -159,7 +159,7 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
               hunkSeparators: "line-info",
               expandedHunks,
               onHunkExpand,
-            }}
+            } as any}
           />
         )}
         </div>

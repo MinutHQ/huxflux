@@ -1458,6 +1458,81 @@ function PRFilterPopover({ hideReviewed, onToggleHideReviewed, onClose, anchorRe
   )
 }
 
+// ── Active processes panel ────────────────────────────────────────────────────
+
+function ActiveProcesses({ agents }: { agents: AgentSummary[] }) {
+  const [collapsed, setCollapsed] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  const hasActiveAgents = agents.some(a => a.status === "in-progress" && a.repoId)
+  const { data: ports = [] } = useQuery({
+    queryKey: ["all-ports"],
+    queryFn: () => api.getAllPorts(),
+    enabled: hasActiveAgents,
+    refetchInterval: 10_000,
+    staleTime: 8_000,
+  })
+
+  if (ports.length === 0) return null
+
+  return (
+    <div className="border-t border-sidebar-border shrink-0">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-sidebar-accent/30 transition-colors"
+      >
+        <div className="relative flex items-center justify-center w-4 h-4 shrink-0">
+          <span className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping" style={{ animationDuration: "3s" }} />
+          <span className="relative w-2 h-2 rounded-full bg-emerald-400" />
+        </div>
+        <span className="text-[11px] font-medium text-muted-foreground/70 flex-1">
+          {ports.length} process{ports.length !== 1 ? "es" : ""}
+        </span>
+        <IconChevronRight size={11} className={cn("text-muted-foreground/30 transition-transform", !collapsed && "rotate-90")} />
+      </button>
+      {!collapsed && (
+        <div className="pb-1.5">
+          {ports.map((p) => (
+            <div
+              key={`${p.agentId}-${p.port}`}
+              className="group flex items-center gap-2 px-3 py-1 mx-1 rounded-md hover:bg-sidebar-accent/40 transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <a
+                href={`http://localhost:${p.port}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] font-mono text-emerald-400 hover:underline shrink-0"
+                onClick={(e) => { e.stopPropagation(); handleExternalClick(e) }}
+              >
+                :{p.port}
+              </a>
+              <button
+                onClick={() => navigate({ to: "/agent/$agentId", params: { agentId: p.agentId } })}
+                className="text-[10px] text-muted-foreground/50 hover:text-foreground truncate flex-1 text-left transition-colors"
+              >
+                {p.agentTitle}
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  await api.killAgentProcesses(p.agentId)
+                  setTimeout(() => queryClient.invalidateQueries({ queryKey: ["all-ports"] }), 500)
+                }}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground/30 hover:text-red-400 transition-all shrink-0"
+                title="Stop process"
+              >
+                <IconX size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -2000,6 +2075,9 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
             </div>
           </>
         )}
+
+        {/* Active processes */}
+        <ActiveProcesses agents={agents} />
 
         {/* Footer */}
         <div className="border-t border-sidebar-border shrink-0 flex items-center gap-1 pr-1">

@@ -99,6 +99,8 @@ export const api = {
   getAgent: (id: string) => req<Agent>(`/api/agents/${id}`),
   getAgentSessions: (id: string) => req<AgentSummary[]>(`/api/agents/${id}/sessions`),
   getAgentPorts: (id: string) => req<{ ports: number[] }>(`/api/agents/${id}/ports`),
+  getAllPorts: () => req<Array<{ agentId: string; agentTitle: string; port: number }>>("/api/ports"),
+  killAgentProcesses: (id: string) => req<{ killed: number }>(`/api/agents/${id}/kill-processes`, { method: "POST" }),
   createAgent: (body: {
     repoId?: string
     title: string

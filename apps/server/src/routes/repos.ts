@@ -8,6 +8,7 @@ import { promisify } from "node:util"
 import { db } from "../db/index.js"
 import { repos, agents } from "../db/schema.js"
 import { eq } from "drizzle-orm"
+import { replenishPool, drainPool } from "../git/pool.js"
 import type { Repo } from "../types.js"
 import { listBranches } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
@@ -96,6 +97,16 @@ export async function reposRoutes(app: FastifyInstance) {
     }).where(eq(repos.id, id))
     const updated = db.select().from(repos).where(eq(repos.id, id)).get()
     if (!updated) return reply.code(404).send({ error: "Not found" })
+
+    // Trigger pool replenishment or drain when poolSize changes
+    if (body.poolSize !== undefined) {
+      if ((body.poolSize ?? 0) > 0) {
+        replenishPool(id).catch((err) => console.error(`[pool] replenish failed:`, err))
+      } else {
+        drainPool(id).catch((err) => console.error(`[pool] drain failed:`, err))
+      }
+    }
+
     return updated
   })
 

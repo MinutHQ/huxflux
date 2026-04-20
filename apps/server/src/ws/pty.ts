@@ -137,6 +137,12 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
+    // Detect ports from terminal output
+    try {
+      const { scanForPort, registerPort } = require("../git/processes.js")
+      const port = scanForPort(data)
+      if (port) registerPort(agentId, port)
+    } catch { /* non-critical */ }
   })
 
   ptyProcess.onExit(({ exitCode }) => {
@@ -147,6 +153,11 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
+    // Clear ports when terminal exits
+    try {
+      const { clearAgentPorts } = require("../git/processes.js")
+      clearAgentPorts(agentId)
+    } catch { /* non-critical */ }
   })
 
   attachClientHandlers(socket, entry, key)

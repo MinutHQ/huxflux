@@ -384,8 +384,9 @@ export async function agentsRoutes(app: FastifyInstance) {
         if (repo && !updated.noWorktree) {
           const worktreePath = path.join(repo.workspacesPath, updated.location)
           try {
-            const { killWorktreeProcesses } = await import("../git/processes.js")
+            const { killWorktreeProcesses, clearAgentPorts } = await import("../git/processes.js")
             const result = await killWorktreeProcesses(worktreePath)
+            clearAgentPorts(id)
             if (result.killed > 0) {
               app.log.info(`[auto-kill] killed ${result.killed} process(es) in ${updated.location}`)
             }

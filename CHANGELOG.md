@@ -1,6 +1,59 @@
 # Changelog
 
-## Unreleased
+## 0.2.22 — 2026-04-20
+
+### Web — Workspace Redesign
+
+- **TanStack Router migration** — URL-driven navigation replaces state-based routing; hash routing for Tauri desktop, browser history for web
+- **Full-width workspace header** — agent name + repo above branch pickers, PR status badges with CI popover, run button, open-in editor split button (icon + dropdown), panel toggle (⌘U)
+- **Sidebar depth effect** — sidebar appears below main content with rounded card + shadow styling
+- **Right panels as cards** — files and terminal in separate rounded containers
+- **Pill-style chat tabs** — gradient fade background, `bg-accent` active state
+- **Unified file view** — All/Diff/PR tabs with file search, stacked diff mode with virtualization (`@tanstack/react-virtual`), web worker offloading (`@pierre/diffs/worker`), lazy mount/unmount via IntersectionObserver
+- **PR tab redesign** — GitHub-style stacked status cards (reviews, checks, merge status), merge button group (squash/merge/rebase), bypass rules checkbox, reply/resolve individual threads, markdown-rendered comments, HTML stripping
+- **Dynamic diff theme** — vesper (dark) / github-light (light) based on app theme
+- **Settings routes** — `/settings/general`, `/settings/appearance`, `/settings/repo/$repoId`, etc.
+- **Cmd+K search** — paste GitHub PR URL or type `#123` to find agent by PR
+- **Keyboard shortcuts** — ⌘U toggle right panel, ⌘J toggle terminal
+
+### Web — Processes & Ports
+
+- **Active processes panel** in sidebar — pulsing green dot, port links, agent navigation, kill button
+- **Auto-kill on done** — setting to SIGTERM all processes in a worktree when agent marked done/cancelled
+- `GET /api/ports` — all listening ports across active agents
+- `POST /api/agents/:id/kill-processes` — stop processes in a worktree
+
+### Web — Other
+
+- **Worktree pool** — pre-create worktrees for instant agent start (setting per repo); pooled agents appear as backlog in sidebar; auto-replenish after claim
+- **Review settings** — select provider + model for AI code reviews
+- **Tasks bar** — stays dismissed permanently, only shows while agent is actively working
+- **Close tab confirmation** — popover confirm on child tab close, deletes agent from server
+- **Plan approval fix** — persists until user explicitly approves/dismisses
+- **Fetch aborted toasts suppressed** during navigation
+- **Streaming indicator sync** — sidebar clears at same time as chat via `message:done` event
+- Removed button bounce (`translate-y-px`)
+- Removed setup/run tabs from terminal
+
+### Server
+
+- **Delegate tags fire during streaming** — `<huxflux:delegate>` tags execute immediately when complete, not after full response
+- **Worktree pool** — `pool_size` on repos, background replenishment, setup script pre-run
+- **Child agent safety** — deleting child agents no longer removes shared worktree
+- **Git watcher guard** — checks `fs.existsSync` before `simpleGit` to prevent crash on deleted worktrees
+- **Setup script env vars** — `$HUXFLUX_WORKTREE`, `$HUXFLUX_REPO`, `$HUXFLUX_AGENT_ID` available in setup scripts, CLI agent, and terminal PTY
+- **`.huxflux_attachments` excluded** via `.git/info/exclude` (local-only, not committed)
+- **Streaming as single source of truth** — removed in-memory override, DB `streaming` column is canonical
+- Auto-kill processes on agent done/cancelled (setting-controlled)
+- `GET /api/agents/:id/ports` — listening ports for an agent
+- `poolSize` persisted in repo update endpoint
+
+### Desktop
+
+- Fixed dev mode banner showing in production builds (`NODE_ENV=production` in `beforeBuildCommand`)
+- Auto-bump `tauri.conf.json` version in release script
+- Version without `v` prefix in updater `latest.json`
+- Toast error on failed update download/relaunch, manual restart fallback
 
 ### Mobile
 
@@ -9,30 +62,7 @@
 - Removed purple/indigo accent color — UI now uses stone-based colors consistent with the web app
 - Fixed `KeyboardAvoidingView` crash (switched from `react-native-keyboard-controller` to built-in RN component)
 
-### Desktop
-
-- macOS notifications now appear in System Settings → Notifications (added `NSUserNotificationUsageDescription` via `src-tauri/Info.plist`)
-- DMG installer now includes the "drag to Applications" folder shortcut
-- **Open in editor via Remote SSH** (experiment flag `remoteEditor`) — when connected to a remote server, the "Open in" dropdown detects locally installed SSH-capable editors (VS Code, Cursor) and opens the worktree via `--remote ssh-remote+user@host /path`; shows an amber setup banner with step-by-step instructions when SSH env vars are not configured on the server
-- Auto-update support — app checks for updates on launch and shows a dismissible banner with one-click install and progress indicator
-- Frameless window with custom traffic light buttons (close/minimize/maximize)
-- Multiple terminals per agent — open and switch between terminal sessions with a tab bar
-- Local release script (`scripts/release-desktop.sh`) builds signed macOS ARM + Intel DMGs and publishes to `AlexMartosP/huxflux-releases`
-
-### Web
-
-- Fixed all TypeScript build errors (unused imports, missing props, invalid type comparisons, unsafe `as` casts)
-- Streaming indicator now restores correctly when navigating back to an agent that is still running
-- Sidebar is now resizable (12–28% width) and collapsible via `⌘B` or the chevron button
-- Long agent titles in sidebar now ellipsis correctly instead of overflowing
-- "Mark ready for review" button in PR tab to convert draft PRs (uses GitHub GraphQL API)
-- Streaming indicator now correctly resets when switching between agents
-- Loading indicator clears correctly after Claude finishes, even after a WS reconnect
-- **@ mentions in chat** — type `@` to search and attach worktree files inline or insert terminal output as context; file references render with accent color in sent messages; hover suggestions show a line-numbered preview panel
-- **Tasks bar** — reads Claude's `TodoWrite` tool calls and shows a collapsible task list above the chat input with per-task status (pending / active / completed)
-- **Markdown tables** — tables now render with styled rows and a copy button that exports pipe-formatted markdown for pasting into any markdown editor
-- Team agents and Tasks panels are now inset cards above the input box instead of full-width divider panels
-- Removed the border dividing the message list from the chat input area
+## Unreleased
 
 ### Server
 

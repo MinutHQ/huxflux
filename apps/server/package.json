@@ -23,7 +23,7 @@
     "dev:logs": "node scripts/dev-daemon.mjs logs",
     "dev:status": "node scripts/dev-daemon.mjs status",
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "NODE_ENV=production node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },

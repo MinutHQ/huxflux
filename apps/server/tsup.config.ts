@@ -4,9 +4,11 @@ import { createRequire } from "node:module"
 const require = createRequire(import.meta.url)
 const pkg = require("./package.json") as { version: string }
 
+// tsup/esbuild strips node: prefix from built-in imports.
+// Node 25+ requires node:sqlite (bare 'sqlite' no longer works).
+const fixNodeSqlite = "node scripts/fix-sqlite-import.mjs"
+
 const sharedExternal = [
-  // Node built-ins that must keep their node: prefix
-  "node:sqlite",
   // All npm deps stay external (installed in node_modules alongside the package)
   /^@fastify/,
   /^fastify/,
@@ -44,5 +46,6 @@ export default defineConfig([
     external: sharedExternal,
     define,
     clean: true,
+    onSuccess: fixNodeSqlite,
   },
 ])

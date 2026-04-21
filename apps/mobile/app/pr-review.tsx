@@ -200,6 +200,28 @@ export default function PRReviewScreen() {
     ])
   }
 
+  // Mark ready for review (draft PRs)
+  async function handleMarkReady() {
+    try {
+      await api.markPRReady(params.agentId as string)
+      queryClient.invalidateQueries({ queryKey: ["pr-details"] })
+      modal.showAlert("PR marked ready for review")
+    } catch (e: any) {
+      modal.showAlert("Error", e.message)
+    }
+  }
+
+  // Re-request review
+  async function handleRerequestReview() {
+    try {
+      await api.rerequestReview(params.agentId as string)
+      queryClient.invalidateQueries({ queryKey: ["pr-details"] })
+      modal.showAlert("Review re-requested")
+    } catch (e: any) {
+      modal.showAlert("Error", e.message)
+    }
+  }
+
   // Merge
   async function handleMerge(method: "merge" | "squash" | "rebase") {
     setMerging(true)
@@ -304,35 +326,65 @@ export default function PRReviewScreen() {
 
         {/* Action buttons */}
         {!merged && (
-          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-            <TouchableOpacity
-              onPress={showSubmitOptions}
-              style={{
-                flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
-                backgroundColor: c.fgBright,
-                borderRadius: 8, paddingVertical: 8,
-              }}
-            >
-              <Ionicons name="send-outline" size={14} color={c.fgBrightFg} />
-              <Text style={{ color: c.fgBrightFg, fontSize: 13, fontWeight: "600" }}>
-                Submit{queuedComments.length > 0 ? ` (${queuedComments.length})` : ""}
-              </Text>
-            </TouchableOpacity>
-            {readyToMerge && (
+          <View style={{ gap: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
-                onPress={showMergeOptions}
-                disabled={merging}
+                onPress={showSubmitOptions}
                 style={{
                   flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
-                  backgroundColor: c.success, borderRadius: 8, paddingVertical: 8,
+                  backgroundColor: c.fgBright,
+                  borderRadius: 8, paddingVertical: 8,
                 }}
               >
-                <Ionicons name="git-merge-outline" size={14} color="#fff" />
-                <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>
-                  {merging ? "Merging…" : "Merge"}
+                <Ionicons name="send-outline" size={14} color={c.fgBrightFg} />
+                <Text style={{ color: c.fgBrightFg, fontSize: 13, fontWeight: "600" }}>
+                  Submit{queuedComments.length > 0 ? ` (${queuedComments.length})` : ""}
                 </Text>
               </TouchableOpacity>
-            )}
+              {(readyToMerge || (!draft && !merged)) && (
+                <TouchableOpacity
+                  onPress={showMergeOptions}
+                  disabled={merging}
+                  style={{
+                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+                    backgroundColor: readyToMerge ? c.success : c.secondary,
+                    borderRadius: 8, paddingVertical: 8,
+                  }}
+                >
+                  <Ionicons name="git-merge-outline" size={14} color={readyToMerge ? "#fff" : c.fgSub} />
+                  <Text style={{ color: readyToMerge ? "#fff" : c.fgSub, fontSize: 13, fontWeight: "600" }}>
+                    {merging ? "Merging…" : "Merge"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {/* Secondary actions */}
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {draft && (
+                <TouchableOpacity
+                  onPress={handleMarkReady}
+                  style={{
+                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+                    backgroundColor: c.secondary, borderRadius: 8, paddingVertical: 7,
+                  }}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={14} color={c.fg} />
+                  <Text style={{ color: c.fg, fontSize: 12, fontWeight: "500" }}>Mark ready</Text>
+                </TouchableOpacity>
+              )}
+              {hasChanges && (
+                <TouchableOpacity
+                  onPress={handleRerequestReview}
+                  style={{
+                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+                    backgroundColor: c.secondary, borderRadius: 8, paddingVertical: 7,
+                  }}
+                >
+                  <Ionicons name="refresh-outline" size={14} color={c.fg} />
+                  <Text style={{ color: c.fg, fontSize: 12, fontWeight: "500" }}>Re-request review</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         )}
 

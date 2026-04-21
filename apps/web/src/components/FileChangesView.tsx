@@ -108,7 +108,7 @@ function MarkdownComment({ body }: { body: string }) {
   )
 }
 
-export function PRView({ agentId, onAddComment: _onAddComment }: { agentId: string; onAddComment: (c: PRComment) => void }) {
+export function PRView({ agentId, onAddComment }: { agentId: string; onAddComment: (c: PRComment) => void }) {
   const [markingReady, setMarkingReady] = useState(false)
   const [merging, setMerging] = useState(false)
   const [mergeMethod, setMergeMethod] = useState<"merge" | "squash" | "rebase">("squash")
@@ -408,11 +408,18 @@ export function PRView({ agentId, onAddComment: _onAddComment }: { agentId: stri
               {pr.threads.map((thread) => (
                 <div key={thread.id} className={cn("rounded-lg border overflow-hidden", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
                   {thread.comments.map((c) => (
-                    <div key={c.id} className="px-3 py-2 border-b border-border last:border-b-0">
+                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0">
                       <div className="flex items-center gap-1.5 mb-1">
                         {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full" />}
                         <span className="text-[11px] font-medium text-foreground">{c.author}</span>
                         {c.path && <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto">{c.path}{c.line ? `:${c.line}` : ""}</span>}
+                        <button
+                          onClick={() => onAddComment(c)}
+                          className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent"
+                          title="Add to chat"
+                        >
+                          + Chat
+                        </button>
                       </div>
                       <MarkdownComment body={c.body} />
                     </div>
@@ -470,11 +477,18 @@ export function PRView({ agentId, onAddComment: _onAddComment }: { agentId: stri
             </div>
             <div className="space-y-3">
               {pr.issueComments.map((c) => (
-                <div key={c.id} className="space-y-1">
+                <div key={c.id} className="group/comment space-y-1">
                   <div className="flex items-center gap-1.5">
                     {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full" />}
                     <span className="text-[12px] font-medium text-foreground">{c.author}</span>
-                    <a href={c.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="ml-auto text-muted-foreground/30 hover:text-muted-foreground/60">
+                    <button
+                      onClick={() => onAddComment({ id: String(c.id), author: c.author, avatarUrl: c.avatarUrl, body: c.body, createdAt: c.createdAt, url: c.url, isReply: false })}
+                      className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent"
+                      title="Add to chat"
+                    >
+                      + Chat
+                    </button>
+                    <a href={c.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="text-muted-foreground/30 hover:text-muted-foreground/60">
                       <IconArrowUpRight size={11} />
                     </a>
                   </div>

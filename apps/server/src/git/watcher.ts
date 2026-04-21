@@ -55,7 +55,7 @@ async function refresh(agentId: string, worktreePath: string, branchFrom: string
         })
       }
     }
-    emit(agentId, { type: "file:changed", agentId, files })
+    emit(agentId, { type: "file:changed", agentId, files: files.sort((a, b) => a.path.localeCompare(b.path)) })
   } catch (err) {
     console.error(`[watcher] refresh failed for agent ${agentId}:`, err)
   }

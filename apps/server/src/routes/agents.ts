@@ -143,7 +143,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       }
     })
 
-    const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, agent.id)).all()
+    const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, agent.id)).all().sort((a, b) => a.path.localeCompare(b.path))
     const terminal = db.select().from(terminalLines)
       .where(eq(terminalLines.agentId, agent.id))
       .all()

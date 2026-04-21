@@ -152,9 +152,27 @@ if (!boundPort) {
 // Persist actual port so CLI commands can read it
 try { fs.writeFileSync(PORT_FILE, String(boundPort)) } catch { /* non-fatal */ }
 const cleanupPortFile = () => { try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ } }
+
+// Kill all agent processes and clear port records on shutdown
+import { killWorktreeProcesses, clearAgentPorts } from "./git/processes.js"
+async function cleanupOnShutdown() {
+  cleanupPortFile()
+  try {
+    const allAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
+    for (const agent of allAgents) {
+      if (!agent.repoId) continue
+      const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+      if (!repo) continue
+      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+      await killWorktreeProcesses(worktreePath).catch(() => {})
+      clearAgentPorts(agent.id)
+    }
+  } catch { /* best effort */ }
+}
+
 process.on("exit", cleanupPortFile)
-process.on("SIGTERM", () => { cleanupPortFile(); process.exit(0) })
-process.on("SIGINT", () => { cleanupPortFile(); process.exit(0) })
+process.on("SIGTERM", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
+process.on("SIGINT", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
 
 startPoller()
 if (!process.env.HUXFLUX_SSH_USER) {

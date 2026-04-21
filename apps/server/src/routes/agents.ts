@@ -708,20 +708,27 @@ export async function agentsRoutes(app: FastifyInstance) {
     const app = apps[appName]
     if (!app) return reply.code(400).send({ error: `Unknown app: ${appName}` })
 
-    if (app.cli) {
-      spawn(app.cli[0], app.cli.slice(1), { detached: true, stdio: "ignore" }).unref()
-    } else {
-      spawn("open", ["-a", app.bundle, worktreePath], { detached: true, stdio: "ignore" }).unref()
+    try {
+      if (app.cli) {
+        const proc = spawn(app.cli[0], app.cli.slice(1), { detached: true, stdio: "ignore" })
+        proc.unref()
+        proc.on("error", () => {}) // swallow spawn errors
+      } else {
+        spawn("open", ["-a", app.bundle, worktreePath], { detached: true, stdio: "ignore" }).unref()
+      }
+
+      // Activate after a delay so the app window is ready
+      setTimeout(() => {
+        try {
+          const script = `tell application "${app.bundle}" to activate`
+          spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" }).unref()
+        } catch { /* non-critical */ }
+      }, 600)
+    } catch (err) {
+      return reply.code(500).send({ error: `Failed to open ${appName}: ${(err as Error).message}` })
     }
 
-    // Activate after a delay so the app window is ready and we steal focus
-    // back from the browser that just processed the click.
-    setTimeout(() => {
-      const script = `tell application "${app.bundle}" to activate`
-      spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" }).unref()
-    }, 600)
-
-    return { ok: true }
+    return { ok: true, worktreePath }
   })
 
   // GET /api/agents/:id/worktree-path — get the resolved worktree path

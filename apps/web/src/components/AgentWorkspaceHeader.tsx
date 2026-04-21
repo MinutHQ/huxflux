@@ -201,22 +201,45 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
   }, [agent.id, lastOpenInApp, remoteMode, sshInfo])
 
   async function doOpenIn(appKey: string) {
-    if (remoteMode && sshInfo) {
+    const isRemote = isRemoteServer()
+
+    if (isRemote) {
+      // Remote server: open editor via SSH
       try {
         const res = await api.getWorktreePath(agent.id)
-        const { invoke } = await import("@tauri-apps/api/core")
-        await invoke("open_ssh_editor", {
-          editor: appKey,
-          user: sshInfo.user,
-          host: sshInfo.host,
-          port: sshInfo.port,
-          path: res.path,
-        })
+
+        if (isTauri && sshInfo) {
+          // Desktop app: use Tauri command
+          const { invoke } = await import("@tauri-apps/api/core")
+          await invoke("open_ssh_editor", {
+            editor: appKey,
+            user: sshInfo.user,
+            host: sshInfo.host,
+            port: sshInfo.port,
+            path: res.path,
+          })
+        } else {
+          // Web app: copy SSH command to clipboard
+          const server = getActiveServer()
+          const host = server ? new URL(server.url).hostname : "server"
+          const sshCmd = appKey === "vscode"
+            ? `code --remote ssh-remote+${host} ${res.path}`
+            : appKey === "cursor"
+            ? `cursor --remote ssh-remote+${host} ${res.path}`
+            : `ssh ${host} -t "cd ${res.path} && $SHELL -l"`
+          await navigator.clipboard.writeText(sshCmd)
+          toast.success("Command copied", { description: sshCmd })
+        }
       } catch (err) {
-        toast.error(String(err))
+        toast.error(`Failed to open: ${err}`)
       }
     } else {
-      void api.openIn(agent.id, appKey)
+      // Local server: spawn editor directly
+      try {
+        await api.openIn(agent.id, appKey)
+      } catch (err) {
+        toast.error(`Failed to open ${appKey}: ${err instanceof Error ? err.message : err}`)
+      }
     }
   }
 

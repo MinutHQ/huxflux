@@ -1,4 +1,4 @@
-import { exec } from "node:child_process"
+import { exec, execSync } from "node:child_process"
 import { promisify } from "node:util"
 import { db } from "../db/index.js"
 import { agentPorts } from "../db/schema.js"
@@ -89,23 +89,61 @@ function broadcastPorts(): void {
   broadcast({ type: "ports:changed", ports: all })
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Quick check if a port is still listening (single port — ~160ms) */
+function isPortAlive(port: number): boolean {
+  try {
+    const output = execSync(`lsof -i :${port} -P -n 2>/dev/null | grep LISTEN || true`, { encoding: "utf8", timeout: 1000 }).trim()
+    return output.length > 0
+  } catch {
+    return false
+  }
+}
+
+function getAllPortsFromDBRaw(rows: Array<{ agentId: string; port: number }>): Array<{ agentId: string; agentTitle: string; port: number }> {
+  if (rows.length === 0) return []
+  const agentIds = [...new Set(rows.map(r => r.agentId))]
+  const agentRows = db.select().from(agents).where(inArray(agents.id, agentIds)).all()
+  const agentMap = new Map(agentRows.map(a => [a.id, a.title]))
+  return rows.map(r => ({ agentId: r.agentId, agentTitle: agentMap.get(r.agentId) ?? "", port: r.port }))
+}
+
 // ── API helpers (read from DB only — instant) ───────────────────────────────
 
 export function getAllPortsFromDB(): Array<{ agentId: string; agentTitle: string; port: number }> {
   const rows = db.select().from(agentPorts).all()
   if (rows.length === 0) return []
 
-  const agentIds = [...new Set(rows.map(r => r.agentId))]
-  const agentRows = db.select().from(agents)
-    .where(inArray(agents.id, agentIds))
-    .all()
-  const agentMap = new Map(agentRows.map(a => [a.id, a.title]))
+  // Verify ports are still alive — cheap check for a handful of ports
+  const deadPorts: Array<{ agentId: string; port: number }> = []
+  for (const row of rows) {
+    if (!isPortAlive(row.port)) {
+      deadPorts.push(row)
+    }
+  }
+  // Clean up dead ports from DB and broadcast if changed
+  if (deadPorts.length > 0) {
+    for (const { agentId, port } of deadPorts) {
+      db.delete(agentPorts)
+        .where(eq(agentPorts.agentId, agentId))
+        .run()
+      // Re-insert remaining ports for this agent (minus the dead one)
+      const remaining = rows.filter(r => r.agentId === agentId && r.port !== port && !deadPorts.some(d => d.agentId === r.agentId && d.port === r.port))
+      for (const r of remaining) {
+        try { db.insert(agentPorts).values({ agentId: r.agentId, port: r.port }).run() } catch { /* dup */ }
+      }
+    }
+    // Re-read after cleanup
+    const cleaned = db.select().from(agentPorts).all()
+    if (cleaned.length !== rows.length) {
+      setTimeout(() => broadcastPorts(), 0)
+    }
+    return getAllPortsFromDBRaw(cleaned)
+  }
 
-  return rows.map(r => ({
-    agentId: r.agentId,
-    agentTitle: agentMap.get(r.agentId) ?? "",
-    port: r.port,
-  }))
+  return getAllPortsFromDBRaw(rows)
+}
 }
 
 export function getAgentPortsFromDB(agentId: string): number[] {

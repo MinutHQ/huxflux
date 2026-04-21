@@ -2,21 +2,26 @@ import { eq, notInArray, isNull, and } from "drizzle-orm"
 import { simpleGit } from "simple-git"
 import * as path from "node:path"
 import { db } from "./db/index.js"
-import { agents, repos } from "./db/schema.js"
-import { getPRStatus, findPRForBranch } from "./github/client.js"
+import { agents, repos, messages } from "./db/schema.js"
+import { getPRStatus, findPRForBranch, getPRDetails } from "./github/client.js"
 import { getRemoteUrl } from "./git/worktrees.js"
-import { broadcast } from "./ws/handler.js"
+import { broadcast, emit } from "./ws/handler.js"
 import { prStatusToAgentStatus } from "./github/prStatus.js"
-import type { PRStatus } from "./types.js"
+import { isAgentRunning } from "./claude/runner.js"
+import { config } from "./config.js"
+import type { PRStatus, PRDetails } from "./types.js"
+
+// Track what we've already seen to avoid re-sending
+const lastSeenCommentIds = new Map<string, Set<string>>() // agentId → set of comment IDs
+const lastSeenCheckConclusions = new Map<string, string>() // agentId → "success" | "failure" | ...
 
 async function pollAgent(agent: typeof agents.$inferSelect) {
-  // Need a repo with a remote URL to query GitHub
   if (!agent.repoId) return
-  if (!agent.branch) return // skip agents with empty branch
+  if (!agent.branch) return
   const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
   if (!repo) return
 
-  // Sync branch name from actual git worktree (Claude may have renamed it)
+  // ── 1. Sync branch name from git worktree ─────────────────────────────
   if (!agent.noWorktree) {
     try {
       const worktreePath = path.join(repo.workspacesPath, agent.location)
@@ -26,11 +31,12 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
         agent = { ...agent, branch: actualBranch }
         const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
         if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+        console.log(`[poller] ${agent.id}: branch synced to ${actualBranch}`)
       }
     } catch { /* worktree may not exist */ }
   }
 
-  // Resolve GitHub URL from git remote (repo.remote is the remote name, e.g. "origin")
+  // ── 2. Sync PR status ─────────────────────────────────────────────────
   const repoUrl = await getRemoteUrl(repo.path, repo.remote)
   if (!repoUrl) return
 
@@ -48,37 +54,172 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
     const newStatus = prStatusToAgentStatus(pr)
     const prStatusJson = JSON.stringify(pr)
 
-    // Only update if something changed
     const statusChanged = newStatus !== agent.status
     const prChanged = prStatusJson !== agent.prStatus || pr.number !== agent.prNumber
 
-    if (!statusChanged && !prChanged) return
+    if (statusChanged || prChanged) {
+      const now = new Date().toISOString()
+      await db.update(agents)
+        .set({
+          prNumber: pr.number,
+          prStatus: prStatusJson,
+          status: newStatus,
+          pr: pr.url,
+          updatedAt: now,
+        })
+        .where(eq(agents.id, agent.id))
 
-    const now = new Date().toISOString()
-    await db.update(agents)
-      .set({
-        prNumber: pr.number,
-        prStatus: prStatusJson,
-        status: newStatus,
-        pr: pr.url,
-        updatedAt: now,
-      })
-      .where(eq(agents.id, agent.id))
+      const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
+      if (updated) {
+        broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
+      }
+    }
 
-    const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
-    if (updated) {
-      broadcast({
-        type: "agent:updated",
-        agent: { ...updated, prStatus: pr } as any,
-      })
+    // ── 3. Monitor PR comments — send new ones to the agent ─────────
+    if (pr.number && agent.status !== "done" && agent.status !== "cancelled") {
+      await monitorPRComments(agent, repoUrl, pr.number)
+    }
+
+    // ── 4. Monitor CI — notify agent of failures ────────────────────
+    if (pr.number && agent.status !== "done" && agent.status !== "cancelled") {
+      await monitorCI(agent, repoUrl, pr.number)
     }
   } catch (err) {
-    // GitHub token missing, rate limited, or repo not on GitHub — skip silently
     if (process.env.NODE_ENV !== "production") {
       console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
     }
   }
 }
+
+// ── PR Comment Monitoring ────────────────────────────────────────────────────
+
+async function monitorPRComments(
+  agent: typeof agents.$inferSelect,
+  repoUrl: string,
+  prNumber: number,
+): Promise<void> {
+  // Skip if agent is currently running — don't interrupt it
+  if (isAgentRunning(agent.id)) return
+
+  try {
+    const details = await getPRDetails(repoUrl, prNumber)
+
+    // Collect all comment IDs we've seen
+    let seen = lastSeenCommentIds.get(agent.id)
+    if (!seen) {
+      // First run: seed with all existing comments so we don't replay history
+      seen = new Set<string>()
+      for (const thread of details.threads) {
+        for (const c of thread.comments) seen.add(c.id)
+      }
+      for (const c of details.issueComments) seen.add(String(c.id))
+      lastSeenCommentIds.set(agent.id, seen)
+      return
+    }
+
+    // Find new unresolved thread comments (not from the current user)
+    const newComments: Array<{ author: string; body: string; path?: string; line?: number }> = []
+
+    for (const thread of details.threads) {
+      if (thread.isResolved) continue
+      for (const c of thread.comments) {
+        if (seen.has(c.id)) continue
+        seen.add(c.id)
+        // Skip comments from the PR author (likely the agent itself)
+        if (c.author === details.author) continue
+        newComments.push({
+          author: c.author,
+          body: c.body,
+          path: c.path ?? thread.path,
+          line: c.line ?? thread.line,
+        })
+      }
+    }
+
+    // Find new issue comments (general discussion)
+    for (const c of details.issueComments) {
+      const cId = String(c.id)
+      if (seen.has(cId)) continue
+      seen.add(cId)
+      if (c.author === details.author) continue
+      newComments.push({ author: c.author, body: c.body })
+    }
+
+    if (newComments.length === 0) return
+
+    // Build a message for the agent
+    const parts = newComments.map((c) => {
+      let prefix = `**${c.author}** commented`
+      if (c.path) prefix += ` on \`${c.path}${c.line ? `:${c.line}` : ""}\``
+      return `${prefix}:\n> ${c.body.split("\n").join("\n> ")}`
+    })
+
+    const message = `New PR review comment${newComments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${newComments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, or reply explaining why no change is necessary.`
+
+    console.log(`[poller] ${agent.id}: sending ${newComments.length} new PR comment(s) to agent`)
+    await sendToAgent(agent.id, message, "PR Review")
+  } catch (err) {
+    // Non-critical — skip this cycle
+    console.warn(`[poller] PR comment monitor failed for ${agent.id}: ${(err as Error).message}`)
+  }
+}
+
+// ── CI Monitoring ────────────────────────────────────────────────────────────
+
+async function monitorCI(
+  agent: typeof agents.$inferSelect,
+  repoUrl: string,
+  prNumber: number,
+): Promise<void> {
+  if (isAgentRunning(agent.id)) return
+
+  try {
+    const details = await getPRDetails(repoUrl, prNumber)
+    if (details.checks.length === 0) return
+
+    const allCompleted = details.checks.every((c) => c.status === "completed")
+    if (!allCompleted) return
+
+    const failed = details.checks.filter((c) => c.conclusion === "failure")
+    const conclusionKey = details.checks.map((c) => `${c.name}:${c.conclusion}`).sort().join(",")
+    const lastKey = lastSeenCheckConclusions.get(agent.id)
+
+    if (conclusionKey === lastKey) return
+    lastSeenCheckConclusions.set(agent.id, conclusionKey)
+
+    // Skip first run (seeding)
+    if (!lastKey) return
+
+    if (failed.length === 0) {
+      // All checks passed — no action needed
+      return
+    }
+
+    const failedNames = failed.map((c) => `- **${c.name}**${c.url ? ` ([view](${c.url}))` : ""}`).join("\n")
+    const message = `CI checks failed on your PR:\n\n${failedNames}\n\nPlease investigate and fix the failing checks. If the failure is not related to your changes, explain why.`
+
+    console.log(`[poller] ${agent.id}: CI failure detected, notifying agent`)
+    await sendToAgent(agent.id, message, "CI Monitor")
+  } catch (err) {
+    console.warn(`[poller] CI monitor failed for ${agent.id}: ${(err as Error).message}`)
+  }
+}
+
+// ── Send message to agent via local API ──────────────────────────────────────
+
+async function sendToAgent(agentId: string, content: string, sender: string): Promise<void> {
+  const body = JSON.stringify({ content, sender })
+  await fetch(`http://localhost:${config.boundPort}/api/agents/${agentId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
+    },
+    body,
+  })
+}
+
+// ── Poller entrypoint ────────────────────────────────────────────────────────
 
 export function startPoller(intervalMs = 60_000) {
   const SKIP_STATUSES = ["backlog", "cancelled", "done"]

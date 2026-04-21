@@ -1741,13 +1741,18 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
     queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
       old ? old.filter((a) => !ids.includes(a.id)) : old
     )
-    // Fire deletes in background
-    for (const id of ids) {
-      api.deleteAgent(id).catch((err) =>
-        toast.error(`Archive failed: ${err instanceof Error ? err.message : "unknown"}`)
-      )
-    }
-    toast.success(`Archived ${targets.length} agent${targets.length !== 1 ? "s" : ""}`)
+    // Delete sequentially to avoid abort errors
+    toast.success(`Archiving ${targets.length} agent${targets.length !== 1 ? "s" : ""}...`)
+    void (async () => {
+      for (const id of ids) {
+        try {
+          await api.deleteAgent(id)
+        } catch (err) {
+          if (/abort/i.test(String(err))) continue
+          toast.error(`Archive failed: ${err instanceof Error ? err.message : "unknown"}`)
+        }
+      }
+    })()
   }
 
   return (

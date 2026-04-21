@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useRef, useState, useMemo, useSyncExternalStore } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@huxflux/ui"
 import type { FileChange } from "@/data/mock"
@@ -72,34 +72,62 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
 
   const fileName = file.path.split("/").pop() ?? file.path
 
+  // Long staleTime prevents refetching while reviewing — manual refresh available
   const { data: rawDiff } = useQuery({
     queryKey: ["diff", agentId, file.path],
     queryFn: () => api.getDiff(agentId, file.path),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const { data: newContent } = useQuery({
     queryKey: ["file-content", agentId, file.path],
     queryFn: () => api.getFileContent(agentId, file.path),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     enabled: !!rawDiff,
   })
 
   const { data: oldContent } = useQuery({
     queryKey: ["file-base-content", agentId, file.path],
     queryFn: () => api.getBaseFileContent(agentId, file.path),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     enabled: !!rawDiff,
   })
 
-  const fileDiff = rawDiff && oldContent !== undefined && newContent !== undefined
-    ? processFile(rawDiff, {
+  // Memoize to prevent re-processing on every render
+  const fileDiff = useMemo(() => {
+    if (rawDiff && oldContent !== undefined && newContent !== undefined) {
+      return processFile(rawDiff, {
         oldFile: { name: fileName, contents: oldContent },
         newFile: { name: fileName, contents: newContent },
       })
-    : rawDiff
-      ? processFile(rawDiff)
-      : null
+    }
+    return rawDiff ? processFile(rawDiff) : null
+  }, [rawDiff, oldContent, newContent, fileName])
+
+  // Preserve scroll position when fileDiff updates (data refetch)
+  const prevScrollRef = useRef(0)
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container || !fileDiff) return
+    // Restore scroll after React re-renders the diff
+    requestAnimationFrame(() => {
+      if (prevScrollRef.current > 0) {
+        container.scrollTop = prevScrollRef.current
+      }
+    })
+  }, [fileDiff])
+
+  // Track scroll position continuously
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const onScroll = () => { prevScrollRef.current = container.scrollTop }
+    container.addEventListener("scroll", onScroll, { passive: true })
+    return () => container.removeEventListener("scroll", onScroll)
+  }, [])
 
   function onHunkExpand(hunkIndex: number, direction: ExpansionDirections, expansionLineCount = 20) {
     setExpandedHunks(prev => {

@@ -195,7 +195,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-3 space-y-3">
+      <div className="p-3 space-y-3 min-w-0 overflow-hidden">
         {/* PR title + link */}
         <div className="space-y-1">
           <a href={pr.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="flex items-start gap-1.5 group">
@@ -408,11 +408,11 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
               {pr.threads.map((thread) => (
                 <div key={thread.id} className={cn("rounded-lg border overflow-hidden", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
                   {thread.comments.map((c) => (
-                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full" />}
-                        <span className="text-[11px] font-medium text-foreground">{c.author}</span>
-                        {c.path && <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto">{c.path}{c.line ? `:${c.line}` : ""}</span>}
+                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-1 min-w-0">
+                        {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full shrink-0" />}
+                        <span className="text-[11px] font-medium text-foreground shrink-0">{c.author}</span>
+                        {c.path && <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto truncate max-w-[50%]">{c.path}{c.line ? `:${c.line}` : ""}</span>}
                         <button
                           onClick={() => onAddComment(c)}
                           className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent"

@@ -144,7 +144,6 @@ export function getAllPortsFromDB(): Array<{ agentId: string; agentTitle: string
 
   return getAllPortsFromDBRaw(rows)
 }
-}
 
 export function getAgentPortsFromDB(agentId: string): number[] {
   return db.select().from(agentPorts)

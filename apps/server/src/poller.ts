@@ -236,7 +236,25 @@ export function startPoller(intervalMs = 60_000) {
     }
   }
 
+  // Periodic Jira sync (every 5 minutes)
+  async function syncJira() {
+    try {
+      await fetch(`http://localhost:${config.boundPort}/api/tasks/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
+        },
+        body: JSON.stringify({}),
+      })
+    } catch { /* Jira not configured or unreachable */ }
+  }
+
   // Run once shortly after startup, then on interval
   setTimeout(() => run().catch(console.error), 5_000)
   setInterval(() => run().catch(console.error), intervalMs)
+
+  // Jira sync: first run after 30s, then every 5 min
+  setTimeout(() => syncJira(), 30_000)
+  setInterval(() => syncJira(), 5 * 60_000)
 }

@@ -8,6 +8,7 @@ import type { JiraIssue } from "../jira/client.js"
 import { tasks, taskAgents, taskComments, taskDependencies, agents, repos } from "../db/schema.js"
 import { broadcast } from "../ws/handler.js"
 import { getProvider } from "../providers/index.js"
+import { config } from "../config.js"
 import { runClaude } from "../claude/runner.js"
 import { getSettings } from "../settings.js"
 import * as path from "node:path"
@@ -419,10 +420,35 @@ export async function tasksRoutes(app: FastifyInstance) {
     const existing = db.select().from(tasks).where(eq(tasks.id, id)).get()
     if (!existing) return { error: "not found" }
 
+    const wasReady = existing.status === "ready"
     db.update(tasks).set({
       ...body,
       updatedAt: new Date().toISOString(),
     }).where(eq(tasks.id, id)).run()
+
+    // Auto-create agent when task moves to "ready" and has a repo
+    if (body.status === "ready" && !wasReady) {
+      const updated = db.select().from(tasks).where(eq(tasks.id, id)).get()
+      if (updated?.repoId) {
+        // Check if there's already a linked agent
+        const existingAgent = db.select().from(taskAgents).where(eq(taskAgents.taskId, id)).all()
+        if (existingAgent.length === 0) {
+          try {
+            // Fire start-work via internal HTTP to reuse full agent creation logic
+            await fetch(`http://localhost:${config.boundPort}/api/tasks/${id}/start-work`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
+              },
+              body: JSON.stringify({}),
+            })
+          } catch (err) {
+            console.error(`[tasks] auto-start failed for ${id}:`, err)
+          }
+        }
+      }
+    }
 
     return loadAllTasks()
   })

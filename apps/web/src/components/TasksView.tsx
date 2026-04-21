@@ -28,6 +28,7 @@ import {
   IconUrgent,
   IconSend,
   IconSparkles,
+  IconX,
 } from "@tabler/icons-react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -734,7 +735,8 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
   })
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId ?? null)
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [_addingTask, setAddingTask] = useState(false)
+  const [addingTask, setAddingTask] = useState(false)
+  const [newTaskTitle, setNewTaskTitle] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [activeSprintOnly, setActiveSprintOnly] = useState(false)
 
@@ -865,6 +867,49 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
               Sync
             </button>
           </div>
+
+          {/* New task input */}
+          {addingTask && (
+            <div className="px-4 pb-2">
+              <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
+                <input
+                  autoFocus
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && newTaskTitle.trim()) {
+                      await api.createTask({ title: newTaskTitle.trim() })
+                      queryClient.invalidateQueries({ queryKey: ["tasks"] })
+                      setNewTaskTitle("")
+                      setAddingTask(false)
+                    }
+                    if (e.key === "Escape") { setAddingTask(false); setNewTaskTitle("") }
+                  }}
+                  placeholder="Task title..."
+                  className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newTaskTitle.trim()) return
+                    await api.createTask({ title: newTaskTitle.trim() })
+                    queryClient.invalidateQueries({ queryKey: ["tasks"] })
+                    setNewTaskTitle("")
+                    setAddingTask(false)
+                  }}
+                  disabled={!newTaskTitle.trim()}
+                  className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+                >
+                  Create
+                </button>
+                <button
+                  onClick={() => { setAddingTask(false); setNewTaskTitle("") }}
+                  className="text-muted-foreground/40 hover:text-muted-foreground"
+                >
+                  <IconX size={13} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Columns */}
           {isLoading ? (

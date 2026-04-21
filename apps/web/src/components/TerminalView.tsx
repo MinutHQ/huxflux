@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from "react"
 import { Terminal } from "@xterm/xterm"
 import type { IDisposable } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
+import { SearchAddon } from "@xterm/addon-search"
 import { cn } from "@huxflux/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlayFilled, IconSettings, IconPlus, IconX } from "@tabler/icons-react"
@@ -20,6 +21,7 @@ interface TerminalViewProps {
 interface Session {
   term: Terminal
   fitAddon: FitAddon
+  searchAddon: SearchAddon
   ws: WebSocket | null
   div: HTMLDivElement
   port: number | null
@@ -111,6 +113,22 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   const [_detectedPort, setDetectedPort] = useState<number | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Cmd+F opens terminal search
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault()
+        setShowSearch(true)
+        setTimeout(() => searchInputRef.current?.focus(), 0)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
   const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Load tabs from server when agent changes
@@ -153,15 +171,19 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
       fontFamily: '"Geist Mono", "JetBrains Mono", "Fira Code", monospace',
       theme: getTerminalTheme(),
     })
-    // Let F1 propagate to the window handler (for terminal maximize toggle)
+    // Let F1 and Cmd+F propagate
     term.attachCustomKeyEventHandler((e) => {
       if (e.key === "F1") return false
+      // Cmd+F / Ctrl+F: toggle search bar
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") return false
       return true
     })
     const fitAddon = new FitAddon()
+    const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
+    term.loadAddon(searchAddon)
 
-    const session: Session = { term, fitAddon, ws: null, div, port: null, isRunning: false, outputBuf: "", onDataDisposable: null }
+    const session: Session = { term, fitAddon, searchAddon, ws: null, div, port: null, isRunning: false, outputBuf: "", onDataDisposable: null }
     globalSessions.set(sessionKey, session)
     return session
   }
@@ -442,6 +464,44 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
         </div>
 
       </div>
+
+      {/* Search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0">
+          <input
+            ref={searchInputRef}
+            autoFocus
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              const session = globalSessions.get(`${agent.id}:${activeTerminalId}`)
+              if (session && e.target.value) {
+                session.searchAddon.findNext(e.target.value, { regex: false, caseSensitive: false, incremental: true })
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); const s = globalSessions.get(`${agent.id}:${activeTerminalId}`); s?.searchAddon.clearDecorations() }
+              if (e.key === "Enter") {
+                const session = globalSessions.get(`${agent.id}:${activeTerminalId}`)
+                if (session && searchQuery) {
+                  if (e.shiftKey) session.searchAddon.findPrevious(searchQuery)
+                  else session.searchAddon.findNext(searchQuery)
+                }
+              }
+            }}
+            placeholder="Search terminal..."
+            className="flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/40"
+          />
+          <span className="text-[10px] text-muted-foreground/30">
+            <kbd className="border border-border rounded px-1 py-0.5 font-mono">↵</kbd> next
+            <kbd className="border border-border rounded px-1 py-0.5 font-mono ml-1">⇧↵</kbd> prev
+          </span>
+          <button onClick={() => { setShowSearch(false); setSearchQuery(""); const s = globalSessions.get(`${agent.id}:${activeTerminalId}`); s?.searchAddon.clearDecorations() }} className="text-muted-foreground/40 hover:text-muted-foreground">
+            <IconX size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Terminal area */}
       <div className="flex-1 min-h-0 relative overflow-hidden">

@@ -102,7 +102,7 @@ function stripHtml(text: string): string {
 
 function MarkdownComment({ body }: { body: string }) {
   return (
-    <div className="text-[12px] text-muted-foreground leading-relaxed prose prose-sm prose-invert max-w-none break-words overflow-hidden [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:text-[11px] [&_code]:break-all [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_a]:break-all">
+    <div className="text-[12px] text-muted-foreground leading-relaxed prose prose-sm prose-invert max-w-none min-w-0 w-full [overflow-wrap:anywhere] [word-break:break-word] overflow-hidden [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:min-w-0 [&_code]:text-[11px] [&_code]:break-all [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_a]:break-all [&_*]:max-w-full [&_*]:min-w-0">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripHtml(body)}</ReactMarkdown>
     </div>
   )
@@ -477,7 +477,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             </div>
             <div className="space-y-3">
               {pr.issueComments.map((c) => (
-                <div key={c.id} className="group/comment space-y-1">
+                <div key={c.id} className="group/comment space-y-1 min-w-0 overflow-hidden">
                   <div className="flex items-center gap-1.5">
                     {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full" />}
                     <span className="text-[12px] font-medium text-foreground">{c.author}</span>

@@ -195,7 +195,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-3 space-y-3 min-w-0 overflow-hidden">
+      <div className="p-3 space-y-3 min-w-0 overflow-hidden break-words [overflow-wrap:anywhere]">
         {/* PR title + link */}
         <div className="space-y-1">
           <a href={pr.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="flex items-start gap-1.5 group">
@@ -404,9 +404,9 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
               Threads <span className="text-muted-foreground/50 normal-case font-normal">{pr.threads.length}</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 min-w-0">
               {pr.threads.map((thread) => (
-                <div key={thread.id} className={cn("rounded-lg border overflow-hidden", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
+                <div key={thread.id} className={cn("rounded-lg border overflow-hidden min-w-0", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
                   {thread.comments.map((c) => (
                     <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0 min-w-0">
                       <div className="flex items-center gap-1.5 mb-1 min-w-0">
@@ -1154,7 +1154,7 @@ export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSele
   const hasPR = !!agent.prNumber
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background min-w-0 overflow-hidden">
       {/* Header — hidden when tabs are rendered in the workspace header */}
       {!hideHeader && (
         <div className="flex items-center px-2 py-2 border-b border-border shrink-0 gap-1">

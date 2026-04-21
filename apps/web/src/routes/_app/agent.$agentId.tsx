@@ -176,7 +176,7 @@ function AgentRoute() {
           />
         </ResizablePanel>
         {rightPanelVisible && <ResizableHandle className="w-0 bg-transparent" />}
-        {rightPanelVisible && <ResizablePanel id="huxflux-main-right" defaultSize="28" minSize="15">
+        {rightPanelVisible && <ResizablePanel id="huxflux-main-right" defaultSize="30" minSize="20">
           <ResizablePanelGroup orientation="vertical" className="gap-1.5 p-1.5 pl-0" defaultLayout={rightLayout.defaultLayout} onLayoutChanged={rightLayout.onLayoutChanged}>
             <ResizablePanel id="huxflux-right-files" defaultSize="50" minSize="20">
               <div className="h-full rounded-lg border border-border/50 bg-background overflow-hidden">

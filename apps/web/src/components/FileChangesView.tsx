@@ -102,7 +102,7 @@ function stripHtml(text: string): string {
 
 function MarkdownComment({ body }: { body: string }) {
   return (
-    <div style={{ overflowWrap: "anywhere", wordBreak: "break-word" }} className="text-[12px] text-muted-foreground leading-relaxed max-w-none min-w-0 w-full overflow-hidden [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:text-[11px] [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+    <div style={{ overflowWrap: "anywhere", wordBreak: "break-word" }} className="text-[12px] text-muted-foreground leading-relaxed max-w-none min-w-0 w-full overflow-hidden [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:whitespace-pre-wrap [&_code]:text-[11px] [&_code]:whitespace-pre-wrap [&_code]:break-all [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_table]:w-full [&_table]:table-fixed [&_table]:text-[11px] [&_table]:overflow-x-auto [&_table]:block [&_td]:break-all [&_th]:break-all">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripHtml(body)}</ReactMarkdown>
     </div>
   )
@@ -195,7 +195,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-3 space-y-3 min-w-0 overflow-hidden break-words [overflow-wrap:anywhere]">
+      <div className="p-3 space-y-3" style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}>
         {/* PR title + link */}
         <div className="space-y-1">
           <a href={pr.url} target="_blank" rel="noreferrer" onClick={handleExternalClick} className="flex items-start gap-1.5 group">
@@ -406,21 +406,25 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             </div>
             <div className="space-y-2 min-w-0">
               {pr.threads.map((thread) => (
-                <div key={thread.id} className={cn("rounded-lg border overflow-hidden min-w-0", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
+                <div key={thread.id} className={cn("rounded-lg border min-w-0", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
                   {thread.comments.map((c) => (
-                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1 min-w-0">
+                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0 min-w-0 @container">
+                      <div className="flex items-center gap-1.5 mb-1 min-w-0 flex-wrap">
                         {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full shrink-0" />}
                         <span className="text-[11px] font-medium text-foreground shrink-0">{c.author}</span>
-                        {c.path && <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto truncate max-w-[50%]">{c.path}{c.line ? `:${c.line}` : ""}</span>}
                         <button
                           onClick={() => onAddComment(c)}
-                          className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent"
+                          className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent shrink-0"
                           title="Add to chat"
                         >
                           + Chat
                         </button>
                       </div>
+                      {c.path && (
+                        <div className="text-[10px] text-muted-foreground/40 font-mono mb-1 truncate" style={{ direction: "rtl", textAlign: "left" }}>
+                          {c.path}{c.line ? `:${c.line}` : ""}
+                        </div>
+                      )}
                       <MarkdownComment body={c.body} />
                     </div>
                   ))}
@@ -477,7 +481,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             </div>
             <div className="space-y-3">
               {pr.issueComments.map((c) => (
-                <div key={c.id} className="group/comment space-y-1 min-w-0 overflow-hidden">
+                <div key={c.id} className="group/comment space-y-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full" />}
                     <span className="text-[12px] font-medium text-foreground">{c.author}</span>

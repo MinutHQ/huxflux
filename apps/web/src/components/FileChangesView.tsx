@@ -102,7 +102,7 @@ function stripHtml(text: string): string {
 
 function MarkdownComment({ body }: { body: string }) {
   return (
-    <div className="text-[12px] text-muted-foreground leading-relaxed prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_code]:text-[11px] [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+    <div className="text-[12px] text-muted-foreground leading-relaxed prose prose-sm prose-invert max-w-none break-words overflow-hidden [&_p]:my-1 [&_pre]:my-1.5 [&_pre]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:text-[11px] [&_code]:break-all [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_a]:break-all">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripHtml(body)}</ReactMarkdown>
     </div>
   )

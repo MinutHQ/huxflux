@@ -2815,7 +2815,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   useEffect(() => {
     if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")
-    else if (openFileTab?.type === "pr") setActiveTab("pr")
+    else if (openFileTab?.type === "pr") { /* keep chat tab active, PR tab appears as clickable option */ }
     else if (openFileTab) setActiveTab("file")
   }, [openFileTab])
 

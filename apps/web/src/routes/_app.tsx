@@ -36,6 +36,8 @@ function AppLayout() {
 
   const sidebarRef = useRef<PanelImperativeHandle>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [floatingSidebar, setFloatingSidebar] = useState(false)
+  const floatingRef = useRef<HTMLDivElement>(null)
   const sidebarLayout = useDefaultLayout({ id: "huxflux-sidebar", panelIds: ["huxflux-sidebar-panel", "huxflux-content-panel"] })
 
   const toggleSidebar = useCallback(() => {
@@ -52,6 +54,23 @@ function AppLayout() {
     window.addEventListener("huxflux:toggle-sidebar", onToggle)
     return () => window.removeEventListener("huxflux:toggle-sidebar", onToggle)
   }, [toggleSidebar])
+
+  // Floating sidebar: show when mouse is near left edge while collapsed
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!sidebarCollapsed) return
+      if (e.clientX < 20) {
+        setFloatingSidebar(true)
+      }
+    }
+    window.addEventListener("mousemove", onMouseMove)
+    return () => window.removeEventListener("mousemove", onMouseMove)
+  }, [sidebarCollapsed])
+
+  // Hide floating sidebar when sidebar expands
+  useEffect(() => {
+    if (!sidebarCollapsed) setFloatingSidebar(false)
+  }, [sidebarCollapsed])
 
   useNotifications(agents)
 
@@ -136,40 +155,43 @@ function AppLayout() {
   return (
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
-        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
-            <ResizablePanel
-              id="huxflux-sidebar-panel"
-              panelRef={sidebarRef}
-              defaultSize="18"
-              minSize="12"
-              maxSize="28"
-              collapsible
-              collapsedSize="0"
-              onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
-              className="overflow-hidden"
+        <div className="relative flex flex-1 min-h-0 w-full overflow-hidden">
+          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
+              <ResizablePanel
+                id="huxflux-sidebar-panel"
+                panelRef={sidebarRef}
+                defaultSize="18"
+                minSize="12"
+                maxSize="28"
+                collapsible
+                collapsedSize="0"
+                onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
+                className="overflow-hidden"
+              >
+                <Sidebar {...sidebarProps} />
+              </ResizablePanel>
+
+              <ResizableHandle className="w-0 bg-transparent" />
+
+              <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10 py-1 pr-1">
+                <div className="flex h-full bg-background rounded-xl shadow-[-4px_0_16px_-4px_rgba(0,0,0,0.12)] overflow-hidden">
+                  <Outlet />
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+
+          {/* Floating sidebar overlay when collapsed + mouse proximity */}
+          {sidebarCollapsed && floatingSidebar && (
+            <div
+              ref={floatingRef}
+              onMouseLeave={() => setFloatingSidebar(false)}
+              className="absolute left-0 top-0 h-full z-50 shadow-2xl"
+              style={{ width: "260px" }}
             >
               <Sidebar {...sidebarProps} />
-            </ResizablePanel>
-
-            <ResizableHandle className="w-0 bg-transparent" />
-
-            <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10 py-1 pr-1">
-              <div className="flex h-full bg-background rounded-xl shadow-[-4px_0_16px_-4px_rgba(0,0,0,0.12)] overflow-hidden">
-                {sidebarCollapsed && (
-                  <button
-                    onClick={toggleSidebar}
-                    title="Show sidebar (⌘B)"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-3.5 h-10 bg-sidebar border border-border border-l-0 rounded-r-md shadow-sm hover:bg-muted transition-colors"
-                  >
-                    <svg width="8" height="12" viewBox="0 0 8 12" className="text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 1l6 5-6 5" />
-                    </svg>
-                  </button>
-                )}
-                <Outlet />
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            </div>
+          )}
+        </div>
       </WorkspaceProvider>
     </AppContext.Provider>
   )

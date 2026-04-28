@@ -31,6 +31,7 @@ const CONFIG_FILE  = path.join(DATA_DIR, "config.json")
 const PID_FILE     = path.join(DATA_DIR, "server.pid")
 const PORT_FILE    = path.join(DATA_DIR, "server.port")
 const LOG_FILE     = path.join(DATA_DIR, "server.log")
+const CRASH_LOG    = path.join(DATA_DIR, process.env.NODE_ENV === "development" ? "crash.dev.log" : "crash.log")
 const DB_FILE      = path.join(DATA_DIR, "huxflux.db")
 const DB_BAK       = DB_FILE + ".bak"
 const DB_BAK2      = DB_FILE + ".bak2"
@@ -341,8 +342,9 @@ async function cmdStart() {
 
   ensureDataDir()
 
+  // Spawn the supervisor process which handles restart-on-crash
   const logFd = fs.openSync(LOG_FILE, "a")
-  const child = spawn(process.execPath, [SERVER_ENTRY], {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "_supervisor"], {
     detached: true,
     stdio: ["ignore", logFd, logFd],
     env: serverEnv(cfg),
@@ -365,12 +367,73 @@ async function cmdStart() {
 
   console.log(`\nhuxflux started\n`)
   await printConnectInfo(cfg, child.pid)
-  console.log(`\n  huxflux logs   — tail the server log`)
-  console.log(`  huxflux stop   — stop the server`)
+  console.log(`\n  huxflux logs    — tail the server log`)
+  console.log(`  huxflux crashes — tail the crash log`)
+  console.log(`  huxflux stop    — stop the server`)
   if (!cfg.sandbox?.enabled && os.platform() === "linux") {
     console.log(`\n  Tip: run 'huxflux sandbox' to restrict Claude's file access.`)
   }
   console.log("")
+}
+
+// ── Supervisor — restarts the server on crash ────────────────────────────────
+
+function runSupervisor() {
+  const MAX_RESTARTS = 5
+  const RESTART_WINDOW_MS = 60_000
+  const RESTART_DELAY_MS = 2_000
+  const restartTimes: number[] = []
+  function logCrash(code: number | null, signal: string | null) {
+    const timestamp = new Date().toISOString()
+    const reason = signal ? `signal ${signal}` : `exit code ${code}`
+    const line = `[${timestamp}] Server crashed (${reason})\n`
+    fs.appendFileSync(CRASH_LOG, line)
+  }
+
+  function startServer() {
+    // Clean up stale port file so the new instance can bind
+    if (fs.existsSync(PORT_FILE)) {
+      try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+    }
+
+    const child = spawn(process.execPath, [SERVER_ENTRY], {
+      stdio: "inherit",
+      env: process.env,
+    })
+
+    child.on("exit", (code, signal) => {
+      // Clean exit (SIGTERM from `huxflux stop`, or code 0) — don't restart
+      if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
+        process.exit(0)
+      }
+
+      logCrash(code, signal)
+      console.error(`[supervisor] Server crashed (${signal ?? `code ${code}`}), restarting...`)
+
+      // Rate-limit restarts to avoid tight crash loops
+      const now = Date.now()
+      restartTimes.push(now)
+      // Only keep restarts within the window
+      while (restartTimes.length > 0 && restartTimes[0] < now - RESTART_WINDOW_MS) {
+        restartTimes.shift()
+      }
+
+      if (restartTimes.length > MAX_RESTARTS) {
+        const msg = `[${new Date().toISOString()}] Too many crashes (${MAX_RESTARTS} in ${RESTART_WINDOW_MS / 1000}s), giving up\n`
+        fs.appendFileSync(CRASH_LOG, msg)
+        console.error(`[supervisor] ${msg.trim()}`)
+        process.exit(1)
+      }
+
+      setTimeout(startServer, RESTART_DELAY_MS)
+    })
+
+    // Forward SIGTERM/SIGINT to the child so `huxflux stop` works
+    process.on("SIGTERM", () => { child.kill("SIGTERM") })
+    process.on("SIGINT", () => { child.kill("SIGINT") })
+  }
+
+  startServer()
 }
 
 function cmdStop() {
@@ -405,6 +468,16 @@ function cmdLogs() {
     process.exit(1)
   }
   const tail = spawn("tail", ["-f", "-n", "100", LOG_FILE], { stdio: "inherit" })
+  tail.on("close", (code) => process.exit(code ?? 0))
+  process.on("SIGINT", () => { tail.kill(); process.exit(0) })
+}
+
+function cmdCrashes() {
+  if (!fs.existsSync(CRASH_LOG)) {
+    console.log("No crashes recorded.")
+    process.exit(0)
+  }
+  const tail = spawn("tail", ["-f", "-n", "50", CRASH_LOG], { stdio: "inherit" })
   tail.on("close", (code) => process.exit(code ?? 0))
   process.on("SIGINT", () => { tail.kill(); process.exit(0) })
 }
@@ -584,11 +657,12 @@ function printHelp() {
 huxflux — Huxflux server
 
 Usage:
-  huxflux [start]   Start the server in the background
+  huxflux [start]   Start the server in the background (auto-restarts on crash)
   huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
   huxflux logs      Tail the server log (Ctrl+C to exit)
+  huxflux crashes   Tail the crash log
   huxflux run       Run in the foreground (process managers / debug)
   huxflux sandbox [add|remove|enable|disable|setup]   Manage sandboxing
   huxflux security  Show security recommendations
@@ -614,12 +688,14 @@ Environment variables:
 const [,, cmd = "start", ...cmdArgs] = process.argv
 
 switch (cmd) {
-  case "start":    cmdStart().catch(console.error); break
-  case "open":     cmdOpen(cmdArgs[0]); break
-  case "stop":     cmdStop(); break
-  case "status":   cmdStatus().catch(console.error); break
-  case "logs":     cmdLogs(); break
-  case "run":      cmdRun(); break
+  case "start":       cmdStart().catch(console.error); break
+  case "_supervisor": runSupervisor(); break
+  case "open":        cmdOpen(cmdArgs[0]); break
+  case "stop":        cmdStop(); break
+  case "status":      cmdStatus().catch(console.error); break
+  case "logs":        cmdLogs(); break
+  case "crashes":     cmdCrashes(); break
+  case "run":         cmdRun(); break
   case "token":    cmdToken(cmdArgs[0]); break
   case "audit":    cmdAudit(); break
   case "restore":  cmdRestore(cmdArgs[0]); break

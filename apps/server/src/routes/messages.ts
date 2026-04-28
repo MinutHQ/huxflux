@@ -165,12 +165,6 @@ export async function messagesRoutes(app: FastifyInstance) {
         .catch(() => { /* title generation is best-effort */ })
     }
 
-    // If this was a pooled backlog agent getting its first message, replenish the pool
-    if (agent.status === "backlog" && agent.repoId) {
-      const { onAgentStarted } = await import("../git/pool.js")
-      onAgentStarted(agent.repoId)
-    }
-
     // Fire and forget — streaming happens over WebSocket; drain queue when done
     runClaude(content, { agentId: id, worktreePath: opts.worktreePath, model: opts.model, planMode: opts.planMode, delegateFrom: opts.delegateFrom, sender: opts.sender, provider: opts.provider, effort: opts.effort })
       .catch((err) => app.log.error(`Claude runner error for agent ${id}: ${err}`))

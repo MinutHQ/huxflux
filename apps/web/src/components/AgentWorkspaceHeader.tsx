@@ -280,7 +280,7 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
   const LastIcon = OPEN_IN_APPS.find((a) => a.key === lastOpenInApp)?.Icon ?? IconCode
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-border shrink-0">
+    <div className="flex items-center gap-3 px-4 py-2 shrink-0">
       {/* Left: agent identity + branches */}
       <div className="flex flex-col gap-0.5 min-w-0">
         {/* Repo / Agent name */}

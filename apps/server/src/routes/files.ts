@@ -113,6 +113,35 @@ export async function filesRoutes(app: FastifyInstance) {
     }
   )
 
+  // GET /api/agents/:id/files/diffs — batch fetch all diffs + file contents for changed files
+  app.get<{ Params: { id: string } }>("/api/agents/:id/files/diffs", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (!agent.repoId) return reply.code(400).send({ error: "Agent has no linked repo" })
+
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) return reply.code(404).send({ error: "Repo not found" })
+
+    const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+    const branchFrom = agent.baseBranch ?? repo.branchFrom
+    const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, req.params.id)).all()
+
+    const results = await Promise.all(files.map(async (f) => {
+      try {
+        const [diff, newContent, oldContent] = await Promise.all([
+          getDiff(worktreePath, f.path, branchFrom),
+          getFileContent(worktreePath, f.path).catch(() => ""),
+          getBaseFileContent(worktreePath, f.path, branchFrom).catch(() => ""),
+        ])
+        return { path: f.path, additions: f.additions, deletions: f.deletions, diff, newContent, oldContent }
+      } catch {
+        return { path: f.path, additions: f.additions, deletions: f.deletions, diff: "", newContent: "", oldContent: "" }
+      }
+    }))
+
+    return results
+  })
+
   // POST /api/agents/:id/files/refresh — re-scan worktree and update DB
   app.post<{ Params: { id: string } }>("/api/agents/:id/files/refresh", async (req, reply) => {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()

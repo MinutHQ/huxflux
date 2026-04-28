@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import React, { useState, useRef, useMemo } from "react"
 import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ScrollArea, Button, cn, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
@@ -8,7 +8,6 @@ import { handleExternalClick } from "@/lib/platform"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { DiffView } from "@/components/DiffView"
-import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   IconChevronDown,
   IconChevronRight,
@@ -404,32 +403,32 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
               Threads <span className="text-muted-foreground/50 normal-case font-normal">{pr.threads.length}</span>
             </div>
-            <div className="space-y-2 min-w-0">
+            <div className="space-y-2.5 min-w-0">
               {pr.threads.map((thread) => (
-                <div key={thread.id} className={cn("rounded-lg border min-w-0", thread.isResolved ? "border-border/40 opacity-60" : "border-border")}>
-                  {thread.comments.map((c) => (
-                    <div key={c.id} className="group/comment px-3 py-2 border-b border-border last:border-b-0 min-w-0 @container">
-                      <div className="flex items-center gap-1.5 mb-1 min-w-0 flex-wrap">
-                        {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-3.5 h-3.5 rounded-full shrink-0" />}
-                        <span className="text-[11px] font-medium text-foreground shrink-0">{c.author}</span>
+                <div key={thread.id} className={cn("rounded-xl border bg-card overflow-hidden min-w-0 transition-opacity", thread.isResolved ? "border-border/30 opacity-50" : "border-border/50")}>
+                  {thread.comments.map((c, ci) => (
+                    <div key={c.id} className={cn("group/comment px-3.5 py-2.5 min-w-0 @container", ci > 0 && "border-t border-border/30")}>
+                      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                        {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full shrink-0 ring-1 ring-border/50" />}
+                        <span className="text-[11px] font-semibold text-foreground/90 shrink-0">{c.author}</span>
+                        {c.path && (
+                          <span className="text-[10px] text-muted-foreground/30 font-mono truncate" style={{ direction: "rtl", textAlign: "left" }}>
+                            {c.path}{c.line ? `:${c.line}` : ""}
+                          </span>
+                        )}
                         <button
                           onClick={() => onAddComment(c)}
-                          className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent shrink-0"
+                          className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/40 hover:text-foreground transition-all ml-auto px-1.5 py-0.5 rounded-md hover:bg-accent shrink-0"
                           title="Add to chat"
                         >
                           + Chat
                         </button>
                       </div>
-                      {c.path && (
-                        <div className="text-[10px] text-muted-foreground/40 font-mono mb-1 truncate" style={{ direction: "rtl", textAlign: "left" }}>
-                          {c.path}{c.line ? `:${c.line}` : ""}
-                        </div>
-                      )}
                       <MarkdownComment body={c.body} />
                     </div>
                   ))}
                   {/* Reply + resolve actions */}
-                  <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/30">
+                  <div className="flex items-center gap-1.5 px-3 py-2 border-t border-border/30 bg-muted/20">
                     {replyingTo?.threadId === thread.id ? (
                       <div className="flex-1 flex items-center gap-1.5">
                         <input
@@ -438,7 +437,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
                           onChange={(e) => setReplyText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply() } if (e.key === "Escape") setReplyingTo(null) }}
                           placeholder="Reply..."
-                          className="flex-1 bg-background border border-border rounded px-2 py-1 text-[11px] outline-none focus:border-ring"
+                          className="flex-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-ring"
                           disabled={submittingReply}
                         />
                         <Button size="xs" onClick={handleReply} disabled={submittingReply || !replyText.trim()} className="text-[10px]">Send</Button>
@@ -452,14 +451,14 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
                             setReplyingTo({ threadId: thread.id, commentId: lastComment.databaseId ?? 0 })
                             setReplyText("")
                           }}
-                          className="text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-accent"
+                          className="text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
                         >
                           Reply
                         </button>
                         {!thread.isResolved && (
                           <button
                             onClick={() => handleResolveThread(thread.id)}
-                            className="text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-accent"
+                            className="text-[10px] text-muted-foreground/50 hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent"
                           >
                             Resolve
                           </button>
@@ -479,15 +478,15 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
             <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
               Discussion <span className="text-muted-foreground/50 normal-case font-normal">{pr.issueComments.length}</span>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {pr.issueComments.map((c) => (
-                <div key={c.id} className="group/comment space-y-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full" />}
-                    <span className="text-[12px] font-medium text-foreground">{c.author}</span>
+                <div key={c.id} className="group/comment rounded-xl border border-border/50 bg-card px-3.5 py-2.5 min-w-0">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    {c.avatarUrl && <img src={c.avatarUrl} alt={c.author} className="w-4 h-4 rounded-full ring-1 ring-border/50" />}
+                    <span className="text-[11px] font-semibold text-foreground/90">{c.author}</span>
                     <button
                       onClick={() => onAddComment({ id: String(c.id), author: c.author, avatarUrl: c.avatarUrl, body: c.body, createdAt: c.createdAt, url: c.url, isReply: false })}
-                      className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/50 hover:text-foreground transition-all ml-auto px-1 py-0.5 rounded hover:bg-accent"
+                      className="opacity-0 group-hover/comment:opacity-100 text-[10px] text-muted-foreground/40 hover:text-foreground transition-all ml-auto px-1.5 py-0.5 rounded-md hover:bg-accent"
                       title="Add to chat"
                     >
                       + Chat
@@ -496,7 +495,7 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
                       <IconArrowUpRight size={11} />
                     </a>
                   </div>
-                  <div className="pl-5"><MarkdownComment body={c.body} /></div>
+                  <MarkdownComment body={c.body} />
                 </div>
               ))}
             </div>
@@ -653,99 +652,59 @@ function filterTree(entries: FileTreeEntry[], query: string): FileTreeEntry[] {
   }, [])
 }
 
-// ── Lazy diff — only renders when scrolled into view ─────────────────────────
-
-function LazyDiff({ agentId, file, hideHeader }: { agentId: string; file: FileChange; hideHeader?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [inView, setInView] = useState(false)
-  const [ready, setReady] = useState(false)
-  const heightRef = useRef<number>(0)
-
-  // Track visibility — mount when in view, unmount when far away
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { rootMargin: "300px" }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  // Stagger mount with requestIdleCallback to avoid blocking main thread
-  useEffect(() => {
-    if (!inView) { setReady(false); return }
-    const id = "requestIdleCallback" in window
-      ? (window as any).requestIdleCallback(() => setReady(true), { timeout: 150 })
-      : setTimeout(() => setReady(true), 50)
-    return () => {
-      if ("cancelIdleCallback" in window) (window as any).cancelIdleCallback(id)
-      else clearTimeout(id)
-    }
-  }, [inView])
-
-  // Remember height so unmounting doesn't cause layout shift
-  const onRef = useCallback((el: HTMLDivElement | null) => {
-    if (el && el.offsetHeight > 0) heightRef.current = el.offsetHeight
-  }, [])
-
-  const showDiff = inView && ready
-
-  return (
-    <div
-      ref={ref}
-      style={!showDiff && heightRef.current > 0 ? { height: heightRef.current } : undefined}
-      className="max-h-[500px] overflow-auto"
-    >
-      {showDiff ? (
-        <div ref={onRef}>
-          <DiffView agentId={agentId} file={file} hideHeader={hideHeader} />
-        </div>
-      ) : (
-        <div className="h-24 flex items-center justify-center text-xs text-muted-foreground/40">
-          {inView ? "Rendering..." : ""}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ── Stacked diff view ────────────────────────────────────────────────────────
 
-export function StackedDiffView({
+export const StackedDiffView = React.memo(function StackedDiffView({
   agentId,
-  fileChanges,
   search,
   showFileList,
   onOpenFile,
+  onAddComment,
+  pendingComments,
+  onRemoveComment,
 }: {
   agentId: string
-  fileChanges: FileChange[]
+  fileChanges?: FileChange[] // unused, kept for API compat
   search: string
   showFileList: boolean
   onOpenFile: (file: FileChange) => void
+  onAddComment?: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
 }) {
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  const filtered = search
-    ? fileChanges.filter(f => f.path.toLowerCase().includes(search.toLowerCase()))
-    : fileChanges
-
-  const virtualizer = useVirtualizer({
-    count: filtered.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: (i) => expandedFiles.has(filtered[i].path) ? 400 : 32,
-    overscan: 3,
+  // Batch fetch all diffs in one request — this is the sole data source
+  const { data: allDiffs, isLoading } = useQuery({
+    queryKey: ["all-diffs", agentId],
+    queryFn: () => api.getAllDiffs(agentId),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    notifyOnChangeProps: ["data", "status"],
   })
 
-  // Re-measure when files expand/collapse
-  useEffect(() => {
-    virtualizer.measure()
-  }, [expandedFiles])
+  // Derive file list from batch query, not from fileChanges prop
+  const files: FileChange[] = useMemo(() => {
+    if (!allDiffs) return []
+    return allDiffs.map(d => ({ path: d.path, additions: d.additions, deletions: d.deletions }))
+  }, [allDiffs])
+
+  const diffsByPath = useMemo(() => {
+    if (!allDiffs) return new Map()
+    return new Map(allDiffs.map(d => [d.path, d]))
+  }, [allDiffs])
+
+  const filtered = useMemo(() =>
+    search ? files.filter(f => f.path.toLowerCase().includes(search.toLowerCase())) : files,
+  [files, search])
+
 
   function toggleFile(path: string) {
     setExpandedFiles(prev => {
@@ -758,12 +717,11 @@ export function StackedDiffView({
 
   function scrollToFile(path: string) {
     setActiveFile(path)
-    const idx = filtered.findIndex(f => f.path === path)
-    if (idx === -1) return
     if (!expandedFiles.has(path)) {
       setExpandedFiles(prev => new Set([...prev, path]))
     }
-    virtualizer.scrollToIndex(idx, { align: "start" })
+    const el = fileRefs.current.get(path)
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
   function expandAll() {
@@ -776,68 +734,63 @@ export function StackedDiffView({
 
   return (
     <div className="flex h-full">
-      {/* Virtualized stacked diffs */}
       <div ref={scrollContainerRef} className="flex-1 min-w-0 overflow-y-auto">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-xs text-muted-foreground/40">Loading diffs...</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             <IconFiles size={22} className="text-muted-foreground/30" />
             <p className="text-xs text-muted-foreground/40">{search ? "No matches" : "No changes"}</p>
           </div>
         ) : (
-          <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const file = filtered[virtualRow.index]
+          <div className="divide-y divide-border/30">
+            {filtered.map((file) => {
               const name = file.path.split("/").pop() ?? file.path
               const dir = file.path.split("/").slice(0, -1).join("/")
               const isExpanded = expandedFiles.has(file.path)
               const isAddOnly = file.deletions === 0
               const isDelOnly = file.additions === 0
+              const diffData = diffsByPath.get(file.path)
 
               return (
                 <div
                   key={file.path}
-                  ref={(el) => {
-                    if (el) rowRefs.current.set(virtualRow.index, el)
-                    virtualizer.measureElement(el)
-                  }}
-                  data-index={virtualRow.index}
-                  className="absolute left-0 right-0 px-2 py-1"
-                  style={{ top: virtualRow.start }}
+                  ref={(el) => { if (el) fileRefs.current.set(file.path, el); else fileRefs.current.delete(file.path) }}
                 >
-                  <div className="rounded-lg border border-border/50 overflow-hidden bg-card">
-                    <button
-                      onClick={() => toggleFile(file.path)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors"
+                  <button
+                    onClick={() => toggleFile(file.path)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors bg-background border-b border-border/20"
+                  >
+                    <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", isExpanded && "rotate-90")} />
+                    <span className={cn(
+                      "w-2 h-2 rounded-full shrink-0",
+                      isAddOnly ? "bg-emerald-400"
+                        : isDelOnly ? "bg-red-400"
+                        : "bg-amber-400"
+                    )} />
+                    <span className="text-[12px] font-mono truncate flex-1 min-w-0">
+                      {dir && <span className="text-muted-foreground/50">{dir}/</span>}
+                      <span className="text-foreground font-medium">{name}</span>
+                    </span>
+                    <span className="font-mono text-[10px] shrink-0">
+                      <span className="text-emerald-400">+{file.additions}</span>
+                      {" "}
+                      <span className="text-red-400">-{file.deletions}</span>
+                    </span>
+                    <span
+                      role="button"
+                      onClick={(e) => { e.stopPropagation(); onOpenFile(file) }}
+                      className="text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
+                      title="Open in tab"
                     >
-                      <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", isExpanded && "rotate-90")} />
-                      <span className={cn(
-                        "w-2 h-2 rounded-full shrink-0",
-                        isAddOnly ? "bg-emerald-400"
-                          : isDelOnly ? "bg-red-400"
-                          : "bg-amber-400"
-                      )} />
-                      <span className="text-[12px] font-mono truncate flex-1 min-w-0">
-                        {dir && <span className="text-muted-foreground/50">{dir}/</span>}
-                        <span className="text-foreground font-medium">{name}</span>
-                      </span>
-                      <span className="font-mono text-[10px] shrink-0">
-                        <span className="text-emerald-400">+{file.additions}</span>
-                        {" "}
-                        <span className="text-red-400">-{file.deletions}</span>
-                      </span>
-                      <span
-                        role="button"
-                        onClick={(e) => { e.stopPropagation(); onOpenFile(file) }}
-                        className="text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
-                        title="Open in tab"
-                      >
-                        <IconArrowUpRight size={12} />
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <LazyDiff agentId={agentId} file={file} hideHeader />
-                    )}
-                  </div>
+                      <IconArrowUpRight size={12} />
+                    </span>
+                  </button>
+                  {isExpanded && diffData && (
+                    <InlineDiff diffData={diffData} file={file} onAddComment={onAddComment} pendingComments={pendingComments} onRemoveComment={onRemoveComment} />
+                  )}
                 </div>
               )
             })}
@@ -891,7 +844,35 @@ export function StackedDiffView({
       )}
     </div>
   )
-}
+}, (prev, next) => {
+  // Data comes from internal useQuery, so only re-render on these changes
+  if (prev.agentId !== next.agentId) return false
+  if (prev.search !== next.search) return false
+  if (prev.showFileList !== next.showFileList) return false
+  if (prev.pendingComments?.length !== next.pendingComments?.length) return false
+  return true
+})
+
+/** Renders a single file diff using pre-fetched batch data */
+const InlineDiff = React.memo(function InlineDiff({ diffData, file, onAddComment, pendingComments, onRemoveComment }: {
+  diffData: { diff: string; newContent: string; oldContent: string }
+  file: FileChange
+  onAddComment?: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
+}) {
+  return (
+    <DiffView
+      agentId=""
+      file={file}
+      hideHeader
+      onAddComment={onAddComment}
+      pendingComments={pendingComments}
+      onRemoveComment={onRemoveComment}
+      preloadedDiff={diffData}
+    />
+  )
+})
 
 
 // ── Unified file tree ────────────────────────────────────────────────────────
@@ -907,6 +888,9 @@ function UnifiedFileTree({
   onOpenPRTab,
   hasPR,
   prView,
+  onAddComment,
+  pendingComments,
+  onRemoveComment,
 }: {
   agentId: string
   fileChanges: FileChange[]
@@ -916,6 +900,9 @@ function UnifiedFileTree({
   onOpenPRTab?: () => void
   hasPR?: boolean
   prView?: React.ReactNode
+  onAddComment?: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
 }) {
   const [changedOnly, setChangedOnly] = useState(true)
   const [diffMode, setDiffMode] = useState(() => getDiffViewMode() === "stacked")
@@ -955,7 +942,7 @@ function UnifiedFileTree({
                 : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
             )}
           >
-            All
+            All files
           </button>
           <button
             onClick={switchToDiff}
@@ -1071,7 +1058,7 @@ function UnifiedFileTree({
               </div>
             </ScrollArea>
           ) : (
-            <StackedDiffView agentId={agentId} fileChanges={fileChanges} search={search} showFileList={showFileList} onOpenFile={onFileSelect} />
+            <StackedDiffView agentId={agentId} fileChanges={fileChanges} search={search} showFileList={showFileList} onOpenFile={onFileSelect} onAddComment={onAddComment} pendingComments={pendingComments} onRemoveComment={onRemoveComment} />
           )}
         </div>
       ) : (
@@ -1128,7 +1115,10 @@ function buildTreeFromChanges(files: FileChange[]): FileTreeEntry[] {
         }
         children.push(existing)
       }
-      if (!isLast) children = existing.children!
+      if (!isLast) {
+        if (!existing.children) existing.children = []
+        children = existing.children
+      }
     }
   }
   return root
@@ -1142,6 +1132,8 @@ interface FileChangesViewProps {
   onFileSelect: (file: FileChange | null) => void
   onFileContentSelect: (path: string) => void
   onAddComment: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
   onOpenDiffBrowser?: () => void
   onOpenPRTab?: () => void
   /** When provided, tab state is controlled externally */
@@ -1151,7 +1143,7 @@ interface FileChangesViewProps {
   hideHeader?: boolean
 }
 
-export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSelect, onFileContentSelect, onAddComment, tab: tabProp, onTabChange, hideHeader, onOpenDiffBrowser, onOpenPRTab }: FileChangesViewProps) {
+export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSelect, onFileContentSelect, onAddComment, pendingComments, onRemoveComment, tab: tabProp, onTabChange, hideHeader, onOpenDiffBrowser, onOpenPRTab }: FileChangesViewProps) {
   const [tabLocal, setTabLocal] = useState<"files" | "changes" | "pr">("files")
   const tab = tabProp ?? tabLocal
   const setTab = onTabChange ?? setTabLocal
@@ -1225,6 +1217,9 @@ export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSele
           onOpenPRTab={onOpenPRTab}
           hasPR={hasPR}
           prView={<PRView agentId={agent.id} onAddComment={onAddComment} />}
+          onAddComment={onAddComment}
+          pendingComments={pendingComments}
+          onRemoveComment={onRemoveComment}
         />
       </div>
     </div>

@@ -1702,12 +1702,26 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
         existingBranch: existingBranch || undefined,
       })
       saveWorktreeDuration(repoId, Date.now() - t0)
+      // Pre-seed the cache so the agent view doesn't flash HomeView
+      queryClient.setQueryData(["agent", agent.id], {
+        ...agent,
+        messages: agent.messages ?? [],
+        fileChanges: agent.fileChanges ?? [],
+        terminalOutput: agent.terminalOutput ?? [],
+      })
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
       onAgentCreated(agent.id)
       navigate({ to: "/agent/$agentId", params: { agentId: agent.id } })
     } catch (err) {
-      toast.error((err as Error).message || "Failed to create agent")
-      clearPendingAgent()
-      navigate({ to: "/" })
+      const msg = (err as Error).message || "Failed to create agent"
+      // Abort errors mean timeout — the server may still be creating the workspace
+      if (/abort/i.test(msg)) {
+        toast.info("Workspace is still being set up. It will appear when ready.")
+      } else {
+        toast.error(msg)
+        clearPendingAgent()
+        navigate({ to: "/" })
+      }
     }
   }
 
@@ -1945,9 +1959,6 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
             {/* Agent list */}
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
                 <div className="p-2 pt-2.5 space-y-0.5">
-                  {pendingAgent && (
-                    <PendingAgentRow title={pendingAgent.title} repoName={pendingAgent.repoName} />
-                  )}
                   {filteredAgents.length === 0 && !pendingAgent ? (
                     <button
                       onClick={() => setShowNewAgent(true)}
@@ -1958,10 +1969,13 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                     </button>
                   ) : groupBy === "status" ? (
                     visibleStatuses.map((status) => (
-                      <StatusGroup
-                        key={status}
-                        status={status}
-                        agents={grouped[status]}
+                      <div key={status}>
+                        {status === "in-progress" && pendingAgent && (
+                          <PendingAgentRow title={pendingAgent.title} repoName={pendingAgent.repoName} />
+                        )}
+                        <StatusGroup
+                          status={status}
+                          agents={grouped[status]}
                         selectedId={selectedId}
                         onSelect={onSelect}
                         onHover={(agent, y) => setHoveredAgent({ agent, y })}
@@ -1972,6 +1986,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                         repoNames={repoNames}
                         repoIcons={repoIcons}
                       />
+                      </div>
                     ))
                   ) : (
                     repoGrouped.map((group) => (

@@ -1,14 +1,17 @@
-import React, { useRef, useEffect, useState, useCallback, useMemo } from "react"
+import React, { useRef, useEffect, useState, useCallback, useMemo, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
 import { useAgents, useRepos, isAgentStreaming } from "@huxflux/shared"
 import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
-import type { Agent, Message, ToolCall, PRStatus, PRComment } from "@/data/mock"
+import type { Agent, Message, ToolCall, PRStatus, PRComment, FileChange } from "@/data/mock"
 import { api, getActiveServer } from "@huxflux/shared"
 import { isTauri, handleExternalClick } from "@/lib/platform"
 import { getFlag } from "@/lib/flags"
-import { DiffView } from "@/components/DiffView"
+import { DiffView, getDiffTheme } from "@/components/DiffView"
+import { FileDiff as PierreFileDiff } from "@pierre/diffs/react"
+import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
+import { processFile } from "@pierre/diffs"
 import { StackedDiffView, PRView as PRTabView } from "@/components/FileChangesView"
 import { FileContentView } from "@/components/FileContentView"
 import ReactMarkdown from "react-markdown"
@@ -51,11 +54,13 @@ import {
   IconDatabase,
   IconClipboard,
   IconGitPullRequest,
+  IconLayoutColumns,
+  IconLayoutRows,
 } from "@tabler/icons-react"
 import type { AgentSummary } from "@/data/mock"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
 import { Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
-import { getSendWith, getAutoConvert, getStripYoureRight, getAlwaysContext } from "@/lib/notificationPrefs"
+import { getSendWith, getAutoConvert, getStripYoureRight } from "@/lib/notificationPrefs"
 
 const OPEN_IN_APPS = [
   { key: "finder",   label: "Finder",   Icon: IconFolder,    shortcut: "1" },
@@ -380,6 +385,251 @@ function ToolCallsAccordion({ calls, isStreaming, pendingText }: { calls: ToolCa
               <MarkdownContent content={pendingText} />
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Turn diff summary ────────────────────────────────────────────────────────
+
+function useDiffTheme() {
+  return useSyncExternalStore(
+    (cb) => { window.addEventListener("huxflux:theme-change", cb); return () => window.removeEventListener("huxflux:theme-change", cb) },
+    getDiffTheme,
+    () => "vesper" as const
+  )
+}
+
+interface TurnFileEdit {
+  path: string
+  edits: Array<{ oldStr: string; newStr: string }>
+  isNew: boolean
+}
+
+function extractFileEdits(calls: ToolCall[]): TurnFileEdit[] {
+  const byPath = new Map<string, TurnFileEdit>()
+
+  function processCalls(list: ToolCall[]) {
+    for (const tc of list) {
+      if (tc.subCalls) processCalls(tc.subCalls)
+      if (tc.tool !== "Edit" && tc.tool !== "Write") continue
+      let parsed: any
+      try { parsed = JSON.parse(tc.args ?? "{}") } catch { continue }
+      const filePath = parsed.file_path
+      if (!filePath) continue
+
+      let entry = byPath.get(filePath)
+      if (!entry) {
+        entry = { path: filePath, edits: [], isNew: tc.tool === "Write" }
+        byPath.set(filePath, entry)
+      }
+
+      if (tc.tool === "Edit" && parsed.old_string != null && parsed.new_string != null) {
+        entry.edits.push({ oldStr: parsed.old_string, newStr: parsed.new_string })
+      } else if (tc.tool === "Write") {
+        entry.isNew = true
+        entry.edits.push({ oldStr: "", newStr: parsed.content ?? "" })
+      }
+    }
+  }
+
+  processCalls(calls)
+  return Array.from(byPath.values())
+}
+
+/** Generate a unified diff string from old/new text pairs for a single file.
+ *  Extracts common prefix/suffix lines as context around each change. */
+function makeUnifiedDiff(filePath: string, edits: Array<{ oldStr: string; newStr: string }>, isNew: boolean): string {
+  const CONTEXT = 3
+  const lines: string[] = []
+  const aPrefix = isNew ? "/dev/null" : `a/${filePath}`
+  const bPrefix = `b/${filePath}`
+  lines.push(`--- ${aPrefix}`)
+  lines.push(`+++ ${bPrefix}`)
+
+  let oldOffset = 1
+  let newOffset = 1
+
+  for (const edit of edits) {
+    const oLines = edit.oldStr ? edit.oldStr.split("\n") : []
+    const nLines = edit.newStr ? edit.newStr.split("\n") : []
+
+    // Find common prefix lines
+    let prefixLen = 0
+    while (prefixLen < oLines.length && prefixLen < nLines.length && oLines[prefixLen] === nLines[prefixLen]) {
+      prefixLen++
+    }
+
+    // Find common suffix lines (don't overlap with prefix)
+    let suffixLen = 0
+    while (
+      suffixLen < oLines.length - prefixLen &&
+      suffixLen < nLines.length - prefixLen &&
+      oLines[oLines.length - 1 - suffixLen] === nLines[nLines.length - 1 - suffixLen]
+    ) {
+      suffixLen++
+    }
+
+    // Context: keep up to CONTEXT lines from prefix/suffix
+    const ctxBefore = Math.min(prefixLen, CONTEXT)
+    const ctxAfter = Math.min(suffixLen, CONTEXT)
+    const changeOldStart = prefixLen - ctxBefore
+    const changeOldEnd = oLines.length - suffixLen + ctxAfter
+    const changeNewStart = prefixLen - ctxBefore
+    const changeNewEnd = nLines.length - suffixLen + ctxAfter
+
+    const hunkOldLines = oLines.slice(changeOldStart, changeOldEnd)
+    const hunkNewLines = nLines.slice(changeNewStart, changeNewEnd)
+
+    // Build hunk with context
+    const hunkLines: string[] = []
+    // Leading context
+    for (let i = 0; i < ctxBefore; i++) {
+      hunkLines.push(` ${oLines[prefixLen - ctxBefore + i]}`)
+    }
+    // Changed lines
+    const removedStart = ctxBefore
+    const removedEnd = hunkOldLines.length - ctxAfter
+    const addedStart = ctxBefore
+    const addedEnd = hunkNewLines.length - ctxAfter
+    for (let i = removedStart; i < removedEnd; i++) {
+      hunkLines.push(`-${hunkOldLines[i]}`)
+    }
+    for (let i = addedStart; i < addedEnd; i++) {
+      hunkLines.push(`+${hunkNewLines[i]}`)
+    }
+    // Trailing context
+    for (let i = 0; i < ctxAfter; i++) {
+      hunkLines.push(` ${oLines[oLines.length - suffixLen + i]}`)
+    }
+
+    const oCount = ctxBefore + (removedEnd - removedStart) + ctxAfter
+    const nCount = ctxBefore + (addedEnd - addedStart) + ctxAfter
+    lines.push(`@@ -${oldOffset + changeOldStart},${oCount} +${newOffset + changeNewStart},${nCount} @@`)
+    lines.push(...hunkLines)
+
+    oldOffset += oLines.length
+    newOffset += nLines.length
+  }
+
+  return lines.join("\n") + "\n"
+}
+
+function TurnFileDiff({ filePath, edits, isNew, diffTheme, diffStyle }: { filePath: string; edits: TurnFileEdit["edits"]; isNew: boolean; diffTheme: "vesper" | "github-light"; diffStyle: "unified" | "split" }) {
+  const unifiedDiff = useMemo(() => makeUnifiedDiff(filePath, edits, isNew), [filePath, edits, isNew])
+  const fileDiff = useMemo(() => {
+    try {
+      return processFile(unifiedDiff)
+    } catch {
+      return null
+    }
+  }, [unifiedDiff])
+  const [expandedHunks, setExpandedHunks] = useState<Map<number, HunkExpansionRegion>>(new Map())
+
+  if (!fileDiff) return null
+
+  function onHunkExpand(hunkIndex: number, direction: ExpansionDirections, expansionLineCount = 20) {
+    setExpandedHunks(prev => {
+      const next = new Map(prev)
+      const region = { ...next.get(hunkIndex) ?? { fromStart: 0, fromEnd: 0 } }
+      if (direction === "up" || direction === "both") region.fromStart += expansionLineCount
+      if (direction === "down" || direction === "both") region.fromEnd += expansionLineCount
+      next.set(hunkIndex, region)
+      return next
+    })
+  }
+
+  return (
+    <PierreFileDiff
+      fileDiff={fileDiff}
+      options={{
+        theme: diffTheme,
+        diffStyle,
+        lineDiffType: "word",
+        diffIndicators: "bars",
+        disableFileHeader: true,
+        hunkSeparators: "line-info",
+        expandedHunks,
+        onHunkExpand,
+      } as any}
+    />
+  )
+}
+
+function TurnDiffSummary({ calls }: { calls: ToolCall[] }) {
+  const fileEdits = useMemo(() => extractFileEdits(calls), [calls])
+  const [open, setOpen] = useState(false)
+  const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
+  const diffTheme = useDiffTheme()
+
+  if (fileEdits.length === 0) return null
+
+  const totalEdits = fileEdits.reduce((sum, d) => sum + d.edits.length, 0)
+  const label = fileEdits.length === 1
+    ? `1 file changed`
+    : `${fileEdits.length} files changed`
+
+  function toggleFile(path: string) {
+    setExpandedFiles((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  return (
+    <div className="mt-2 mb-1 border border-border/50 rounded-lg overflow-hidden">
+      <div className="flex items-center">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center gap-1.5 flex-1 text-left px-3 py-2 text-[12px] hover:bg-muted/30 transition-colors"
+        >
+          <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/60", open && "rotate-90")} />
+          <IconFileCode size={13} className="text-muted-foreground/60 shrink-0" />
+          <span className="font-medium text-foreground/70">{label}</span>
+          <span className="text-muted-foreground/40 ml-1">{totalEdits} edit{totalEdits !== 1 ? "s" : ""}</span>
+        </button>
+        {open && (
+          <button
+            onClick={() => setDiffStyle(s => s === "unified" ? "split" : "unified")}
+            className="px-2 py-1 mr-2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            title={diffStyle === "unified" ? "Switch to split view" : "Switch to unified view"}
+          >
+            {diffStyle === "unified" ? <IconLayoutColumns size={13} /> : <IconLayoutRows size={13} />}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="border-t border-border/30">
+          {fileEdits.map((diff) => {
+            // Show relative path from workspace root (strip everything up to and including common roots like src/, apps/, packages/, lib/)
+            const relativePath = diff.path.replace(/^.*?\/(src|apps|packages|lib)\//, "$1/")
+            const additions = diff.edits.reduce((sum, e) => sum + (e.newStr ? e.newStr.split("\n").length : 0), 0)
+            const deletions = diff.edits.reduce((sum, e) => sum + (e.oldStr ? e.oldStr.split("\n").length : 0), 0)
+            const isExpanded = expandedFiles.has(diff.path)
+            return (
+              <div key={diff.path} className="border-b border-border/20 last:border-b-0">
+                <button
+                  onClick={() => toggleFile(diff.path)}
+                  className="flex items-center gap-1.5 w-full text-left px-3 py-1.5 text-[11px] hover:bg-muted/20 transition-colors min-w-0"
+                >
+                  <IconChevronRight size={10} className={cn("transition-transform shrink-0 text-muted-foreground/40", isExpanded && "rotate-90")} />
+                  {diff.isNew && <span className="text-[9px] font-medium text-green-500 bg-green-500/10 px-1 rounded shrink-0">NEW</span>}
+                  <span className="font-mono text-foreground/70 truncate">{relativePath}</span>
+                  <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                    {additions > 0 && <span className="text-green-400/70">+{additions}</span>}
+                    {deletions > 0 && <span className="text-red-400/70">-{deletions}</span>}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <TurnFileDiff filePath={diff.path} edits={diff.edits} isNew={diff.isNew} diffTheme={diffTheme} diffStyle={diffStyle} />
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1284,6 +1534,11 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
             : msg.content}
           />
         </div>
+      )}
+
+      {/* Turn diff summary — collapsible inline diffs for edits in this turn */}
+      {!isStreaming && msg.toolCalls && msg.toolCalls.length > 0 && (
+        <TurnDiffSummary calls={msg.toolCalls} />
       )}
 
       {/* Footer */}
@@ -2222,46 +2477,143 @@ export function TeardownView({ deleting }: { deleting: { title: string; branch: 
 
 // ── Context ring ─────────────────────────────────────────────────────────────
 
-const CLAUDE_CONTEXT_TOKENS = 200_000
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  return String(n)
+}
 
-function ContextRing({ messages }: { messages: Message[] }) {
-  // Find the latest assistant message with inputTokens
-  const latest = [...messages].reverse().find((m) => m.role === "assistant" && m.inputTokens != null)
-  const tokens = latest?.inputTokens ?? 0
-  const pct = Math.min(tokens / CLAUDE_CONTEXT_TOKENS, 1)
-  const alwaysShow = getAlwaysContext()
+function ContextRing({ agentId, isStreaming }: { agentId: string; isStreaming?: boolean }) {
+  const [ctx, setCtx] = useState<{ used: number; limit: number; percent: number; categories?: Array<{ name: string; tokens: number; percent: number }> } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [fetchFailed, setFetchFailed] = useState(false)
+  const prevStreamingRef = useRef(isStreaming)
+  const fetchedOnceRef = useRef(false)
+  const prevAgentIdRef = useRef(agentId)
 
-  if (tokens === 0 || (!alwaysShow && pct < 0.7)) return null
+  const fetchContext = useCallback(async () => {
+    setLoading(true)
+    setFetchFailed(false)
+    try {
+      const data = await api.getContext(agentId)
+      if (data.limit > 0) {
+        setCtx(data)
+      } else {
+        setFetchFailed(true)
+      }
+    } catch {
+      setFetchFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [agentId])
 
-  const size = 20
-  const r = 7
+  // Fetch on mount or agent change
+  useEffect(() => {
+    if (!fetchedOnceRef.current || prevAgentIdRef.current !== agentId) {
+      fetchedOnceRef.current = true
+      prevAgentIdRef.current = agentId
+      fetchContext()
+    }
+  }, [agentId, fetchContext])
+
+  // Refetch when streaming stops (message completed)
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      const timer = setTimeout(fetchContext, 2000)
+      return () => clearTimeout(timer)
+    }
+    prevStreamingRef.current = isStreaming
+  }, [isStreaming, fetchContext])
+
+  const pct = ctx?.percent ?? 0
+  const size = 28
+  const r = 10
   const circ = 2 * Math.PI * r
-  const dash = pct * circ
-  const color = pct >= 0.9 ? "#f87171" : pct >= 0.7 ? "#facc15" : "#60a5fa"
+  const dash = (pct / 100) * circ
+  const color = pct >= 90 ? "#f87171" : pct >= 70 ? "#facc15" : "currentColor"
+  const opacity = !ctx ? 0.2 : pct < 70 ? 0.4 : 1
 
-  return (
+  const ring = (
     <div
-      className="relative flex items-center justify-center shrink-0"
-      title={`Context: ${Math.round(pct * 100)}% used (${tokens.toLocaleString()} / ${CLAUDE_CONTEXT_TOKENS.toLocaleString()} tokens)`}
+      className="relative flex items-center justify-center shrink-0 text-muted-foreground cursor-default"
+      style={{ opacity }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rotate-[-90deg]">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground/20" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-muted-foreground/20" />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
           stroke={color}
-          strokeWidth="2"
+          strokeWidth="1.5"
           strokeDasharray={`${dash} ${circ}`}
           strokeLinecap="round"
           style={{ transition: "stroke-dasharray 0.4s ease" }}
         />
       </svg>
-      <span className="absolute text-[7px] font-medium" style={{ color }}>
-        {Math.round(pct * 100)}
-      </span>
+      {loading ? (
+        <IconLoader2 size={10} className="absolute text-muted-foreground/50 animate-spin" />
+      ) : ctx ? (
+        <span className="absolute text-[8px] font-medium" style={{ color: pct >= 70 ? color : undefined }}>
+          {pct}
+        </span>
+      ) : null}
     </div>
+  )
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>{ring}</PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-52 text-xs p-2.5 space-y-1.5">
+        {ctx ? (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Context</span>
+              <span className="font-medium">{pct}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Used</span>
+              <span className="font-medium">{formatTokens(ctx.used)} tokens</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Limit</span>
+              <span className="font-medium">{formatTokens(ctx.limit)} tokens</span>
+            </div>
+            {ctx.categories && ctx.categories.length > 0 && (
+              <div className="border-t border-border pt-1.5 space-y-1">
+                {ctx.categories.filter(c => c.percent >= 0.5).map((c) => (
+                  <div key={c.name} className="flex justify-between">
+                    <span className="text-muted-foreground truncate mr-2">{c.name}</span>
+                    <span className="font-medium shrink-0">{formatTokens(c.tokens)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={fetchContext}
+              disabled={loading}
+              className="w-full text-center text-muted-foreground/50 hover:text-muted-foreground text-[10px] pt-1 transition-colors"
+            >
+              {loading ? "Refreshing..." : "Refresh"}
+            </button>
+          </>
+        ) : loading ? (
+          <div className="text-center text-muted-foreground/50 py-1">Loading context...</div>
+        ) : fetchFailed ? (
+          <>
+            <div className="text-center text-muted-foreground/50 py-1">No active session</div>
+            <button
+              onClick={fetchContext}
+              className="w-full text-center text-muted-foreground/50 hover:text-muted-foreground text-[10px] pt-0.5 transition-colors"
+            >
+              Retry
+            </button>
+          </>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -2284,6 +2636,8 @@ interface ChatViewProps {
   onNewTab?: () => void
   onTabTitleChange?: (agentId: string, title: string) => void
   pendingComments?: PRComment[]
+  onAddComment?: (c: PRComment) => void
+  onOpenDiffFile?: (file: FileChange) => void
   onRemoveComment?: (id: string) => void
   onClearComments?: () => void
   githubEnabled?: boolean
@@ -2305,7 +2659,7 @@ interface ChatViewProps {
   onConsumeInitialMessage?: () => void
 }
 
-export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, hideHeader = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage }: ChatViewProps) {
+export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false, openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab, onTabTitleChange, pendingComments = [], onAddComment, onOpenDiffFile, onRemoveComment, onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion, hideChrome = false, hideHeader = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAtBottom, setIsAtBottom] = useState(true)
@@ -2422,7 +2776,11 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
         toast.error(String(err))
       }
     } else {
-      void api.openIn(agent.id, appKey)
+      try {
+        await api.openIn(agent.id, appKey)
+      } catch (err) {
+        toast.error(`Failed to open ${appKey}: ${err instanceof Error ? err.message : err}`)
+      }
     }
   }
 
@@ -2941,7 +3299,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const isInPlanMode = planMode || claudeInPlanMode
 
   return (
-    <div className="flex flex-col h-full bg-background relative">
+    <div className="flex flex-col flex-1 min-h-0 bg-background relative">
       {/* Top metadata bar */}
       {!hideChrome && !hideHeader && <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
@@ -3319,12 +3677,15 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
             search=""
             showFileList
             onOpenFile={() => {}}
+            onAddComment={onAddComment}
+            pendingComments={pendingComments}
+            onRemoveComment={onRemoveComment}
           />
         </div>
       ) : activeTab === "file" && openFileTab && openFileTab.type !== "diff-browser" ? (
         <div className="flex-1 min-h-0">
           {openFileTab.type === "diff" ? (
-            <DiffView agentId={agent.id} file={openFileTab.file} />
+            <DiffView agentId={agent.id} file={openFileTab.file} onAddComment={onAddComment} pendingComments={pendingComments} onRemoveComment={onRemoveComment} />
           ) : openFileTab.type === "content" ? (
             <FileContentView agentId={agent.id} filePath={openFileTab.path} />
           ) : (
@@ -3498,8 +3859,18 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                       const loc = c.path ? c.path.split("/").pop() + (c.line ? `:${c.line}` : "") : null
                       return (
                         <div key={c.id} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
-                          <IconMessageCircle size={12} className="text-muted-foreground/60 shrink-0" />
-                          <span className="font-medium text-foreground/80">{loc ?? `@${c.author}`}</span>
+                          <button
+                            onClick={() => {
+                              if (c.path && onOpenDiffFile) {
+                                const file = agent.fileChanges.find((f) => f.path === c.path)
+                                if (file) onOpenDiffFile(file)
+                              }
+                            }}
+                            className="flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer"
+                          >
+                            <IconMessageCircle size={12} className="text-muted-foreground/60 shrink-0" />
+                            <span className="font-medium text-foreground/80">{loc ?? `@${c.author}`}</span>
+                          </button>
                           <span className="text-muted-foreground/50 uppercase tracking-wide font-medium text-[9px]">Comment</span>
                           <button onClick={() => onRemoveComment?.(c.id)} className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5">
                             <IconX size={11} />
@@ -3658,7 +4029,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                   </div>
                   <div className="flex items-center gap-1">
                     <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={handleFileSelect} />
-                    <ContextRing messages={agent.messages} />
+                    <ContextRing agentId={agent.id} isStreaming={isStreaming} />
                     <Popover open={plusOpen} onOpenChange={setPlusOpen}>
                       <PopoverTrigger asChild>
                         <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">

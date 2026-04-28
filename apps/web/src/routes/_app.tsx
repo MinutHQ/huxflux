@@ -181,12 +181,17 @@ function AppLayout() {
             </ResizablePanelGroup>
 
           {/* Floating sidebar overlay when collapsed + mouse proximity */}
-          {sidebarCollapsed && floatingSidebar && (
+          {sidebarCollapsed && (
             <div
               ref={floatingRef}
               onMouseLeave={() => setFloatingSidebar(false)}
-              className="absolute left-0 top-0 h-full z-50 shadow-2xl"
-              style={{ width: "260px" }}
+              className="absolute left-1.5 top-1.5 bottom-1.5 z-50 rounded-xl shadow-2xl border border-border/50 bg-sidebar overflow-hidden transition-all duration-200 ease-out"
+              style={{
+                width: "260px",
+                transform: floatingSidebar ? "translateX(0)" : "translateX(-110%)",
+                opacity: floatingSidebar ? 1 : 0,
+                pointerEvents: floatingSidebar ? "auto" : "none",
+              }}
             >
               <Sidebar {...sidebarProps} />
             </div>

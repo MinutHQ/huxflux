@@ -112,7 +112,7 @@ export const api = {
     shareWorktreeWith?: string
     noWorktree?: boolean
     existingBranch?: boolean
-  }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body) }),
+  }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body), timeoutMs: 120_000 }),
   updateAgent: (
     id: string,
     body: Partial<Pick<Agent, "title" | "status" | "branch" | "pr" | "description" | "unread" | "baseBranch" | "draft">>
@@ -165,8 +165,12 @@ export const api = {
     req<FileChange[]>(`/api/agents/${agentId}/files/refresh`, { method: "POST" }),
   openIn: (agentId: string, app: string) =>
     req<{ ok: boolean }>(`/api/agents/${agentId}/open-in`, { method: "POST", body: JSON.stringify({ app }) }),
+  getAllDiffs: (agentId: string) =>
+    req<Array<{ path: string; additions: number; deletions: number; diff: string; newContent: string; oldContent: string }>>(`/api/agents/${agentId}/files/diffs`, { timeoutMs: 30_000 }),
   getWorktreePath: (agentId: string) =>
     req<{ path: string }>(`/api/agents/${agentId}/worktree-path`),
+  getContext: (agentId: string) =>
+    req<{ used: number; limit: number; percent: number; model?: string; categories?: Array<{ name: string; tokens: number; percent: number }> }>(`/api/agents/${agentId}/context`, { timeoutMs: 20_000 }),
 
   // Terminal
   getTerminal: (agentId: string) => req<string[]>(`/api/agents/${agentId}/terminal`),

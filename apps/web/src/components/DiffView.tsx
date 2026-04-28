@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useMemo, useSyncExternalStore } from "react"
+import React, { useState, useMemo, useRef, useCallback, useSyncExternalStore } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { cn } from "@huxflux/ui"
 import type { FileChange } from "@/data/mock"
+import type { PRComment } from "@huxflux/shared"
 import { api } from "@huxflux/shared"
 import { getTheme } from "@/lib/theme"
-import { IconCopy, IconEye, IconLayoutColumns, IconLayoutRows } from "@tabler/icons-react"
+import { IconCopy, IconEye, IconLayoutColumns, IconLayoutRows, IconMessageCircle, IconMessagePlus, IconX } from "@tabler/icons-react"
 import { FileDiff } from "@pierre/diffs/react"
 import { processFile } from "@pierre/diffs"
 import type { ExpansionDirections, HunkExpansionRegion } from "@pierre/diffs/react"
@@ -23,61 +24,38 @@ function useDiffTheme() {
   )
 }
 
+// Annotation metadata for inline comment forms and persisted comments
+type CommentAnnotation =
+  | { type: "comment-form"; lineNumber: number }
+  | { type: "comment"; comment: PRComment }
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DiffView({ agentId, file, hideHeader }: { agentId: string; file: FileChange; hideHeader?: boolean }) {
+export const DiffView = React.memo(function DiffView({ agentId, file, hideHeader, onAddComment, pendingComments = [], onRemoveComment, preloadedDiff }: {
+  agentId: string
+  file: FileChange
+  hideHeader?: boolean
+  onAddComment?: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
+  preloadedDiff?: { diff: string; newContent: string; oldContent: string }
+}) {
   const [viewed, setViewed] = useState(false)
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
   const diffTheme = useDiffTheme()
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  // When hunk expansion inserts rows, the viewport scrolls up before any
-  // ResizeObserver or rAF can fire. Intercept scroll events directly and reset
-  // synchronously within a short window after each click.
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-
-    let savedScroll: number | null = null
-    let clearTimer: ReturnType<typeof setTimeout> | null = null
-    let inReset = false
-
-    const onScroll = () => {
-      if (savedScroll !== null && !inReset) {
-        inReset = true
-        container.scrollTop = savedScroll
-        inReset = false
-      }
-    }
-
-    const onClickCapture = () => {
-      savedScroll = container.scrollTop
-      if (clearTimer) clearTimeout(clearTimer)
-      clearTimer = setTimeout(() => {
-        savedScroll = null
-        clearTimer = null
-      }, 600)
-    }
-
-    container.addEventListener("click", onClickCapture, true)
-    container.addEventListener("scroll", onScroll)
-
-    return () => {
-      container.removeEventListener("click", onClickCapture, true)
-      container.removeEventListener("scroll", onScroll)
-      if (clearTimer) clearTimeout(clearTimer)
-    }
-  }, [])
   const [expandedHunks, setExpandedHunks] = useState<Map<number, HunkExpansionRegion>>(new Map())
+  const [commentLine, setCommentLine] = useState<number | null>(null)
+  const [commentText, setCommentText] = useState("")
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
 
   const fileName = file.path.split("/").pop() ?? file.path
 
-  // Long staleTime prevents refetching while reviewing — manual refresh available
   const { data: rawDiff } = useQuery({
     queryKey: ["diff", agentId, file.path],
     queryFn: () => api.getDiff(agentId, file.path),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
+    enabled: !preloadedDiff,
   })
 
   const { data: newContent } = useQuery({
@@ -85,7 +63,7 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
     queryFn: () => api.getFileContent(agentId, file.path),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
-    enabled: !!rawDiff,
+    enabled: !preloadedDiff && !!rawDiff,
   })
 
   const { data: oldContent } = useQuery({
@@ -93,41 +71,22 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
     queryFn: () => api.getBaseFileContent(agentId, file.path),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
-    enabled: !!rawDiff,
+    enabled: !preloadedDiff && !!rawDiff,
   })
 
-  // Memoize to prevent re-processing on every render
+  const effectiveDiff = preloadedDiff?.diff ?? rawDiff
+  const effectiveNew = preloadedDiff?.newContent ?? newContent
+  const effectiveOld = preloadedDiff?.oldContent ?? oldContent
+
   const fileDiff = useMemo(() => {
-    if (rawDiff && oldContent !== undefined && newContent !== undefined) {
-      return processFile(rawDiff, {
-        oldFile: { name: fileName, contents: oldContent },
-        newFile: { name: fileName, contents: newContent },
+    if (effectiveDiff && effectiveOld !== undefined && effectiveNew !== undefined) {
+      return processFile(effectiveDiff, {
+        oldFile: { name: fileName, contents: effectiveOld },
+        newFile: { name: fileName, contents: effectiveNew },
       })
     }
-    return rawDiff ? processFile(rawDiff) : null
-  }, [rawDiff, oldContent, newContent, fileName])
-
-  // Preserve scroll position when fileDiff updates (data refetch)
-  const prevScrollRef = useRef(0)
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container || !fileDiff) return
-    // Restore scroll after React re-renders the diff
-    requestAnimationFrame(() => {
-      if (prevScrollRef.current > 0) {
-        container.scrollTop = prevScrollRef.current
-      }
-    })
-  }, [fileDiff])
-
-  // Track scroll position continuously
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-    const onScroll = () => { prevScrollRef.current = container.scrollTop }
-    container.addEventListener("scroll", onScroll, { passive: true })
-    return () => container.removeEventListener("scroll", onScroll)
-  }, [])
+    return effectiveDiff ? processFile(effectiveDiff) : null
+  }, [effectiveDiff, effectiveOld, effectiveNew, fileName])
 
   function onHunkExpand(hunkIndex: number, direction: ExpansionDirections, expansionLineCount = 20) {
     setExpandedHunks(prev => {
@@ -140,9 +99,158 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
     })
   }
 
+  function handleSubmitComment() {
+    if (!commentText.trim() || commentLine == null || !onAddComment) return
+    onAddComment({
+      id: `inline-${Date.now()}`,
+      author: "You",
+      body: commentText.trim(),
+      createdAt: new Date().toISOString(),
+      url: "",
+      isReply: false,
+      path: file.path,
+      line: commentLine,
+    })
+    setCommentText("")
+    setCommentLine(null)
+  }
+
+  const handleLineClick = useCallback((props: { lineNumber: number }) => {
+    if (!onAddComment) return
+    setCommentLine(props.lineNumber)
+    setCommentText("")
+    setTimeout(() => commentInputRef.current?.focus(), 50)
+  }, [onAddComment])
+
+
+  // Build inline annotations for persisted comments + the active comment form
+  const fileComments = useMemo(() =>
+    pendingComments.filter((c) => c.path === file.path && c.line),
+  [pendingComments, file.path])
+
+  const lineAnnotations = useMemo(() => {
+    const annotations: Array<{ side: "additions"; lineNumber: number; metadata: CommentAnnotation }> = []
+
+    // Persisted comments
+    for (const c of fileComments) {
+      if (c.line) {
+        annotations.push({
+          side: "additions",
+          lineNumber: c.line,
+          metadata: { type: "comment", comment: c },
+        })
+      }
+    }
+
+    // Active comment form
+    if (commentLine != null) {
+      annotations.push({
+        side: "additions",
+        lineNumber: commentLine,
+        metadata: { type: "comment-form", lineNumber: commentLine },
+      })
+    }
+
+    return annotations.length > 0 ? annotations : undefined
+  }, [fileComments, commentLine])
+
+  const renderAnnotation = useCallback((annotation: { metadata?: CommentAnnotation }) => {
+    if (!annotation.metadata) return null
+
+    // Persisted comment bubble
+    if (annotation.metadata.type === "comment") {
+      const c = annotation.metadata.comment
+      return (
+        <div className="mx-2 my-1 rounded-xl border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <IconMessageCircle size={12} className="text-blue-400/60 shrink-0" />
+            <span className="text-[11px] text-foreground/80 flex-1">{c.body}</span>
+            {onRemoveComment && (
+              <button
+                onClick={() => onRemoveComment(c.id)}
+                className="text-muted-foreground/30 hover:text-muted-foreground transition-colors shrink-0"
+              >
+                <IconX size={11} />
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Active comment form
+    if (annotation.metadata.type === "comment-form") {
+      const line = annotation.metadata.lineNumber
+      return (
+        <div className="mx-2 my-1 rounded-xl border border-border/50 bg-card shadow-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 bg-muted/20">
+            <IconMessagePlus size={12} className="text-muted-foreground/50 shrink-0" />
+            <span className="text-[11px] text-muted-foreground/70 font-mono">
+              {fileName}:{line}
+            </span>
+            <button
+              onClick={() => { setCommentLine(null); setCommentText("") }}
+              className="ml-auto text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <IconX size={12} />
+            </button>
+          </div>
+          <div className="p-2.5">
+            <textarea
+              ref={commentInputRef}
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmitComment() }
+                if (e.key === "Escape") { setCommentLine(null); setCommentText("") }
+              }}
+              placeholder="Add a comment about this line..."
+              rows={2}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-ring resize-none"
+            />
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-[10px] text-muted-foreground/30">⌘Enter to add</span>
+              <button
+                onClick={handleSubmitComment}
+                disabled={!commentText.trim()}
+                className={cn(
+                  "px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                  commentText.trim()
+                    ? "bg-foreground text-background hover:bg-foreground/90"
+                    : "bg-muted text-muted-foreground/40 cursor-not-allowed"
+                )}
+              >
+                Add to chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }, [commentText, fileName, onRemoveComment])
+
+  const useGutter = !!onAddComment
+
+  const diffOptions = useMemo(() => ({
+    theme: diffTheme,
+    diffStyle,
+    lineDiffType: "word" as const,
+    diffIndicators: "bars" as const,
+    disableFileHeader: true,
+    hunkSeparators: "line-info-basic" as const,
+    overflow: (hideHeader ? "wrap" : "scroll") as "wrap" | "scroll",
+    expandedHunks,
+    onHunkExpand,
+    ...(useGutter ? {
+      enableGutterUtility: true,
+      onLineClick: handleLineClick,
+    } : {}),
+  }), [diffTheme, diffStyle, expandedHunks, handleLineClick, hideHeader, useGutter])
+
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* File header */}
+    <div className={cn("flex flex-col bg-background", hideHeader ? "" : "h-full")}>
       {!hideHeader && <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border bg-card shrink-0 text-[11px]">
         <span className="text-muted-foreground font-mono truncate">
           {file.path.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
@@ -172,26 +280,24 @@ export function DiffView({ agentId, file, hideHeader }: { agentId: string; file:
         </div>
       </div>}
 
-      {/* Diff content */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
-        <div>
+      <div className={hideHeader ? "" : "flex-1 min-h-0 overflow-auto"}>
         {fileDiff && (
           <FileDiff
             fileDiff={fileDiff}
-            options={{
-              theme: diffTheme,
-              diffStyle,
-              lineDiffType: "word",
-              diffIndicators: "bars",
-              disableFileHeader: true,
-              hunkSeparators: "line-info",
-              expandedHunks,
-              onHunkExpand,
-            } as any}
+            options={diffOptions as any}
+            lineAnnotations={lineAnnotations as any}
+            renderAnnotation={onAddComment ? renderAnnotation as any : undefined}
           />
         )}
-        </div>
       </div>
     </div>
   )
-}
+}, (prev, next) => {
+  // Only re-render if the actual diff data or view settings changed
+  if (prev.file.path !== next.file.path) return false
+  if (prev.hideHeader !== next.hideHeader) return false
+  if (prev.preloadedDiff !== next.preloadedDiff) return false
+  if (prev.agentId !== next.agentId) return false
+  if (prev.pendingComments?.length !== next.pendingComments?.length) return false
+  return true
+})

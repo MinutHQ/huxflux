@@ -4,7 +4,7 @@ import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
-import { onAgentStarted } from "../git/pool.js"
+import { onAgentStarted, claimFromPool } from "../git/pool.js"
 import { watchWorktree, unwatchWorktree, refreshWorktree } from "../git/watcher.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
@@ -238,19 +238,27 @@ export async function agentsRoutes(app: FastifyInstance) {
           await db.delete(agents).where(eq(agents.id, id))
           return reply.code(400).send({ error: `Repo path does not exist on disk: ${repo.path}` })
         }
-        const worktreePath = path.join(repo.workspacesPath, agentLocation)
-        try {
-          await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
-        } catch (err) {
-          app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
-          await db.delete(agents).where(eq(agents.id, id))
-          return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
-        }
-        if (repo.setupScript) {
+
+        // Try to claim a pre-created worktree from the pool
+        const claimed = await claimFromPool(agentRepoId, branch, baseBranch ?? repo.branchFrom)
+        if (claimed) {
+          agentLocation = claimed.location
+          db.update(agents).set({ location: agentLocation }).where(eq(agents.id, id)).run()
+        } else {
+          const worktreePath = path.join(repo.workspacesPath, agentLocation)
           try {
-            await runScript(repo.setupScript, worktreePath, id, repo.path)
+            await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
           } catch (err) {
-            app.log.warn(`Setup script failed: ${err}`)
+            app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
+            await db.delete(agents).where(eq(agents.id, id))
+            return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
+          }
+          if (repo.setupScript) {
+            try {
+              await runScript(repo.setupScript, worktreePath, id, repo.path)
+            } catch (err) {
+              app.log.warn(`Setup script failed: ${err}`)
+            }
           }
         }
       }
@@ -712,7 +720,12 @@ export async function agentsRoutes(app: FastifyInstance) {
       if (app.cli) {
         const proc = spawn(app.cli[0], app.cli.slice(1), { detached: true, stdio: "ignore" })
         proc.unref()
-        proc.on("error", () => {}) // swallow spawn errors
+        // Listen for spawn errors (e.g. command not found)
+        await new Promise<void>((resolve, reject) => {
+          proc.on("error", reject)
+          // If no error fires within 500ms, assume spawn succeeded
+          setTimeout(resolve, 500)
+        })
       } else {
         spawn("open", ["-a", app.bundle, worktreePath], { detached: true, stdio: "ignore" }).unref()
       }
@@ -725,6 +738,13 @@ export async function agentsRoutes(app: FastifyInstance) {
         } catch { /* non-critical */ }
       }, 600)
     } catch (err) {
+      const e = err as NodeJS.ErrnoException
+      if (e.code === "ENOENT") {
+        const cmd = app.cli?.[0] ?? appName
+        return reply.code(422).send({
+          error: `"${cmd}" command not found. Open ${app.bundle}, then install the shell command from the Command Palette (Shell Command: Install 'code' command in PATH).`,
+        })
+      }
       return reply.code(500).send({ error: `Failed to open ${appName}: ${(err as Error).message}` })
     }
 
@@ -744,6 +764,80 @@ export async function agentsRoutes(app: FastifyInstance) {
       : path.join(repo.workspacesPath, agent.location)
 
     return { path: worktreePath }
+  })
+
+  // GET /api/agents/:id/context — get context window usage from Claude
+  app.get<{ Params: { id: string } }>("/api/agents/:id/context", async (req, reply) => {
+    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
+    if (!agent) return reply.code(404).send({ error: "Not found" })
+    if (!agent.sessionId) return reply.code(200).send({ used: 0, limit: 0, percent: 0, model: agent.model })
+
+    const claudeBin = (await import("../claude/runner.js")).getClaudeBin()
+
+    try {
+      const result = await new Promise<string>((resolve, reject) => {
+        let output = ""
+        const proc = spawn(claudeBin, [
+          "--resume", agent.sessionId!,
+          "-p", "/context",
+          "--output-format", "text",
+        ], {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
+          },
+          timeout: 15_000,
+        })
+        proc.stdout.on("data", (chunk: Buffer) => { output += chunk.toString() })
+        proc.on("close", (code) => code === 0 ? resolve(output) : reject(new Error(`exit ${code}`)))
+        proc.on("error", reject)
+      })
+
+      // Parse "Tokens: 190k / 1m (19%)" or "Tokens: 18.2k / 1000k (2%)"
+      const tokensMatch = result.match(/\*\*Tokens:\*\*\s*([\d.]+)([km]?)\s*\/\s*([\d.]+)([km]?)\s*\((\d+)%\)/i)
+      if (!tokensMatch) {
+        return { used: 0, limit: 0, percent: 0, model: agent.model, raw: result }
+      }
+
+      function parseTokenCount(num: string, suffix: string): number {
+        const n = parseFloat(num)
+        if (suffix === "k") return Math.round(n * 1000)
+        if (suffix === "m") return Math.round(n * 1_000_000)
+        return Math.round(n)
+      }
+
+      const used = parseTokenCount(tokensMatch[1], tokensMatch[2].toLowerCase())
+      const limit = parseTokenCount(tokensMatch[3], tokensMatch[4].toLowerCase())
+      const percent = parseInt(tokensMatch[5], 10)
+
+      // Parse model from "Model: claude-opus-4-6"
+      const modelMatch = result.match(/\*\*Model:\*\*\s*(\S+)/)
+
+      // Parse category breakdown
+      const categories: Array<{ name: string; tokens: number; percent: number }> = []
+      const catRegex = /\|\s*([^|]+?)\s*\|\s*([\d.,]+)([km]?)\s*(?:tokens)?\s*\|\s*([\d.]+)%\s*\|/gi
+      let m
+      while ((m = catRegex.exec(result)) !== null) {
+        const name = m[1].trim()
+        if (name === "Category" || name.startsWith("--")) continue
+        categories.push({
+          name,
+          tokens: parseTokenCount(m[2].replace(",", ""), m[3].toLowerCase()),
+          percent: parseFloat(m[4]),
+        })
+      }
+
+      return {
+        used,
+        limit,
+        percent,
+        model: modelMatch?.[1] ?? agent.model,
+        categories,
+      }
+    } catch (err) {
+      return reply.code(500).send({ error: `Failed to get context: ${(err as Error).message}` })
+    }
   })
 
   // GET /api/providers — list available CLI providers with capabilities and models

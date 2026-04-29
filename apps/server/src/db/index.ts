@@ -421,6 +421,13 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 28,
+    sql: `
+      ALTER TABLE agents ADD COLUMN pr_comment_monitoring INTEGER;
+      ALTER TABLE agents ADD COLUMN ci_monitoring INTEGER;
+    `,
+  },
 ]
 
 export function runMigrations() {

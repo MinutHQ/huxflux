@@ -174,8 +174,9 @@ function formatToolCall(tool: string, args?: string): { title: string; detail: s
 
 // ── Inline result block ───────────────────────────────────────────────────────
 
-function LinkedWorkspaceMessage({ sender, content }: { sender: string; content: string }) {
+function LinkedWorkspaceMessage({ sender, content, icon = "workspace" }: { sender: string; content: string; icon?: "workspace" | "system" }) {
   const [open, setOpen] = useState(false)
+  const isSystem = icon === "system"
   return (
     <div className="mb-5">
       <button
@@ -183,8 +184,11 @@ function LinkedWorkspaceMessage({ sender, content }: { sender: string; content: 
         className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/40", open && "rotate-90")} />
-        <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
-        <span>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> sent message</span>
+        {isSystem
+          ? <IconGitPullRequest size={13} className="text-amber-400/60 shrink-0" />
+          : <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
+        }
+        <span>{isSystem ? <span className="font-medium text-foreground/70">{sender}</span> : <>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> sent message</>}</span>
       </button>
       {open && (
         <div className="ml-[22px] mt-1.5 pl-3 border-l border-blue-400/15">
@@ -1332,7 +1336,6 @@ function AskUserQuestionCard({
                 key={opt.label}
                 onClick={() => {
                   setAnswers((prev) => ({ ...prev, [q.question]: opt.label }))
-                  // Auto-advance after a short delay so the selection is visible
                   if (!isLast) setTimeout(() => setStep((s) => s + 1), 200)
                 }}
                 className={cn(
@@ -1354,6 +1357,33 @@ function AskUserQuestionCard({
                 </div>
               </button>
             ))}
+            {/* "Other" option with free text input */}
+            <div className={cn(
+              "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors text-[12px]",
+              answers[q.question] && !q.options.some((o) => o.label === answers[q.question])
+                ? "border-blue-400/50 bg-blue-500/10 text-foreground"
+                : "border-border bg-card text-foreground/80"
+            )}>
+              <div className={cn(
+                "w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-1.5 flex items-center justify-center transition-colors",
+                answers[q.question] && !q.options.some((o) => o.label === answers[q.question]) ? "border-blue-400 bg-blue-400" : "border-muted-foreground/30"
+              )}>
+                {answers[q.question] && !q.options.some((o) => o.label === answers[q.question]) && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              </div>
+              <input
+                type="text"
+                placeholder="Other..."
+                value={answers[q.question] && !q.options.some((o) => o.label === answers[q.question]) ? answers[q.question] : ""}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [q.question]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && currentAnswer) {
+                    if (isLast) onSubmit(answers)
+                    else setStep((s) => s + 1)
+                  }
+                }}
+                className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
+              />
+            </div>
           </div>
         ) : (
           <input
@@ -1457,7 +1487,8 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
 
   // Messages from linked workspaces — collapsed accordion
   if (isUser && msg.sender) {
-    return <LinkedWorkspaceMessage sender={msg.sender} content={msg.content} />
+    const isSystem = msg.sender === "PR Review" || msg.sender === "CI Monitor"
+    return <LinkedWorkspaceMessage sender={msg.sender} content={msg.content} icon={isSystem ? "system" : "workspace"} />
   }
 
   if (isUser) {
@@ -4045,6 +4076,41 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
                           <span>Add attachment</span>
                           <span className="ml-auto text-[11px] text-muted-foreground/50 font-mono">⌘U</span>
                         </button>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors">
+                              <IconBolt size={15} className="text-muted-foreground shrink-0" />
+                              <span>Agent settings</span>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent side="left" align="start" className="w-56 p-2 space-y-2">
+                            <div className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide px-1">Monitoring</div>
+                            <label className="flex items-center justify-between px-1 py-1 text-[12px] cursor-pointer">
+                              <span className="text-foreground/80">PR comments</span>
+                              <input
+                                type="checkbox"
+                                checked={agent.prCommentMonitoring !== 0}
+                                onChange={(e) => {
+                                  const val = e.target.checked ? null : false
+                                  api.updateAgent(agent.id, { prCommentMonitoring: val } as any)
+                                }}
+                                className="accent-primary"
+                              />
+                            </label>
+                            <label className="flex items-center justify-between px-1 py-1 text-[12px] cursor-pointer">
+                              <span className="text-foreground/80">CI failures</span>
+                              <input
+                                type="checkbox"
+                                checked={agent.ciMonitoring !== 0}
+                                onChange={(e) => {
+                                  const val = e.target.checked ? null : false
+                                  api.updateAgent(agent.id, { ciMonitoring: val } as any)
+                                }}
+                                className="accent-primary"
+                              />
+                            </label>
+                          </PopoverContent>
+                        </Popover>
                         {!hideChrome && <Popover open={agentPickerOpen} onOpenChange={(o) => { setAgentPickerOpen(o); if (o) setAgentPickerSearch("") }}>
                           <PopoverTrigger asChild>
                             <button className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors">

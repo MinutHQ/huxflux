@@ -115,6 +115,53 @@ interface StreamState {
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
   firedDelegates: Set<string> // track delegate tags already fired during streaming
+  firedTitle?: boolean
+  firedBranch?: boolean
+}
+
+function checkMetaDirectives(state: StreamState, agentId: string): void {
+  // huxflux:title — agent sets its own title
+  const titleMatch = state.fullContent.match(/<huxflux:title>(.*?)<\/huxflux:title>/)
+  if (titleMatch && !state.firedTitle) {
+    state.firedTitle = true
+    const title = titleMatch[1].trim().slice(0, 60)
+    if (title) {
+      db.update(agentsTable).set({ title, updatedAt: new Date().toISOString() }).where(eq(agentsTable.id, agentId)).run()
+      const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+      if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+    }
+  }
+
+  // huxflux:branch — agent renames its branch (prefix is prepended automatically)
+  const branchMatch = state.fullContent.match(/<huxflux:branch>(.*?)<\/huxflux:branch>/)
+  if (branchMatch && !state.firedBranch) {
+    state.firedBranch = true
+    const rawName = branchMatch[1].trim().toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
+    if (rawName) {
+      const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+      if (agent?.repoId) {
+        const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+        if (repo) {
+          const prefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
+          const newBranch = rawName.startsWith(prefix) ? rawName : `${prefix}${rawName}`
+          const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+          import("simple-git").then(({ simpleGit }) => {
+            const git = simpleGit(worktreePath)
+            git.revparse(["--abbrev-ref", "HEAD"]).then((current) => {
+              const currentBranch = current.trim()
+              if (currentBranch !== newBranch) {
+                git.raw(["branch", "-m", currentBranch, newBranch]).then(() => {
+                  db.update(agentsTable).set({ branch: newBranch, updatedAt: new Date().toISOString() }).where(eq(agentsTable.id, agentId)).run()
+                  const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+                  if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+                }).catch(() => {})
+              }
+            }).catch(() => {})
+          }).catch(() => {})
+        }
+      }
+    }
+  }
 }
 
 function checkAndFireDelegates(state: StreamState, agentId: string): void {
@@ -254,6 +301,7 @@ function handleNormalizedEvent(
       emit(agentId, { type: "message:chunk", agentId, messageId, delta: event.text })
       // Fire delegate tags as soon as they're complete (don't wait for response end)
       checkAndFireDelegates(state, agentId)
+      checkMetaDirectives(state, agentId)
       scheduleFlush()
       break
     case "thinking":
@@ -335,15 +383,25 @@ async function persistAssistantMessage(
 
   // Parse and strip any <huxflux:branch> tags emitted by Claude
   const branchTagRe = /<huxflux:branch>(.*?)<\/huxflux:branch>/gs
-  let branchMatch: RegExpExecArray | null
-  let newBranch: string | null = null
-  while ((branchMatch = branchTagRe.exec(state.fullContent)) !== null) {
-    newBranch = branchMatch[1].trim()
+  let branchTagMatch: RegExpExecArray | null
+  let rawBranchName: string | null = null
+  while ((branchTagMatch = branchTagRe.exec(state.fullContent)) !== null) {
+    rawBranchName = branchTagMatch[1].trim()
   }
-  if (newBranch) {
+  if (rawBranchName) {
     state.fullContent = state.fullContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
+    // Prepend repo branch prefix if configured
+    const agentForBranch = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    let finalBranch = rawBranchName
+    if (agentForBranch?.repoId) {
+      const repoForBranch = db.select().from(reposTable).where(eq(reposTable.id, agentForBranch.repoId)).get()
+      if (repoForBranch?.branchPrefix) {
+        const prefix = `${repoForBranch.branchPrefix}/`
+        if (!finalBranch.startsWith(prefix)) finalBranch = `${prefix}${finalBranch}`
+      }
+    }
     db.update(agentsTable)
-      .set({ branch: newBranch, updatedAt: new Date().toISOString() })
+      .set({ branch: finalBranch, updatedAt: new Date().toISOString() })
       .where(eq(agentsTable.id, agentId))
       .run()
     const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
@@ -632,9 +690,12 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
           `- Do not include the repo name or branch — just the task.`,
           ``,
-          `IMPORTANT: If you rename your git branch (e.g. git branch -m old new) or push to a different branch name, you MUST emit this tag on its own line immediately after:`,
+          `To rename your git branch, emit this tag on its own line:`,
           `  <huxflux:branch>new-branch-name</huxflux:branch>`,
-          `Without this tag, the UI will not know about the rename and PR detection will break.`,
+          `The branch will be renamed automatically. Do this as soon as you understand the task, alongside the title rename.`,
+          `Use kebab-case, be descriptive, max ~50 chars. Do NOT include any prefix — just the name.`,
+          ...(repoRow?.branchPrefix ? [`The prefix "${repoRow.branchPrefix}/" will be added automatically. Example: emit "fix-csv-encoding" and the branch becomes "${repoRow.branchPrefix}/fix-csv-encoding".`] : [`Example: "fix-csv-import-encoding"`]),
+          `Also emit this tag whenever you manually rename the branch (git branch -m) so the UI stays in sync.`,
           ``,
           `Answer format:`,
           `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,

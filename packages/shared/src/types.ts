@@ -180,6 +180,8 @@ export interface Agent {
   description?: string
   draft?: string
   diffSummary?: { additions: number; deletions: number; commits?: number }
+  prCommentMonitoring?: number | null  // null = global default, 0 = off, 1 = on
+  ciMonitoring?: number | null         // null = global default, 0 = off, 1 = on
   messages: Message[]
   hasMore?: boolean
   fileChanges: FileChange[]

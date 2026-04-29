@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm"
 import type { IDisposable } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { SearchAddon } from "@xterm/addon-search"
+import { WebLinksAddon } from "@xterm/addon-web-links"
 import { cn } from "@huxflux/ui"
 import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlayFilled, IconSettings, IconPlus, IconX } from "@tabler/icons-react"
@@ -182,6 +183,9 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(searchAddon)
+    term.loadAddon(new WebLinksAddon((event, uri) => {
+      if (event.metaKey || event.ctrlKey) window.open(uri, "_blank")
+    }))
 
     const session: Session = { term, fitAddon, searchAddon, ws: null, div, port: null, isRunning: false, outputBuf: "", onDataDisposable: null }
     globalSessions.set(sessionKey, session)

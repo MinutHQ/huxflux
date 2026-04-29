@@ -75,6 +75,9 @@ export interface HuxfluxSettings {
   defaultModel?: string
   defaultProvider?: string
   killProcessesOnDone?: boolean
+  prCommentMonitoring?: boolean
+  ciMonitoring?: boolean
+  pollingIntervalMs?: number
 }
 
 export interface ProviderInfo {

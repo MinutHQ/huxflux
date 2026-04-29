@@ -412,7 +412,7 @@ function StreamingDots() {
   )
 }
 
-const visibleStatuses: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
+const visibleStatuses: AgentStatus[] = ["done", "in-review", "in-progress", "backlog"]
 
 function StatusContextMenu({
   x,
@@ -737,13 +737,27 @@ function StatusGroup({
   repoNames: Record<string, string>
   repoIcons?: Record<string, string | undefined>
 }) {
-  const [collapsed, setCollapsed] = useState(status === "done")
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`huxflux:sidebar-group:${status}`)
+      if (stored !== null) return stored === "true"
+    } catch {}
+    return status === "done"
+  })
   const config = statusConfig[status]
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem(`huxflux:sidebar-group:${status}`, String(next)) } catch {}
+      return next
+    })
+  }
 
   return (
     <div className="mb-2.5">
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggleCollapsed}
         className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
       >
         <StatusIcon status={status} size={14} />

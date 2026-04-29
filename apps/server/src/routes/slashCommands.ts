@@ -97,9 +97,9 @@ async function getAllCommands(extraSkillsDirs: string[] = []): Promise<SlashComm
 function filterCommands(commands: SlashCommand[], q: string | undefined): SlashCommand[] {
   if (!q) return commands
   const lower = q.toLowerCase()
-  return commands.filter(
-    (c) => c.name.includes(lower) || c.description.toLowerCase().includes(lower)
-  )
+  const nameMatches = commands.filter((c) => c.name.includes(lower))
+  const descMatches = commands.filter((c) => !c.name.includes(lower) && c.description.toLowerCase().includes(lower))
+  return [...nameMatches, ...descMatches]
 }
 
 export async function slashCommandsRoutes(app: FastifyInstance) {

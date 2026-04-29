@@ -147,10 +147,10 @@ export async function messagesRoutes(app: FastifyInstance) {
       return { status: "queued" }
     }
 
-    // Auto-name the agent from the first user message using an LLM.
+    // Auto-name the agent from the first user message using Haiku (fast fallback).
+    // The agent can override this later by emitting <huxflux:title> and <huxflux:branch> tags.
     const existingMessages = db.select().from(messages).where(eq(messages.agentId, id)).all()
     if (existingMessages.length === 0) {
-      // Fire-and-forget: generate title in background, fall back to simple derivation
       generateTitle(content)
         .catch(() => deriveTitle(content))
         .then(async (autoTitle) => {

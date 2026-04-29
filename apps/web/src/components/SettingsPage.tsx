@@ -597,10 +597,17 @@ function GitSettings() {
   const [deleteBranch, setDeleteBranchState] = useState(() => localStorage.getItem(GIT_DELETE_BRANCH_KEY) === "true")
   const [archiveOnMerge, setArchiveOnMergeState] = useState(() => localStorage.getItem(GIT_ARCHIVE_ON_MERGE_KEY) !== "false")
   const [killOnDone, setKillOnDone] = useState(false)
+  const [prCommentMonitoring, setPrCommentMonitoring] = useState(true)
+  const [ciMonitoring, setCiMonitoring] = useState(true)
   const [killLoaded, setKillLoaded] = useState(false)
 
   useEffect(() => {
-    api.getSettings().then((s) => { setKillOnDone(s.killProcessesOnDone ?? false); setKillLoaded(true) }).catch(() => setKillLoaded(true))
+    api.getSettings().then((s) => {
+      setKillOnDone(s.killProcessesOnDone ?? false)
+      setPrCommentMonitoring(s.prCommentMonitoring ?? true)
+      setCiMonitoring(s.ciMonitoring ?? true)
+      setKillLoaded(true)
+    }).catch(() => setKillLoaded(true))
   }, [])
 
   return (
@@ -620,6 +627,14 @@ function GitSettings() {
       <SettingRow>
         <SettingInfo label="Kill processes on done" description="Automatically stop dev servers and processes when agent is marked done or cancelled" />
         <Switch disabled={!killLoaded} checked={killOnDone} onCheckedChange={(v) => { setKillOnDone(v); api.updateSettings({ killProcessesOnDone: v }) }} />
+      </SettingRow>
+      <SettingRow>
+        <SettingInfo label="PR comment monitoring" description="Send new PR review comments to agents automatically" />
+        <Switch disabled={!killLoaded} checked={prCommentMonitoring} onCheckedChange={(v) => { setPrCommentMonitoring(v); api.updateSettings({ prCommentMonitoring: v }) }} />
+      </SettingRow>
+      <SettingRow>
+        <SettingInfo label="CI monitoring" description="Notify agents when CI checks fail on their PR" />
+        <Switch disabled={!killLoaded} checked={ciMonitoring} onCheckedChange={(v) => { setCiMonitoring(v); api.updateSettings({ ciMonitoring: v }) }} />
       </SettingRow>
     </div>
   )

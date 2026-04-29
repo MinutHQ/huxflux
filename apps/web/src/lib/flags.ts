@@ -19,6 +19,11 @@ const DEFAULTS: Flags = {
   tasks: false,
 }
 
+// Flags that are permanently disabled — overrides localStorage
+const FORCE_OFF: Partial<Record<keyof Flags, true>> = {
+  prReview: true,
+}
+
 function load(): Flags {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -32,6 +37,7 @@ function save(flags: Flags) {
 }
 
 export function getFlag<K extends keyof Flags>(key: K): Flags[K] {
+  if (FORCE_OFF[key]) return false as Flags[K]
   return load()[key]
 }
 

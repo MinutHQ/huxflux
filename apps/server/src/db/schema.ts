@@ -53,6 +53,8 @@ export const agents = sqliteTable("agents", {
   draft: text("draft"), // persisted chat input draft
   provider: text("provider").notNull().default("claude"), // CLI provider: "claude" | "codex" | "opencode"
   taskId: text("task_id"), // if set, this is a task agent (refine/work) — hidden from sidebar, output goes to task comments
+  prCommentMonitoring: integer("pr_comment_monitoring"), // null = use global setting, 0 = off, 1 = on
+  ciMonitoring: integer("ci_monitoring"), // null = use global setting, 0 = off, 1 = on
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

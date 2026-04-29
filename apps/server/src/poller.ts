@@ -9,6 +9,7 @@ import { broadcast, emit } from "./ws/handler.js"
 import { prStatusToAgentStatus } from "./github/prStatus.js"
 import { isAgentRunning } from "./claude/runner.js"
 import { config } from "./config.js"
+import { getSettings } from "./settings.js"
 import type { PRStatus, PRDetails } from "./types.js"
 
 // Track what we've already seen to avoid re-sending
@@ -77,12 +78,11 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
 
     // ── 3. Monitor PR comments — send new ones to the agent ─────────
     if (pr.number && agent.status !== "done" && agent.status !== "cancelled") {
-      await monitorPRComments(agent, repoUrl, pr.number)
-    }
-
-    // ── 4. Monitor CI — notify agent of failures ────────────────────
-    if (pr.number && agent.status !== "done" && agent.status !== "cancelled") {
-      await monitorCI(agent, repoUrl, pr.number)
+      const pollerSettings = getSettings()
+      const prCommentsEnabled = agent.prCommentMonitoring != null ? agent.prCommentMonitoring === 1 : (pollerSettings.prCommentMonitoring ?? true)
+      const ciEnabled = agent.ciMonitoring != null ? agent.ciMonitoring === 1 : (pollerSettings.ciMonitoring ?? true)
+      if (prCommentsEnabled) await monitorPRComments(agent, repoUrl, pr.number)
+      if (ciEnabled) await monitorCI(agent, repoUrl, pr.number)
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
@@ -221,7 +221,8 @@ async function sendToAgent(agentId: string, content: string, sender: string): Pr
 
 // ── Poller entrypoint ────────────────────────────────────────────────────────
 
-export function startPoller(intervalMs = 60_000) {
+export function startPoller(intervalMs?: number) {
+  const effectiveInterval = intervalMs ?? getSettings().pollingIntervalMs ?? 60_000
   const SKIP_STATUSES = ["backlog", "cancelled", "done"]
 
   async function run() {
@@ -252,7 +253,7 @@ export function startPoller(intervalMs = 60_000) {
 
   // Run once shortly after startup, then on interval
   setTimeout(() => run().catch(console.error), 5_000)
-  setInterval(() => run().catch(console.error), intervalMs)
+  setInterval(() => run().catch(console.error), effectiveInterval)
 
   // Jira sync: first run after 30s, then every 5 min
   setTimeout(() => syncJira(), 30_000)

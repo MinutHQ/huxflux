@@ -144,12 +144,6 @@ function AppLayout() {
     onNewRefine: handleNewRefine,
     onToggle: toggleSidebar,
     feedbackEnabled,
-    bulkReviewingIds: bulkReview.reviewingIds,
-    isBulkReviewing: bulkReview.isBulkReviewing,
-    onBulkReview: () => bulkReview.startBulkReview(prs),
-    onCancelBulkReview: bulkReview.cancelBulkReview,
-    bulkReviewConcurrency: bulkReview.concurrency,
-    onBulkReviewConcurrencyChange: bulkReview.updateConcurrency,
   }
 
   return (

@@ -13,7 +13,7 @@ type Flags = {
 }
 
 const DEFAULTS: Flags = {
-  prReview: false,
+  prReview: true,
   refine: false,
   remoteEditor: false,
   tasks: false,
@@ -21,7 +21,6 @@ const DEFAULTS: Flags = {
 
 // Flags that are permanently disabled — overrides localStorage
 const FORCE_OFF: Partial<Record<keyof Flags, true>> = {
-  prReview: true,
 }
 
 function load(): Flags {

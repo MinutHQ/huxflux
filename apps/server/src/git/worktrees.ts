@@ -44,9 +44,22 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     return normalized === branch
   })
 
-  // Resolve the effective start point: verify the ref actually exists (a local branch
-  // name like "master" on a repo with no commits yet is not a valid ref).
-  const effectiveStart = startPoint && await refExists(git, startPoint) ? startPoint : undefined
+  // Resolve the effective start point. Prefer origin/ ref if available so the
+  // worktree always starts from the latest remote state, not a stale local branch.
+  let effectiveStart: string | undefined
+  if (startPoint) {
+    if (startPoint.startsWith("origin/") && await refExists(git, startPoint)) {
+      effectiveStart = startPoint
+    } else {
+      // Try origin/<startPoint> first (freshly fetched), fall back to local
+      const originRef = `origin/${startPoint}`
+      if (await refExists(git, originRef)) {
+        effectiveStart = originRef
+      } else if (await refExists(git, startPoint)) {
+        effectiveStart = startPoint
+      }
+    }
+  }
 
   async function doAdd(): Promise<void> {
     if (localBranchExists) {

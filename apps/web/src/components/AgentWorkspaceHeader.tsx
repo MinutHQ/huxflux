@@ -357,7 +357,7 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
           <Popover open={baseBranchOpen} onOpenChange={(o) => { setBaseBranchOpen(o); if (o) setBaseBranchSearch("") }}>
             <PopoverTrigger asChild>
               <button className="text-[11px] text-muted-foreground/40 font-mono hover:text-foreground transition-colors flex items-center gap-0.5">
-                {agent.baseBranch ?? "origin/main"}
+                {agent.baseBranch ?? repo?.branchFrom ?? "origin/main"}
                 <IconChevronDown size={9} className="opacity-50" />
               </button>
             </PopoverTrigger>

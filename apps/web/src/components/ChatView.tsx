@@ -193,7 +193,7 @@ function LinkedWorkspaceMessage({ sender, content, icon = "workspace" }: { sende
       {open && (
         <div className="ml-[22px] mt-1.5 pl-3 border-l border-blue-400/15">
           <div className="text-sm text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
-            <MarkdownContent content={content} />
+            <MarkdownContent content={stripHuxfluxTags(content)} />
           </div>
         </div>
       )}
@@ -297,7 +297,7 @@ function ToolCallRow({ call, indent = false, isStreaming = false }: { call: Tool
             {/* Human-readable text streamed by this sub-agent — kept tied to its row */}
             {hasOutputText && (
               <div className="mt-1 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
-                <MarkdownContent content={call.outputText!} />
+                <MarkdownContent content={stripHuxfluxTags(call.outputText!)} />
               </div>
             )}
             {isRunning && !hasOutputText && !hasSubCalls && (
@@ -376,7 +376,7 @@ function ToolCallsAccordion({ calls, isStreaming, pendingText }: { calls: ToolCa
             <div key={tc.id}>
               {tc.precedingText && tc.precedingText.trim() && (
                 <div className="my-1.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
-                  <MarkdownContent content={tc.precedingText} />
+                  <MarkdownContent content={stripHuxfluxTags(tc.precedingText)} />
                 </div>
               )}
               <ToolCallRow call={tc} isStreaming={isStreaming} />
@@ -386,7 +386,7 @@ function ToolCallsAccordion({ calls, isStreaming, pendingText }: { calls: ToolCa
               the accordion so it doesn't flicker through msg.content. */}
           {pendingText && pendingText.trim() && (
             <div className="my-1.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
-              <MarkdownContent content={pendingText} />
+              <MarkdownContent content={stripHuxfluxTags(pendingText)} />
             </div>
           )}
         </div>
@@ -1215,6 +1215,19 @@ function TableBlock({ children }: { node?: any; children?: React.ReactNode }) {
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
+/** Strip huxflux XML tags from displayed content */
+function stripHuxfluxTags(text: string): string {
+  return text
+    .replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "")
+    .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
+    .replace(/<huxflux:delegate[^>]*>[\s\S]*?<\/huxflux:delegate>\n?/g, "")
+    .replace(/<huxflux:task-comment[^>]*>[\s\S]*?<\/huxflux:task-comment>\n?/g, "")
+    .replace(/<huxflux:task-update[^>]*>[\s\S]*?<\/huxflux:task-update>\n?/g, "")
+    .replace(/<huxflux:task-create[^>]*>[\s\S]*?<\/huxflux:task-create>\n?/g, "")
+    .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
+    .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
+}
+
 const MarkdownContent = React.memo(function MarkdownContent({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -1560,9 +1573,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
       {/* Content */}
       {msg.content && (
         <div className="text-sm text-foreground leading-relaxed">
-          <MarkdownContent content={getStripYoureRight()
+          <MarkdownContent content={stripHuxfluxTags(getStripYoureRight()
             ? msg.content.replace(/^(You're (absolutely |completely |totally |entirely )?right[!.,]?\s*)+/i, "")
-            : msg.content}
+            : msg.content)}
           />
         </div>
       )}
@@ -3126,12 +3139,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     })
     try {
       await api.sendMessage(agent.id, apiContent, opts)
+      // Don't clear isSending immediately — wait for the server's streaming flag
+      // to arrive via websocket so there's no gap in the loading indicator.
+      // The flag clears itself when isAgentStreaming becomes true (see effect below).
     } catch {
       queryClient.setQueryData<Agent>(["agent", agent.id], (old) => {
         if (!old) return old
         return { ...old, messages: old.messages.filter((m) => m.id !== optimisticMsg.id) }
       })
-    } finally {
       setIsSending(false)
     }
   }
@@ -3257,9 +3272,16 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
     onClearFileTab()
   }
 
+  // Clear isSending once the server confirms streaming (bridges the gap)
+  const serverStreaming = isAgentStreaming(agent)
+  useEffect(() => {
+    if (serverStreaming && isSending) setIsSending(false)
+  }, [serverStreaming, isSending])
+
   // Single source of truth — derived from server's streaming flag + last
   // message's durationMs. See packages/shared/src/agentState.ts.
-  const uiIsStreaming = isAgentStreaming(agent)
+  // isSending bridges the gap between API call and server streaming flag.
+  const uiIsStreaming = serverStreaming || isSending
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const streamingStartRef = useRef<number | null>(null)

@@ -252,6 +252,11 @@ export interface TaskAgent {
   agentTitle: string
   agentStatus: AgentStatus
   agentBranch: string
+  prNumber?: number | null
+  prUrl?: string | null
+  prMerged?: boolean
+  prDraft?: boolean
+  ciStatus?: "passing" | "failing" | "pending" | null
 }
 
 export interface TaskItem {

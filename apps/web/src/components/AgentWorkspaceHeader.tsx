@@ -23,6 +23,7 @@ import { cn, Button, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui
 import { api, useRepos, getActiveServer } from "@huxflux/shared"
 import type { Agent, PRStatus } from "@huxflux/shared"
 import { useQueryClient, useQuery } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { getFlag } from "@/lib/flags"
 import { isTauri } from "@/lib/platform"
@@ -155,6 +156,7 @@ interface AgentWorkspaceHeaderProps {
 
 export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCreatePR, onReview, onRun, rightPanelVisible = true, onToggleRightPanel }: AgentWorkspaceHeaderProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { data: repos = [] } = useRepos()
   const repo = repos.find((r) => r.id === agent.repoId)
   const repoName = repo?.name
@@ -292,6 +294,15 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
             </>
           )}
           <span className="truncate">{agent.title}</span>
+          {agent.taskId && (
+            <button
+              onClick={() => navigate({ to: "/tasks/$taskId", params: { taskId: agent.taskId! } })}
+              className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors ml-1 shrink-0"
+              title="View task"
+            >
+              Task
+            </button>
+          )}
         </div>
 
         {/* Branch info */}

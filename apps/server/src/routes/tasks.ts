@@ -29,6 +29,11 @@ interface TaskAgentOut {
   agentTitle: string
   agentStatus: string
   agentBranch: string
+  prNumber: number | null
+  prUrl: string | null
+  prMerged: boolean
+  prDraft: boolean
+  ciStatus: "passing" | "failing" | "pending" | null
 }
 
 interface TaskItemOut {
@@ -59,7 +64,7 @@ interface TaskItemOut {
 function buildTaskTree(
   rows: (typeof tasks.$inferSelect)[],
   commentRows: (typeof taskComments.$inferSelect)[],
-  agentRows: { taskId: string; agentId: string; title: string; status: string; branch: string }[],
+  agentRows: { taskId: string; agentId: string; title: string; status: string; branch: string; pr: string | null; prNumber: number | null; prStatus: string | null }[],
   depRows: { taskId: string; dependsOnTaskId: string }[],
   refineAgentMap: Map<string, string>,
   repoMap: Map<string, string>,
@@ -74,7 +79,32 @@ function buildTaskTree(
   const agentsByTask = new Map<string, TaskAgentOut[]>()
   for (const a of agentRows) {
     const list = agentsByTask.get(a.taskId) ?? []
-    list.push({ agentId: a.agentId, agentTitle: a.title, agentStatus: a.status as TaskAgentOut["agentStatus"], agentBranch: a.branch })
+    let prMerged = false
+    let prDraft = false
+    let ciStatus: TaskAgentOut["ciStatus"] = null
+    if (a.prStatus) {
+      try {
+        const ps = JSON.parse(a.prStatus)
+        prMerged = !!ps.merged
+        prDraft = !!ps.draft
+        if (ps.checks && ps.checks.length > 0) {
+          const allDone = ps.checks.every((c: any) => c.status === "completed")
+          const anyFailed = ps.checks.some((c: any) => c.conclusion === "failure")
+          ciStatus = !allDone ? "pending" : anyFailed ? "failing" : "passing"
+        }
+      } catch {}
+    }
+    list.push({
+      agentId: a.agentId,
+      agentTitle: a.title,
+      agentStatus: a.status,
+      agentBranch: a.branch,
+      prNumber: a.prNumber,
+      prUrl: a.pr,
+      prMerged,
+      prDraft,
+      ciStatus,
+    })
     agentsByTask.set(a.taskId, list)
   }
 
@@ -134,6 +164,9 @@ async function loadAllTasks(): Promise<TaskItemOut[]> {
       title: agents.title,
       status: agents.status,
       branch: agents.branch,
+      pr: agents.pr,
+      prNumber: agents.prNumber,
+      prStatus: agents.prStatus,
     })
     .from(taskAgents)
     .innerJoin(agents, eq(taskAgents.agentId, agents.id))
@@ -365,7 +398,7 @@ export async function tasksRoutes(app: FastifyInstance) {
 
   // Create a task
   app.post("/api/tasks", async (req) => {
-    const { title, description, status, priority, assignee, projectKey, parentId, jiraKey } = req.body as {
+    const { title, description, status, priority, assignee, projectKey, parentId, jiraKey, repoId } = req.body as {
       title: string
       description?: string
       status?: string
@@ -374,6 +407,7 @@ export async function tasksRoutes(app: FastifyInstance) {
       projectKey?: string
       parentId?: string
       jiraKey?: string
+      repoId?: string
     }
 
     const now = new Date().toISOString()
@@ -395,6 +429,7 @@ export async function tasksRoutes(app: FastifyInstance) {
       priority: priority ?? null,
       assignee: assignee ?? null,
       projectKey: projectKey ?? null,
+      repoId: repoId ?? null,
       sortOrder: maxOrder + 1,
       createdAt: now,
       updatedAt: now,
@@ -414,6 +449,7 @@ export async function tasksRoutes(app: FastifyInstance) {
       assignee: string | null
       projectKey: string | null
       jiraKey: string | null
+      repoId: string | null
       sortOrder: number
     }>
 

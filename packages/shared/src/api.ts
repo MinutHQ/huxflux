@@ -328,9 +328,9 @@ export const api = {
 
   // Tasks
   getTasks: () => req<TaskItem[]>("/api/tasks"),
-  createTask: (body: { title: string; description?: string; status?: string; priority?: string; assignee?: string; projectKey?: string; parentId?: string; jiraKey?: string }) =>
+  createTask: (body: { title: string; description?: string; status?: string; priority?: string; assignee?: string; projectKey?: string; parentId?: string; jiraKey?: string; repoId?: string }) =>
     req<TaskItem[]>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
-  updateTask: (id: string, body: Partial<{ title: string; description: string | null; status: string; priority: string | null; assignee: string | null; sortOrder: number }>) =>
+  updateTask: (id: string, body: Partial<{ title: string; description: string | null; status: string; priority: string | null; assignee: string | null; repoId: string | null; sortOrder: number }>) =>
     req<TaskItem[]>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteTask: (id: string) =>
     req<TaskItem[]>(`/api/tasks/${id}`, { method: "DELETE" }),

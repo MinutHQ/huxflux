@@ -147,23 +147,7 @@ export async function messagesRoutes(app: FastifyInstance) {
       return { status: "queued" }
     }
 
-    // Auto-name the agent from the first user message using Haiku (fast fallback).
-    // The agent can override this later by emitting <huxflux:title> and <huxflux:branch> tags.
-    const existingMessages = db.select().from(messages).where(eq(messages.agentId, id)).all()
-    if (existingMessages.length === 0) {
-      generateTitle(content)
-        .catch(() => deriveTitle(content))
-        .then(async (autoTitle) => {
-          const now = new Date().toISOString()
-          db.update(agents).set({ title: autoTitle, updatedAt: now }).where(eq(agents.id, id)).run()
-          const updated = db.select().from(agents).where(eq(agents.id, id)).get()
-          if (updated) {
-            const { emit } = await import("../ws/handler.js")
-            emit(id, { type: "agent:updated", agent: updated as any })
-          }
-        })
-        .catch(() => { /* title generation is best-effort */ })
-    }
+    // Title and branch are set by the agent via <huxflux:title> and <huxflux:branch> tags.
 
     // Fire and forget — streaming happens over WebSocket; drain queue when done
     runClaude(content, { agentId: id, worktreePath: opts.worktreePath, model: opts.model, planMode: opts.planMode, delegateFrom: opts.delegateFrom, sender: opts.sender, provider: opts.provider, effort: opts.effort })

@@ -149,15 +149,17 @@ function checkMetaDirectives(state: StreamState, agentId: string): void {
             const git = simpleGit(worktreePath)
             git.revparse(["--abbrev-ref", "HEAD"]).then((current) => {
               const currentBranch = current.trim()
+              console.log(`[meta] branch rename: "${currentBranch}" → "${newBranch}" in ${worktreePath}`)
               if (currentBranch !== newBranch) {
                 git.raw(["branch", "-m", currentBranch, newBranch]).then(() => {
+                  console.log(`[meta] branch renamed successfully to "${newBranch}"`)
                   db.update(agentsTable).set({ branch: newBranch, updatedAt: new Date().toISOString() }).where(eq(agentsTable.id, agentId)).run()
                   const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
                   if (updated) broadcast({ type: "agent:updated", agent: updated as any })
-                }).catch(() => {})
+                }).catch((err) => console.error(`[meta] branch rename failed:`, err))
               }
-            }).catch(() => {})
-          }).catch(() => {})
+            }).catch((err) => console.error(`[meta] branch revparse failed:`, err))
+          }).catch((err) => console.error(`[meta] simple-git import failed:`, err))
         }
       }
     }
@@ -388,16 +390,35 @@ async function persistAssistantMessage(
   while ((branchTagMatch = branchTagRe.exec(state.fullContent)) !== null) {
     rawBranchName = branchTagMatch[1].trim()
   }
+  // Always strip branch tags from content
   if (rawBranchName) {
+    finalContent = finalContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
     state.fullContent = state.fullContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
+  }
+  if (rawBranchName && !state.firedBranch) {
     // Prepend repo branch prefix if configured
     const agentForBranch = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-    let finalBranch = rawBranchName
+    let finalBranch = rawBranchName.toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
     if (agentForBranch?.repoId) {
       const repoForBranch = db.select().from(reposTable).where(eq(reposTable.id, agentForBranch.repoId)).get()
       if (repoForBranch?.branchPrefix) {
         const prefix = `${repoForBranch.branchPrefix}/`
         if (!finalBranch.startsWith(prefix)) finalBranch = `${prefix}${finalBranch}`
+      }
+      // Actually rename the git branch (streaming handler may have been skipped)
+      if (repoForBranch) {
+        const wt = agentForBranch.noWorktree ? repoForBranch.path : path.join(repoForBranch.workspacesPath, agentForBranch.location)
+        try {
+          const { simpleGit } = await import("simple-git")
+          const git = simpleGit(wt)
+          const current = (await git.revparse(["--abbrev-ref", "HEAD"])).trim()
+          if (current !== finalBranch) {
+            await git.raw(["branch", "-m", current, finalBranch])
+            console.log(`[meta] message-end branch rename: "${current}" → "${finalBranch}"`)
+          }
+        } catch (err) {
+          console.error(`[meta] message-end branch rename failed:`, err)
+        }
       }
     }
     db.update(agentsTable)
@@ -406,6 +427,20 @@ async function persistAssistantMessage(
       .run()
     const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
     if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
+  }
+
+  // Strip huxflux tags from tool call precedingText so they don't show in chat
+  for (const tc of state.collectedToolCalls) {
+    if (tc.precedingText) {
+      tc.precedingText = tc.precedingText
+        .replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "")
+        .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
+        .trim()
+      // Update in DB too
+      if (tc.id) {
+        db.update(toolCallsTable).set({ precedingText: tc.precedingText || null }).where(eq(toolCallsTable.id, tc.id)).run()
+      }
+    }
   }
 
   // Parse and strip any <huxflux:title> tags
@@ -692,10 +727,10 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           ``,
           `To rename your git branch, emit this tag on its own line:`,
           `  <huxflux:branch>new-branch-name</huxflux:branch>`,
-          `The branch will be renamed automatically. Do this as soon as you understand the task, alongside the title rename.`,
+          `This executes "git branch -m" automatically. Do NOT run git branch -m yourself. The tag handles everything.`,
+          `Do this as soon as you understand the task, alongside the title rename.`,
           `Use kebab-case, be descriptive, max ~50 chars. Do NOT include any prefix — just the name.`,
           ...(repoRow?.branchPrefix ? [`The prefix "${repoRow.branchPrefix}/" will be added automatically. Example: emit "fix-csv-encoding" and the branch becomes "${repoRow.branchPrefix}/fix-csv-encoding".`] : [`Example: "fix-csv-import-encoding"`]),
-          `Also emit this tag whenever you manually rename the branch (git branch -m) so the UI stays in sync.`,
           ``,
           `Answer format:`,
           `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,

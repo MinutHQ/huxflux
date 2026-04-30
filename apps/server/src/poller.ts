@@ -2,7 +2,7 @@ import { eq, notInArray, isNull, and } from "drizzle-orm"
 import { simpleGit } from "simple-git"
 import * as path from "node:path"
 import { db } from "./db/index.js"
-import { agents, repos, messages } from "./db/schema.js"
+import { agents, repos, messages, taskAgents, tasks } from "./db/schema.js"
 import { getPRStatus, findPRForBranch, getPRDetails } from "./github/client.js"
 import { getRemoteUrl } from "./git/worktrees.js"
 import { broadcast, emit } from "./ws/handler.js"
@@ -73,6 +73,26 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
       const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
       if (updated) {
         broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
+      }
+
+      // Auto-complete linked task when PR is merged
+      if (newStatus === "done" && statusChanged) {
+        const links = db.select().from(taskAgents).where(eq(taskAgents.agentId, agent.id)).all()
+        for (const link of links) {
+          const task = db.select().from(tasks).where(eq(tasks.id, link.taskId)).get()
+          if (task && task.status !== "done") {
+            db.update(tasks).set({ status: "done", updatedAt: now }).where(eq(tasks.id, link.taskId)).run()
+            broadcast({ type: "task:updated", taskId: link.taskId })
+            console.log(`[poller] ${agent.id}: task ${link.taskId} auto-completed (PR merged)`)
+            // Jira transition if configured
+            try {
+              const jira = await import("./jira/client.js")
+              if (task.jiraKey) {
+                await jira.transitionIssue(task.jiraKey, "done").catch(() => {})
+              }
+            } catch {}
+          }
+        }
       }
     }
 
@@ -251,9 +271,20 @@ export function startPoller(intervalMs?: number) {
     } catch { /* Jira not configured or unreachable */ }
   }
 
+  // Clean up dead ports
+  function cleanPorts() {
+    try {
+      const { getAllPortsFromDB } = require("./git/processes.js") as { getAllPortsFromDB: () => unknown[] }
+      getAllPortsFromDB() // This checks and removes dead ports as a side effect
+    } catch {}
+  }
+
   // Run once shortly after startup, then on interval
   setTimeout(() => run().catch(console.error), 5_000)
   setInterval(() => run().catch(console.error), effectiveInterval)
+
+  // Port cleanup: every 30s
+  setInterval(cleanPorts, 30_000)
 
   // Jira sync: first run after 30s, then every 5 min
   setTimeout(() => syncJira(), 30_000)

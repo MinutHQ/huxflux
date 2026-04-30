@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   IconRefresh,
   IconExternalLink,
-  IconGitBranch,
   IconCircleDot,
   IconChecklist,
   IconArrowLeft,
@@ -32,11 +31,13 @@ import {
 } from "@tabler/icons-react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { api, useAgentEvents, useAgent } from "@huxflux/shared"
+import { api, useAgentEvents, useAgent, useRepos } from "@huxflux/shared"
 import type { TaskItem, TaskStatus } from "@huxflux/shared"
+import { useNavigate } from "@tanstack/react-router"
 import ReactMarkdown from "react-markdown"
 import { handleExternalClick } from "@/lib/platform"
 import { ChatView } from "@/components/ChatView"
+import { IconGitPullRequest, IconCheck, IconCircleX, IconPlayerPlay } from "@tabler/icons-react"
 
 type TaskColumn = TaskStatus
 
@@ -161,48 +162,56 @@ function TaskCard({ task, onClick, isDragOverlay }: { task: TaskItem; onClick?: 
       {/* Title */}
       <p className="text-[12px] font-medium text-foreground leading-snug line-clamp-2">{task.title}</p>
 
-      {/* Bottom row: subtasks + agents + comments */}
-      {(task.agents.length > 0 || task.comments.length > 0 || task.subtasks.length > 0) && (
-        <div className="flex items-center gap-2 mt-2">
-          {task.subtasks.length > 0 && (
-            <div className="flex items-center gap-1">
-              <IconChecklist size={11} className="text-muted-foreground/50" />
-              <span className="text-[10px] text-muted-foreground/60">
-                {task.subtasks.filter((s) => s.status === "done").length}/{task.subtasks.length}
-              </span>
-            </div>
-          )}
-          {task.agents.length > 0 && (
-            <div className="flex items-center gap-1">
-              <IconGitBranch size={11} className="text-muted-foreground/50" />
-              <span className="text-[10px] text-muted-foreground/60">{task.agents.length}</span>
-            </div>
-          )}
-          {task.comments.length > 0 && (
-            <div className="flex items-center gap-1">
-              <IconCircleDot size={11} className="text-muted-foreground/50" />
-              <span className="text-[10px] text-muted-foreground/60">{task.comments.length}</span>
-            </div>
-          )}
-          {/* Agent status dots */}
-          {task.agents.length > 0 && (
-            <div className="flex items-center gap-0.5 ml-auto">
-              {task.agents.map((a) => (
-                <div
-                  key={a.agentId}
-                  className={cn(
-                    "w-1.5 h-1.5 rounded-full",
-                    a.agentStatus === "done" ? "bg-emerald-500" :
-                    a.agentStatus === "in-review" ? "bg-blue-400" :
-                    a.agentStatus === "in-progress" ? "bg-amber-400" : "bg-muted-foreground/40"
-                  )}
-                  title={`${a.agentTitle}: ${a.agentStatus}`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Bottom row: subtasks + PR + CI + agents */}
+      <div className="flex items-center gap-2 mt-2">
+        {task.subtasks.length > 0 && (
+          <div className="flex items-center gap-1">
+            <IconChecklist size={11} className="text-muted-foreground/50" />
+            <span className="text-[10px] text-muted-foreground/60">
+              {task.subtasks.filter((s) => s.status === "done").length}/{task.subtasks.length}
+            </span>
+          </div>
+        )}
+        {task.comments.length > 0 && (
+          <div className="flex items-center gap-1">
+            <IconCircleDot size={11} className="text-muted-foreground/50" />
+            <span className="text-[10px] text-muted-foreground/60">{task.comments.length}</span>
+          </div>
+        )}
+        {/* PR status from first agent */}
+        {task.agents.length > 0 && task.agents[0].prNumber && (
+          <div className="flex items-center gap-1">
+            <IconGitPullRequest size={11} className={cn(
+              task.agents[0].prMerged ? "text-purple-400" :
+              task.agents[0].prDraft ? "text-muted-foreground/50" : "text-green-400"
+            )} />
+            <span className="text-[10px] text-muted-foreground/60">#{task.agents[0].prNumber}</span>
+          </div>
+        )}
+        {/* CI status */}
+        {task.agents.length > 0 && task.agents[0].ciStatus && (
+          task.agents[0].ciStatus === "passing" ? <IconCheck size={11} className="text-emerald-400" /> :
+          task.agents[0].ciStatus === "failing" ? <IconCircleX size={11} className="text-red-400" /> :
+          <IconLoader2 size={10} className="text-muted-foreground/40 animate-spin" />
+        )}
+        {/* Agent status dots */}
+        {task.agents.length > 0 && (
+          <div className="flex items-center gap-0.5 ml-auto">
+            {task.agents.map((a) => (
+              <div
+                key={a.agentId}
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  a.agentStatus === "done" ? "bg-emerald-500" :
+                  a.agentStatus === "in-review" ? "bg-blue-400" :
+                  a.agentStatus === "in-progress" ? "bg-amber-400" : "bg-muted-foreground/40"
+                )}
+                title={`${a.agentTitle}: ${a.agentStatus}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -389,6 +398,16 @@ function TaskFullView({ task, onBack, onUpdate, queryClient }: {
             onUpdate={handleFieldUpdate}
             onAddSubtask={handleAddSubtask}
             onSelectSubtask={(s) => setStackIds((prev) => [...prev, s.id])}
+            onStartWork={async () => {
+              try {
+                const result = await api.startTaskWork(current.id)
+                queryClient.setQueryData(["tasks"], result.tasks)
+                queryClient.invalidateQueries({ queryKey: ["agents"] })
+              } catch (err) {
+                const { toast } = await import("sonner")
+                toast.error((err as Error).message || "Failed to start work")
+              }
+            }}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -405,12 +424,15 @@ function TaskFullView({ task, onBack, onUpdate, queryClient }: {
 
 // ── Task Content Panel (left side) ───────────────────────────────────────────
 
-function TaskContentPanel({ item, onUpdate, onAddSubtask, onSelectSubtask }: {
+function TaskContentPanel({ item, onUpdate, onAddSubtask, onSelectSubtask, onStartWork }: {
   item: TaskItem
   onUpdate: (updates: Partial<TaskItem>) => void
   onAddSubtask: (parentId: string, title: string) => void
   onSelectSubtask: (s: TaskItem) => void
+  onStartWork?: () => void
 }) {
+  const navigate = useNavigate()
+  const { data: repos = [] } = useRepos()
   const columnDef = COLUMNS.find((c) => c.id === item.status)
   const jiraHost = useJiraHost()
   const [editingTitle, setEditingTitle] = useState(false)
@@ -542,7 +564,63 @@ function TaskContentPanel({ item, onUpdate, onAddSubtask, onSelectSubtask }: {
             </a>
           </div>
         )}
+        {/* Repo assignment */}
+        <div className="flex items-center gap-3 py-1">
+          <span className="text-muted-foreground/50 w-16 shrink-0">Repo</span>
+          <Select value={item.repoId ?? ""} onValueChange={(v) => onUpdate({ repoId: v || null } as any)}>
+            <SelectTrigger className="h-6 px-2 text-xs gap-1.5 border-0 bg-transparent hover:bg-accent/50 w-auto min-w-0 shadow-none">
+              <SelectValue placeholder="Select repo..." />
+            </SelectTrigger>
+            <SelectContent>
+              {repos.map((r) => (
+                <SelectItem key={r.id} value={r.id} className="text-xs">{r.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {/* Linked agents */}
+      {item.agents.length > 0 && (
+        <div className="space-y-1.5">
+          <h3 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Agents</h3>
+          <div className="space-y-1">
+            {item.agents.map((a) => (
+              <button
+                key={a.agentId}
+                onClick={() => navigate({ to: "/agent/$agentId", params: { agentId: a.agentId } })}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/50 bg-card hover:border-foreground/20 transition-colors text-left"
+              >
+                <div className={cn(
+                  "w-2 h-2 rounded-full shrink-0",
+                  a.agentStatus === "done" ? "bg-emerald-500" :
+                  a.agentStatus === "in-review" ? "bg-blue-400" :
+                  a.agentStatus === "in-progress" ? "bg-amber-400" : "bg-muted-foreground/40"
+                )} />
+                <span className="text-[12px] text-foreground truncate flex-1">{a.agentTitle}</span>
+                {a.prNumber && (
+                  <span className="text-[10px] text-muted-foreground/50 font-mono">#{a.prNumber}</span>
+                )}
+                {a.ciStatus === "passing" && <IconCheck size={11} className="text-emerald-400 shrink-0" />}
+                {a.ciStatus === "failing" && <IconCircleX size={11} className="text-red-400 shrink-0" />}
+                {a.ciStatus === "pending" && <IconLoader2 size={10} className="text-muted-foreground/40 animate-spin shrink-0" />}
+                <IconExternalLink size={10} className="text-muted-foreground/30 shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Start work button */}
+      {item.agents.length === 0 && item.repoId && onStartWork && (
+        <button
+          onClick={onStartWork}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors text-[12px] font-medium text-foreground"
+        >
+          <IconPlayerPlay size={13} className="text-emerald-400" />
+          Start work
+        </button>
+      )}
 
       {/* Description — click to edit */}
       <div className="space-y-1.5">
@@ -737,6 +815,8 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [addingTask, setAddingTask] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [newTaskRepoId, setNewTaskRepoId] = useState<string>("")
+  const { data: repos = [] } = useRepos()
   const [syncing, setSyncing] = useState(false)
   const [activeSprintOnly, setActiveSprintOnly] = useState(false)
 
@@ -878,7 +958,7 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   onKeyDown={async (e) => {
                     if (e.key === "Enter" && newTaskTitle.trim()) {
-                      await api.createTask({ title: newTaskTitle.trim() })
+                      await api.createTask({ title: newTaskTitle.trim(), repoId: newTaskRepoId || undefined })
                       queryClient.invalidateQueries({ queryKey: ["tasks"] })
                       setNewTaskTitle("")
                       setAddingTask(false)
@@ -888,10 +968,22 @@ export function TasksView({ initialTaskId }: { initialTaskId?: string } = {}) {
                   placeholder="Task title..."
                   className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
                 />
+                {repos.length > 0 && (
+                  <select
+                    value={newTaskRepoId}
+                    onChange={(e) => setNewTaskRepoId(e.target.value)}
+                    className="bg-transparent text-[11px] text-muted-foreground/60 outline-none border-0 cursor-pointer"
+                  >
+                    <option value="">No repo</option>
+                    {repos.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={async () => {
                     if (!newTaskTitle.trim()) return
-                    await api.createTask({ title: newTaskTitle.trim() })
+                    await api.createTask({ title: newTaskTitle.trim(), repoId: newTaskRepoId || undefined })
                     queryClient.invalidateQueries({ queryKey: ["tasks"] })
                     setNewTaskTitle("")
                     setAddingTask(false)

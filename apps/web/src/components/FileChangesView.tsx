@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from "react"
+import React, { useState, useRef, useMemo, useEffect } from "react"
 import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ScrollArea, Button, cn, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
@@ -657,6 +657,7 @@ function filterTree(entries: FileTreeEntry[], query: string): FileTreeEntry[] {
 
 export const StackedDiffView = React.memo(function StackedDiffView({
   agentId,
+  fileChanges,
   search,
   showFileList,
   onOpenFile,
@@ -665,7 +666,7 @@ export const StackedDiffView = React.memo(function StackedDiffView({
   onRemoveComment,
 }: {
   agentId: string
-  fileChanges?: FileChange[] // unused, kept for API compat
+  fileChanges?: FileChange[] // used for file count change detection
   search: string
   showFileList: boolean
   onOpenFile: (file: FileChange) => void
@@ -679,6 +680,7 @@ export const StackedDiffView = React.memo(function StackedDiffView({
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
   // Batch fetch all diffs in one request — this is the sole data source
+  const queryClient = useQueryClient()
   const { data: allDiffs, isLoading } = useQuery({
     queryKey: ["all-diffs", agentId],
     queryFn: () => api.getAllDiffs(agentId),
@@ -689,6 +691,16 @@ export const StackedDiffView = React.memo(function StackedDiffView({
     refetchOnReconnect: false,
     notifyOnChangeProps: ["data", "status"],
   })
+
+  // Refetch when the number of files changes (new files added/removed by agent)
+  const fileChangeCount = fileChanges?.length ?? 0
+  const prevCountRef = useRef(fileChangeCount)
+  useEffect(() => {
+    if (prevCountRef.current !== fileChangeCount && prevCountRef.current > 0) {
+      queryClient.invalidateQueries({ queryKey: ["all-diffs", agentId] })
+    }
+    prevCountRef.current = fileChangeCount
+  }, [fileChangeCount, agentId, queryClient])
 
   // Derive file list from batch query, not from fileChanges prop
   const files: FileChange[] = useMemo(() => {
@@ -850,6 +862,7 @@ export const StackedDiffView = React.memo(function StackedDiffView({
   if (prev.search !== next.search) return false
   if (prev.showFileList !== next.showFileList) return false
   if (prev.pendingComments?.length !== next.pendingComments?.length) return false
+  if ((prev.fileChanges?.length ?? 0) !== (next.fileChanges?.length ?? 0)) return false
   return true
 })
 

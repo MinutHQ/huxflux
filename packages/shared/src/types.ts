@@ -173,6 +173,7 @@ export interface Agent {
   model: string
   provider?: string
   taskId?: string | null  // set for refine agents — hidden from sidebar
+  threadParentId?: string | null  // set for thread agents spawned by another agent
   location: string
   unread?: number
   streaming?: boolean

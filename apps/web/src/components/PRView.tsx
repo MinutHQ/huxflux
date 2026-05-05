@@ -6,30 +6,15 @@ import { ScrollArea } from "@huxflux/ui"
 import { Button } from "@huxflux/ui"
 import { cn } from "@huxflux/ui"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
 import { Popover, PopoverTrigger, PopoverContent } from "@huxflux/ui"
 import type { PullRequest, ReviewComment, PRFile } from "@/data/mockReviews"
-import { FileDiff } from "@pierre/diffs/react"
-import { processFile } from "@pierre/diffs"
-import { mockReviewResults } from "@/data/mockReviews"
 import { api } from "@huxflux/shared"
 import { toast } from "sonner"
-import { playSound } from "@/lib/sounds"
-import { getSoundEnabled, getSoundPref, getDesktopNotif } from "@/lib/notificationPrefs"
 import type { PRThread, PRIssueComment } from "@huxflux/shared"
 import {
   IconSend,
-  IconPlus,
-  IconBrain,
-  IconPaperclip,
-  IconPlayerStop,
-  IconSparkles,
   IconEye,
   IconCheck,
-  IconAlertCircle,
-  IconBulb,
-  IconMessageCircle,
-  IconRefresh,
   IconFileCode,
   IconX,
   IconLoader2,
@@ -47,42 +32,12 @@ import {
 } from "@tabler/icons-react"
 import { PatchDiff } from "@pierre/diffs/react"
 import type { SelectedLineRange, DiffLineAnnotation } from "@pierre/diffs"
-import { useQuery } from "@tanstack/react-query"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MODELS = [
-  { id: "claude-opus-4-7",           label: "Opus 4.7" },
-  { id: "claude-opus-4-6",           label: "Opus 4.6" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-]
 
-const MODEL_ALIAS_TO_ID: Record<string, string> = {
-  "Opus 4.7": "claude-opus-4-7",
-  "Opus 4.6": "claude-opus-4-6",
-  "Sonnet 4.6": "claude-sonnet-4-6",
-  "Haiku 4.5": "claude-haiku-4-5-20251001",
-}
 
-function resolveModelId(alias: string | undefined): string {
-  if (!alias) return "claude-sonnet-4-6"
-  if (alias.startsWith("claude-")) return alias
-  return MODEL_ALIAS_TO_ID[alias] ?? "claude-sonnet-4-6"
-}
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ChatMessage {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  isReview?: boolean
-  verdict?: "approve" | "request_changes" | "comment"
-  comments?: ReviewComment[]
-  commitSha?: string | null
-  timestamp: string
-}
 
 interface PendingReviewComment {
   id: string
@@ -96,135 +51,6 @@ interface PendingReviewComment {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseReviewJson(text: string): { summary: string; verdict: string; comments: any[] } | null {
-  const matches = [...text.matchAll(/```json\s*\n([\s\S]+?)\n```/g)]
-  if (matches.length === 0) return null
-  try {
-    const data = JSON.parse(matches[matches.length - 1][1])
-    if (typeof data.summary !== "string" || !Array.isArray(data.comments)) return null
-    return data
-  } catch { return null }
-}
-
-function buildCodeContext(patch: string, targetLine: number): { lineNumber: number; content: string; highlighted?: boolean }[] {
-  if (!patch) return []
-  const lines = patch.split("\n")
-  let newLineNum = 0
-  const allLines: { lineNumber: number; content: string }[] = []
-  for (const line of lines) {
-    const m = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-    if (m) { newLineNum = parseInt(m[1], 10) - 1; continue }
-    if (line.startsWith("-")) continue
-    if (line.startsWith("+") || line.startsWith(" ")) {
-      newLineNum++
-      allLines.push({ lineNumber: newLineNum, content: line.slice(1) })
-    }
-  }
-  const idx = allLines.findIndex((l) => l.lineNumber === targetLine)
-  if (idx === -1) {
-    // Fallback: find the closest line if exact match fails
-    let closest = 0
-    let closestDist = Infinity
-    for (let i = 0; i < allLines.length; i++) {
-      const dist = Math.abs(allLines[i].lineNumber - targetLine)
-      if (dist < closestDist) { closest = i; closestDist = dist }
-    }
-    if (closestDist > 20) return [] // too far, no context
-    const start = Math.max(0, closest - 5)
-    const end = Math.min(allLines.length - 1, closest + 5)
-    return allLines.slice(start, end + 1).map((l) => ({ ...l, highlighted: l.lineNumber === targetLine }))
-  }
-  // Show more context: 6 lines before, 4 after
-  const start = Math.max(0, idx - 6)
-  const end = Math.min(allLines.length - 1, idx + 4)
-  return allLines.slice(start, end + 1).map((l) => ({ ...l, highlighted: l.lineNumber === targetLine }))
-}
-
-/** Extract ~8 lines around the target line from the patch, as a valid mini-hunk */
-function extractRelevantHunk(patch: string, targetLine?: number): string {
-  if (!targetLine || !patch) return patch
-  const patchLines = patch.split("\n")
-
-  // Walk the patch tracking new-file line numbers
-  let currentNewLine = 0
-  const mapped: { patchIdx: number; newLine: number | null; raw: string }[] = []
-
-  for (let i = 0; i < patchLines.length; i++) {
-    const line = patchLines[i]
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-    if (hunkMatch) {
-      currentNewLine = parseInt(hunkMatch[1], 10) - 1
-      mapped.push({ patchIdx: i, newLine: null, raw: line })
-      continue
-    }
-    if (line.startsWith("-")) {
-      mapped.push({ patchIdx: i, newLine: null, raw: line })
-    } else if (line.startsWith("+") || line.startsWith(" ")) {
-      currentNewLine++
-      mapped.push({ patchIdx: i, newLine: currentNewLine, raw: line })
-    } else {
-      mapped.push({ patchIdx: i, newLine: null, raw: line })
-    }
-  }
-
-  // Find the target line in our mapped array
-  const targetIdx = mapped.findIndex((m) => m.newLine === targetLine)
-  if (targetIdx === -1) return patch
-
-  // Take ~5 lines before and ~4 after the target (including deletion lines)
-  const BEFORE = 5
-  const AFTER = 4
-  const start = Math.max(0, targetIdx - BEFORE)
-  const end = Math.min(mapped.length - 1, targetIdx + AFTER)
-  const slice = mapped.slice(start, end + 1)
-
-  // Build a new hunk header based on the first context/add line
-  const firstWithLine = slice.find((s) => s.newLine !== null)
-  const newStart = firstWithLine?.newLine ?? targetLine
-  const addCount = slice.filter((s) => s.raw.startsWith("+") || s.raw.startsWith(" ")).length
-  const delCount = slice.filter((s) => s.raw.startsWith("-") || s.raw.startsWith(" ")).length
-  const hunkHeader = `@@ -${newStart},${delCount} +${newStart},${addCount} @@`
-
-  // Filter out any existing @@ lines in the slice
-  const bodyLines = slice.filter((s) => !s.raw.startsWith("@@")).map((s) => s.raw)
-
-  return [hunkHeader, ...bodyLines].join("\n")
-}
-
-/** Renders a file diff for a review comment using @pierre/diffs */
-function ReviewDiff({ patch, path, targetLine }: { patch: string; path?: string; targetLine?: number }) {
-  const fileDiff = useMemo(() => {
-    if (!patch) return null
-    try {
-      let relevantPatch = extractRelevantHunk(patch, targetLine)
-      const fileName = path?.split("/").pop() ?? "file"
-      // processFile needs diff headers — add them if missing
-      if (!relevantPatch.startsWith("diff ") && !relevantPatch.startsWith("---")) {
-        relevantPatch = `--- a/${fileName}\n+++ b/${fileName}\n${relevantPatch}`
-      }
-      return processFile(relevantPatch, { newFile: { name: fileName, contents: "" } })
-    } catch {
-      return null
-    }
-  }, [patch, path, targetLine])
-
-  if (!fileDiff) return null
-
-  return (
-    <FileDiff
-      fileDiff={fileDiff}
-      options={{
-        theme: "vesper",
-        diffStyle: "unified",
-        lineDiffType: "word",
-        diffIndicators: "bars",
-        disableFileHeader: true,
-        hunkSeparators: "simple",
-      }}
-    />
-  )
-}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -279,11 +105,6 @@ function MarkdownContent({ content }: { content: string }) {
 
 // ── Review comment card ───────────────────────────────────────────────────────
 
-const severityConfig = {
-  blocking:   { border: "border-red-500/25",    dot: "bg-red-400",              label: "Blocking",    labelColor: "text-red-400",              icon: IconAlertCircle,   iconColor: "text-red-400/70" },
-  suggestion: { border: "border-amber-500/25",  dot: "bg-amber-400",            label: "Suggestion",  labelColor: "text-amber-400",            icon: IconBulb,          iconColor: "text-amber-400/70" },
-  nit:        { border: "border-border",        dot: "bg-muted-foreground/30",  label: "Nit",         labelColor: "text-muted-foreground/50",  icon: IconMessageCircle, iconColor: "text-muted-foreground/40" },
-}
 
 const MERGE_LABELS: Record<string, string> = { squash: "Squash and merge", merge: "Merge commit", rebase: "Rebase and merge" }
 
@@ -365,382 +186,7 @@ function MergeButton({ repoId, prNumber }: { repoId: string; prNumber: number })
   )
 }
 
-function ReviewCommentCard({
-  comment,
-  onDismiss,
-  onAddToChat,
-  onQueue,
-  onDequeue,
-  isQueued,
-  onFileClick,
-}: {
-  comment: ReviewComment
-  onDismiss: (id: string) => void
-  onAddToChat: (id: string) => void
-  onQueue: (id: string) => void
-  onDequeue: (id: string) => void
-  isQueued: boolean
-  onFileClick?: (path: string, line?: number) => void
-}) {
-  const cfg = severityConfig[comment.severity]
-  const Icon = cfg.icon
-  const isDismissed = comment.status === "dismissed"
-  const isSent = comment.status === "sent"
-
-  return (
-    <div className={cn(
-      "rounded-lg border overflow-hidden transition-opacity",
-      cfg.border,
-      (isDismissed || isSent) && "opacity-50"
-    )}>
-      {/* File + severity header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-secondary/40">
-        <Icon size={11} className={cn("shrink-0", cfg.iconColor)} />
-        {comment.type === "inline" && comment.path ? (
-          <button
-            onClick={() => onFileClick?.(comment.path!, comment.line)}
-            className="text-[11px] font-mono text-muted-foreground truncate flex-1 text-left hover:text-foreground transition-colors"
-          >
-            {comment.path}
-            {comment.line && <span className="text-muted-foreground/40">:{comment.line}</span>}
-          </button>
-        ) : (
-          <span className="text-[11px] text-muted-foreground flex-1">General comment</span>
-        )}
-        <span className={cn("text-[10px] font-medium uppercase tracking-wide shrink-0", cfg.labelColor)}>
-          {cfg.label}
-        </span>
-      </div>
-
-      {/* Code context — rendered via @pierre/diffs */}
-      {comment.patch && (
-        <div className="border-b border-border/50 overflow-x-auto text-[12px]">
-          <ReviewDiff patch={comment.patch} path={comment.path} targetLine={comment.line} />
-        </div>
-      )}
-      {!comment.patch && comment.codeContext && comment.codeContext.length > 0 && (
-        <div className="bg-[#0d0d0d] border-b border-border/50 overflow-x-auto">
-          <table className="min-w-full text-[11px] font-mono">
-            <tbody>
-              {comment.codeContext.map((line) => (
-                <tr
-                  key={line.lineNumber}
-                  className={cn(
-                    line.highlighted
-                      ? "bg-amber-500/10 text-foreground"
-                      : "text-muted-foreground/50"
-                  )}
-                >
-                  <td className={cn(
-                    "select-none text-right pr-3 pl-3 py-0.5 w-10 shrink-0 border-r text-[10px] tabular-nums",
-                    line.highlighted ? "border-amber-500/30 text-amber-500/60" : "border-border/30 text-muted-foreground/25"
-                  )}>
-                    {line.lineNumber}
-                  </td>
-                  <td className={cn(
-                    "pl-3 pr-4 py-0.5 whitespace-pre",
-                    line.highlighted && "text-foreground/90"
-                  )}>
-                    {line.content}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Comment body + actions */}
-      <div className="px-3 py-2.5">
-        <div className="text-[12.5px] text-foreground/90 leading-relaxed mb-2.5">
-          <MarkdownContent content={comment.body} />
-        </div>
-
-        {isSent && (
-          <div className="flex items-center gap-1 text-[11px] text-emerald-400/70">
-            <IconCheck size={11} />
-            Submitted
-          </div>
-        )}
-        {!isDismissed && !isSent && (
-          <div className="flex items-center gap-1.5">
-            {isQueued ? (
-              <button
-                onClick={() => onDequeue(comment.id)}
-                className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-red-400 transition-colors"
-              >
-                <IconCheck size={11} />
-                Queued
-              </button>
-            ) : (
-              <button
-                onClick={() => onQueue(comment.id)}
-                className="text-[11px] font-medium text-muted-foreground/60 hover:text-foreground border border-border hover:border-foreground/30 rounded px-2 py-0.5 transition-colors"
-              >
-                Queue for review
-              </button>
-            )}
-            <span className="text-muted-foreground/20 mx-0.5">·</span>
-            <button
-              onClick={() => onAddToChat(comment.id)}
-              className="text-[11px] text-muted-foreground/40 hover:text-foreground transition-colors"
-            >
-              Add to chat
-            </button>
-            <span className="text-muted-foreground/20">·</span>
-            <button
-              onClick={() => onDismiss(comment.id)}
-              className="text-[11px] text-muted-foreground/40 hover:text-foreground transition-colors"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-        {isDismissed && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground/30">Dismissed</span>
-            <button
-              onClick={() => onDismiss(comment.id)} // revert by calling dismiss again (toggle)
-              className="text-[11px] text-muted-foreground/40 hover:text-foreground underline underline-offset-2 transition-colors"
-            >
-              Undo
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── Typing indicator ──────────────────────────────────────────────────────────
-
-const REVIEW_STEPS = [
-  { label: "Fetching diff", icon: "⇣" },
-  { label: "Building prompt", icon: "⊞" },
-  { label: "Starting review", icon: "⊕" },
-  { label: "Reviewing", icon: "◈" },
-  { label: "Analyzing code", icon: "⧉" },
-  { label: "Forming conclusions", icon: "⇄" },
-]
-
-function ReviewingView({ pr, currentStep }: { pr: PullRequest; currentStep: number }) {
-  const visibleSteps = currentStep + 1
-  const completedSteps = currentStep
-  const progress = Math.min(((completedSteps + 0.5) / REVIEW_STEPS.length) * 100, 92)
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i, x: ((i * 41 + 17) % 100), y: ((i * 59 + 11) % 100),
-    size: 1.5 + (i % 3), duration: 2.5 + (i % 4) * 1.1,
-    delay: (i % 8) * 0.35, opacity: 0.08 + (i % 4) * 0.06,
-  }))
-
-  return (
-    <div className="relative flex flex-col items-center justify-center flex-1 gap-5 px-8 overflow-hidden">
-      <style>{`
-        @keyframes rv-float { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-8px) rotate(2deg)} }
-        @keyframes rv-particle { 0%{transform:translateY(0) scale(1);opacity:var(--p-op)} 50%{transform:translateY(-20px) scale(1.3);opacity:calc(var(--p-op)*2)} 100%{transform:translateY(0) scale(1);opacity:var(--p-op)} }
-        @keyframes rv-fade-up { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes rv-ring { 0%{transform:scale(0.8);opacity:0.4} 100%{transform:scale(2.4);opacity:0} }
-        @keyframes rv-glow { 0%,100%{box-shadow:0 0 20px rgba(96,165,250,0.06)} 50%{box-shadow:0 0 30px rgba(96,165,250,0.18)} }
-        @keyframes rv-orbit { from{transform:rotate(0deg) translateX(34px) rotate(0deg)} to{transform:rotate(360deg) translateX(34px) rotate(-360deg)} }
-        @keyframes rv-orbit2 { from{transform:rotate(120deg) translateX(26px) rotate(-120deg)} to{transform:rotate(480deg) translateX(26px) rotate(-480deg)} }
-        @keyframes rv-scan { 0%{top:0%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:100%;opacity:0} }
-        @keyframes rv-assemble { 0%{opacity:0;transform:scale(0.3) rotate(-180deg)} 60%{opacity:1;transform:scale(1.1) rotate(8deg)} 100%{opacity:1;transform:scale(1) rotate(0deg)} }
-        @keyframes rv-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes rv-step-in { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes rv-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes rv-check { from{stroke-dashoffset:16} to{stroke-dashoffset:0} }
-        @keyframes rv-progress { from{width:0%} to{width:var(--rv-progress)} }
-      `}</style>
-      {particles.map((p) => (
-        <div key={p.id} className="absolute rounded-full pointer-events-none" style={{
-          left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size,
-          backgroundColor: p.id % 3 === 0 ? "rgb(96,165,250)" : p.id % 3 === 1 ? "rgb(167,139,250)" : "rgb(52,211,153)",
-          ["--p-op" as string]: p.opacity, opacity: p.opacity,
-          animation: `rv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
-        }} />
-      ))}
-      <div className="relative z-10" style={{ animation: "rv-float 3.5s ease-in-out infinite" }}>
-        <div className="absolute inset-0 rounded-2xl border-2 border-blue-400/20" style={{ animation: "rv-ring 2.5s ease-out infinite" }} />
-        <div className="absolute inset-0 rounded-2xl border-2 border-violet-400/15" style={{ animation: "rv-ring 2.5s ease-out 0.9s infinite" }} />
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div style={{ animation: "rv-orbit 4s linear infinite" }}>
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-400/60" />
-          </div>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div style={{ animation: "rv-orbit2 5.5s linear infinite" }}>
-            <div className="w-1 h-1 rounded-full bg-violet-400/50" />
-          </div>
-        </div>
-        <div className="w-16 h-16 rounded-2xl bg-card border border-blue-400/20 flex items-center justify-center relative overflow-hidden" style={{ animation: "rv-glow 2.5s ease-in-out infinite" }}>
-          <div className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400/40 to-transparent pointer-events-none" style={{ animation: "rv-scan 2s ease-in-out infinite" }} />
-          <div style={{ animation: "rv-assemble 0.8s ease-out both" }}>
-            <IconEye size={28} className="text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.6)]" />
-          </div>
-        </div>
-      </div>
-      <div className="text-center z-10" style={{ animation: "rv-fade-up 0.6s ease-out 0.2s both" }}>
-        <p className="text-sm font-semibold bg-clip-text text-transparent" style={{
-          backgroundImage: "linear-gradient(90deg, var(--foreground) 0%, var(--foreground) 30%, rgba(96,165,250,0.9) 50%, var(--foreground) 70%, var(--foreground) 100%)",
-          backgroundSize: "200% 100%",
-          animation: "rv-shimmer 3s ease-in-out infinite",
-          WebkitBackgroundClip: "text",
-        }}>
-          {pr.title}
-        </p>
-        <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">{pr.branch || pr.repo}</p>
-      </div>
-      <div className="w-full max-w-xs z-10 rounded-xl overflow-hidden border border-border/60 bg-card/80 backdrop-blur-sm" style={{ animation: "rv-fade-up 0.6s ease-out 0.5s both" }}>
-        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-secondary/40">
-          <div className="w-2 h-2 rounded-full bg-red-400/40" />
-          <div className="w-2 h-2 rounded-full bg-yellow-400/40" />
-          <div className="w-2 h-2 rounded-full bg-green-400/40" />
-          <span className="text-[9px] text-muted-foreground/40 font-mono ml-1.5">{pr.repo}</span>
-        </div>
-        <div className="px-3 py-2.5 space-y-1.5">
-          {REVIEW_STEPS.slice(0, visibleSteps).map((step, i) => {
-            const isDone = i < completedSteps
-            const isCurrent = i === visibleSteps - 1 && !isDone
-            return (
-              <div key={i} className="flex items-center gap-2 text-[11px] font-mono" style={{ animation: "rv-step-in 0.3s ease-out both" }}>
-                <span className="text-muted-foreground/40 shrink-0">{step.icon}</span>
-                <span className={cn("flex-1 transition-colors duration-300",
-                  isDone ? "text-muted-foreground/40" : isCurrent ? "text-blue-400/90" : "text-foreground/70"
-                )}>{step.label}</span>
-                {isDone ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-emerald-400">
-                    <path d="M3 6.5L5 8.5L9 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="16" style={{ animation: "rv-check 0.3s ease-out both" }} />
-                  </svg>
-                ) : isCurrent ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-blue-400" style={{ animation: "rv-spin 1s linear infinite" }}>
-                    <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 15" strokeLinecap="round" />
-                  </svg>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-        <div className="h-1 bg-secondary/60">
-          <div className="h-full bg-gradient-to-r from-blue-500/70 to-violet-500/70 transition-all duration-700 ease-out rounded-full"
-            style={{ ["--rv-progress" as string]: `${progress}%`, width: `${progress}%` }} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PRLoadingView({ pr }: { pr: PullRequest }) {
-  const particles = Array.from({ length: 16 }, (_, i) => ({
-    id: i, x: ((i * 41 + 17) % 100), y: ((i * 59 + 11) % 100),
-    size: 1 + (i % 3) * 0.5, duration: 3 + (i % 4) * 1.2,
-    delay: (i % 7) * 0.4, opacity: 0.05 + (i % 3) * 0.04,
-  }))
-  return (
-    <div className="relative flex flex-col items-center justify-center flex-1 gap-5 px-8 overflow-hidden">
-      <style>{`
-        @keyframes prl-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-        @keyframes prl-particle { 0%,100%{transform:translateY(0) scale(1);opacity:var(--p-op)} 50%{transform:translateY(-16px) scale(1.2);opacity:calc(var(--p-op)*1.8)} }
-        @keyframes prl-fade-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes prl-glow { 0%,100%{box-shadow:0 0 16px rgba(96,165,250,0.05)} 50%{box-shadow:0 0 24px rgba(96,165,250,0.14)} }
-        @keyframes prl-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes prl-shimmer { 0%{opacity:0.4} 50%{opacity:0.8} 100%{opacity:0.4} }
-      `}</style>
-      {particles.map((p) => (
-        <div key={p.id} className="absolute rounded-full pointer-events-none" style={{
-          left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size,
-          backgroundColor: p.id % 3 === 0 ? "rgb(96,165,250)" : p.id % 3 === 1 ? "rgb(167,139,250)" : "rgb(52,211,153)",
-          ["--p-op" as string]: p.opacity, opacity: p.opacity,
-          animation: `prl-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
-        }} />
-      ))}
-      <div className="relative z-10" style={{ animation: "prl-float 3.5s ease-in-out infinite" }}>
-        <div className="w-16 h-16 rounded-2xl bg-card border border-blue-400/15 flex items-center justify-center relative overflow-hidden" style={{ animation: "prl-glow 2.5s ease-in-out infinite" }}>
-          <svg width="28" height="28" viewBox="0 0 28 28" className="text-blue-400/70" style={{ animation: "prl-spin 2s linear infinite" }}>
-            <circle cx="14" cy="14" r="10" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 42" strokeLinecap="round" />
-          </svg>
-        </div>
-      </div>
-      <div className="text-center z-10" style={{ animation: "prl-fade-up 0.5s ease-out 0.1s both" }}>
-        <p className="text-sm font-medium text-foreground/70" style={{ animation: "prl-shimmer 2s ease-in-out infinite" }}>{pr.title}</p>
-        <p className="text-[11px] text-muted-foreground/40 mt-1 font-mono">{pr.branch || pr.repo}</p>
-      </div>
-    </div>
-  )
-}
-
-function SubmitClosingView({ pr }: { pr: PullRequest }) {
-  return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm" style={{ animation: "sc-fade-in 0.3s ease-out both" }}>
-      <style>{`
-        @keyframes sc-fade-in { from{opacity:0} to{opacity:1} }
-        @keyframes sc-scale-in { 0%{transform:scale(0) rotate(-90deg);opacity:0} 50%{transform:scale(1.15) rotate(8deg);opacity:1} 100%{transform:scale(1) rotate(0deg);opacity:1} }
-        @keyframes sc-check-draw { from{stroke-dashoffset:44} to{stroke-dashoffset:0} }
-        @keyframes sc-ring-out { 0%{transform:scale(0.8);opacity:0.5} 100%{transform:scale(2.5);opacity:0} }
-        @keyframes sc-float-up { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-20px)} }
-        @keyframes sc-shrink-out { 0%{transform:scale(1);opacity:1} 100%{transform:scale(0.9);opacity:0} }
-        @keyframes sc-particle-burst { 0%{transform:translate(0,0) scale(1);opacity:0.8} 100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0} }
-      `}</style>
-
-      <div className="relative" style={{ animation: "sc-shrink-out 0.5s ease-in 0.9s forwards" }}>
-        {/* Burst particles */}
-        {Array.from({ length: 12 }, (_, i) => {
-          const angle = (i / 12) * Math.PI * 2
-          const dist = 40 + (i % 3) * 15
-          return (
-            <div key={i} className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full" style={{
-              backgroundColor: i % 3 === 0 ? "rgb(52,211,153)" : i % 3 === 1 ? "rgb(96,165,250)" : "rgb(167,139,250)",
-              ["--dx" as string]: `${Math.cos(angle) * dist}px`,
-              ["--dy" as string]: `${Math.sin(angle) * dist}px`,
-              animation: `sc-particle-burst 0.7s ease-out ${0.2 + i * 0.03}s both`,
-            }} />
-          )
-        })}
-
-        {/* Ring pulse */}
-        <div className="absolute inset-[-12px] rounded-full border-2 border-emerald-400/30" style={{ animation: "sc-ring-out 0.8s ease-out 0.15s both" }} />
-        <div className="absolute inset-[-12px] rounded-full border-2 border-emerald-400/15" style={{ animation: "sc-ring-out 0.8s ease-out 0.4s both" }} />
-
-        {/* Checkmark circle */}
-        <div className="w-16 h-16 rounded-full bg-emerald-500/15 border-2 border-emerald-400/40 flex items-center justify-center" style={{ animation: "sc-scale-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}>
-          <svg width="32" height="32" viewBox="0 0 32 32" className="text-emerald-400">
-            <path d="M9 16.5L14 21.5L23 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="44" style={{ animation: "sc-check-draw 0.4s ease-out 0.35s both" }} />
-          </svg>
-        </div>
-      </div>
-
-      <div style={{ animation: "sc-float-up 0.4s ease-in 0.95s forwards" }}>
-        <p className="text-sm font-semibold text-emerald-400 mt-5" style={{ animation: "sc-scale-in 0.4s ease-out 0.3s both" }}>Review submitted</p>
-        <p className="text-[11px] text-muted-foreground/50 mt-1 text-center font-mono" style={{ animation: "sc-scale-in 0.4s ease-out 0.45s both" }}>{pr.title}</p>
-      </div>
-    </div>
-  )
-}
-
-function ReviewingInlineView({ currentStep }: { currentStep: number }) {
-  const step = REVIEW_STEPS[Math.min(currentStep, REVIEW_STEPS.length - 1)]
-  return (
-    <div className="flex items-start gap-3 px-4 py-3">
-      <div className="w-6 h-6 rounded-md bg-muted border border-blue-400/30 flex items-center justify-center shrink-0 mt-0.5" style={{ animation: "rv-glow 2.5s ease-in-out infinite" }}>
-        <style>{`@keyframes rv-spin-sm{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-        <svg width="12" height="12" viewBox="0 0 12 12" className="text-blue-400" style={{ animation: "rv-spin-sm 1s linear infinite" }}>
-          <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 15" strokeLinecap="round" />
-        </svg>
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono text-blue-400/80">{step?.icon}</span>
-          <span className="text-[12px] text-muted-foreground/60 font-mono">{step?.label ?? "Reviewing…"}</span>
-          <span className="text-[10px] text-muted-foreground/30 font-mono">{currentStep + 1}/{REVIEW_STEPS.length}</span>
-        </div>
-        <div className="mt-2 h-0.5 w-full max-w-[180px] bg-secondary/60 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-blue-500/70 to-violet-500/70 rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${Math.round(((currentStep + 0.5) / REVIEW_STEPS.length) * 100)}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── Thread card (Conversations tab) ──────────────────────────────────────────
 
@@ -1769,36 +1215,6 @@ function CIChecksPopover({ checks }: { checks: NonNullable<PullRequest["checks"]
 
 // ── Chat message component ────────────────────────────────────────────────────
 
-function ChatMessageBubble({
-  message,
-}: {
-  message: ChatMessage
-}) {
-  if (message.role === "user") {
-    return (
-      <div className="flex justify-end px-4 py-2">
-        <div className="max-w-[80%] bg-secondary border border-border rounded-2xl rounded-tr-sm px-3.5 py-2.5">
-          <p className="text-[13px] text-foreground leading-relaxed">{message.content}</p>
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className="flex items-start gap-3 px-4 py-3">
-      <div className="w-6 h-6 rounded-md bg-muted border border-border flex items-center justify-center shrink-0 mt-0.5">
-        <IconEye size={12} className="text-muted-foreground/60" />
-      </div>
-      <div className="flex-1 min-w-0 text-[13px] text-foreground">
-        {!message.isReview && (
-          message.content
-            ? <MarkdownContent content={message.content} />
-            : <IconLoader2 size={14} className="animate-spin text-muted-foreground/40 mt-1" />
-        )}
-      </div>
-    </div>
-  )
-}
-
 // ── PR file tree (Changes tab right panel) ───────────────────────────────────
 
 interface PRTreeEntry {
@@ -1894,29 +1310,8 @@ interface PRViewProps {
   onDismiss?: () => void
 }
 
-export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewProps) {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<"conversations" | "review" | "changes">("review")
-
-  // Review/chat state
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [reviewing, setReviewing] = useState(false)
-  const [hasReviewed, setHasReviewed] = useState(false)
-  const [input, setInput] = useState("")
-  const [isSending, setIsSending] = useState(false)
-  const [submitClosing, setSubmitClosing] = useState(false)
-  const { data: appSettings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings })
-  const [model, setModel] = useState("")
-  const [thinking, setThinking] = useState(false)
-  const [reviewStep, setReviewStep] = useState(0)
-  const [attachedThreads, setAttachedThreads] = useState<PRThread[]>([])
-
-  // Initialize model from settings
-  useEffect(() => {
-    if (appSettings?.defaultModel && !model) {
-      setModel(resolveModelId(appSettings.defaultModel))
-    }
-  }, [appSettings?.defaultModel])
+export function PRView({ pr }: PRViewProps) {
+  const [activeTab, setActiveTab] = useState<"conversations" | "changes">("conversations")
 
   // PR details
   const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({})
@@ -1930,29 +1325,12 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
   const [checks, setChecks] = useState<NonNullable<PullRequest["checks"]>>([])
   const [mergeableState, setMergeableState] = useState<string>("")
   const [prDetails, setPrDetails] = useState<{ title: string; body?: string; author: string; avatarUrl?: string; createdAt: string; url: string; headSha?: string } | null>(null)
-  const [reviewHeadSha, setReviewHeadSha] = useState<string | undefined>()
   const [loadingFiles, setLoadingFiles] = useState(!!pr.repoId)
   const [loadingDetails, setLoadingDetails] = useState(!!pr.repoId)
 
   // Changes tab state
-  const scrollToFilePathRef = useRef<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
 
-  const handleFileClick = useCallback((path: string, _line?: number) => {
-    setActiveTab("changes")
-    setExpandedFiles((prev) => {
-      const next = new Set(prev)
-      next.add(path)
-      return next
-    })
-    scrollToFilePathRef.current = path
-    // Scroll after React re-renders with the expanded file
-    setTimeout(() => {
-      const el = document.querySelector(`[data-file-path="${CSS.escape(path)}"]`)
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-      scrollToFilePathRef.current = null
-    }, 100)
-  }, [])
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">(
     () => (localStorage.getItem("huxflux:pr-diff-style") as "unified" | "split") ?? "unified"
   )
@@ -1996,76 +1374,6 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
     })
   }
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const initRef = useRef(false)
-  const isRerunRef = useRef(false)
-  const fileDiffsRef = useRef<Record<string, string>>({})
-
-  // ── Eager cache load ───────────────────────────────────────────────────────
-  // Load cached review immediately so comments appear while API calls are
-  // still in flight (e.g. after bulk review).
-  const eagerCacheLoaded = useRef(false)
-  useEffect(() => {
-    if (!pr.repoId || eagerCacheLoaded.current) return
-    const key = `huxflux:review:${pr.repoId}:${pr.number}`
-    const raw = localStorage.getItem(key)
-    if (!raw) return
-    try {
-      const data = JSON.parse(raw) as { reviews?: Array<{ content: string; verdict: ChatMessage["verdict"]; comments: ReviewComment[]; timestamp: string }> }
-      const reviews = data.reviews ?? (data as any).content ? [data] : []
-      if (!Array.isArray(reviews) || reviews.length === 0) return
-      const msgs: ChatMessage[] = (data.reviews ?? [data as any]).map((r: any, i: number) => ({
-        id: `review-cached-${pr.number}-${i}`,
-        role: "assistant" as const,
-        content: r.content,
-        isReview: true,
-        verdict: r.verdict,
-        comments: r.comments,
-        timestamp: r.timestamp,
-      }))
-      setMessages(msgs)
-      setHasReviewed(true)
-      eagerCacheLoaded.current = true
-    } catch { /* ignore */ }
-  }, [pr.repoId, pr.number])
-
-  // ── Review cache (localStorage, backwards compat) ──────────────────────────
-  const reviewCacheKey = pr.repoId ? `huxflux:review:${pr.repoId}:${pr.number}` : null
-
-  function loadCachedReviews(): ChatMessage[] {
-    if (!reviewCacheKey) return []
-    try {
-      const raw = localStorage.getItem(reviewCacheKey)
-      if (!raw) return []
-      const data = JSON.parse(raw) as { reviews?: Array<{ content: string; verdict: ChatMessage["verdict"]; comments: ReviewComment[]; timestamp: string }> }
-      if (!data.reviews || !Array.isArray(data.reviews)) {
-        const legacy = data as unknown as { content: string; verdict: ChatMessage["verdict"]; comments: ReviewComment[]; timestamp: string }
-        if (legacy.content) {
-          return [{ id: `review-cached-${pr.number}-0`, role: "assistant", content: legacy.content, isReview: true, verdict: legacy.verdict, comments: legacy.comments, timestamp: legacy.timestamp }]
-        }
-        return []
-      }
-      return data.reviews.map((r, i) => ({ id: `review-cached-${pr.number}-${i}`, role: "assistant" as const, content: r.content, isReview: true, verdict: r.verdict, comments: r.comments, timestamp: r.timestamp }))
-    } catch { return [] }
-  }
-
-  function saveReviewCache(msg: ChatMessage) {
-    if (!reviewCacheKey) return
-    try {
-      const raw = localStorage.getItem(reviewCacheKey)
-      let existing: Array<{ content: string; verdict: ChatMessage["verdict"]; comments: ReviewComment[]; timestamp: string }> = []
-      if (raw) {
-        try {
-          const data = JSON.parse(raw) as { reviews?: typeof existing }
-          if (data.reviews && Array.isArray(data.reviews)) existing = data.reviews
-        } catch { /* start fresh */ }
-      }
-      existing.push({ content: msg.content, verdict: msg.verdict, comments: msg.comments ?? [], timestamp: msg.timestamp })
-      localStorage.setItem(reviewCacheKey, JSON.stringify({ reviews: existing }))
-    } catch { /* storage full */ }
-  }
-
   // ── Load PR details ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!pr.repoId) return
@@ -2076,10 +1384,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         if (f.patch) map[f.path] = f.patch
         fileList.push({ path: f.path, additions: f.additions, deletions: f.deletions, status: f.status })
       }
-      fileDiffsRef.current = map
       setFileDiffs(map)
       setPrFiles(fileList)
-      // Expand unviewed files by default in changes tab
       const unviewedKey = `huxflux:pr-viewed:${pr.repoId}:${pr.number}`
       const viewedRaw = localStorage.getItem(unviewedKey)
       const viewed = viewedRaw ? new Set(JSON.parse(viewedRaw) as string[]) : new Set<string>()
@@ -2091,8 +1397,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
       if (details.baseBranch) setBaseBranch(details.baseBranch)
       if (details.body) setDescription(details.body)
       if (details.currentUser) setCurrentUser(details.currentUser)
-      if (details.reviewingCurrentStep != null) setReviewStep(details.reviewingCurrentStep)
-      setThreads(details.threads.filter((t) => t.comments.length > 0))
+      setThreads(details.threads.filter((t: any) => t.comments.length > 0))
       setIssueComments(details.issueComments ?? [])
       setChecks((details as any).checks ?? [])
       setMergeableState((details as any).mergeableState ?? "")
@@ -2105,417 +1410,19 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
         url: (details as any).url ?? pr.url ?? "",
         headSha: details.headSha,
       })
-
-      if (!initRef.current) {
-        initRef.current = true
-        // Try DB first, then localStorage cache
-        if (pr.repoId) {
-          api.getPRChatMessages(pr.repoId!, pr.number).then((dbMsgs) => {
-            if (dbMsgs.length > 0) {
-              // Track the head SHA of the latest review
-              const lastReviewMsg = [...dbMsgs].reverse().find((m) => m.isReview)
-              if (lastReviewMsg?.reviewHeadSha) setReviewHeadSha(lastReviewMsg.reviewHeadSha)
-              // Convert DB messages to ChatMessage format
-              const converted = dbMsgs.map((m): ChatMessage => {
-                if (m.isReview) {
-                  const reviewData = parseReviewJson(m.content)
-                  if (reviewData) {
-                    const summaryText = m.content.replace(/```json[\s\S]+?```\s*$/m, "").trim()
-                    const comments: ReviewComment[] = (reviewData.comments as any[]).map((c, i) => ({
-                      id: `db-ai-${i}-${m.id}`,
-                      type: (c.type === "inline" && c.path) ? "inline" : "general" as const,
-                      severity: (["blocking", "suggestion", "nit"].includes(c.severity) ? c.severity : "suggestion") as ReviewComment["severity"],
-                      path: c.path,
-                      line: c.line,
-                      patch: c.path ? (fileDiffsRef.current[c.path] ?? fileDiffs[c.path] ?? "") : undefined,
-                      codeContext: c.path && c.line ? buildCodeContext(fileDiffsRef.current[c.path] ?? fileDiffs[c.path] ?? "", c.line) : undefined,
-                      body: c.body ?? "",
-                      status: "pending" as const,
-                    }))
-                    return { id: m.id, role: "assistant", content: reviewData.summary || summaryText, isReview: true, verdict: (["approve", "request_changes", "comment"].includes(reviewData.verdict) ? reviewData.verdict : "comment") as ChatMessage["verdict"], comments, commitSha: m.commitSha, timestamp: m.createdAt }
-                  }
-                }
-                return { id: m.id, role: m.role, content: m.content, isReview: m.isReview, timestamp: m.createdAt }
-              })
-              // Only show the latest review round with actual comments
-              const lastReviewIdx = converted.findLastIndex((m) => m.isReview && m.comments && m.comments.length > 0)
-              const visible = lastReviewIdx >= 0
-                ? converted.slice(lastReviewIdx).filter((m) => !m.isReview || (m.comments && m.comments.length > 0))
-                : converted.filter((m) => !m.isReview || (m.comments && m.comments.length > 0))
-              setMessages(visible)
-              setHasReviewed(visible.some((m) => m.isReview))
-            } else {
-              // Fall back to localStorage cache
-              const cached = loadCachedReviews()
-              if (cached.length > 0) {
-                setMessages(cached)
-                setHasReviewed(true)
-              } else if (details.reviewingStartedAt) {
-                setReviewing(true)
-                pollForReviewCompletion()
-              } else if (!pr.unread) {
-                triggerReview()
-              }
-            }
-          }).catch(() => {
-            const cached = loadCachedReviews()
-            if (cached.length > 0) {
-              setMessages(cached)
-              setHasReviewed(true)
-            } else if (!pr.unread) {
-              triggerReview()
-            }
-          })
-        }
-      }
     }).catch(() => {}).finally(() => setLoadingDetails(false))
   }, [pr.repoId, pr.number])
 
-  useEffect(() => {
-    if (pr.repoId) return
-    if (initRef.current) return
-    initRef.current = true
-    const cached = loadCachedReviews()
-    if (cached.length > 0) {
-      setMessages(cached)
-      setHasReviewed(true)
-    } else if (!pr.unread) {
-      triggerReview()
-    }
-  }, [])
-
-  // Re-derive codeContext for all review comments when fileDiffs populates (race condition fix)
-  useEffect(() => {
-    if (Object.keys(fileDiffs).length === 0) return
-    setMessages((prev) => prev.map((msg) => {
-      if (!msg.isReview || !msg.comments) return msg
-      return {
-        ...msg,
-        comments: msg.comments.map((c) => ({
-          ...c,
-          patch: c.path ? (fileDiffs[c.path] ?? "") : undefined,
-          codeContext: c.path && c.line ? buildCodeContext(fileDiffs[c.path] ?? "", c.line) : c.codeContext,
-        })),
-      }
-    }))
-  }, [fileDiffs])
-
-  async function pollForReviewCompletion() {
-    const interval = setInterval(async () => {
-      if (!pr.repoId) { clearInterval(interval); return }
-      try {
-        const details = await api.getPRDetailsForRepo(pr.repoId, pr.number)
-        if (details.reviewingCurrentStep != null) setReviewStep(details.reviewingCurrentStep)
-        if (!details.reviewingStartedAt) {
-          clearInterval(interval)
-          const cached = loadCachedReviews()
-          if (cached.length > 0) { setMessages(cached); setHasReviewed(true) }
-          setReviewing(false)
-        }
-      } catch {
-        clearInterval(interval)
-        setReviewing(false)
-      }
-    }, 3000)
-  }
-
-  async function triggerReview() {
-    if (!pr.repoId) {
-      setReviewing(true)
-      setTimeout(() => {
-        const result = mockReviewResults[pr.id] ?? Object.values(mockReviewResults)[0]
-        const msg: ChatMessage = { id: `review-${Date.now()}`, role: "assistant", content: result.summary, isReview: true, comments: result.comments.map((c) => ({ ...c })), timestamp: new Date().toISOString() }
-        setMessages((prev) => [...prev, msg])
-        setReviewing(false)
-        setHasReviewed(true)
-      }, 2200)
-      return
-    }
-
-    setReviewing(true)
-    const msgId = `review-${Date.now()}`
-    const streamMsg: ChatMessage = { id: msgId, role: "assistant", content: "", isReview: false, timestamp: new Date().toISOString() }
-    setMessages((prev) => [...prev, streamMsg])
-
-    try {
-      // Collect existing review comments to avoid duplicates on re-run
-      const existingComments: Array<{ path: string; line: number; body: string }> = []
-      for (const m of messages) {
-        if (m.isReview && m.comments) {
-          for (const c of m.comments) {
-            if (c.path && c.line && c.status !== "dismissed") {
-              existingComments.push({ path: c.path, line: c.line, body: c.body })
-            }
-          }
-        }
-      }
-      for (const c of pendingComments) {
-        if (c.path && c.line) existingComments.push({ path: c.path, line: c.line, body: c.body })
-      }
-      const response = await api.streamPRReview(pr.repoId, pr.number, existingComments.length > 0 ? existingComments : undefined, model || undefined)
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({})) as { error?: string; debug?: string[] }
-        if (errBody.error === "not_configured") {
-          const hint = errBody.debug?.length ? `\n\nChecked:\n${errBody.debug.join("\n")}` : ""
-          throw new Error(`not_configured${hint}`)
-        }
-        throw new Error(errBody.error ?? `Server error ${response.status}`)
-      }
-      if (!response.body) throw new Error("No response body")
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ""
-      let done = false
-      let accumulatedContent = ""
-
-      while (!done) {
-        const chunk = await reader.read()
-        if (chunk.done) break
-        buf += decoder.decode(chunk.value, { stream: true })
-        const lines = buf.split("\n")
-        buf = lines.pop() ?? ""
-        for (const line of lines) {
-          if (line.startsWith(":")) continue
-          if (!line.startsWith("data: ")) continue
-          const data = line.slice(6)
-          if (data === "[DONE]") { done = true; break }
-          try {
-            const parsed = JSON.parse(data) as { text?: string; error?: string; step?: number }
-            if (parsed.error) throw new Error(parsed.error)
-            if (parsed.step != null) setReviewStep((prev) => Math.max(prev, parsed.step!))
-            if (parsed.text) {
-              accumulatedContent += parsed.text
-            }
-          } catch (parseErr) {
-            const msg = (parseErr as Error).message
-            if (!msg.startsWith("Unexpected") && !msg.startsWith("JSON")) throw parseErr
-          }
-        }
-      }
-
-      const reviewData = parseReviewJson(accumulatedContent)
-      if (reviewData) {
-        const summaryText = accumulatedContent.replace(/```json[\s\S]+?```\s*$/m, "").trim()
-        const comments: ReviewComment[] = (reviewData.comments as any[]).map((c, i) => ({
-          id: `ai-${i}`,
-          type: (c.type === "inline" && c.path) ? "inline" : "general" as const,
-          severity: (["blocking", "suggestion", "nit"].includes(c.severity) ? c.severity : "suggestion") as ReviewComment["severity"],
-          path: c.path,
-          line: c.line,
-          patch: c.path ? (fileDiffs[c.path] ?? "") : undefined,
-          codeContext: c.path && c.line ? buildCodeContext(fileDiffs[c.path] ?? "", c.line) : undefined,
-          body: c.body ?? "",
-          status: "pending" as const,
-        }))
-        const reviewMsg: Partial<ChatMessage> = {
-          content: reviewData.summary || summaryText,
-          isReview: true,
-          verdict: (["approve", "request_changes", "comment"].includes(reviewData.verdict) ? reviewData.verdict : "comment") as ChatMessage["verdict"],
-          comments,
-        }
-        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, ...reviewMsg } : m))
-        saveReviewCache({ id: msgId, role: "assistant", timestamp: new Date().toISOString(), ...reviewMsg } as ChatMessage)
-        // The review was just run against the current head, so it's up to date
-        if (prDetails?.headSha) setReviewHeadSha(prDetails.headSha)
-        const reviewDesc = reviewMsg.verdict === "approve" ? "AI suggests: Approve" : reviewMsg.verdict === "request_changes" ? "AI suggests: Request changes" : `${comments.length} comment${comments.length !== 1 ? "s" : ""}`
-        toast.success(`Review ready: ${pr.title}`, { description: reviewDesc })
-        if (getSoundEnabled()) playSound(getSoundPref())
-        if (getDesktopNotif() && typeof Notification !== "undefined" && Notification.permission === "granted") {
-          new Notification(`Review ready: ${pr.title}`, { body: reviewDesc })
-        }
-        onReviewDone?.()
-      } else if (accumulatedContent) {
-        // No structured review parsed — show raw text as fallback
-        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: accumulatedContent } : m))
-      }
-    } catch (err) {
-      const errMsg = (err as Error).message
-      const fallback = `Review failed: ${errMsg}`
-      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: fallback } : m))
-    } finally {
-      setReviewing(false)
-      setHasReviewed(true)
-      isRerunRef.current = false
-    }
-  }
-
-  function handleRerun() {
-    if (reviewing || isSending) return
-    // Don't clear history — just trigger a new review run
-    // Previous reviews stay visible as collapsed sections
-    isRerunRef.current = true
-    triggerReview()
-  }
-
-  async function handleSend() {
-    const text = input.trim()
-    if ((!text && attachedThreads.length === 0) || isSending || reviewing) return
-
-    let apiContent = text
-    if (attachedThreads.length > 0) {
-      const threadContext = attachedThreads.map((t) => {
-        const loc = t.path ? `${t.path}${t.line ? `:${t.line}` : ""}` : null
-        const body = t.comments.map((c) => `${c.author}: ${c.body.trim()}`).join("\n")
-        return loc ? `Thread on \`${loc}\`:\n${body}` : body
-      }).join("\n\n")
-      apiContent = `Review comments:\n\n${threadContext}${text ? `\n\n---\n\n${text}` : ""}`
-    }
-    const displayContent = text || attachedThreads.map((t) => {
-      const loc = t.path ? `${t.path.split("/").pop()}${t.line ? `:${t.line}` : ""}` : null
-      return loc ? `[${loc}]` : "[comment]"
-    }).join(", ")
-
-    const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: displayContent, timestamp: new Date().toISOString() }
-    const prevMessages = messages
-    setMessages((prev) => [...prev, userMsg])
-    setInput("")
-    setAttachedThreads([])
-    setIsSending(true)
-
-    if (!pr.repoId) {
-      setTimeout(() => {
-        setMessages((prev) => [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: "I can see the code in this branch. Let me look into that for you.", timestamp: new Date().toISOString() }])
-        setIsSending(false)
-      }, 800)
-      return
-    }
-
-    const msgId = `assistant-${Date.now()}`
-    setMessages((prev) => [...prev, { id: msgId, role: "assistant", content: "", timestamp: new Date().toISOString() }])
-
-    const apiMessages: Array<{ role: "user" | "assistant"; content: string }> = [
-      ...prevMessages.filter((m) => m.content).map((m) => ({ role: m.role, content: m.isReview ? `[Review summary]\n${m.content}` : m.content })),
-      { role: "user" as const, content: apiContent },
-    ]
-
-    try {
-      const response = await api.streamPRChat(pr.repoId, pr.number, apiMessages, model || undefined)
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as { error?: string }
-        throw new Error(err.error ?? `Server error ${response.status}`)
-      }
-      if (!response.body) throw new Error("No response body")
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ""
-      let done = false
-      while (!done) {
-        const chunk = await reader.read()
-        if (chunk.done) break
-        buf += decoder.decode(chunk.value, { stream: true })
-        const lines = buf.split("\n")
-        buf = lines.pop() ?? ""
-        for (const line of lines) {
-          if (line.startsWith(":")) continue
-          if (!line.startsWith("data: ")) continue
-          const data = line.slice(6)
-          if (data === "[DONE]") { done = true; break }
-          try {
-            const parsed = JSON.parse(data) as { text?: string; error?: string }
-            if (parsed.error) throw new Error(parsed.error)
-            if (parsed.text) setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, content: m.content + parsed.text } : m))
-          } catch (parseErr) {
-            const msg = (parseErr as Error).message
-            if (!msg.startsWith("Unexpected") && !msg.startsWith("JSON")) throw parseErr
-          }
-        }
-      }
-    } catch (err) {
-      setMessages((prev) => prev.filter((m) => m.id !== msgId))
-      toast.error((err as Error).message ?? "Failed to send message")
-    } finally {
-      setIsSending(false)
-    }
-  }
-
-  function updateCommentStatus(commentId: string, status: ReviewComment["status"]) {
-    setMessages((prev) => prev.map((m) =>
-      m.isReview && m.comments
-        ? { ...m, comments: m.comments.map((c) => c.id === commentId ? { ...c, status } : c) }
-        : m
-    ))
-  }
-
-  const messageCount = useRef(messages.length)
-  useEffect(() => {
-    // Only auto-scroll when new messages are added, not on status updates
-    if (messages.length > messageCount.current || reviewing || isSending) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
-    messageCount.current = messages.length
-  }, [messages.length, reviewing, isSending])
-
-  function handleInputChange(val: string) {
-    setInput(val)
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`
-    }
-  }
-
-  const canSend = (input.trim().length > 0 || attachedThreads.length > 0) && !isSending && !reviewing
-
-  function handleAttachToChat(thread: PRThread) {
-    setAttachedThreads((prev) => prev.some((t) => t.id === thread.id) ? prev : [...prev, thread])
-    setActiveTab("review")
-  }
-
-  function addCommentFromReview(comment: ReviewComment) {
-    const newPending: PendingReviewComment = {
-      id: `pending-${Date.now()}-${comment.id}`,
-      path: comment.path ?? "",
-      line: comment.line ?? 0,
-      body: comment.body,
-      source: "agentic",
-      codeContext: comment.codeContext,
-    }
-    savePendingComments((prev) => [...prev, newPending])
-    updateCommentStatus(comment.id, "queued")
-  }
-
-  function removeCommentFromReview(comment: ReviewComment) {
-    savePendingComments((prev) => prev.filter((c) => !(c.path === comment.path && c.line === comment.line && c.body === comment.body)))
-    updateCommentStatus(comment.id, "pending")
-  }
-
-  function addInlineComment(path: string, line: number, body: string, startLine?: number) {
-    const newPending: PendingReviewComment = {
-      id: `pending-inline-${Date.now()}`,
-      path,
-      line,
-      body,
-      source: "inline",
-      startLine,
-    }
-    savePendingComments((prev) => [...prev, newPending])
-  }
-
-  function handleSubmitReviewDone() {
-    savePendingComments([])
-    // Mark queued review comments as sent so they can't be re-queued
-    setMessages((prev) => prev.map((msg) => {
-      if (!msg.isReview || !msg.comments) return msg
-      return { ...msg, comments: msg.comments.map((c) => c.status === "queued" ? { ...c, status: "sent" as const } : c) }
-    }))
-    onUserReviewed?.()
-    // Trigger closing animation then dismiss
-    setSubmitClosing(true)
-    setTimeout(() => onDismiss?.(), 1400)
-  }
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   const title = prDetails?.title ?? pr.title
   const author = prDetails?.author ?? pr.author
   const avatarUrl = prDetails?.avatarUrl ?? pr.authorAvatar
+  const createdAt = prDetails?.createdAt ?? pr.requestedAt
   const prUrl = prDetails?.url ?? pr.url
-  const createdAt = prDetails?.createdAt ?? ""
-  const isReviewOutdated = !!(reviewHeadSha && prDetails?.headSha && reviewHeadSha !== prDetails.headSha)
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full relative">
-      {submitClosing && <SubmitClosingView pr={pr} />}
 
       {/* ── Header ── */}
       <div className="px-4 pt-3 pb-2 border-b border-border shrink-0">
@@ -2619,7 +1526,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                 pr={pr}
                 pendingComments={pendingComments}
                 onClose={() => setShowSubmitPopover(false)}
-                onSubmitted={handleSubmitReviewDone}
+                onSubmitted={() => {}}
               />
             </PopoverContent>
           </Popover>
@@ -2627,11 +1534,10 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
 
         {/* ── Tab bar ── */}
         <div className="flex items-center gap-1 mt-3">
-          {(["conversations", "review", "changes"] as const).map((tab) => {
-            const labels = { conversations: "Conversations", review: "Agentic review", changes: "Changes" }
+          {(["conversations", "changes"] as const).map((tab) => {
+            const labels = { conversations: "Conversations", changes: "Changes" }
             const counts: Record<string, number | undefined> = {
               conversations: (issueComments.length + threads.length) || undefined,
-              review: undefined,
               changes: prFiles.length || undefined,
             }
             return (
@@ -2675,242 +1581,8 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
           currentUser={currentUser}
           setIssueComments={setIssueComments}
           setThreads={setThreads}
-          handleAttachToChat={handleAttachToChat}
+          handleAttachToChat={() => {}}
         />
-      )}
-
-      {/* Agentic review tab */}
-      {activeTab === "review" && (
-        <div className="flex flex-col flex-1 min-h-0">
-          {/* Re-review banner */}
-          {pr.unread && !hasReviewed && (
-            <div className="mx-4 mt-3 shrink-0 flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary border border-border">
-              <IconRefresh size={13} className="text-muted-foreground/60 shrink-0" />
-              <span className="text-[12px] text-muted-foreground flex-1">
-                <span className="text-foreground font-medium">{author}</span> requested a re-review after your last comments.
-              </span>
-              <Button size="sm" className="h-6 text-[11px] px-2.5 gap-1 shrink-0" onClick={() => triggerReview()}>
-                <IconEye size={11} />
-                Re-review
-              </Button>
-            </div>
-          )}
-
-          {/* Loading / empty state */}
-          {messages.length === 0 && !reviewing && !pr.unread && loadingDetails && (
-            <PRLoadingView pr={pr} />
-          )}
-
-          {/* Review animation (first run only, not re-runs) */}
-          {reviewing && !isRerunRef.current && (
-            <ReviewingView pr={pr} currentStep={reviewStep} />
-          )}
-
-          {/* Messages */}
-          {!(reviewing && !isRerunRef.current) && (messages.length > 0 || isSending) && (
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-              <div className="py-3">
-                {isReviewOutdated && hasReviewed && (
-                  <div className="mx-4 mb-3 flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-[12px] text-yellow-400">
-                    <IconAlertTriangle size={14} className="shrink-0" />
-                    <span>New commits have been pushed since this review — results may be out of date.</span>
-                  </div>
-                )}
-                {messages.map((msg, msgIdx) => {
-                  if (msg.isReview) {
-                    // Find if this is the latest review (last isReview message)
-                    const isLatestReview = !messages.slice(msgIdx + 1).some((m) => m.isReview)
-                    const reviewTime = msg.timestamp ? new Date(msg.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""
-
-                    // Previous reviews are collapsed
-                    if (!isLatestReview) {
-                      return (
-                        <details key={msg.id} className="px-4 py-1">
-                          <summary className="text-[11px] text-muted-foreground/40 cursor-pointer hover:text-muted-foreground transition-colors py-1.5">
-                            Previous review {reviewTime && `· ${reviewTime}`} · {msg.comments?.length ?? 0} comments
-                            {msg.commitSha && prDetails?.headSha && msg.commitSha !== prDetails.headSha && (
-                              <span className="ml-1.5 text-amber-400/60">(outdated)</span>
-                            )}
-                            {msg.commitSha && <span className="ml-1.5 font-mono text-muted-foreground/20">{msg.commitSha.slice(0, 7)}</span>}
-                          </summary>
-                          <div className="py-2">
-                            {msg.content && (
-                              <div className={`p-3 rounded-lg bg-secondary/40 border border-border text-[13px] text-foreground/80${msg.comments && msg.comments.length > 0 ? " mb-4" : ""}`}>
-                                <MarkdownContent content={msg.content} />
-                              </div>
-                            )}
-                            {msg.comments && msg.comments.length > 0 && <div className="space-y-2">
-                              {msg.comments.map((c) => (
-                                <ReviewCommentCard
-                                  key={c.id}
-                                  comment={{ ...c, status: "dismissed" }}
-                                  onDismiss={() => {}}
-                                  onAddToChat={() => {}}
-                                  onQueue={() => {}}
-                                  onDequeue={() => {}}
-                                  isQueued={false}
-                                  onFileClick={handleFileClick}
-                                />
-                              ))}
-                            </div>}
-                          </div>
-                        </details>
-                      )
-                    }
-
-                    return (
-                      <div key={msg.id} className="px-4 py-3">
-                        {msg.content && (
-                          <div className={`p-3 rounded-lg bg-secondary/40 border border-border text-[13px] text-foreground/80${msg.comments && msg.comments.length > 0 ? " mb-4" : ""}`}>
-                            <MarkdownContent content={msg.content} />
-                          </div>
-                        )}
-                        {msg.comments && msg.comments.length > 0 && <div className="space-y-2">
-                          {msg.comments.map((c) => {
-                            const isQueued = pendingComments.some((p) => p.path === c.path && p.line === c.line && p.body === c.body)
-                            return (
-                              <ReviewCommentCard
-                                key={c.id}
-                                comment={c}
-                                onDismiss={(id) => updateCommentStatus(id, c.status === "dismissed" ? "pending" : "dismissed")}
-                                onAddToChat={(id) => {
-                                  const thread: PRThread = {
-                                    id: `comment-thread-${id}`,
-                                    isResolved: false,
-                                    isOutdated: false,
-                                    path: c.path,
-                                    line: c.line,
-                                    comments: [{
-                                      id,
-                                      author: "AI",
-                                      body: c.body,
-                                      createdAt: new Date().toISOString(),
-                                      url: "",
-                                      isReply: false,
-                                      path: c.path,
-                                      line: c.line,
-                                    }],
-                                  }
-                                  handleAttachToChat(thread)
-                                }}
-                                onQueue={() => addCommentFromReview(c)}
-                                onDequeue={() => removeCommentFromReview(c)}
-                                isQueued={isQueued}
-                                onFileClick={handleFileClick}
-                              />
-                            )
-                          })}
-                        </div>}
-                      </div>
-                    )
-                  }
-                  return <ChatMessageBubble key={msg.id} message={msg} />
-                })}
-                {reviewing && isRerunRef.current && (
-                  <ReviewingInlineView currentStep={reviewStep} />
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-          )}
-
-          {/* Input */}
-          <div className="p-4 shrink-0">
-            <div className="border border-border focus-within:border-ring bg-card rounded-xl transition-colors">
-              {attachedThreads.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-                  {attachedThreads.map((t) => {
-                    const loc = t.path
-                      ? `${t.path.split("/").pop()}${t.line ? `:${t.line}` : ""}`
-                      : t.comments[0]?.author ?? "comment"
-                    return (
-                      <div key={t.id} className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
-                        <IconMessageCircle2 size={12} className="text-muted-foreground/60 shrink-0" />
-                        <span className="font-medium text-foreground/80">{loc}</span>
-                        <button
-                          onClick={() => setAttachedThreads((prev) => prev.filter((x) => x.id !== t.id))}
-                          className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5"
-                        >
-                          <IconX size={11} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => handleInputChange(e.target.value)}
-                placeholder={messages.length === 0 ? "Ask about this PR or the code…" : "Add a follow up"}
-                rows={2}
-                disabled={reviewing}
-                className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() }
-                }}
-              />
-              <div className="flex items-center justify-between px-3 pb-3">
-                <div className="flex items-center gap-1">
-                  <Select value={model || "claude-sonnet-4-6"} onValueChange={setModel}>
-                    <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
-                      <IconSparkles size={13} className="text-muted-foreground shrink-0" />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MODELS.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <button
-                    onClick={() => setThinking(!thinking)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                      thinking ? "bg-accent text-foreground" : "hover:bg-accent text-muted-foreground/60"
-                    )}
-                  >
-                    <IconBrain size={13} />
-                    <span>Thinking</span>
-                  </button>
-                  <button
-                    onClick={handleRerun}
-                    disabled={reviewing}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-[12px]",
-                      reviewing ? "opacity-40 cursor-not-allowed" : "hover:bg-accent text-muted-foreground/60"
-                    )}
-                  >
-                    <IconRefresh size={13} />
-                    <span>{hasReviewed ? "Re-run" : "Review"}</span>
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                    <IconPaperclip size={13} />
-                  </Button>
-                  <Button variant="ghost" size="icon-xs" className="text-muted-foreground/60">
-                    <IconPlus size={13} />
-                  </Button>
-                  {reviewing || isSending ? (
-                    <Button size="icon-xs" variant="destructive" disabled>
-                      <IconPlayerStop size={13} />
-                    </Button>
-                  ) : (
-                    <Button
-                      size="icon-xs"
-                      variant={canSend ? "default" : "secondary"}
-                      disabled={!canSend}
-                      onClick={handleSend}
-                    >
-                      <IconSend size={13} />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Changes tab */}
@@ -2992,7 +1664,7 @@ export function PRView({ pr, onReviewDone, onUserReviewed, onDismiss }: PRViewPr
                         onThreadResolved={(threadId) =>
                           setThreads((prev) => prev.filter((th) => th.id !== threadId))
                         }
-                        onAddComment={addInlineComment}
+                        onAddComment={() => {}}
                         onRemoveComment={(id) => savePendingComments((prev) => prev.filter((c) => c.id !== id))}
                         onEditComment={(id, body) => savePendingComments((prev) => prev.map((c) => c.id === id ? { ...c, body } : c))}
                         pendingComments={pendingComments}

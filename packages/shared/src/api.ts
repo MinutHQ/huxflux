@@ -78,6 +78,7 @@ export interface HuxfluxSettings {
   prCommentMonitoring?: boolean
   ciMonitoring?: boolean
   pollingIntervalMs?: number
+  threadsEnabled?: boolean
 }
 
 export interface ProviderInfo {

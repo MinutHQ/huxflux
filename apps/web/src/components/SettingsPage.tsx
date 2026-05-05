@@ -1496,6 +1496,11 @@ function ExperimentalSettings() {
   const [refine, setRefine] = useState(() => getFlag("refine"))
   const [remoteEditor, setRemoteEditor] = useState(() => getFlag("remoteEditor"))
   const [tasks, setTasks] = useState(() => getFlag("tasks"))
+  const [threads, setThreads] = useState(() => getFlag("threads"))
+  const [threadsServer, setThreadsServer] = useState(false)
+  useEffect(() => {
+    api.getSettings().then((s) => setThreadsServer(s.threadsEnabled ?? false)).catch(() => {})
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -1534,6 +1539,20 @@ function ExperimentalSettings() {
           </div>
         </div>
         <Switch checked={tasks} onCheckedChange={(v) => { setFlag("tasks", v); setTasks(v) }} />
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Thread Agents</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Allow agents to spawn thread agents in other repos for cross-repo work (e.g. translations). Agents can create new workspaces via &lt;huxflux:spawn&gt; tags.
+          </div>
+        </div>
+        <Switch checked={threads && threadsServer} onCheckedChange={(v) => {
+          setFlag("threads", v)
+          setThreads(v)
+          api.updateSettings({ threadsEnabled: v })
+          setThreadsServer(v)
+        }} />
       </div>
     </div>
   )

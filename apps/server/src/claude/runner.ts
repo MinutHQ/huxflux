@@ -1,6 +1,7 @@
 import { spawn, execFileSync } from "node:child_process"
 import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
+import * as path from "node:path"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
 import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable, tasks as tasksTable, taskComments as taskCommentsTable, taskAgents as taskAgentsTable, taskDependencies as taskDepsTable } from "../db/schema.js"
@@ -8,6 +9,7 @@ import { emit, broadcast } from "../ws/handler.js"
 import { getFileChanges } from "../git/worktrees.js"
 import { eq, sql } from "drizzle-orm"
 import { config } from "../config.js"
+import { getSettings as loadSettings } from "../settings.js"
 import type { Message, ToolCall } from "../types.js"
 import { getProvider } from "../providers/index.js"
 import { buildConversationContext } from "../providers/context.js"
@@ -435,6 +437,7 @@ async function persistAssistantMessage(
       tc.precedingText = tc.precedingText
         .replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "")
         .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
+        .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
         .trim()
       // Update in DB too
       if (tc.id) {
@@ -488,6 +491,12 @@ async function persistAssistantMessage(
     finalContent = "Delegated task to linked workspace."
   }
 
+  // Parse and execute <huxflux:spawn> tags for cross-repo thread agents
+  const threadSettings = (await import("../settings.js")).getSettings()
+  if (threadSettings.threadsEnabled) {
+    await parseSpawnTags(state.fullContent, agentId)
+  }
+
   // Parse and execute <huxflux:task-*> tags for task system integration
   await parseTaskTags(finalContent, agentId)
   finalContent = finalContent
@@ -496,6 +505,7 @@ async function persistAssistantMessage(
     .replace(/<huxflux:task-create[^>]*>[\s\S]*?<\/huxflux:task-create>\n?/g, "")
     .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
     .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
+    .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
     .trim()
 
   await db.update(messagesTable)
@@ -731,6 +741,40 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           `Do this as soon as you understand the task, alongside the title rename.`,
           `Use kebab-case, be descriptive, max ~50 chars. Do NOT include any prefix — just the name.`,
           ...(repoRow?.branchPrefix ? [`The prefix "${repoRow.branchPrefix}/" will be added automatically. Example: emit "fix-csv-encoding" and the branch becomes "${repoRow.branchPrefix}/fix-csv-encoding".`] : [`Example: "fix-csv-import-encoding"`]),
+          ...((() => {
+            if (!loadSettings().threadsEnabled) return []
+            const lines: string[] = [
+              ``,
+              `To spawn a thread agent in another repo (for cross-repo work like translations, shared libraries, etc.):`,
+              `  <huxflux:spawn repo="repo-name">Full task description with context</huxflux:spawn>`,
+              `This creates a new workspace in that repo. Include enough context so the spawned agent understands WHY the changes are needed.`,
+              `The spawned agent can communicate back to you via delegate tags.`,
+            ]
+            // Include thread children context
+            const children = db.select().from(agentsTable)
+              .where(eq(agentsTable.threadParentId, agentId))
+              .all()
+              .filter((a: any) => !a.deletedAt)
+            if (children.length > 0) {
+              lines.push(``, `Your active thread agents:`)
+              for (const c of children) {
+                const childRepo = c.repoId ? db.select().from(reposTable).where(eq(reposTable.id, c.repoId)).get() : null
+                lines.push(`- "${c.title}" (${childRepo?.name ?? "unknown"}) — ID: ${c.id} — status: ${c.status}`)
+              }
+              lines.push(`To send a follow-up message to a thread agent:`, `  <huxflux:delegate agent="AGENT_ID">message</huxflux:delegate>`)
+            }
+            // Include parent context if this is a thread child
+            if (agentRow?.threadParentId) {
+              const parent = db.select().from(agentsTable).where(eq(agentsTable.id, agentRow.threadParentId)).get()
+              if (parent) {
+                const parentRepo = parent.repoId ? db.select().from(reposTable).where(eq(reposTable.id, parent.repoId)).get() : null
+                lines.push(``, `You are a thread agent spawned by "${parent.title}" (${parentRepo?.name ?? "unknown"}).`)
+                lines.push(`Parent agent ID: ${parent.id}`)
+                lines.push(`To send a message back to your parent:`, `  <huxflux:delegate agent="${parent.id}">message</huxflux:delegate>`)
+              }
+            }
+            return lines
+          })()),
           ``,
           `Answer format:`,
           `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -1019,6 +1063,109 @@ async function parseTaskTags(content: string, agentId: string) {
     if (!existing.some((e: { dependsOnTaskId: string }) => e.dependsOnTaskId === dependsOnTaskId)) {
       db.insert(taskDepsTable).values({ id: uuid(), taskId, dependsOnTaskId }).run()
       broadcast({ type: "task:updated", taskId })
+    }
+  }
+}
+
+// ── Spawn tags: create thread agents in other repos ─────────────────────────
+
+async function parseSpawnTags(content: string, parentAgentId: string): Promise<void> {
+  // <huxflux:spawn repo="repo-name">task description</huxflux:spawn>
+  const spawnRe = /<huxflux:spawn\s+repo="([^"]+)">([\s\S]*?)<\/huxflux:spawn>/g
+  const firedSpawns = new Set<string>()
+
+  const matches = [...content.matchAll(spawnRe)]
+  if (matches.length > 0) console.log(`[spawn] found ${matches.length} spawn tag(s) in content`)
+  else if (content.includes("huxflux:spawn")) console.log(`[spawn] content contains "huxflux:spawn" but regex didn't match. Snippet: ${content.slice(content.indexOf("huxflux:spawn") - 20, content.indexOf("huxflux:spawn") + 100)}`)
+
+  for (const match of matches) {
+    const [, repoName, taskDescription] = match
+    console.log(`[spawn] processing: repo="${repoName}", task="${taskDescription.slice(0, 60)}"`)
+    const key = `${repoName}:${taskDescription.slice(0, 50)}`
+    if (firedSpawns.has(key)) continue
+    firedSpawns.add(key)
+
+    try {
+      // Find the repo by name
+      const allRepos = db.select().from(reposTable).all()
+      const repo = allRepos.find((r) => r.name === repoName || r.name.endsWith(`/${repoName}`))
+      if (!repo) {
+        console.error(`[spawn] repo "${repoName}" not found`)
+        continue
+      }
+
+      const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
+      if (!parentAgent) continue
+
+      const settings = (await import("../settings.js")).getSettings()
+      const id = uuid()
+      const location = `thread-${id.slice(0, 8)}`
+      const cleanDesc = taskDescription.trim().replace(/^[#*_\->\s]+/, "").split("\n")[0].trim()
+      const slug = cleanDesc.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)
+      const branchPrefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
+      const branch = `${branchPrefix}thread-${slug}`
+      const now = new Date().toISOString()
+
+      // Create worktree
+      const worktreePath = path.join(repo.workspacesPath, location)
+      try {
+        const { createWorktree } = await import("../git/worktrees.js")
+        await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
+      } catch (err) {
+        console.error(`[spawn] failed to create worktree for ${repoName}:`, err)
+        continue
+      }
+
+      // Run setup script if configured
+      if (repo.setupScript) {
+        try {
+          const { spawn: spawnProc } = await import("node:child_process")
+          await new Promise<void>((resolve, reject) => {
+            const proc = spawnProc("sh", ["-c", repo.setupScript!], {
+              cwd: worktreePath,
+              stdio: "ignore",
+              env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: worktreePath, HUXFLUX_REPO: repo.path },
+            })
+            proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
+            proc.on("error", reject)
+          })
+        } catch { /* setup is best-effort */ }
+      }
+
+      // Insert agent
+      db.insert(agentsTable).values({
+        id,
+        repoId: repo.id,
+        title: taskDescription.trim().replace(/^[#*_\->\s]+/, "").split("\n")[0].trim().slice(0, 60),
+        status: "in-progress",
+        branch,
+        model: settings.defaultModel ?? "Sonnet 4.6",
+        location,
+        provider: settings.defaultProvider ?? "claude",
+        threadParentId: parentAgentId,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const created = db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+      if (created) broadcast({ type: "agent:updated", agent: created as any })
+
+      // Send the task as the first message, including parent context
+      const parentContext = `You were spawned by "${parentAgent.title}" (${parentAgent.branch}) to handle cross-repo work.\nParent agent ID: ${parentAgentId}\n\nTo send a message back to your parent:\n  <huxflux:delegate agent="${parentAgentId}">message</huxflux:delegate>\n\n---\n\n`
+      const body = JSON.stringify({
+        content: parentContext + taskDescription.trim(),
+        sender: parentAgent.title,
+        delegateFrom: parentAgentId,
+      })
+      fetch(`http://localhost:${config.boundPort}/api/agents/${id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
+        body,
+      }).catch((err) => console.error(`[spawn] failed to send initial message:`, err))
+
+      console.log(`[spawn] created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
+    } catch (err) {
+      console.error(`[spawn] failed:`, err)
     }
   }
 }

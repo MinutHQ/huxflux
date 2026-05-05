@@ -14,6 +14,7 @@ export interface HuxfluxSettings {
   prCommentMonitoring?: boolean  // Send new PR comments to agents (default: true)
   ciMonitoring?: boolean         // Notify agents of CI failures (default: true)
   pollingIntervalMs?: number     // How often to poll for PR/CI updates (default: 60000)
+  threadsEnabled?: boolean         // Enable thread agents (experimental)
   jiraBaseUrl?: string    // e.g. "https://mycompany.atlassian.net"
   jiraEmail?: string      // e.g. "user@company.com"
   jiraApiToken?: string   // API token from id.atlassian.com

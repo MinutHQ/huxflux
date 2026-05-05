@@ -428,6 +428,10 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE agents ADD COLUMN ci_monitoring INTEGER;
     `,
   },
+  {
+    version: 29,
+    sql: `ALTER TABLE agents ADD COLUMN thread_parent_id TEXT;`,
+  },
 ]
 
 export function runMigrations() {

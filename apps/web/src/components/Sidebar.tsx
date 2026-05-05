@@ -718,6 +718,7 @@ function StatusGroup({
   onLeave,
   onDelete,
   onArchiveAll,
+  threadChildrenByParent,
   agentPorts,
   repoNames,
   repoIcons,
@@ -733,6 +734,7 @@ function StatusGroup({
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
   repoIcons?: Record<string, string | undefined>
+  threadChildrenByParent?: Map<string, AgentSummary[]>
 }) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -768,19 +770,37 @@ function StatusGroup({
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent) => (
-            <AgentRow
-              key={agent.id}
-              agent={agent}
-              isSelected={selectedId === agent.id}
-              isStreaming={!!agent.streaming}
-              onClick={() => onSelect(agent.id)}
-              onHover={onHover}
-              onLeave={onLeave}
-              onDelete={onDelete}
-              port={agentPorts?.[agent.id]}
-              repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
-              repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
-            />
+            <div key={agent.id}>
+              <AgentRow
+                agent={agent}
+                isSelected={selectedId === agent.id}
+                isStreaming={!!agent.streaming}
+                onClick={() => onSelect(agent.id)}
+                onHover={onHover}
+                onLeave={onLeave}
+                onDelete={onDelete}
+                port={agentPorts?.[agent.id]}
+                repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
+                repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
+              />
+              {/* Thread children nested under parent */}
+              {threadChildrenByParent?.get(agent.id)?.map((child) => (
+                <div key={child.id} className="ml-4 border-l border-border/30 pl-1">
+                  <AgentRow
+                    agent={child}
+                    isSelected={selectedId === child.id}
+                    isStreaming={!!child.streaming}
+                    onClick={() => onSelect(child.id)}
+                    onHover={onHover}
+                    onLeave={onLeave}
+                    onDelete={onDelete}
+                    port={agentPorts?.[child.id]}
+                    repoName={child.repoId ? repoNames[child.repoId] : undefined}
+                    repoIcon={child.repoId ? repoIcons?.[child.repoId] : undefined}
+                  />
+                </div>
+              ))}
+            </div>
           ))}
           {onArchiveAll && agents.length > 0 && (
             <button
@@ -1611,8 +1631,24 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const unreadPrCount = prs.filter((p) => p.unread).length
 
   // Filter agents by repo
+  // Separate thread children from top-level agents
+  const threadChildrenByParent = useMemo(() => {
+    const map = new Map<string, AgentSummary[]>()
+    for (const a of agents) {
+      if (a.threadParentId) {
+        const list = map.get(a.threadParentId) ?? []
+        list.push(a)
+        map.set(a.threadParentId, list)
+      }
+    }
+    return map
+  }, [agents])
+
   const filteredAgents = useMemo(
-    () => repoFilter === "all" ? agents : agents.filter((a) => a.repoId === repoFilter),
+    () => {
+      const base = repoFilter === "all" ? agents : agents.filter((a) => a.repoId === repoFilter)
+      return base.filter((a) => !a.threadParentId) // thread children render under their parent
+    },
     [agents, repoFilter]
   )
 
@@ -1955,6 +1991,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                         agentPorts={agentPorts}
                         repoNames={repoNames}
                         repoIcons={repoIcons}
+                        threadChildrenByParent={threadChildrenByParent}
                       />
                       </div>
                     ))

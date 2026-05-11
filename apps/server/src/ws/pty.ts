@@ -53,6 +53,15 @@ export function killAgentTerminals(agentId: string): void {
   }
 }
 
+/** True if any PTY process is alive for this agent. */
+export function hasActivePty(agentId: string): boolean {
+  const prefix = agentId + ":"
+  for (const key of globalPtyMap.keys()) {
+    if (key.startsWith(prefix)) return true
+  }
+  return false
+}
+
 function attachClientHandlers(socket: WebSocket, entry: PtyEntry, key: string): void {
   socket.on("message", (raw: Buffer | string) => {
     try {

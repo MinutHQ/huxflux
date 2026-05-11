@@ -12,4 +12,10 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom", "@tanstack/react-query"],
   },
+  server: {
+    host: "0.0.0.0",
+  },
+  preview: {
+    host: "0.0.0.0",
+  },
 })

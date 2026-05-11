@@ -6,8 +6,11 @@ import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
 import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable, tasks as tasksTable, taskComments as taskCommentsTable, taskAgents as taskAgentsTable, taskDependencies as taskDepsTable } from "../db/schema.js"
 import { emit, broadcast } from "../ws/handler.js"
-import { getFileChanges } from "../git/worktrees.js"
-import { eq, sql } from "drizzle-orm"
+import { getFileChanges, moveWorktree } from "../git/worktrees.js"
+import { watchWorktree, unwatchWorktree } from "../git/watcher.js"
+import { hasActivePty } from "../ws/pty.js"
+import { existsSync } from "node:fs"
+import { eq, sql, and, isNull, ne } from "drizzle-orm"
 import { config } from "../config.js"
 import { getSettings as loadSettings } from "../settings.js"
 import type { Message, ToolCall } from "../types.js"
@@ -123,7 +126,7 @@ interface StreamState {
 
 function checkMetaDirectives(state: StreamState, agentId: string): void {
   // huxflux:title — agent sets its own title
-  const titleMatch = state.fullContent.match(/<huxflux:title>(.*?)<\/huxflux:title>/)
+  const titleMatch = state.fullContent.match(/<huxflux:title>([\s\S]*?)<\/huxflux:title>/)
   if (titleMatch && !state.firedTitle) {
     state.firedTitle = true
     const title = titleMatch[1].trim().slice(0, 60)
@@ -135,7 +138,7 @@ function checkMetaDirectives(state: StreamState, agentId: string): void {
   }
 
   // huxflux:branch — agent renames its branch (prefix is prepended automatically)
-  const branchMatch = state.fullContent.match(/<huxflux:branch>(.*?)<\/huxflux:branch>/)
+  const branchMatch = state.fullContent.match(/<huxflux:branch>([\s\S]*?)<\/huxflux:branch>/)
   if (branchMatch && !state.firedBranch) {
     state.firedBranch = true
     const rawName = branchMatch[1].trim().toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
@@ -429,6 +432,82 @@ async function persistAssistantMessage(
       .run()
     const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
     if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
+  }
+
+  // Rename the worktree directory to match the new branch slug, if it's safe to do so.
+  // isAgentRunning is already false here — finalize() drops the entry before calling us.
+  if (rawBranchName) {
+    const a = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    const r = a?.repoId ? db.select().from(reposTable).where(eq(reposTable.id, a.repoId)).get() : null
+    if (a && r && !a.noWorktree && !a.parentAgentId) {
+      // Any other non-deleted agent pointing at the same worktree path — children,
+      // grandchildren, or unrelated agents that ended up sharing the location.
+      const sharing = db.select({ id: agentsTable.id }).from(agentsTable)
+        .where(and(
+          eq(agentsTable.location, a.location),
+          eq(agentsTable.repoId, a.repoId!),
+          ne(agentsTable.id, agentId),
+          isNull(agentsTable.deletedAt),
+        ))
+        .all()
+      if (sharing.length > 0) {
+        console.log(`[meta] worktree rename skipped: ${sharing.length} other agent(s) share this worktree`)
+      } else if (hasActivePty(agentId)) {
+        console.log(`[meta] worktree rename skipped: PTY active for agent ${agentId}`)
+      } else {
+        // Derive the slug from rawBranchName (the value we renamed to) so it can't drift
+        // from a re-read of a.branch.
+        const prefix = r.branchPrefix ? `${r.branchPrefix}/` : ""
+        const sanitized = rawBranchName.toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
+        const stripped = sanitized.startsWith(prefix) ? sanitized.slice(prefix.length) : sanitized
+        const slug = stripped.replace(/\//g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
+        if (slug && !slug.includes("/") && slug !== a.location) {
+          const takenInDb = db.select({ id: agentsTable.id }).from(agentsTable)
+            .where(and(eq(agentsTable.location, slug), isNull(agentsTable.deletedAt)))
+            .get()
+          const newPath = path.join(r.workspacesPath, slug)
+          const takenOnDisk = existsSync(newPath)
+          if (takenInDb || takenOnDisk) {
+            console.log(`[meta] worktree rename skipped: target "${slug}" already in use`)
+          } else {
+            const oldPath = path.join(r.workspacesPath, a.location)
+            unwatchWorktree(agentId)
+            try {
+              await moveWorktree(r.path, oldPath, newPath)
+              db.update(agentsTable)
+                .set({ location: slug, updatedAt: new Date().toISOString() })
+                .where(eq(agentsTable.id, agentId))
+                .run()
+              watchWorktree(agentId, newPath, branchFrom)
+              worktreePath = newPath
+              const movedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+              if (movedAgent) broadcast({ type: "agent:updated", agent: movedAgent as any })
+              console.log(`[meta] worktree renamed: "${a.location}" → "${slug}"`)
+            } catch (err) {
+              console.error(`[meta] worktree rename failed:`, err)
+              // Reconcile after a partial failure: if the move physically completed
+              // but git or the DB write didn't, the dir is at newPath. Update the DB
+              // and watch newPath so we don't end up with a stranded agent.
+              if (existsSync(newPath) && !existsSync(oldPath)) {
+                db.update(agentsTable)
+                  .set({ location: slug, updatedAt: new Date().toISOString() })
+                  .where(eq(agentsTable.id, agentId))
+                  .run()
+                watchWorktree(agentId, newPath, branchFrom)
+                worktreePath = newPath
+                const recovered = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+                if (recovered) broadcast({ type: "agent:updated", agent: recovered as any })
+                console.log(`[meta] worktree rename reconciled at "${newPath}" after partial failure`)
+              } else if (existsSync(oldPath)) {
+                watchWorktree(agentId, oldPath, branchFrom)
+              } else {
+                console.error(`[meta] worktree rename left agent ${agentId} with no usable path (old=${oldPath}, new=${newPath})`)
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   // Strip huxflux tags from tool call precedingText so they don't show in chat
@@ -737,7 +816,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           ``,
           `To rename your git branch, emit this tag on its own line:`,
           `  <huxflux:branch>new-branch-name</huxflux:branch>`,
-          `This executes "git branch -m" automatically. Do NOT run git branch -m yourself. The tag handles everything.`,
+          `This executes "git branch -m" automatically and also relocates your worktree directory to match. Do NOT run git branch -m yourself. The tag handles everything.`,
           `Do this as soon as you understand the task, alongside the title rename.`,
           `Use kebab-case, be descriptive, max ~50 chars. Do NOT include any prefix — just the name.`,
           ...(repoRow?.branchPrefix ? [`The prefix "${repoRow.branchPrefix}/" will be added automatically. Example: emit "fix-csv-encoding" and the branch becomes "${repoRow.branchPrefix}/fix-csv-encoding".`] : [`Example: "fix-csv-import-encoding"`]),

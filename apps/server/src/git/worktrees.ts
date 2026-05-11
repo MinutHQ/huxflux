@@ -117,6 +117,12 @@ export async function removeWorktree(repoPath: string, worktreePath: string): Pr
   }
 }
 
+/** Relocate a worktree to a new path. Caller must ensure no process is using the old path. */
+export async function moveWorktree(repoPath: string, oldPath: string, newPath: string): Promise<void> {
+  const git = simpleGit(repoPath)
+  await git.raw(["worktree", "move", oldPath, newPath])
+}
+
 /** Resolve the merge-base commit between HEAD and the base branch. */
 async function resolveBase(worktreePath: string, branchFrom: string): Promise<string> {
   const git = simpleGit(worktreePath)

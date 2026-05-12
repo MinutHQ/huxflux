@@ -4,11 +4,12 @@ import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines, terminalTabs, repos } from "../db/schema.js"
 import { createWorktree, removeWorktree, getDiffSummary } from "../git/worktrees.js"
-import { onAgentStarted, claimFromPool } from "../git/pool.js"
+import { claimReserve } from "../git/pool.js"
 import { watchWorktree, unwatchWorktree, refreshWorktree } from "../git/watcher.js"
 import { broadcast, emit } from "../ws/handler.js"
 import { stopAgent } from "../claude/runner.js"
-import { generateTitle, deriveTitle } from "./messages.js"
+import { generateTitle, deriveTitle, titleToBranchSlug } from "../agents/title.js"
+import { applyBranchRename, isPlaceholderName } from "../agents/rename.js"
 import { killAgentTerminals } from "../ws/pty.js"
 import { parsePrStatus } from "../github/prStatus.js"
 import { getAvailableProviders } from "../providers/index.js"
@@ -239,8 +240,8 @@ export async function agentsRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: `Repo path does not exist on disk: ${repo.path}` })
         }
 
-        // Try to claim a pre-created worktree from the pool
-        const claimed = await claimFromPool(agentRepoId, branch, baseBranch ?? repo.branchFrom)
+        // Try to claim the hidden reserve worktree
+        const claimed = await claimReserve(agentRepoId, branch, baseBranch ?? repo.branchFrom)
         if (claimed) {
           agentLocation = claimed.location
           db.update(agents).set({ location: agentLocation }).where(eq(agents.id, id)).run()
@@ -496,45 +497,20 @@ export async function agentsRoutes(app: FastifyInstance) {
     return updated
   })
 
-  // POST /api/agents/:id/rename-branch — rename current git branch in-place (git branch -m)
+  // POST /api/agents/:id/rename-branch — rename current git branch and relocate worktree
   app.post<{ Params: { id: string }; Body: { branch: string } }>("/api/agents/:id/rename-branch", async (req, reply) => {
     const { id } = req.params
     const { branch } = req.body
     if (!branch) return reply.code(400).send({ error: "branch is required" })
 
-    const agent = db.select().from(agents).where(and(eq(agents.id, id), isNull(agents.deletedAt))).get()
-    if (!agent) return reply.code(404).send({ error: "Not found" })
-    if (!agent.repoId) return reply.code(400).send({ error: "Agent has no repo" })
-    if (agent.branch === branch) return agent
-
-    const conflict = db.select({ id: agents.id, title: agents.title })
-      .from(agents)
-      .where(and(eq(agents.repoId, agent.repoId), eq(agents.branch, branch), isNull(agents.deletedAt)))
-      .get()
-    if (conflict && conflict.id !== id) {
-      return reply.code(409).send({ error: `Branch "${branch}" is already used by "${conflict.title}"` })
+    const result = await applyBranchRename(id, branch)
+    if (!result.ok) {
+      const status = result.reason?.includes("already used") ? 409 : 400
+      return reply.code(status).send({ error: result.reason ?? "rename failed" })
     }
-
-    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
-    if (!repo) return reply.code(400).send({ error: "Repo not found" })
-
-    const worktreePath = path.join(repo.workspacesPath, agent.location)
-    if (!existsSync(worktreePath)) return reply.code(400).send({ error: "Worktree not found on disk" })
-
-    const wt = simpleGit(worktreePath)
-    try {
-      await wt.branch(["-m", agent.branch, branch])
-    } catch (err) {
-      return reply.code(500).send({ error: `git branch -m failed: ${String((err as Error).message ?? err)}` })
-    }
-
-    const now = new Date().toISOString()
-    db.update(agents).set({ branch, updatedAt: now }).where(eq(agents.id, id)).run()
 
     const updated = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!updated) return reply.code(500).send({ error: "Update failed" })
-
-    broadcast({ type: "agent:updated", agent: updated as any })
     return updated
   })
 
@@ -545,8 +521,8 @@ export async function agentsRoutes(app: FastifyInstance) {
     return { stopped: true }
   })
 
-  // POST /api/agents/:id/generate-title — regenerate title from first user message
-  app.post<{ Params: { id: string } }>("/api/agents/:id/generate-title", async (req, reply) => {
+  // POST /api/agents/:id/generate-title — regenerate title (and optionally branch) from first user message
+  app.post<{ Params: { id: string }; Body?: { branch?: boolean } }>("/api/agents/:id/generate-title", async (req, reply) => {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
@@ -560,6 +536,20 @@ export async function agentsRoutes(app: FastifyInstance) {
     const title = await generateTitle(firstUserMsg.content).catch(() => deriveTitle(firstUserMsg.content))
     const now = new Date().toISOString()
     db.update(agents).set({ title, updatedAt: now }).where(eq(agents.id, req.params.id)).run()
+
+    // Also rename the branch when the caller asked or when the current branch
+    // still has the random-bee placeholder suffix.
+    const repo = agent.repoId ? db.select().from(repos).where(eq(repos.id, agent.repoId)).get() : null
+    const prefix = repo?.branchPrefix ? `${repo.branchPrefix}/` : ""
+    const branchSuffix = agent.branch?.startsWith(prefix) ? agent.branch.slice(prefix.length) : (agent.branch ?? "")
+    const shouldRenameBranch = req.body?.branch === true || isPlaceholderName(branchSuffix)
+    if (shouldRenameBranch && agent.repoId && !agent.parentAgentId) {
+      const slug = titleToBranchSlug(title)
+      if (slug) {
+        const result = await applyBranchRename(req.params.id, slug)
+        if (!result.ok) app.log.warn(`Branch rename during generate-title failed: ${result.reason}`)
+      }
+    }
 
     const updated = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (updated) broadcast({ type: "agent:updated", agent: updated as any })

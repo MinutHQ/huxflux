@@ -261,6 +261,13 @@ function randomBeeName(): string {
   return `${adj}-${noun}-${suffix}`
 }
 
+// Matches the random-bee placeholder pattern (e.g. "dawnlit-carver-mu6rh").
+// Used to highlight agents that never set their own title.
+const BEE_NAME_RE = /^[a-z]+-[a-z]+-[a-z0-9]{5}$/
+function isPlaceholderTitle(title: string | null | undefined): boolean {
+  return !!title && BEE_NAME_RE.test(title.trim())
+}
+
 function NewAgentPopover({
   onClose,
   onSelect,
@@ -448,15 +455,29 @@ function StatusContextMenu({
     )
   }
 
-  async function handleGenerateTitle() {
+  async function handleGenerateTitle(opts: { renameBranch?: boolean } = {}) {
     onClose()
     try {
-      const updated = await api.generateTitle(agent.id)
+      const updated = await api.generateTitle(agent.id, opts.renameBranch ? { branch: true } : undefined)
       queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
-        old ? old.map((a) => a.id === agent.id ? { ...a, title: updated.title } : a) : old
+        old ? old.map((a) => a.id === agent.id ? { ...a, title: updated.title, branch: updated.branch, location: updated.location } : a) : old
       )
     } catch {
       toast.error("Failed to generate title")
+    }
+  }
+
+  async function handleRenameBranch() {
+    onClose()
+    const next = window.prompt("New branch name (kebab-case, no prefix):", agent.branch ?? "")
+    if (!next || !next.trim()) return
+    try {
+      const updated = await api.renameBranch(agent.id, next.trim())
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+        old ? old.map((a) => a.id === agent.id ? { ...a, branch: updated.branch, location: updated.location } : a) : old
+      )
+    } catch (err) {
+      toast.error(`Rename failed: ${(err as Error).message}`)
     }
   }
 
@@ -496,11 +517,20 @@ function StatusContextMenu({
         })}
         <div className="border-t border-border my-1" />
         <button
-          onClick={handleGenerateTitle}
+          onClick={() => handleGenerateTitle({ renameBranch: isPlaceholderTitle(agent.title) })}
           className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
         >
           <IconSparkles size={13} className="text-muted-foreground/60 shrink-0" />
-          <span className="flex-1 text-left">Generate title</span>
+          <span className="flex-1 text-left">
+            {isPlaceholderTitle(agent.title) ? "Generate name + branch" : "Generate title"}
+          </span>
+        </button>
+        <button
+          onClick={handleRenameBranch}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
+        >
+          <IconGitBranch size={13} className="text-muted-foreground/60 shrink-0" />
+          <span className="flex-1 text-left">Rename branch…</span>
         </button>
         <div className="border-t border-border my-1" />
         <button
@@ -660,8 +690,10 @@ const AgentRow = React.memo(function AgentRow({
               "text-xs flex-1 min-w-0 truncate leading-tight",
               isSelected && "font-semibold",
               isCancelled && "line-through",
-              !isSelected && !!agent.unread && "font-semibold text-foreground"
+              !isSelected && !!agent.unread && "font-semibold text-foreground",
+              isPlaceholderTitle(agent.title) && "italic text-muted-foreground/60",
             )}
+            title={isPlaceholderTitle(agent.title) ? "Agent didn't rename itself — right-click to fix" : undefined}
           >
             {agent.title}
           </span>
@@ -1754,6 +1786,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
 
   function handleArchiveAll(status: AgentStatus) {
     const targets = (grouped[status] ?? [])
+    console.log("[archive-all] clicked", { status, targets: targets.length, groupedKeys: Object.keys(grouped) })
     if (targets.length === 0) return
     const ids = targets.map((a) => a.id)
     // Optimistically remove all from sidebar

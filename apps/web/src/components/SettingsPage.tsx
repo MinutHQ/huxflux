@@ -713,7 +713,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         archiveScript,
         preferences: JSON.stringify(prefValues),
         icon: icon || undefined,
-        poolSize: poolSize || undefined,
+        poolSize,
       })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
       setShowSaved(true)

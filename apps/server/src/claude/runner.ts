@@ -1,16 +1,16 @@
 import { spawn, execFileSync } from "node:child_process"
 import { buildSandboxedCommand } from "../sandbox.js"
 import * as fs from "node:fs/promises"
+import * as os from "node:os"
 import * as path from "node:path"
 import { v4 as uuid } from "uuid"
 import { db } from "../db/index.js"
 import { messages as messagesTable, toolCalls as toolCallsTable, agents as agentsTable, repos as reposTable, fileChanges as fileChangesTable, terminalLines as terminalLinesTable, tasks as tasksTable, taskComments as taskCommentsTable, taskAgents as taskAgentsTable, taskDependencies as taskDepsTable } from "../db/schema.js"
 import { emit, broadcast } from "../ws/handler.js"
-import { getFileChanges, moveWorktree } from "../git/worktrees.js"
-import { watchWorktree, unwatchWorktree } from "../git/watcher.js"
-import { hasActivePty } from "../ws/pty.js"
-import { existsSync } from "node:fs"
-import { eq, sql, and, isNull, ne } from "drizzle-orm"
+import { getFileChanges } from "../git/worktrees.js"
+import { applyBranchRename, isPlaceholderName, reconcileWorktreeLocation } from "../agents/rename.js"
+import { generateTitle, deriveTitle, titleToBranchSlug } from "../agents/title.js"
+import { and, eq, sql } from "drizzle-orm"
 import { config } from "../config.js"
 import { getSettings as loadSettings } from "../settings.js"
 import type { Message, ToolCall } from "../types.js"
@@ -362,6 +362,71 @@ function handleNormalizedEvent(
   }
 }
 
+// ── Fallback rename ─────────────────────────────────────────────────────────
+
+/**
+ * If the agent still carries the random-bee placeholder title/branch after a
+ * turn, derive a title from the first user message (via Haiku, or a slug-cut
+ * fallback) and apply matching title + branch + worktree rename.
+ *
+ * Runs at most one Haiku call per turn; subsequent turns will retry if the
+ * previous attempt failed. No-ops once the placeholder is replaced.
+ */
+async function tryAutoRename(agentId: string, branchFrom: string): Promise<void> {
+  const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (!agent || agent.deletedAt) return
+  if (!agent.repoId) return
+  if (agent.parentAgentId) return // children share the parent's branch/worktree
+
+  const titleNeedsFix = isPlaceholderName(agent.title)
+  // Branch placeholder check: strip the repo prefix before comparing.
+  const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+  const prefix = repo?.branchPrefix ? `${repo.branchPrefix}/` : ""
+  const branchSuffix = agent.branch?.startsWith(prefix) ? agent.branch.slice(prefix.length) : (agent.branch ?? "")
+  const branchNeedsFix = isPlaceholderName(branchSuffix)
+
+  // Even when both name fields are real, the folder may still be a legacy
+  // pool-XXX / workspace-XXX from before the auto-rename existed. Reconcile
+  // it now so the worktree path catches up to the branch.
+  if (!titleNeedsFix && !branchNeedsFix) {
+    await reconcileWorktreeLocation(agentId, { branchFrom })
+    return
+  }
+
+  const firstUserMsg = db.select().from(messagesTable)
+    .where(eq(messagesTable.agentId, agentId))
+    .all()
+    .sort((a: { createdAt: string }, b: { createdAt: string }) => a.createdAt.localeCompare(b.createdAt))
+    .find((m: { role: string }) => m.role === "user")
+  if (!firstUserMsg?.content?.trim()) return
+
+  let synthesizedTitle: string
+  try {
+    synthesizedTitle = await generateTitle(firstUserMsg.content)
+  } catch {
+    synthesizedTitle = deriveTitle(firstUserMsg.content)
+  }
+  if (!synthesizedTitle) return
+
+  if (titleNeedsFix) {
+    db.update(agentsTable)
+      .set({ title: synthesizedTitle, updatedAt: new Date().toISOString() })
+      .where(eq(agentsTable.id, agentId))
+      .run()
+    const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+    console.log(`[auto-rename] title: "${agent.title}" → "${synthesizedTitle}"`)
+  }
+
+  if (branchNeedsFix) {
+    const slug = titleToBranchSlug(synthesizedTitle)
+    if (slug) {
+      const result = await applyBranchRename(agentId, slug, { branchFrom })
+      if (!result.ok) console.error(`[auto-rename] branch rename failed:`, result.reason)
+    }
+  }
+}
+
 // ── Message persistence ─────────────────────────────────────────────────────
 
 async function persistAssistantMessage(
@@ -400,115 +465,19 @@ async function persistAssistantMessage(
     finalContent = finalContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
     state.fullContent = state.fullContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
   }
-  if (rawBranchName && !state.firedBranch) {
-    // Prepend repo branch prefix if configured
-    const agentForBranch = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-    let finalBranch = rawBranchName.toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
-    if (agentForBranch?.repoId) {
-      const repoForBranch = db.select().from(reposTable).where(eq(reposTable.id, agentForBranch.repoId)).get()
-      if (repoForBranch?.branchPrefix) {
-        const prefix = `${repoForBranch.branchPrefix}/`
-        if (!finalBranch.startsWith(prefix)) finalBranch = `${prefix}${finalBranch}`
-      }
-      // Actually rename the git branch (streaming handler may have been skipped)
-      if (repoForBranch) {
-        const wt = agentForBranch.noWorktree ? repoForBranch.path : path.join(repoForBranch.workspacesPath, agentForBranch.location)
-        try {
-          const { simpleGit } = await import("simple-git")
-          const git = simpleGit(wt)
-          const current = (await git.revparse(["--abbrev-ref", "HEAD"])).trim()
-          if (current !== finalBranch) {
-            await git.raw(["branch", "-m", current, finalBranch])
-            console.log(`[meta] message-end branch rename: "${current}" → "${finalBranch}"`)
-          }
-        } catch (err) {
-          console.error(`[meta] message-end branch rename failed:`, err)
-        }
-      }
-    }
-    db.update(agentsTable)
-      .set({ branch: finalBranch, updatedAt: new Date().toISOString() })
-      .where(eq(agentsTable.id, agentId))
-      .run()
-    const updatedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-    if (updatedAgent) broadcast({ type: "agent:updated", agent: updatedAgent as any })
+  if (rawBranchName) {
+    // Safe to run regardless of state.firedBranch: applyBranchRename detects
+    // when the branch is already at the target and only does the worktree move.
+    const result = await applyBranchRename(agentId, rawBranchName, { branchFrom })
+    if (result.ok && result.worktreePath) worktreePath = result.worktreePath
+    else if (!result.ok) console.error(`[meta] message-end branch rename failed:`, result.reason)
   }
 
-  // Rename the worktree directory to match the new branch slug, if it's safe to do so.
-  // isAgentRunning is already false here — finalize() drops the entry before calling us.
-  if (rawBranchName) {
-    const a = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-    const r = a?.repoId ? db.select().from(reposTable).where(eq(reposTable.id, a.repoId)).get() : null
-    if (a && r && !a.noWorktree && !a.parentAgentId) {
-      // Any other non-deleted agent pointing at the same worktree path — children,
-      // grandchildren, or unrelated agents that ended up sharing the location.
-      const sharing = db.select({ id: agentsTable.id }).from(agentsTable)
-        .where(and(
-          eq(agentsTable.location, a.location),
-          eq(agentsTable.repoId, a.repoId!),
-          ne(agentsTable.id, agentId),
-          isNull(agentsTable.deletedAt),
-        ))
-        .all()
-      if (sharing.length > 0) {
-        console.log(`[meta] worktree rename skipped: ${sharing.length} other agent(s) share this worktree`)
-      } else if (hasActivePty(agentId)) {
-        console.log(`[meta] worktree rename skipped: PTY active for agent ${agentId}`)
-      } else {
-        // Derive the slug from rawBranchName (the value we renamed to) so it can't drift
-        // from a re-read of a.branch.
-        const prefix = r.branchPrefix ? `${r.branchPrefix}/` : ""
-        const sanitized = rawBranchName.toLowerCase().replace(/[^a-z0-9/._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80)
-        const stripped = sanitized.startsWith(prefix) ? sanitized.slice(prefix.length) : sanitized
-        const slug = stripped.replace(/\//g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
-        if (slug && !slug.includes("/") && slug !== a.location) {
-          const takenInDb = db.select({ id: agentsTable.id }).from(agentsTable)
-            .where(and(eq(agentsTable.location, slug), isNull(agentsTable.deletedAt)))
-            .get()
-          const newPath = path.join(r.workspacesPath, slug)
-          const takenOnDisk = existsSync(newPath)
-          if (takenInDb || takenOnDisk) {
-            console.log(`[meta] worktree rename skipped: target "${slug}" already in use`)
-          } else {
-            const oldPath = path.join(r.workspacesPath, a.location)
-            unwatchWorktree(agentId)
-            try {
-              await moveWorktree(r.path, oldPath, newPath)
-              db.update(agentsTable)
-                .set({ location: slug, updatedAt: new Date().toISOString() })
-                .where(eq(agentsTable.id, agentId))
-                .run()
-              watchWorktree(agentId, newPath, branchFrom)
-              worktreePath = newPath
-              const movedAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-              if (movedAgent) broadcast({ type: "agent:updated", agent: movedAgent as any })
-              console.log(`[meta] worktree renamed: "${a.location}" → "${slug}"`)
-            } catch (err) {
-              console.error(`[meta] worktree rename failed:`, err)
-              // Reconcile after a partial failure: if the move physically completed
-              // but git or the DB write didn't, the dir is at newPath. Update the DB
-              // and watch newPath so we don't end up with a stranded agent.
-              if (existsSync(newPath) && !existsSync(oldPath)) {
-                db.update(agentsTable)
-                  .set({ location: slug, updatedAt: new Date().toISOString() })
-                  .where(eq(agentsTable.id, agentId))
-                  .run()
-                watchWorktree(agentId, newPath, branchFrom)
-                worktreePath = newPath
-                const recovered = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-                if (recovered) broadcast({ type: "agent:updated", agent: recovered as any })
-                console.log(`[meta] worktree rename reconciled at "${newPath}" after partial failure`)
-              } else if (existsSync(oldPath)) {
-                watchWorktree(agentId, oldPath, branchFrom)
-              } else {
-                console.error(`[meta] worktree rename left agent ${agentId} with no usable path (old=${oldPath}, new=${newPath})`)
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  // Fallback: if the agent never emitted <huxflux:title> or <huxflux:branch>
+  // and is still carrying the random-bee placeholder, synthesize them from
+  // the first user message. This catches chat-style turns where the model
+  // ignored the directive entirely.
+  await tryAutoRename(agentId, branchFrom)
 
   // Strip huxflux tags from tool call precedingText so they don't show in chat
   for (const tc of state.collectedToolCalls) {
@@ -660,7 +629,9 @@ async function persistAssistantMessage(
 // ── Main runner ─────────────────────────────────────────────────────────────
 
 export async function runClaude(userContent: string, opts: RunnerOptions): Promise<void> {
-  const { agentId, worktreePath } = opts
+  const { agentId } = opts
+  // mutable — the pre-spawn auto-rename below may relocate the worktree
+  let worktreePath = opts.worktreePath
   const provider = getProvider(opts.provider ?? "claude")
   const model = provider.resolveModel(opts.model ?? "")
 
@@ -682,7 +653,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     .limit(1)
     .get()
   const isContinuation = firstMsg != null
-  const existingSessionId = db.select({ sessionId: agentsTable.sessionId })
+  let existingSessionId: string | null = db.select({ sessionId: agentsTable.sessionId })
     .from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.sessionId ?? null
 
 
@@ -763,6 +734,36 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
   const claudeBin = getClaudeBin()
 
+  // Pre-spawn auto-rename: if the agent still carries the random-bee placeholder
+  // and this is its first turn, derive a real title+branch+worktree BEFORE the
+  // model runs. Otherwise the model may push or create a PR under the placeholder
+  // name, leaving an orphaned remote ref that can't be easily renamed later.
+  // Bounded by a short timeout so a stuck Haiku call never blocks the run forever.
+  const liveAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (liveAgent && !liveAgent.parentAgentId && isPlaceholderName(liveAgent.title)) {
+    // Count user messages only — assistant skeletons can linger across crashes
+    // and would otherwise make a real first turn look like a continuation.
+    const userMsgCount = db.select({ id: messagesTable.id }).from(messagesTable)
+      .where(and(eq(messagesTable.agentId, agentId), eq(messagesTable.role, "user")))
+      .all()
+      .length
+    if (userMsgCount === 1) {
+      try {
+        await Promise.race([
+          tryAutoRename(agentId, agentRow?.baseBranch ?? repoRow?.branchFrom ?? "HEAD"),
+          new Promise<void>((res) => setTimeout(res, 15_000)),
+        ])
+        // Re-read the agent so the cwd/branch update below uses the new location.
+        const refreshed = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+        if (refreshed && repoRow && !refreshed.noWorktree) {
+          worktreePath = refreshed.noWorktree ? repoRow.path : path.join(repoRow.workspacesPath, refreshed.location)
+        }
+      } catch (err) {
+        console.error(`[pre-rename] failed for ${agentId}:`, err)
+      }
+    }
+  }
+
   // Ensure cwd exists — fall back to process.cwd() if worktree hasn't been created yet
   let cwd = worktreePath
   try {
@@ -783,6 +784,21 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     }
   }
 
+  // If --resume would point at a session file that no longer exists for THIS
+  // cwd (e.g. worktree moved and the projects/ dir didn't follow), clearing
+  // existingSessionId now lets the runner rebuild context from DB messages
+  // instead of failing with "No conversation found with session ID".
+  if (existingSessionId && provider.capabilities.sessionResume) {
+    const sessionFile = path.join(os.homedir(), ".claude", "projects", cwd.replace(/[./]/g, "-"), `${existingSessionId}.jsonl`)
+    try {
+      await fs.access(sessionFile)
+    } catch {
+      console.warn(`[runner] session file missing for ${agentId} at ${sessionFile} — falling back to conversation context`)
+      existingSessionId = null
+      db.update(agentsTable).set({ sessionId: null }).where(eq(agentsTable.id, agentId)).run()
+    }
+  }
+
   const branchFrom = agentRow?.baseBranch ?? repoRow?.branchFrom ?? "HEAD"
 
   // Install provider-specific hooks (e.g. AskUserQuestion for Claude)
@@ -791,10 +807,14 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     await provider.installHooks(agentId, cwd, apiBase, config.authToken)
   }
 
+  // Re-read after the pre-rename pass so the system prompt and downstream
+  // code see the agent's actual current title/branch/location.
+  const liveAgentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get() ?? agentRow
+
   return new Promise((resolve, reject) => {
     // System prompt — provider-agnostic agent identity + instructions
-    const agentTitle = agentRow?.title ?? agentId
-    const agentBranch = agentRow?.branch ?? ""
+    const agentTitle = liveAgentRow?.title ?? agentId
+    const agentBranch = liveAgentRow?.branch ?? ""
     const systemPrompt = opts.taskContext
       ? [
           `You are a Huxflux refinement assistant.`,
@@ -804,22 +824,27 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       : [
           `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
           ``,
-          `To rename yourself, emit this tag on its own line in your response:`,
-          `  <huxflux:title>new title here</huxflux:title>`,
+          // Hard-leading directive: the placeholder titles look like "dawnlit-carver-mu6rh".
+          // If we don't push this hard, the model treats it as optional advice and skips it
+          // entirely on chat-style tasks ("explain this repo", "what does X do").
+          `## FIRST RESPONSE REQUIREMENT — name yourself`,
           ``,
-          `Rename guidelines:`,
-          `- Rename yourself as soon as you understand what you are working on.`,
-          `- Use a short, specific title (max ~50 chars) that describes the actual task, not generic descriptions.`,
-          `- Update the title again if the focus of the work changes significantly.`,
-          `- Good examples: "Add CSV import to devices table", "Fix login redirect bug", "Refactor auth middleware"`,
-          `- Do not include the repo name or branch — just the task.`,
+          `Your current title and branch are RANDOM PLACEHOLDERS (e.g. "${agentTitle}"). They are not real names.`,
+          `In your very first response — before anything else, including any tool calls — you MUST emit BOTH of these tags on their own lines:`,
           ``,
-          `To rename your git branch, emit this tag on its own line:`,
-          `  <huxflux:branch>new-branch-name</huxflux:branch>`,
-          `This executes "git branch -m" automatically and also relocates your worktree directory to match. Do NOT run git branch -m yourself. The tag handles everything.`,
-          `Do this as soon as you understand the task, alongside the title rename.`,
-          `Use kebab-case, be descriptive, max ~50 chars. Do NOT include any prefix — just the name.`,
-          ...(repoRow?.branchPrefix ? [`The prefix "${repoRow.branchPrefix}/" will be added automatically. Example: emit "fix-csv-encoding" and the branch becomes "${repoRow.branchPrefix}/fix-csv-encoding".`] : [`Example: "fix-csv-import-encoding"`]),
+          `  <huxflux:title>A short task description</huxflux:title>`,
+          `  <huxflux:branch>kebab-case-version</huxflux:branch>`,
+          ``,
+          `This rule applies to EVERY task type, including questions, exploration, documentation, refactors, bug fixes, and chat-style conversations. There is no exception for "this isn't a code change" — name yourself anyway based on what you're being asked to do.`,
+          `Examples:`,
+          `- User asks "explain this repo" → <huxflux:title>Explain repo structure</huxflux:title> + <huxflux:branch>explain-repo</huxflux:branch>`,
+          `- User asks "fix the login bug" → <huxflux:title>Fix login bug</huxflux:title> + <huxflux:branch>fix-login-bug</huxflux:branch>`,
+          `- User asks "add CSV import" → <huxflux:title>Add CSV import</huxflux:title> + <huxflux:branch>add-csv-import</huxflux:branch>`,
+          ``,
+          `Title rules: max ~50 chars, describe the actual task (not "Help with code"), no repo or branch name.`,
+          `Branch rules: kebab-case, max ~50 chars, NO prefix${repoRow?.branchPrefix ? ` (the prefix "${repoRow.branchPrefix}/" is added automatically)` : ""}. The tag triggers "git branch -m" and a worktree relocation automatically — do NOT run git branch -m yourself.`,
+          `Do NOT run \`git push\`, \`gh\`, or any command that touches a remote (or that opens/updates a PR) before emitting both tags. Otherwise the remote branch will be created under the placeholder name and you'll have to clean it up by hand.`,
+          `If the focus changes later in the conversation, emit the tags again to rename.`,
           ...((() => {
             if (!loadSettings().threadsEnabled) return []
             const lines: string[] = [

@@ -684,7 +684,6 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
   const [setupScript, setSetupScript] = useState(repo.setupScript ?? "")
   const [runScript, setRunScript] = useState(repo.runScript ?? "")
   const [archiveScript, setArchiveScript] = useState(repo.archiveScript ?? "")
-  const [poolSize, setPoolSize] = useState(repo.poolSize ?? 0)
   const [icon, setIcon] = useState(repo.icon ?? "")
   const [showIconPicker, setShowIconPicker] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -713,7 +712,6 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         archiveScript,
         preferences: JSON.stringify(prefValues),
         icon: icon || undefined,
-        poolSize,
       })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
       setShowSaved(true)
@@ -721,7 +719,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
     }, 800)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branch, branchPrefix, remote, previewUrl, setupScript, runScript, archiveScript, prefValues, icon, poolSize])
+  }, [branch, branchPrefix, remote, previewUrl, setupScript, runScript, archiveScript, prefValues, icon])
 
   async function handleRemove() {
     if (!confirm(`Remove repository "${repo.name}"? This cannot be undone.`)) return
@@ -893,25 +891,6 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
           </div>
 
         </div>
-      </div>
-
-      {/* Worktree pool */}
-      <div>
-        <h2 className="text-base font-semibold text-foreground mb-4">Worktree pool</h2>
-        <SettingRow>
-          <SettingInfo
-            label="Pool size"
-            description="Pre-create worktrees for instant agent start. Set to 0 to disable."
-          />
-          <input
-            type="number"
-            min={0}
-            max={10}
-            value={poolSize}
-            onChange={(e) => setPoolSize(Math.max(0, parseInt(e.target.value) || 0))}
-            className="w-20 text-sm text-center bg-card border border-input rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:border-ring transition-colors"
-          />
-        </SettingRow>
       </div>
 
       {/* Preferences */}

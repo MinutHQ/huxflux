@@ -122,7 +122,8 @@ export const api = {
     body: Partial<Pick<Agent, "title" | "status" | "branch" | "pr" | "description" | "unread" | "baseBranch" | "draft">>
   ) => req<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
-  generateTitle: (id: string) => req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST" }),
+  generateTitle: (id: string, body?: { branch?: boolean }) =>
+    req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
   answerQuestion: (id: string, answers: Record<string, string>) =>
     req<{ ok: boolean }>(`/api/agents/${id}/answer`, { method: "POST", body: JSON.stringify({ answers }) }),

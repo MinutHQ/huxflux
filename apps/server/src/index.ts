@@ -36,7 +36,16 @@ import { db } from "./db/index.js"
 import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { isNull, eq } from "drizzle-orm"
 
-const app = Fastify({ logger: true })
+const app = Fastify({
+  logger: isDev
+    ? {
+        transport: {
+          target: "pino-pretty",
+          options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname,reqId", singleLine: true },
+        },
+      }
+    : true,
+})
 
 await app.register(fastifyCors, {
   origin: config.corsOrigins,
@@ -103,9 +112,9 @@ runMigrations()
 // stream is a leftover that would otherwise show stuck loading indicators.
 resetStreamingFlags()
 
-// Initialize worktree pools for repos that have pooling enabled
-import { initializePools } from "./git/pool.js"
-initializePools().catch((err) => console.error("[pool] initialization failed:", err))
+// Ensure each repo with a setup script has one hidden reserve worktree
+import { initializeReserves } from "./git/pool.js"
+initializeReserves().catch((err) => console.error("[reserve] initialization failed:", err))
 
 
 // Re-attach file watchers and do an initial scan for all active agents

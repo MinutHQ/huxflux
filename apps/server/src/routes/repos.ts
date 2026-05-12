@@ -8,7 +8,7 @@ import { promisify } from "node:util"
 import { db } from "../db/index.js"
 import { repos, agents } from "../db/schema.js"
 import { eq } from "drizzle-orm"
-import { replenishPool, drainPool } from "../git/pool.js"
+import { ensureReserve, drainReserves } from "../git/pool.js"
 import type { Repo } from "../types.js"
 import { listBranches } from "../github/client.js"
 import { getRemoteUrl } from "../git/worktrees.js"
@@ -80,6 +80,7 @@ export async function reposRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string }; Body: Partial<Repo> }>("/api/repos/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
+    const before = db.select().from(repos).where(eq(repos.id, id)).get()
     await db.update(repos).set({
       ...(body.name !== undefined && { name: body.name }),
       ...(body.path !== undefined && { path: body.path }),
@@ -93,17 +94,19 @@ export async function reposRoutes(app: FastifyInstance) {
       ...(body.archiveScript !== undefined && { archiveScript: body.archiveScript }),
       ...(body.preferences !== undefined && { preferences: body.preferences }),
       ...(body.icon !== undefined && { icon: body.icon }),
-      ...(body.poolSize !== undefined && { poolSize: body.poolSize ?? 0 }),
     }).where(eq(repos.id, id))
     const updated = db.select().from(repos).where(eq(repos.id, id)).get()
     if (!updated) return reply.code(404).send({ error: "Not found" })
 
-    // Trigger pool replenishment or drain when poolSize changes
-    if (body.poolSize !== undefined) {
-      if ((body.poolSize ?? 0) > 0) {
-        replenishPool(id).catch((err) => console.error(`[pool] replenish failed:`, err))
+    // Keep the hidden reserve in sync with setupScript changes
+    if (body.setupScript !== undefined && (before?.setupScript ?? null) !== (updated.setupScript ?? null)) {
+      if (updated.setupScript) {
+        // Drain stale reserve (script may have changed) and recreate
+        drainReserves(id)
+          .then(() => ensureReserve(id))
+          .catch((err) => console.error(`[reserve] refresh failed:`, err))
       } else {
-        drainPool(id).catch((err) => console.error(`[pool] drain failed:`, err))
+        drainReserves(id).catch((err) => console.error(`[reserve] drain failed:`, err))
       }
     }
 

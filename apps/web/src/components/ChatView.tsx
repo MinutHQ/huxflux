@@ -1586,28 +1586,26 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
       : (attachmentMatch ? attachmentMatch[2] : msg.content).replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
 
     return (
-      <div className="mb-5 flex justify-end">
-        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3 max-w-[80%]">
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {files.map((f) => (
-                <div key={f.name} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[11px]">
-                  <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
-                  <span className="font-medium text-foreground/80 max-w-[160px] truncate">{f.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {displayText && (
-            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
-              {displayText.split(/(@[\w./\-]+)/g).map((part, i) =>
-                /^@[\w./\-]+$/.test(part)
-                  ? <span key={i} className="font-mono text-[12px] text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded">{part}</span>
-                  : part
-              )}
-            </p>
-          )}
-        </div>
+      <div className="mb-5 ml-auto w-fit max-w-[80%] bg-card border border-border rounded-xl px-5 py-4 space-y-3">
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {files.map((f) => (
+              <div key={f.name} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[11px]">
+                <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
+                <span className="font-medium text-foreground/80 max-w-[160px] truncate">{f.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {displayText && (
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
+            {displayText.split(/(@[\w./\-]+)/g).map((part, i) =>
+              /^@[\w./\-]+$/.test(part)
+                ? <span key={i} className="font-mono text-[12px] text-blue-400 bg-blue-500/10 px-1 py-0.5 rounded">{part}</span>
+                : part
+            )}
+          </p>
+        )}
       </div>
     )
   }

@@ -684,8 +684,8 @@ export const StackedDiffView = React.memo(function StackedDiffView({
   const { data: allDiffs, isLoading } = useQuery({
     queryKey: ["all-diffs", agentId],
     queryFn: () => api.getAllDiffs(agentId),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,

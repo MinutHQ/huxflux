@@ -75,6 +75,17 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
         broadcast({ type: "agent:updated", agent: { ...updated, prStatus: pr } as any })
       }
 
+      // Notify thread parent when child agent status changes
+      if (statusChanged && agent.threadParentId) {
+        const parentAgent = db.select().from(agents).where(eq(agents.id, agent.threadParentId)).get()
+        if (parentAgent && !parentAgent.deletedAt) {
+          const statusMsg = newStatus === "done"
+            ? `Thread agent "${agent.title}" has completed its work${pr.url ? ` and has a PR: ${pr.url}` : ""}.`
+            : `Thread agent "${agent.title}" status changed to ${newStatus}.`
+          sendToAgent(parentAgent.id, statusMsg, agent.title).catch(() => {})
+        }
+      }
+
       // Auto-complete linked task when PR is merged
       if (newStatus === "done" && statusChanged) {
         const links = db.select().from(taskAgents).where(eq(taskAgents.agentId, agent.id)).all()
@@ -103,6 +114,7 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
       const ciEnabled = agent.ciMonitoring != null ? agent.ciMonitoring === 1 : (pollerSettings.ciMonitoring ?? true)
       if (prCommentsEnabled) await monitorPRComments(agent, repoUrl, pr.number)
       if (ciEnabled) await monitorCI(agent, repoUrl, pr.number)
+      await monitorMergeConflicts(agent, pr)
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
@@ -138,20 +150,20 @@ async function monitorPRComments(
     }
 
     // Find new unresolved thread comments (not from the current user)
-    const newComments: Array<{ author: string; body: string; path?: string; line?: number }> = []
+    const newComments: Array<{ author: string; body: string; path?: string; line?: number; commentId?: number }> = []
 
     for (const thread of details.threads) {
       if (thread.isResolved) continue
       for (const c of thread.comments) {
         if (seen.has(c.id)) continue
         seen.add(c.id)
-        // Skip comments from the PR author (likely the agent itself)
         if (c.author === details.author) continue
         newComments.push({
           author: c.author,
           body: c.body,
           path: c.path ?? thread.path,
           line: c.line ?? thread.line,
+          commentId: c.databaseId,
         })
       }
     }
@@ -162,7 +174,7 @@ async function monitorPRComments(
       if (seen.has(cId)) continue
       seen.add(cId)
       if (c.author === details.author) continue
-      newComments.push({ author: c.author, body: c.body })
+      newComments.push({ author: c.author, body: c.body, commentId: c.id })
     }
 
     if (newComments.length === 0) return
@@ -171,10 +183,11 @@ async function monitorPRComments(
     const parts = newComments.map((c) => {
       let prefix = `**${c.author}** commented`
       if (c.path) prefix += ` on \`${c.path}${c.line ? `:${c.line}` : ""}\``
-      return `${prefix}:\n> ${c.body.split("\n").join("\n> ")}`
+      const idNote = c.commentId ? ` (comment ID: ${c.commentId})` : ""
+      return `${prefix}${idNote}:\n> ${c.body.split("\n").join("\n> ")}`
     })
 
-    const message = `New PR review comment${newComments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${newComments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, or reply explaining why no change is necessary.`
+    const message = `New PR review comment${newComments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${newComments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, then reply on GitHub using:\n  <huxflux:pr-reply commentId="COMMENT_ID">your reply</huxflux:pr-reply>`
 
     console.log(`[poller] ${agent.id}: sending ${newComments.length} new PR comment(s) to agent`)
     await sendToAgent(agent.id, message, "PR Review")
@@ -223,6 +236,32 @@ async function monitorCI(
   } catch (err) {
     console.warn(`[poller] CI monitor failed for ${agent.id}: ${(err as Error).message}`)
   }
+}
+
+// ── Merge conflict monitoring ────────────────────────────────────────────────
+
+const lastSeenMergeableState = new Map<string, string>()
+
+async function monitorMergeConflicts(
+  agent: typeof agents.$inferSelect,
+  pr: { mergeableState: string; number: number; url: string },
+): Promise<void> {
+  if (isAgentRunning(agent.id)) return
+
+  const state = pr.mergeableState
+  const lastState = lastSeenMergeableState.get(agent.id)
+  lastSeenMergeableState.set(agent.id, state)
+
+  // Skip first run (seeding)
+  if (!lastState) return
+
+  // Only notify when state changes TO dirty (merge conflict)
+  if (state !== "dirty" || lastState === "dirty") return
+
+  const message = `Your PR has merge conflicts. The base branch has changed since your last push.\n\nPlease resolve the conflicts:\n1. Rebase your branch onto the latest base branch: \`git fetch origin && git rebase origin/<base-branch>\`\n2. Fix any conflicts\n3. Force push: \`git push --force-with-lease\`\n\nIf the conflicts are complex, explain what files conflict and ask for guidance.`
+
+  console.log(`[poller] ${agent.id}: merge conflict detected on PR #${pr.number}`)
+  await sendToAgent(agent.id, message, "Merge Conflict")
 }
 
 // ── Send message to agent via local API ──────────────────────────────────────

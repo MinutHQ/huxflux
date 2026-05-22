@@ -55,6 +55,7 @@ import {
   IconDatabase,
   IconClipboard,
   IconGitPullRequest,
+  IconCircleX,
   IconLayoutColumns,
   IconLayoutRows,
 } from "@tabler/icons-react"
@@ -178,6 +179,54 @@ function formatToolCall(tool: string, args?: string): { title: string; detail: s
 function LinkedWorkspaceMessage({ sender, content, icon = "workspace" }: { sender: string; content: string; icon?: "workspace" | "system" }) {
   const [open, setOpen] = useState(false)
   const isSystem = icon === "system"
+
+  // Detect specific event types for richer cards
+  const isPRReview = sender === "PR Review"
+  const isCIMonitor = sender === "CI Monitor"
+  const isMergeConflict = sender === "Merge Conflict"
+  const isCIFailed = isCIMonitor && /fail/i.test(content)
+
+  if (isSystem) {
+    return (
+      <div className="mb-5">
+        <div className={cn(
+          "rounded-xl border overflow-hidden",
+          isCIFailed ? "border-red-500/20 bg-red-500/5" :
+          isMergeConflict ? "border-orange-500/20 bg-orange-500/5" :
+          isPRReview ? "border-amber-500/20 bg-amber-500/5" :
+          "border-border/50 bg-card"
+        )}>
+          <button
+            onClick={() => setOpen(!open)}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left"
+          >
+            {isCIFailed ? (
+              <IconCircleX size={14} className="text-red-400 shrink-0" />
+            ) : isMergeConflict ? (
+              <IconGitBranch size={14} className="text-orange-400 shrink-0" />
+            ) : isPRReview ? (
+              <IconGitPullRequest size={14} className="text-amber-400 shrink-0" />
+            ) : (
+              <IconBolt size={14} className="text-blue-400 shrink-0" />
+            )}
+            <span className="text-[12px] font-medium text-foreground/80 flex-1">{sender}</span>
+            <span className="text-[10px] text-muted-foreground/40">
+              {isPRReview ? "Review comments" : isCIFailed ? "Checks failed" : isMergeConflict ? "Conflicts detected" : "Update"}
+            </span>
+            <IconChevronRight size={11} className={cn("transition-transform text-muted-foreground/30", open && "rotate-90")} />
+          </button>
+          {open && (
+            <div className="px-3.5 pb-3 border-t border-border/20">
+              <div className="pt-2.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px] [&_strong]:text-foreground">
+                <MarkdownContent content={stripHuxfluxTags(content)} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="mb-5">
       <button
@@ -185,11 +234,8 @@ function LinkedWorkspaceMessage({ sender, content, icon = "workspace" }: { sende
         className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <IconChevronRight size={12} className={cn("transition-transform shrink-0 text-muted-foreground/40", open && "rotate-90")} />
-        {isSystem
-          ? <IconGitPullRequest size={13} className="text-amber-400/60 shrink-0" />
-          : <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
-        }
-        <span>{isSystem ? <span className="font-medium text-foreground/70">{sender}</span> : <>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> sent message</>}</span>
+        <IconFolderSymlink size={13} className="text-blue-400/60 shrink-0" />
+        <span>Linked workspace <span className="font-medium text-foreground/70">{sender}</span> sent message</span>
       </button>
       {open && (
         <div className="ml-[22px] mt-1.5 pl-3 border-l border-blue-400/15">
@@ -1290,6 +1336,7 @@ function stripHuxfluxTags(text: string): string {
     .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
     .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
     .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
+    .replace(/<huxflux:pr-reply[^>]*>[\s\S]*?<\/huxflux:pr-reply>\n?/g, "")
 }
 
 const MarkdownContent = React.memo(function MarkdownContent({ content }: { content: string }) {
@@ -1548,6 +1595,55 @@ function TypingBubble({ elapsedSeconds }: { elapsedSeconds: number }) {
   )
 }
 
+// ── PR created card ──────────────────────────────────────────────────────────
+
+const PR_URL_RE = /https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/g
+
+function PRCardItem({ url, owner, repo, number }: { url: string; owner: string; repo: string; number: string }) {
+  const { data } = useQuery({
+    queryKey: ["pr-card", owner, repo, number],
+    queryFn: () => api.getPRDetailsForRepo(`${owner}/${repo}`, parseInt(number, 10)),
+    staleTime: 5 * 60_000,
+  })
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleExternalClick}
+      className="block mb-3 rounded-xl border border-green-500/20 bg-green-500/5 overflow-hidden hover:border-green-500/30 transition-colors cursor-pointer"
+    >
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+        <IconGitPullRequest size={15} className="text-green-400 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] font-medium text-foreground truncate">
+            {data?.title ?? `PR #${number}`}
+          </div>
+          <div className="text-[11px] text-muted-foreground/60 font-mono truncate">
+            {owner}/{repo}#{number}
+          </div>
+        </div>
+        <IconArrowUpRight size={12} className="text-muted-foreground/30 shrink-0" />
+      </div>
+    </a>
+  )
+}
+
+function PRCreatedCard({ content }: { content: string }) {
+  const matches = [...content.matchAll(PR_URL_RE)]
+  if (matches.length === 0) return null
+
+  return (
+    <>
+      {matches.map((match, i) => {
+        const [url, owner, repo, number] = match
+        return <PRCardItem key={i} url={url} owner={owner} repo={repo} number={number} />
+      })}
+    </>
+  )
+}
+
 // ── Message bubble ────────────────────────────────────────────────────────────
 
 const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isStreamingProp }: { msg: Message; isStreaming?: boolean }) {
@@ -1564,7 +1660,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
 
   // Messages from linked workspaces — collapsed accordion
   if (isUser && msg.sender) {
-    const isSystem = msg.sender === "PR Review" || msg.sender === "CI Monitor"
+    const isSystem = msg.sender === "PR Review" || msg.sender === "CI Monitor" || msg.sender === "Merge Conflict"
     return <LinkedWorkspaceMessage sender={msg.sender} content={msg.content} icon={isSystem ? "system" : "workspace"} />
   }
 
@@ -1631,6 +1727,9 @@ const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isSt
           pendingText={pendingText}
         />
       )}
+
+      {/* PR created card */}
+      {msg.content && !isStreaming && <PRCreatedCard content={msg.content} />}
 
       {/* Content */}
       {msg.content && (

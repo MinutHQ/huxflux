@@ -1,4 +1,4 @@
-export type ProviderId = "claude" | "codex"
+export type ProviderId = "claude" | "claude-interactive" | "codex" | "gemini"
 
 export interface ProviderCapabilities {
   sessionResume: boolean

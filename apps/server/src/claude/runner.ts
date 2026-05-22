@@ -46,7 +46,21 @@ export function getClaudeBin(): string {
 export function stopAgent(agentId: string): boolean {
   const proc = runningProcesses.get(agentId)
   if (!proc) return false
-  proc.kill("SIGTERM")
+  try {
+    // Kill the entire process group so child processes die too
+    if (proc.pid) process.kill(-proc.pid, "SIGTERM")
+  } catch {
+    // Fallback to direct kill
+    try { proc.kill("SIGTERM") } catch {}
+  }
+  // Force kill after 3s if still alive
+  setTimeout(() => {
+    try {
+      if (proc.pid) process.kill(-proc.pid, "SIGKILL")
+    } catch {}
+    try { proc.kill("SIGKILL") } catch {}
+    runningProcesses.delete(agentId)
+  }, 3000)
   return true
 }
 
@@ -486,6 +500,7 @@ async function persistAssistantMessage(
         .replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "")
         .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
         .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
+        .replace(/<huxflux:pr-reply[^>]*>[\s\S]*?<\/huxflux:pr-reply>\n?/g, "")
         .trim()
       // Update in DB too
       if (tc.id) {
@@ -545,6 +560,9 @@ async function persistAssistantMessage(
     await parseSpawnTags(state.fullContent, agentId)
   }
 
+  // Parse and execute <huxflux:pr-reply> tags — reply to PR comments on GitHub
+  await parsePRReplyTags(state.fullContent, agentId)
+
   // Parse and execute <huxflux:task-*> tags for task system integration
   await parseTaskTags(finalContent, agentId)
   finalContent = finalContent
@@ -554,6 +572,7 @@ async function persistAssistantMessage(
     .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
     .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
     .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
+    .replace(/<huxflux:pr-reply[^>]*>[\s\S]*?<\/huxflux:pr-reply>\n?/g, "")
     .trim()
 
   await db.update(messagesTable)
@@ -845,14 +864,20 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           `Branch rules: kebab-case, max ~50 chars, NO prefix${repoRow?.branchPrefix ? ` (the prefix "${repoRow.branchPrefix}/" is added automatically)` : ""}. The tag triggers "git branch -m" and a worktree relocation automatically — do NOT run git branch -m yourself.`,
           `Do NOT run \`git push\`, \`gh\`, or any command that touches a remote (or that opens/updates a PR) before emitting both tags. Otherwise the remote branch will be created under the placeholder name and you'll have to clean it up by hand.`,
           `If the focus changes later in the conversation, emit the tags again to rename.`,
+          ``,
+          `Linked workspaces:`,
+          `When the user links other workspaces to your conversation, you can send tasks to them:`,
+          `  <huxflux:delegate agent="AGENT_ID">task or message</huxflux:delegate>`,
+          `The linked agent IDs will be provided in the message context when workspaces are linked.`,
           ...((() => {
+            // Thread agents (experimental)
             if (!loadSettings().threadsEnabled) return []
             const lines: string[] = [
               ``,
-              `To spawn a thread agent in another repo (for cross-repo work like translations, shared libraries, etc.):`,
+              `Thread agents:`,
+              `To spawn a new agent in another repo (for cross-repo work like translations, shared libraries, etc.):`,
               `  <huxflux:spawn repo="repo-name">Full task description with context</huxflux:spawn>`,
               `This creates a new workspace in that repo. Include enough context so the spawned agent understands WHY the changes are needed.`,
-              `The spawned agent can communicate back to you via delegate tags.`,
             ]
             // Include thread children context
             const children = db.select().from(agentsTable)
@@ -865,7 +890,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
                 const childRepo = c.repoId ? db.select().from(reposTable).where(eq(reposTable.id, c.repoId)).get() : null
                 lines.push(`- "${c.title}" (${childRepo?.name ?? "unknown"}) — ID: ${c.id} — status: ${c.status}`)
               }
-              lines.push(`To send a follow-up message to a thread agent:`, `  <huxflux:delegate agent="AGENT_ID">message</huxflux:delegate>`)
+              lines.push(`Send follow-up messages to thread agents using the delegate tag above.`)
             }
             // Include parent context if this is a thread child
             if (agentRow?.threadParentId) {
@@ -874,11 +899,23 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
                 const parentRepo = parent.repoId ? db.select().from(reposTable).where(eq(reposTable.id, parent.repoId)).get() : null
                 lines.push(``, `You are a thread agent spawned by "${parent.title}" (${parentRepo?.name ?? "unknown"}).`)
                 lines.push(`Parent agent ID: ${parent.id}`)
-                lines.push(`To send a message back to your parent:`, `  <huxflux:delegate agent="${parent.id}">message</huxflux:delegate>`)
+                lines.push(`To send a message back to your parent, use the delegate tag with their ID.`)
               }
             }
             return lines
           })()),
+          ``,
+          `Quality checks:`,
+          `- Before telling the user you are done, run the project's test/lint/typecheck commands if they exist in the project's CLAUDE.md or package.json.`,
+          `- If any check fails, fix the issue and re-run. Do not declare work complete with failing checks.`,
+          `- If you are unsure what commands to run, check package.json scripts or CLAUDE.md for guidance.`,
+          ...(agentRow?.prNumber ? [
+            ``,
+            `PR feedback:`,
+            `When you receive PR review comments (messages from "PR Review"), fix the issues and then reply on GitHub:`,
+            `  <huxflux:pr-reply commentId="COMMENT_ID">your reply explaining what you fixed</huxflux:pr-reply>`,
+            `The comment ID is included in the PR review message. After fixing and replying, push your changes.`,
+          ] : []),
           ``,
           `Answer format:`,
           `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -912,7 +949,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
     })
 
     // Apply sandboxing if configured (currently Claude-only)
-    const { bin, args } = config.sandbox && provider.id === "claude"
+    const { bin, args } = config.sandbox && (provider.id === "claude" || provider.id === "claude-interactive")
       ? buildSandboxedCommand({
           claudeBin: spawnResult.bin,
           claudeArgs: spawnResult.args,
@@ -922,36 +959,25 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
         })
       : spawnResult
 
-    const proc = spawn(bin, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        NODE_ENV: "development", // agents need devDependencies (lint, types) — don't inherit production
-        PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
-        HUXFLUX_AGENT_ID: agentId,
-        HUXFLUX_WORKTREE: cwd,
-        HUXFLUX_REPO: repoRow?.path ?? "",
-        HUXFLUX_API_BASE: apiBase,
-        HUXFLUX_AUTH: config.authToken,
-        ...spawnResult.env,
-      },
-    })
+    const spawnEnv = {
+      ...process.env,
+      NODE_ENV: "development",
+      PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
+      HUXFLUX_AGENT_ID: agentId,
+      HUXFLUX_WORKTREE: cwd,
+      HUXFLUX_REPO: repoRow?.path ?? "",
+      HUXFLUX_API_BASE: apiBase,
+      HUXFLUX_AUTH: config.authToken,
+      ...spawnResult.env,
+    }
 
-    runningProcesses.set(agentId, proc)
-
-    let buffer = ""
 
     // Flush content/thinking to DB periodically so it survives page reloads.
-    // We debounce to avoid hammering SQLite on every text chunk.
     const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null }
     function scheduleFlush() {
       if (flushTimer.current) return
       flushTimer.current = setTimeout(() => {
         flushTimer.current = null
-        // Only the trailing pending text becomes content here too — text
-        // already moved into a tool call's precedingText is no longer in
-        // pendingText, so it won't be double-counted.
         db.update(messagesTable)
           .set({ content: state.pendingText, thinking: state.fullThinking || null })
           .where(eq(messagesTable.id, messageId))
@@ -959,39 +985,49 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       }, 500)
     }
 
-    console.log(`[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${args.slice(0, 5).join(" ")}...`)
+      // ── Standard mode: parse stdout ──
+      const proc = spawn(bin, args, {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: spawnEnv,
+      })
 
-    proc.stdout.on("data", (chunk: Buffer) => {
-      if (provider.id !== "claude") console.log(`[runner] ${provider.id} stdout: ${chunk.toString().slice(0, 120)}...`)
-      buffer += chunk.toString()
+      runningProcesses.set(agentId, proc)
 
-      // Split buffer into individual JSON objects. Claude uses newline-delimited JSON.
-      // Other providers (OpenCode) may concatenate JSON objects without newlines.
-      let lines: string[]
-      if (provider.id === "claude") {
-        lines = buffer.split("\n")
-        buffer = lines.pop() ?? ""
-      } else {
-        // Split concatenated JSON: }{ → }\n{
-        lines = buffer.replace(/\}\s*\{/g, "}\n{").split("\n")
-        buffer = lines.pop() ?? ""
-      }
+      let buffer = ""
 
-      for (const line of lines) {
-        if (!line.trim()) continue
-        if (provider.id === "claude") {
-          try {
-            const parsed = JSON.parse(line)
-            handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
-          } catch { /* non-JSON */ }
+      console.log(`[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${args.slice(0, 5).join(" ")}...`)
+
+      proc.stdout.on("data", (chunk: Buffer) => {
+        const isClaudeFormat = provider.id === "claude" || provider.id === "claude-interactive"
+      if (provider.id === "claude-interactive" || provider.id === "gemini") console.log(`[runner:${provider.id}] stdout chunk (${chunk.length}b): ${chunk.toString().slice(0, 200)}`)
+        buffer += chunk.toString()
+
+        let lines: string[]
+        if (isClaudeFormat) {
+          lines = buffer.split("\n")
+          buffer = lines.pop() ?? ""
         } else {
-          const event = provider.parseStreamLine(line)
-          if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+          lines = buffer.replace(/\}\s*\{/g, "}\n{").split("\n")
+          buffer = lines.pop() ?? ""
         }
-      }
-    })
 
-    proc.stderr.on("data", (chunk: Buffer) => {
+        for (const line of lines) {
+          if (!line.trim()) continue
+          if (isClaudeFormat) {
+            try {
+              const parsed = JSON.parse(line)
+              handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
+            } catch { /* non-JSON */ }
+          } else {
+            const event = provider.parseStreamLine(line)
+            console.log(`[runner:${provider.id}] parsed line → ${event?.type ?? "null"} | line: ${line.slice(0, 100)}`)
+            if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+          }
+        }
+      })
+
+      proc.stderr.on("data", (chunk: Buffer) => {
       const lines = chunk.toString().split("\n").filter((l) => l.trim())
       for (const line of lines) {
         const ts = new Date().toISOString()
@@ -1014,12 +1050,13 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
 
       // Flush any remaining buffered data (last line may lack trailing newline)
       if (buffer.trim()) {
-        const remaining = provider.id === "claude"
+        const isClaudeFmt = provider.id === "claude" || provider.id === "claude-interactive"
+        const remaining = isClaudeFmt
           ? [buffer.trim()]
           : buffer.trim().replace(/\}\s*\{/g, "}\n{").split("\n")
         for (const part of remaining) {
           if (!part.trim()) continue
-          if (provider.id === "claude") {
+          if (isClaudeFmt) {
             try { handleStreamEvent(JSON.parse(part), state, agentId, messageId, scheduleFlush) } catch { /* non-JSON */ }
           } else {
             const event = provider.parseStreamLine(part)
@@ -1089,11 +1126,11 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
       resolve()
     })
 
-    proc.on("error", async (err) => {
-      emit(agentId, { type: "error", agentId, message: `Failed to spawn claude: ${err.message}` })
-      await finalize()
-      reject(err)
-    })
+      proc.on("error", async (err) => {
+        emit(agentId, { type: "error", agentId, message: `Failed to spawn claude: ${err.message}` })
+        await finalize()
+        reject(err)
+      })
   })
 }
 
@@ -1270,6 +1307,33 @@ async function parseSpawnTags(content: string, parentAgentId: string): Promise<v
       console.log(`[spawn] created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
     } catch (err) {
       console.error(`[spawn] failed:`, err)
+    }
+  }
+}
+
+// ── PR reply tags: reply to GitHub PR comments ──────────────────────────────
+
+async function parsePRReplyTags(content: string, agentId: string): Promise<void> {
+  // <huxflux:pr-reply commentId="123">reply text</huxflux:pr-reply>
+  const replyRe = /<huxflux:pr-reply\s+commentId="([^"]+)">([\s\S]*?)<\/huxflux:pr-reply>/g
+
+  const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (!agent?.repoId || !agent.prNumber) return
+
+  const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+  if (!repo) return
+
+  const [owner, repoName] = repo.name.includes("/") ? repo.name.split("/") : ["", repo.name]
+  if (!owner || !repoName) return
+
+  for (const match of content.matchAll(replyRe)) {
+    const [, commentId, replyText] = match
+    try {
+      const { replyToReviewComment } = await import("../github/client.js")
+      await replyToReviewComment(owner, repoName, agent.prNumber, parseInt(commentId, 10), replyText.trim())
+      console.log(`[pr-reply] replied to comment ${commentId} on ${owner}/${repoName}#${agent.prNumber}`)
+    } catch (err) {
+      console.error(`[pr-reply] failed to reply to comment ${commentId}:`, err)
     }
   }
 }

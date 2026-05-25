@@ -1,58 +1,40 @@
-import { useState, useRef, useEffect, useCallback } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
-import { ScrollArea } from "@huxflux/ui"
+import { useState, useRef, useEffect, useCallback, useMemo, useSyncExternalStore } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { cn } from "@huxflux/ui"
 import { api } from "@huxflux/shared"
-import { IconCopy, IconPencil, IconDeviceFloppy, IconX } from "@tabler/icons-react"
+import type { PRComment } from "@huxflux/shared"
+import { IconMessagePlus, IconMessageCircle, IconX } from "@tabler/icons-react"
+import { codeToHtml, getFiletypeFromFileName } from "@pierre/diffs"
+import { getDiffTheme } from "@/components/DiffView"
 
-// ── Syntax tokenizer (same as DiffView) ─────────────────────────────────────
-
-function tokenize(text: string): Array<{ cls: string; text: string }> {
-  const tokens: Array<{ cls: string; text: string }> = []
-  let rest = text
-
-  const patterns: Array<{ re: RegExp; cls: string }> = [
-    { re: /^(\/\/[^\n]*)/, cls: "text-muted-foreground/70 italic" },
-    { re: /^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/, cls: "text-amber-300" },
-    { re: /^(\$\{[^}]*\})/, cls: "text-sky-300" },
-    { re: /^(\b(?:async|await|return|const|let|var|function|class|import|export|from|if|else|try|catch|throw|new|this|typeof|private|readonly|public)\b)/, cls: "text-violet-400" },
-    { re: /^(\b(?:string|number|boolean|Promise|void|undefined|null|Date)\b)/, cls: "text-sky-400" },
-    { re: /^(\b[A-Z][a-zA-Z0-9]*\b)/, cls: "text-teal-400" },
-    { re: /^(\b\d+(?:px|em|rem|s)?\b)/, cls: "text-orange-300" },
-    { re: /^([()[\]{}<>:;,=+\-*/%&|!?.@])/, cls: "text-muted-foreground/70" },
-    { re: /^(\w+)/, cls: "text-foreground/90" },
-    { re: /^(\s+)/, cls: "" },
-    { re: /^(.)/, cls: "text-muted-foreground/70" },
-  ]
-
-  while (rest.length > 0) {
-    let matched = false
-    for (const { re, cls } of patterns) {
-      const m = rest.match(re)
-      if (m) {
-        tokens.push({ cls, text: m[1] })
-        rest = rest.slice(m[1].length)
-        matched = true
-        break
-      }
-    }
-    if (!matched) {
-      tokens.push({ cls: "", text: rest[0] })
-      rest = rest.slice(1)
-    }
-  }
-  return tokens
+function useThemeName() {
+  return useSyncExternalStore(
+    (cb) => { window.addEventListener("huxflux:theme-change", cb); return () => window.removeEventListener("huxflux:theme-change", cb) },
+    getDiffTheme,
+    () => "vesper" as const
+  )
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+interface FileContentViewProps {
+  agentId: string
+  filePath: string
+  onAddComment?: (c: PRComment) => void
+  pendingComments?: PRComment[]
+  onRemoveComment?: (id: string) => void
+}
 
-export function FileContentView({ agentId, filePath }: { agentId: string; filePath: string }) {
-  const [editing, setEditing] = useState(false)
-  const [editContent, setEditContent] = useState("")
-  const [saving, setSaving] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const queryClient = useQueryClient()
+export function FileContentView({ agentId, filePath, onAddComment, pendingComments = [], onRemoveComment }: FileContentViewProps) {
+  const theme = useThemeName()
+  const [commentLine, setCommentLine] = useState<number | null>(null)
+  const [commentText, setCommentText] = useState("")
+  const [selectionStart, setSelectionStart] = useState<number | null>(null)
+  const [selectionEnd, setSelectionEnd] = useState<number | null>(null)
+  const isDraggingRef = useRef(false)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const fileName = filePath.split("/").pop() ?? filePath
+  const lang = getFiletypeFromFileName(fileName) ?? "text"
 
   const { data: content } = useQuery({
     queryKey: ["file-content", agentId, filePath],
@@ -60,160 +42,230 @@ export function FileContentView({ agentId, filePath }: { agentId: string; filePa
     staleTime: 10_000,
   })
 
-  const fileName = filePath.split("/").pop() ?? filePath
-  const lines = content?.split("\n") ?? []
-  const hasChanges = editing && editContent !== (content ?? "")
+  // Highlight with Shiki
+  const [highlightedHtml, setHighlightedHtml] = useState<string>("")
+  useEffect(() => {
+    if (!content) { setHighlightedHtml(""); return }
+    let cancelled = false
+    codeToHtml(content, { lang, theme }).then((html) => {
+      if (!cancelled) setHighlightedHtml(html)
+    }).catch(() => {
+      // Fallback: try plain text
+      if (!cancelled) {
+        codeToHtml(content, { lang: "text", theme }).then((html) => {
+          if (!cancelled) setHighlightedHtml(html)
+        }).catch(() => {})
+      }
+    })
+    return () => { cancelled = true }
+  }, [content, lang, theme])
 
-  function enterEdit() {
-    setEditContent(content ?? "")
-    setEditing(true)
+  // Parse highlighted HTML into lines
+  const lines = useMemo(() => {
+    if (!highlightedHtml) return content?.split("\n").map((l) => escapeHtml(l)) ?? []
+    // Extract content between <code> tags, split by newlines
+    const codeMatch = highlightedHtml.match(/<code[^>]*>([\s\S]*)<\/code>/)
+    if (!codeMatch) return content?.split("\n").map((l) => escapeHtml(l)) ?? []
+    const inner = codeMatch[1]
+    // Split on actual newlines in the HTML
+    return inner.split("\n")
+  }, [highlightedHtml, content])
+
+  // File comments for this file
+  const fileComments = useMemo(() =>
+    pendingComments.filter((c) => c.path === filePath && c.line),
+  [pendingComments, filePath])
+
+  // Selection handling
+  const selMin = selectionStart != null && selectionEnd != null ? Math.min(selectionStart, selectionEnd) : null
+  const selMax = selectionStart != null && selectionEnd != null ? Math.max(selectionStart, selectionEnd) : null
+
+  function handleLineClick(lineNum: number, e: React.MouseEvent) {
+    if (e.shiftKey && selectionStart != null) {
+      setSelectionEnd(lineNum)
+    } else {
+      setSelectionStart(lineNum)
+      setSelectionEnd(lineNum)
+      // Clear comment form if clicking a different line
+      if (commentLine != null && commentLine !== lineNum) {
+        setCommentLine(null)
+        setCommentText("")
+      }
+    }
   }
 
-  function cancelEdit() {
-    setEditing(false)
-    setEditContent("")
+  function handleGutterMouseDown(lineNum: number, e: React.MouseEvent) {
+    if (!onAddComment) return
+    e.preventDefault()
+    if (e.shiftKey && selectionStart != null) {
+      setSelectionEnd(lineNum)
+      setCommentLine(Math.max(lineNum, selectionStart))
+      setCommentText("")
+      setTimeout(() => commentInputRef.current?.focus(), 50)
+      return
+    }
+    setSelectionStart(lineNum)
+    setSelectionEnd(lineNum)
+    isDraggingRef.current = true
+
+    function onMove(ev: MouseEvent) {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)
+      const line = el?.closest("[data-line]")?.getAttribute("data-line")
+      if (line) setSelectionEnd(parseInt(line))
+    }
+    function onUp() {
+      isDraggingRef.current = false
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+      // Open comment form at end of selection
+      setCommentLine(lineNum)
+      setCommentText("")
+      setTimeout(() => commentInputRef.current?.focus(), 50)
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
   }
 
-  const save = useCallback(async () => {
-    if (saving) return
-    setSaving(true)
-    try {
-      await api.saveFileContent(agentId, filePath, editContent)
-      queryClient.invalidateQueries({ queryKey: ["file-content", agentId, filePath] })
-      setEditing(false)
-      toast.success("File saved")
-    } catch (err) {
-      toast.error(`Save failed: ${err instanceof Error ? err.message : "unknown error"}`)
-    } finally {
-      setSaving(false)
-    }
-  }, [agentId, filePath, editContent, saving, queryClient])
+  // Comment form appears after the last selected line
+  const commentAnchorLine = commentLine != null && selMax != null ? selMax : commentLine
 
-  // Focus textarea when entering edit mode
-  useEffect(() => {
-    if (editing && textareaRef.current) {
-      textareaRef.current.focus()
-    }
-  }, [editing])
+  function handleSubmitComment() {
+    if (!commentText.trim() || commentLine == null || !onAddComment) return
+    const startLine = selMin ?? commentLine
+    const endLine = selMax ?? commentLine
+    const selectedCode = content?.split("\n").slice(startLine - 1, endLine).join("\n") ?? ""
 
-  // Cmd+S to save
-  useEffect(() => {
-    if (!editing) return
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault()
-        save()
-      }
-      if (e.key === "Escape") {
-        cancelEdit()
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [editing, save])
-
-  const editLines = editContent.split("\n")
+    onAddComment({
+      id: `inline-${Date.now()}`,
+      author: "You",
+      body: commentText.trim(),
+      createdAt: new Date().toISOString(),
+      url: "",
+      isReply: false,
+      path: filePath,
+      line: startLine,
+      code: selectedCode,
+    })
+    setCommentText("")
+    setCommentLine(null)
+    setSelectionStart(null)
+    setSelectionEnd(null)
+  }
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* File header */}
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border bg-card shrink-0 text-[11px]">
-        <span className="text-muted-foreground font-mono truncate">
-          {filePath.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
-        </span>
-        {editing && hasChanges && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            Modified
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          {editing ? (
-            <>
-              <button
-                onClick={cancelEdit}
-                className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                title="Cancel (Esc)"
-              >
-                <IconX size={13} />
-                <span>Cancel</span>
-              </button>
-              <button
-                onClick={save}
-                disabled={saving || !hasChanges}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-0.5 rounded transition-colors",
-                  hasChanges
-                    ? "bg-foreground text-background hover:bg-foreground/90"
-                    : "bg-secondary text-muted-foreground cursor-default"
-                )}
-                title="Save (⌘S)"
-              >
-                <IconDeviceFloppy size={12} />
-                <span>{saving ? "Saving…" : "Save"}</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={enterEdit}
-                className="flex items-center gap-1 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                title="Edit file"
-              >
-                <IconPencil size={13} />
-                <span>Edit</span>
-              </button>
-              <button
-                onClick={() => content && navigator.clipboard.writeText(content)}
-                className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                title="Copy file"
-              >
-                <IconCopy size={13} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-transparent">
+      {/* Code content */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+        <div className="font-mono text-[12px] leading-[1.65] min-w-fit">
+          {lines.map((lineHtml, i) => {
+            const lineNum = i + 1
+            const isSelected = selMin != null && selMax != null && lineNum >= selMin && lineNum <= selMax
+            const lineComment = fileComments.find(c => c.line === lineNum)
 
-      {/* File content */}
-      <div className="flex-1 min-h-0">
-        {editing ? (
-          <div className="h-full flex">
-            {/* Line numbers for editor */}
-            <div className="py-1 shrink-0 bg-background border-r border-border/50 select-none overflow-hidden">
-              {editLines.map((_, i) => (
-                <div key={i} className="w-10 text-right pr-3 text-[11px] text-muted-foreground/40 leading-[1.65] font-mono">
-                  {i + 1}
-                </div>
-              ))}
-            </div>
-            <textarea
-              ref={textareaRef}
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              spellCheck={false}
-              className="flex-1 min-w-0 bg-background text-foreground font-mono text-[12px] leading-[1.65] py-1 pl-2 pr-4 resize-none focus:outline-none overflow-auto"
-              style={{ tabSize: 2 }}
-            />
-          </div>
-        ) : (
-          <ScrollArea className="h-full">
-            <div className="font-mono text-[12px] leading-[1.65]">
-              {lines.map((line, i) => (
-                <div key={i} className="flex items-stretch hover:bg-card/60">
-                  <div className="w-10 shrink-0 text-right pr-3 py-0.5 select-none text-[11px] text-muted-foreground/40">
-                    {i + 1}
+            return (
+              <div key={i}>
+                <div
+                  className={cn(
+                    "flex items-stretch group",
+                    isSelected && "bg-blue-500/10"
+                  )}
+                >
+                  {/* Gutter: line number + comment trigger */}
+                  <div
+                    data-line={lineNum}
+                    className="w-12 shrink-0 text-right pr-3 py-0.5 select-none text-[11px] text-muted-foreground/30 cursor-pointer relative group/gutter"
+                    onClick={(e) => handleLineClick(lineNum, e)}
+                    onMouseDown={(e) => {
+                      if (onAddComment && e.button === 0) handleGutterMouseDown(lineNum, e)
+                    }}
+                  >
+                    {lineNum}
+                    {onAddComment && (
+                      <span className="absolute left-1 top-0.5 opacity-0 group-hover/gutter:opacity-100 text-blue-400/60 hover:text-blue-400 transition-opacity pointer-events-none">
+                        <IconMessagePlus size={12} />
+                      </span>
+                    )}
                   </div>
-                  <div className="flex-1 py-0.5 pl-2 pr-4 whitespace-pre overflow-hidden">
-                    {tokenize(line).map((tok, j) => (
-                      <span key={j} className={tok.cls}>{tok.text}</span>
-                    ))}
-                  </div>
+                  {/* Code */}
+                  <div
+                    className="flex-1 py-0.5 pl-2 pr-4 whitespace-pre overflow-hidden"
+                    dangerouslySetInnerHTML={{ __html: lineHtml || "&nbsp;" }}
+                  />
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
-        )}
+
+                {/* Inline comment bubble */}
+                {lineComment && (
+                  <div className="mx-2 my-1 rounded-xl border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <IconMessageCircle size={12} className="text-blue-400/60 shrink-0" />
+                      <span className="text-[11px] text-foreground/80 flex-1">{lineComment.body}</span>
+                      {onRemoveComment && (
+                        <button
+                          onClick={() => onRemoveComment(lineComment.id)}
+                          className="text-muted-foreground/30 hover:text-muted-foreground transition-colors shrink-0"
+                        >
+                          <IconX size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comment form */}
+                {commentAnchorLine === lineNum && (
+                  <div className="mx-2 my-1 rounded-xl border border-border/50 bg-card shadow-lg overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 bg-muted/20">
+                      <IconMessagePlus size={12} className="text-muted-foreground/50 shrink-0" />
+                      <span className="text-[11px] text-muted-foreground/70 font-mono">
+                        {fileName}:{selMin && selMax && selMin !== selMax ? `${selMin}-${selMax}` : lineNum}
+                      </span>
+                      <button
+                        onClick={() => { setCommentLine(null); setCommentText("") }}
+                        className="ml-auto text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                      >
+                        <IconX size={12} />
+                      </button>
+                    </div>
+                    <div className="p-2.5">
+                      <textarea
+                        ref={commentInputRef}
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmitComment() }
+                          if (e.key === "Escape") { setCommentLine(null); setCommentText("") }
+                        }}
+                        placeholder="Add a comment about this line..."
+                        rows={2}
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-ring resize-none"
+                      />
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-[10px] text-muted-foreground/30">⌘Enter to add</span>
+                        <button
+                          onClick={handleSubmitComment}
+                          disabled={!commentText.trim()}
+                          className={cn(
+                            "px-3 py-1 rounded-md text-[11px] font-medium transition-colors",
+                            commentText.trim()
+                              ? "bg-foreground text-background hover:bg-foreground/90"
+                              : "bg-muted text-muted-foreground/40 cursor-not-allowed"
+                          )}
+                        >
+                          Add to chat
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }

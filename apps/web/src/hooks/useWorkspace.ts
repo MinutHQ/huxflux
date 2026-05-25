@@ -15,7 +15,12 @@ export interface ChatTab {
   isChild?: boolean
 }
 
-export type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string } | { type: "diff-browser" } | { type: "pr" }
+export type OpenFile = { type: "diff"; file: FileChange } | { type: "content"; path: string } | { type: "changes"; scrollToPath?: string } | { type: "diff-browser" } | { type: "pr" }
+
+export interface FileTab {
+  id: string
+  file: OpenFile
+}
 
 export interface PendingAgent {
   title: string
@@ -50,6 +55,8 @@ export function useWorkspace(agents: AgentSummary[]) {
   const lastAgentId = useRef<string | null>(null)
   const closedTabIds = useRef(new Set<string>())
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
+  const [fileTabs, setFileTabs] = useState<FileTab[]>([])
+  const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null)
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
   const [queuedSetupMessage, setQueuedSetupMessage] = useState<string | null>(null)
@@ -263,6 +270,59 @@ export function useWorkspace(agents: AgentSummary[]) {
     : activeTabId ?? agents[0]?.id ?? null
   const sidebarSelectedId = tabs.length > 0 ? tabs[0].agentId : ""
 
+  function fileTabPath(f: OpenFile): string | null {
+    if (f.type === "diff") return f.file.path
+    if (f.type === "content") return f.path
+    return null
+  }
+
+  function fileTabKey(f: OpenFile): string {
+    return fileTabPath(f) ?? f.type
+  }
+
+  function openFile(file: OpenFile) {
+    const key = fileTabKey(file)
+    const existing = fileTabs.find(t => t.id === key)
+    if (existing) {
+      // For changes tab, update scrollToPath
+      if (file.type === "changes" && existing.file.type === "changes") {
+        setFileTabs(prev => prev.map(t => t.id === key ? { ...t, file } : t))
+      }
+      setActiveFileTabId(key)
+    } else {
+      setFileTabs(prev => [...prev, { id: key, file }])
+      setActiveFileTabId(key)
+    }
+    setOpenFileTab(file)
+  }
+
+  function closeFileTab(id: string) {
+    setFileTabs(prev => {
+      const next = prev.filter(t => t.id !== id)
+      if (activeFileTabId === id) {
+        const idx = prev.findIndex(t => t.id === id)
+        const newActive = next[Math.min(idx, next.length - 1)]
+        setActiveFileTabId(newActive?.id ?? null)
+        setOpenFileTab(newActive?.file ?? null)
+      }
+      return next
+    })
+  }
+
+  function closeAllFileTabs() {
+    setFileTabs([])
+    setActiveFileTabId(null)
+    setOpenFileTab(null)
+  }
+
+  function selectFileTab(id: string) {
+    setActiveFileTabId(id)
+    const tab = fileTabs.find(t => t.id === id)
+    if (tab) setOpenFileTab(tab.file)
+  }
+
+  const activeFileTab = fileTabs.find(t => t.id === activeFileTabId) ?? null
+
   return {
     tabs,
     activeTabId,
@@ -270,6 +330,13 @@ export function useWorkspace(agents: AgentSummary[]) {
     resolvedActiveId,
     sidebarSelectedId,
     openFileTab,
+    fileTabs,
+    activeFileTabId,
+    activeFileTab,
+    openFile,
+    closeFileTab,
+    closeAllFileTabs,
+    selectFileTab,
     pendingComments,
     pendingAgent,
     deletingAgent,

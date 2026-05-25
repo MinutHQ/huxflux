@@ -18,7 +18,6 @@ import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { getFlag } from "@/lib/flags"
 import { openExternal, handleExternalClick } from "@/lib/platform"
 import { toast } from "sonner"
-import { TitleBar } from "@/components/TitleBar"
 import { useWorkspaceContext } from "@/hooks/useWorkspaceContext"
 import {
   IconChevronRight,
@@ -35,7 +34,6 @@ import {
   IconGitPullRequestClosed,
   IconTrash,
   IconWorld,
-  IconLayoutSidebarLeftCollapse,
   IconMessageCircle,
   IconFlask,
   IconTicket,
@@ -1621,6 +1619,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   // Derive active state from route
   const showHome = !!matchRoute({ to: "/", fuzzy: false })
   const showTasks = !!matchRoute({ to: "/tasks", fuzzy: true })
+  const showAutomations = !!matchRoute({ to: "/automations", fuzzy: true })
   const agentMatch = matchRoute({ to: "/agent/$agentId", fuzzy: false }) as { agentId: string } | false
   const selectedId = agentMatch ? agentMatch.agentId : ""
   const reviewMatch = matchRoute({ to: "/review/$prId", fuzzy: false }) as { prId: string } | false
@@ -1660,6 +1659,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const prReviewEnabled = getFlag("prReview")
   const refineEnabled = getFlag("refine")
   const tasksEnabled = getFlag("tasks")
+  const automationsEnabled = getFlag("automations")
   const unreadPrCount = prs.filter((p) => p.unread).length
 
   // Filter agents by repo
@@ -1811,10 +1811,11 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
-        <TitleBar />
+        {/* Traffic light space on macOS Tauri */}
+        <div className="h-10 shrink-0" />
 
         {/* Home button */}
-        <div className="px-2 pt-2 shrink-0">
+        <div className="px-2 pt-0.5 shrink-0">
           <button
             onClick={() => navigate({ to: "/" })}
             className={cn(
@@ -1843,6 +1844,24 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
             >
               <IconLayoutKanban size={14} />
               Tasks
+            </button>
+          </div>
+        )}
+
+        {/* Automations button (experimental) */}
+        {automationsEnabled && (
+          <div className="px-2 pt-1 shrink-0">
+            <button
+              onClick={() => navigate({ to: "/automations" })}
+              className={cn(
+                "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors",
+                showAutomations
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-accent/50"
+              )}
+            >
+              <IconBolt size={14} />
+              Automations
             </button>
           </div>
         )}
@@ -2119,11 +2138,6 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
           <Button variant="ghost" size="icon-xs" onClick={onOpenSettings}>
             <IconSettings size={13} />
           </Button>
-          {onToggle && (
-            <Button variant="ghost" size="icon-xs" onClick={onToggle} title="Hide sidebar (⌘B)">
-              <IconLayoutSidebarLeftCollapse size={13} />
-            </Button>
-          )}
         </div>
       </div>
 

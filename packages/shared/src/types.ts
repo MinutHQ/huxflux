@@ -36,6 +36,7 @@ export interface PRComment {
   isReply: boolean
   path?: string
   line?: number
+  code?: string
 }
 
 export interface PRThread {
@@ -278,6 +279,53 @@ export interface TaskItem {
   dependencies?: string[]  // IDs of sibling tasks this depends on
   sprintName?: string | null
   sprintState?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+// ── Automations ──────────────────────────────────────────────────────────────
+
+export type AutomationStatus = "draft" | "active" | "paused" | "error"
+
+export interface AutomationStep {
+  id: string
+  type: "trigger" | "fetch" | "parse" | "compare" | "transform" | "notify" | "browser" | "custom"
+  label: string
+  config: Record<string, unknown>
+  position: { x: number; y: number }
+  connections: string[] // IDs of next steps
+}
+
+export interface AutomationRun {
+  id: string
+  automationId: string
+  status: "running" | "success" | "failure"
+  output: string | null
+  error: string | null
+  startedAt: string
+  finishedAt: string | null
+}
+
+export interface AutomationSkill {
+  id: string
+  name: string
+  description: string | null
+  scriptPath: string
+  createdAt: string
+}
+
+export interface Automation {
+  id: string
+  name: string
+  description: string | null
+  status: AutomationStatus
+  schedule: string | null
+  steps: AutomationStep[]
+  builderAgentId: string | null
+  lastRunAt: string | null
+  lastRunStatus: string | null
+  runCount: number
+  runs: AutomationRun[]
   createdAt: string
   updatedAt: string
 }

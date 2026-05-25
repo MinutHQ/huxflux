@@ -501,6 +501,10 @@ async function persistAssistantMessage(
         .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
         .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
         .replace(/<huxflux:pr-reply[^>]*>[\s\S]*?<\/huxflux:pr-reply>\n?/g, "")
+        .replace(/<huxflux:auto-trigger\s+[^/]*?\/>/g, "")
+        .replace(/<huxflux:auto-step\s+[^>]*?>[\s\S]*?<\/huxflux:auto-step>/g, "")
+        .replace(/<huxflux:auto-remove\s+[^/]*?\/>/g, "")
+        .replace(/<huxflux:auto-config\s+[^/]*?\/>/g, "")
         .trim()
       // Update in DB too
       if (tc.id) {
@@ -552,6 +556,47 @@ async function persistAssistantMessage(
   finalContent = finalContent.replace(/<huxflux:delegate agent="[^"]*">[\s\S]*?<\/huxflux:delegate>\n?/g, "").trim()
   if (hadDelegates && !finalContent) {
     finalContent = "Delegated task to linked workspace."
+  }
+
+  // Parse and apply automation builder tags
+  if (/<huxflux:auto-/.test(state.fullContent)) {
+    try {
+      const { parseAutomationTags, applyParsedTags, stripAutomationTags } = await import("../automations/parser.js")
+      const parsed = parseAutomationTags(state.fullContent)
+      if (parsed.triggers.length > 0 || parsed.steps.length > 0 || parsed.removes.length > 0 || parsed.configs.length > 0) {
+        // Find the automation this builder agent belongs to
+        const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get() as any
+        if (agent) {
+          const { automations: automationsTable } = await import("../db/schema.js")
+          const automation = db.select().from(automationsTable).where(eq(automationsTable.builderAgentId, agentId)).get() as any
+          if (automation) {
+            const existingSteps = automation.stepsJson ? JSON.parse(automation.stepsJson) : []
+            const { steps: updatedSteps, schedule } = applyParsedTags(existingSteps, parsed)
+
+            const updates: Record<string, unknown> = {
+              stepsJson: JSON.stringify(updatedSteps),
+              updatedAt: new Date().toISOString(),
+            }
+            if (schedule) updates.schedule = schedule
+
+            for (const cfg of parsed.configs) {
+              if (cfg.name) updates.name = cfg.name
+              if (cfg.status) updates.status = cfg.status
+              if (cfg.schedule) updates.schedule = cfg.schedule
+            }
+
+            db.update(automationsTable).set(updates).where(eq(automationsTable.id, automation.id)).run()
+            broadcast({ type: "automation:updated", automationId: automation.id })
+          }
+        }
+
+        // Strip automation tags from displayed content
+        finalContent = stripAutomationTags(finalContent)
+        state.fullContent = stripAutomationTags(state.fullContent)
+      }
+    } catch (err) {
+      console.error("[automation] tag parsing failed:", err)
+    }
   }
 
   // Parse and execute <huxflux:spawn> tags for cross-repo thread agents

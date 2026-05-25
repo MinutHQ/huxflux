@@ -28,7 +28,6 @@ import {
   IconCircleX,
   IconClock,
   IconAlertTriangle,
-  IconFolder,
 } from "@tabler/icons-react"
 import { PatchDiff } from "@pierre/diffs/react"
 import type { SelectedLineRange, DiffLineAnnotation } from "@pierre/diffs"
@@ -1215,92 +1214,6 @@ function CIChecksPopover({ checks }: { checks: NonNullable<PullRequest["checks"]
 
 // ── Chat message component ────────────────────────────────────────────────────
 
-// ── PR file tree (Changes tab right panel) ───────────────────────────────────
-
-interface PRTreeEntry {
-  name: string
-  path: string
-  type: "file" | "directory"
-  children?: PRTreeEntry[]
-  additions?: number
-  deletions?: number
-  viewed?: boolean
-}
-
-function buildPRFileTree(files: { path: string; additions: number; deletions: number }[], viewedFiles: Set<string>): PRTreeEntry[] {
-  const root: PRTreeEntry[] = []
-  for (const file of files) {
-    const parts = file.path.split("/")
-    let current = root
-    let builtPath = ""
-    for (let i = 0; i < parts.length; i++) {
-      builtPath = builtPath ? `${builtPath}/${parts[i]}` : parts[i]
-      const isFile = i === parts.length - 1
-      let node = current.find((n) => n.name === parts[i])
-      if (!node) {
-        node = isFile
-          ? { name: parts[i], path: file.path, type: "file", additions: file.additions, deletions: file.deletions, viewed: viewedFiles.has(file.path) }
-          : { name: parts[i], path: builtPath, type: "directory", children: [] }
-        current.push(node)
-      }
-      if (!isFile) current = node.children!
-    }
-  }
-  return root
-}
-
-function PRFileTreeNode({
-  entry,
-  depth,
-  onSelect,
-}: {
-  entry: PRTreeEntry
-  depth: number
-  onSelect: (path: string) => void
-}) {
-  const [open, setOpen] = useState(true)
-
-  if (entry.type === "directory") {
-    return (
-      <div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center gap-1.5 py-[3px] text-left hover:bg-accent/40 transition-colors"
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
-        >
-          <IconChevronRight size={10} className={cn("text-muted-foreground/40 shrink-0 transition-transform", open && "rotate-90")} />
-          <IconFolder size={12} className="text-muted-foreground/50 shrink-0" />
-          <span className="text-[11px] text-muted-foreground truncate">{entry.name}</span>
-        </button>
-        {open && entry.children?.map((child) => (
-          <PRFileTreeNode key={child.path} entry={child} depth={depth + 1} onSelect={onSelect} />
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <button
-      onClick={() => onSelect(entry.path)}
-      className={cn(
-        "w-full flex items-center gap-1.5 py-[3px] text-left hover:bg-accent/40 transition-colors",
-        entry.viewed && "opacity-50 hover:opacity-100"
-      )}
-      style={{ paddingLeft: `${20 + depth * 14}px` }}
-    >
-      {entry.viewed
-        ? <IconCheck size={10} className="text-muted-foreground/40 shrink-0" />
-        : <span className="text-[9px] text-muted-foreground/30 shrink-0 leading-none">◆</span>
-      }
-      <span className="text-[11px] font-mono text-foreground/80 truncate flex-1 min-w-0">{entry.name}</span>
-      <div className="flex items-center gap-1 shrink-0 pr-1">
-        {(entry.additions ?? 0) > 0 && <span className="text-[9px] font-mono text-emerald-400">+{entry.additions}</span>}
-        {(entry.deletions ?? 0) > 0 && <span className="text-[9px] font-mono text-red-400">-{entry.deletions}</span>}
-      </div>
-    </button>
-  )
-}
-
 // ── Main PRView ───────────────────────────────────────────────────────────────
 
 interface PRViewProps {
@@ -1335,41 +1248,49 @@ export function PRView({ pr }: PRViewProps) {
     () => (localStorage.getItem("huxflux:pr-diff-style") as "unified" | "split") ?? "unified"
   )
 
-  // Pending review comments (localStorage persisted)
-  const pendingKey = pr.repoId ? `huxflux:pr-pending:${pr.repoId}:${pr.number}` : null
-  const [pendingComments, setPendingComments] = useState<PendingReviewComment[]>(() => {
-    if (!pendingKey) return []
-    try {
-      const raw = localStorage.getItem(pendingKey)
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
-  })
+  // Pending review comments (server-side persisted)
+  const [pendingComments, setPendingComments] = useState<PendingReviewComment[]>([])
   const [showSubmitPopover, setShowSubmitPopover] = useState(false)
 
-  // Viewed files (localStorage persisted)
-  const viewedKey = pr.repoId ? `huxflux:pr-viewed:${pr.repoId}:${pr.number}` : null
-  const [viewedFiles, setViewedFiles] = useState<Set<string>>(() => {
-    if (!pr.repoId) return new Set()
-    try {
-      const raw = localStorage.getItem(`huxflux:pr-viewed:${pr.repoId}:${pr.number}`)
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
-    } catch { return new Set() }
-  })
+  // Viewed files (server-side persisted)
+  const [viewedFiles, setViewedFiles] = useState<Set<string>>(new Set())
 
-  const toggleViewed = useCallback((path: string) => {
+  // Load review state from server on mount
+  useEffect(() => {
+    if (!pr.repoId) return
+    api.getReviewState(pr.repoId, pr.number).then((state) => {
+      if (state.pendingComments?.length > 0) setPendingComments(state.pendingComments)
+      if (state.viewedFiles?.length > 0) setViewedFiles(new Set(state.viewedFiles))
+    }).catch(() => {})
+  }, [pr.repoId, pr.number])
+
+  // Debounced save to server
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function persistReviewState(comments: PendingReviewComment[], viewed: Set<string>) {
+    if (!pr.repoId) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      api.saveReviewState(pr.repoId!, pr.number, {
+        pendingComments: comments,
+        viewedFiles: Array.from(viewed),
+      }).catch(() => {})
+    }, 1000)
+  }
+
+  const toggleViewed = useCallback((filePath: string) => {
     setViewedFiles((prev) => {
       const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      if (viewedKey) localStorage.setItem(viewedKey, JSON.stringify(Array.from(next)))
+      if (next.has(filePath)) next.delete(filePath)
+      else next.add(filePath)
+      persistReviewState(pendingComments, next)
       return next
     })
-  }, [viewedKey])
+  }, [pendingComments, pr.repoId, pr.number])
 
   function savePendingComments(updater: PendingReviewComment[] | ((prev: PendingReviewComment[]) => PendingReviewComment[])) {
     setPendingComments((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater
-      if (pendingKey) localStorage.setItem(pendingKey, JSON.stringify(next))
+      persistReviewState(next, viewedFiles)
       return next
     })
   }
@@ -1526,69 +1447,119 @@ export function PRView({ pr }: PRViewProps) {
                 pr={pr}
                 pendingComments={pendingComments}
                 onClose={() => setShowSubmitPopover(false)}
-                onSubmitted={() => {}}
+                onSubmitted={() => {
+                  savePendingComments([])
+                }}
               />
             </PopoverContent>
           </Popover>
         </div>
 
-        {/* ── Tab bar ── */}
-        <div className="flex items-center gap-1 mt-3">
-          {(["conversations", "changes"] as const).map((tab) => {
-            const labels = { conversations: "Conversations", changes: "Changes" }
-            const counts: Record<string, number | undefined> = {
-              conversations: (issueComments.length + threads.length) || undefined,
-              changes: prFiles.length || undefined,
-            }
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
-                  activeTab === tab
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                {labels[tab]}
-                {counts[tab] != null && (
-                  <span className={cn(
-                    "text-[10px] font-mono px-1 py-0.5 rounded",
-                    activeTab === tab ? "bg-foreground/10 text-foreground/70" : "bg-secondary text-muted-foreground/50"
-                  )}>
-                    {counts[tab]}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 mt-2">
+          <button
+            onClick={() => setActiveTab("changes")}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+              activeTab === "changes" ? "bg-accent text-foreground" : "text-muted-foreground/50 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            Files
+            {prFiles.length > 0 && <span className="ml-1 text-[10px] text-muted-foreground/40">{prFiles.length}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab("conversations")}
+            className={cn(
+              "px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors",
+              activeTab === "conversations" ? "bg-accent text-foreground" : "text-muted-foreground/50 hover:text-foreground hover:bg-accent/50"
+            )}
+          >
+            Conversation
+            {(issueComments.length + threads.length) > 0 && <span className="ml-1 text-[10px] text-muted-foreground/40">{issueComments.length + threads.length}</span>}
+          </button>
         </div>
       </div>
 
-      {/* ── Tab content ── */}
+      {/* ── Main layout: file tree left, diff right ── */}
+      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 gap-1.5 p-1.5">
+        {/* File tree (left) */}
+        <ResizablePanel defaultSize={35} minSize={15}>
+          <div className="flex flex-col h-full rounded-lg border border-border/50 bg-background overflow-hidden">
+            <ScrollArea className="flex-1">
+              <div className="py-1">
+                {prFiles.map((file) => {
+                  const name = file.path.split("/").pop() ?? file.path
+                  const dir = file.path.split("/").slice(0, -1).join("/")
+                  const isViewed = viewedFiles.has(file.path)
+                  const total = (file.additions || 0) + (file.deletions || 0)
+                  const addPct = total > 0 ? ((file.additions || 0) / total) * 100 : 50
+                  return (
+                    <button
+                      key={file.path}
+                      onClick={() => {
+                        setActiveTab("changes")
+                        if (!expandedFiles.has(file.path)) {
+                          setExpandedFiles((prev) => new Set([...prev, file.path]))
+                        }
+                        // Scroll after React renders the changes tab
+                        setTimeout(() => {
+                          const el = document.getElementById(`file-${file.path.replace(/\//g, "-")}`)
+                          el?.scrollIntoView({ behavior: "smooth", block: "start" })
+                        }, 100)
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-accent/40",
+                        isViewed && "opacity-50"
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isViewed}
+                        onChange={(e) => { e.stopPropagation(); toggleViewed(file.path) }}
+                        className="accent-primary shrink-0 w-3 h-3"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-mono truncate">
+                          {dir && <span className="text-muted-foreground/40">{dir}/</span>}
+                          <span className={cn("text-foreground/80", isViewed && "line-through")}>{name}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[9px] text-emerald-400/80 font-mono">+{file.additions || 0}</span>
+                          <span className="text-[9px] text-red-400/80 font-mono">-{file.deletions || 0}</span>
+                          <div className="flex-1 h-1 rounded-full bg-muted/30 overflow-hidden max-w-[60px]">
+                            <div className="h-full bg-emerald-400/60 rounded-full" style={{ width: `${addPct}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </ScrollArea>
 
-      {/* Conversations tab */}
-      {activeTab === "conversations" && (
-        <ConversationsTab
-          pr={pr}
-          loadingDetails={loadingDetails}
-          description={description}
-          prDetails={prDetails}
-          issueComments={issueComments}
-          threads={threads}
-          fileDiffs={fileDiffs}
-          currentUser={currentUser}
-          setIssueComments={setIssueComments}
-          setThreads={setThreads}
-          handleAttachToChat={() => {}}
-        />
-      )}
+          </div>
+        </ResizablePanel>
 
-      {/* Changes tab */}
-      {activeTab === "changes" && (
-        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
-          <ResizablePanel defaultSize={72} minSize={50}>
+        <ResizableHandle />
+
+        {/* Diff view (right) */}
+        <ResizablePanel defaultSize={65} minSize={30}>
+          <div className="h-full rounded-lg border border-border/50 bg-background overflow-hidden">
+          {activeTab === "conversations" ? (
+            <ConversationsTab
+              pr={pr}
+              loadingDetails={loadingDetails}
+              description={description}
+              prDetails={prDetails}
+              issueComments={issueComments}
+              threads={threads}
+              fileDiffs={fileDiffs}
+              currentUser={currentUser}
+              setIssueComments={setIssueComments}
+              setThreads={setThreads}
+              handleAttachToChat={() => {}}
+            />
+          ) : (
             <div className="flex flex-col h-full overflow-hidden">
               {/* Toolbar */}
               <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
@@ -1597,12 +1568,12 @@ export function PRView({ pr }: PRViewProps) {
                     const allViewed = prFiles.every((f) => viewedFiles.has(f.path))
                     const newViewed = allViewed ? new Set<string>() : new Set(prFiles.map((f) => f.path))
                     setViewedFiles(newViewed)
-                    if (viewedKey) localStorage.setItem(viewedKey, JSON.stringify(Array.from(newViewed)))
+                    persistReviewState(pendingComments, newViewed)
                   }}
                   className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors flex items-center gap-1"
                 >
                   <IconEye size={12} />
-                  {prFiles.filter((f) => viewedFiles.has(f.path)).length}/{prFiles.length} viewed
+                  Mark all {prFiles.every((f) => viewedFiles.has(f.path)) ? "unviewed" : "viewed"}
                 </button>
                 <div className="flex-1" />
                 <button
@@ -1664,7 +1635,16 @@ export function PRView({ pr }: PRViewProps) {
                         onThreadResolved={(threadId) =>
                           setThreads((prev) => prev.filter((th) => th.id !== threadId))
                         }
-                        onAddComment={() => {}}
+                        onAddComment={(filePath, line, body, startLine) => {
+                          savePendingComments((prev) => [...prev, {
+                            id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            path: filePath,
+                            line,
+                            startLine,
+                            body,
+                            source: "inline",
+                          }])
+                        }}
                         onRemoveComment={(id) => savePendingComments((prev) => prev.filter((c) => c.id !== id))}
                         onEditComment={(id, body) => savePendingComments((prev) => prev.map((c) => c.id === id ? { ...c, body } : c))}
                         pendingComments={pendingComments}
@@ -1675,38 +1655,10 @@ export function PRView({ pr }: PRViewProps) {
                 )}
               </div>
             </div>
-          </ResizablePanel>
-
-          <ResizableHandle />
-
-          {/* File tree */}
-          <ResizablePanel defaultSize={28} minSize={15}>
-            <div className="flex flex-col h-full border-l border-border">
-              <div className="px-3 py-2 border-b border-border shrink-0">
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Files</span>
-              </div>
-              <ScrollArea className="flex-1">
-                <div className="py-1">
-                  {buildPRFileTree(prFiles, viewedFiles).map((entry) => (
-                    <PRFileTreeNode
-                      key={entry.path}
-                      entry={entry}
-                      depth={0}
-                      onSelect={(path) => {
-                        const el = document.getElementById(`file-${path.replace(/\//g, "-")}`)
-                        el?.scrollIntoView({ behavior: "smooth", block: "start" })
-                        if (!expandedFiles.has(path)) {
-                          setExpandedFiles((prev) => new Set([...prev, path]))
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      )}
+          )}
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
     </div>
   )

@@ -11,6 +11,7 @@ type Flags = {
   remoteEditor: boolean
   tasks: boolean
   threads: boolean
+  automations: boolean
 }
 
 const DEFAULTS: Flags = {
@@ -19,6 +20,7 @@ const DEFAULTS: Flags = {
   remoteEditor: false,
   tasks: false,
   threads: false,
+  automations: false,
 }
 
 // Flags that are permanently disabled — overrides localStorage

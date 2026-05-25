@@ -45,7 +45,6 @@ import {
   IconMessageCircle,
   IconPhoto,
   IconFolderSymlink,
-  IconUsers,
   IconLoader2,
   IconCheck,
   IconFolder,
@@ -714,158 +713,6 @@ function ThinkingBlock({ text }: { text: string }) {
   )
 }
 
-// ── Team agent helpers ───────────────────────────────────────────────────────
-
-interface TeamAgent {
-  id: string
-  description: string
-  prompt?: string
-  name?: string
-  status: "running" | "done"
-  subCalls?: ToolCall[]
-  outputText?: string
-  result?: string
-}
-
-function extractTeamAgents(messages: Message[], isStreaming?: boolean): TeamAgent[] {
-  // Only show agents from the latest message that has Agent tool calls
-  // so a new team supersedes the old one
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i]
-    if (msg.role !== "assistant" || !msg.toolCalls) continue
-    const agentCalls = msg.toolCalls.filter((tc) => tc.tool === "Agent")
-    if (agentCalls.length === 0) continue
-
-    // Collect SendMessage calls directed at specific agents to show per-agent activity
-    const sendMessages = msg.toolCalls.filter((tc) => tc.tool === "SendMessage")
-    const sendMessagesByAgent = new Map<string, ToolCall[]>()
-    for (const sm of sendMessages) {
-      if (!sm.args) continue
-      try {
-        const parsed = JSON.parse(sm.args)
-        const to = parsed.to as string | undefined
-        if (to) {
-          const existing = sendMessagesByAgent.get(to) ?? []
-          existing.push(sm)
-          sendMessagesByAgent.set(to, existing)
-        }
-      } catch (err) { console.warn("Failed to parse SendMessage args", sm.args, err) }
-    }
-
-    return agentCalls.map((tc) => {
-      let description = "Agent"
-      let prompt: string | undefined
-      let name: string | undefined
-      if (tc.args) {
-        try {
-          const parsed = JSON.parse(tc.args)
-          description = parsed.description || parsed.prompt?.slice(0, 40) || "Agent"
-          prompt = parsed.prompt
-          name = parsed.name
-        } catch {
-          description = tc.args.length > 40 ? tc.args.slice(0, 40) + "…" : tc.args
-        }
-      }
-
-      // Build sub-calls: actual subCalls + any SendMessage calls targeting this agent by name
-      let combinedSubCalls = tc.subCalls ? [...tc.subCalls] : []
-      if (name) {
-        const directed = sendMessagesByAgent.get(name)
-        if (directed) combinedSubCalls = [...combinedSubCalls, ...directed]
-      }
-
-      return {
-        id: tc.id,
-        description,
-        prompt,
-        name,
-        status: (!isStreaming || tc.result != null) ? "done" as const : "running" as const,
-        subCalls: combinedSubCalls.length > 0 ? combinedSubCalls : undefined,
-        outputText: tc.outputText,
-        result: tc.result,
-      }
-    })
-  }
-  return []
-}
-
-function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [toolsOpen, setToolsOpen] = useState(true)
-  const [toolsUserToggled, setToolsUserToggled] = useState(false)
-  const hasSubCalls = selected.subCalls && selected.subCalls.length > 0
-  const subCallCount = selected.subCalls?.length ?? 0
-  const hasOutput = selected.outputText && selected.outputText.trim()
-  const hasResult = selected.result && selected.result.trim()
-
-  // Collapse tools accordion when agent finishes, or once 10+ sub-calls have accrued
-  useEffect(() => {
-    if (toolsUserToggled) return
-    if (selected.status === "done" || subCallCount >= 10) setToolsOpen(false)
-    else setToolsOpen(true)
-  }, [selected.status, subCallCount, toolsUserToggled])
-
-  // Auto-scroll when content changes
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [selected.subCalls?.length, selected.outputText, selected.result])
-
-  return (
-    <div ref={scrollRef} className="max-h-56 overflow-y-auto px-4 py-3 space-y-2">
-      {/* Task description */}
-      {selected.prompt && (
-        <p className="text-[11px] text-muted-foreground/60 leading-relaxed line-clamp-2">{selected.prompt}</p>
-      )}
-
-      {/* Tool calls accordion */}
-      {hasSubCalls && (
-        <div>
-          <button
-            onClick={() => { setToolsOpen(!toolsOpen); setToolsUserToggled(true) }}
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5"
-          >
-            <IconChevronRight size={11} className={cn("transition-transform shrink-0", toolsOpen && "rotate-90")} />
-            {selected.status === "running"
-              ? <IconLoader2 size={11} className="text-muted-foreground/70 shrink-0 animate-spin" />
-              : <IconBolt size={11} className="text-muted-foreground/50 shrink-0" />}
-            <span className="font-medium text-foreground/70">
-              {selected.subCalls!.length === 1 ? "1 tool call" : `${selected.subCalls!.length} tool calls`}
-            </span>
-          </button>
-          {toolsOpen && (
-            <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
-              {selected.subCalls!.map((sub) => (
-                <ToolCallRow key={sub.id} call={sub} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Text output streamed by the sub-agent */}
-      {hasOutput && (
-        <div className="text-[11px] text-foreground/80 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[10px] [&_pre]:text-[10px]">
-          <MarkdownContent content={selected.outputText ?? ""} />
-        </div>
-      )}
-
-      {/* Final result */}
-      {hasResult && !hasOutput && (
-        <pre className="text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre-wrap">{selected.result}</pre>
-      )}
-
-      {/* Idle placeholder */}
-      {selected.status === "running" && !hasSubCalls && !hasOutput && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50">
-          <IconLoader2 size={12} className="animate-spin" />
-          <span>Running in background…</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Thread agents bar (cross-repo spawned agents) ────────────────────────────
 
 function ThreadAgentsBar({ agentId }: { agentId: string }) {
@@ -924,103 +771,6 @@ function ThreadAgentsBar({ agentId }: { agentId: string }) {
           </button>
         ))}
       </div>
-    </div>
-  )
-}
-
-function TeamAgentBar({ agents, isStreaming, agentId }: { agents: TeamAgent[]; isStreaming?: boolean; agentId: string }) {
-  const storageKey = `huxflux-team-dismissed-${agentId}`
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
-  const [collapsedUserToggled, setCollapsedUserToggled] = useState(false)
-  const knownIdsRef = useRef<Set<string>>(new Set())
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === "1")
-
-  // Auto-collapse the panel when no agents are running anymore — unless user toggled
-  const anyRunning = agents.some((a) => a.status === "running")
-  useEffect(() => {
-    if (collapsedUserToggled) return
-    setCollapsed(!anyRunning)
-  }, [anyRunning, collapsedUserToggled])
-
-  // Re-show when new agent IDs appear (handles dismiss → new team)
-  useEffect(() => {
-    const newIds = agents.filter((a) => !knownIdsRef.current.has(a.id))
-    if (newIds.length > 0) {
-      for (const a of newIds) knownIdsRef.current.add(a.id)
-      localStorage.removeItem(storageKey)
-      setDismissed(false)
-      if (!selectedId || !agents.some((a) => a.id === selectedId)) {
-        setSelectedId(newIds[0].id)
-      }
-    }
-  }, [agents]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleDismiss() {
-    localStorage.setItem(storageKey, "1")
-    setDismissed(true)
-  }
-
-  if (dismissed || agents.length < 2) return null
-
-  const selected = agents.find((a) => a.id === selectedId) ?? agents[0]
-  const runningCount = agents.filter((a) => a.status === "running").length
-  const doneCount = agents.filter((a) => a.status === "done").length
-
-  return (
-    <div className="mx-2 mb-2 rounded-xl border border-border bg-card overflow-hidden">
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto">
-        <button
-          onClick={() => { setCollapsed(!collapsed); setCollapsedUserToggled(true) }}
-          className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/70 hover:text-foreground transition-colors shrink-0"
-        >
-          <IconUsers size={12} className="text-muted-foreground/50" />
-          <span>Team</span>
-          <span className="text-muted-foreground/40 font-mono ml-0.5">
-            {runningCount > 0 && `${runningCount} running`}
-            {runningCount > 0 && doneCount > 0 && ", "}
-            {doneCount > 0 && `${doneCount} done`}
-          </span>
-          <IconChevronDown size={11} className={cn("transition-transform ml-0.5", collapsed && "-rotate-90")} />
-        </button>
-        <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
-        {agents.map((agent) => {
-          const isActive = agent.id === selected.id
-          return (
-            <button
-              key={agent.id}
-              onClick={() => { setSelectedId(agent.id); setCollapsed(false); setCollapsedUserToggled(true) }}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors whitespace-nowrap shrink-0",
-                isActive
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              {agent.status === "running" && isStreaming ? (
-                <IconLoader2 size={11} className="animate-spin text-amber-400 shrink-0" />
-              ) : (
-                <IconCheck size={11} className="text-emerald-400 shrink-0" />
-              )}
-              <span className="max-w-[140px] truncate">{agent.description}</span>
-            </button>
-          )
-        })}
-        <button
-          onClick={handleDismiss}
-          className="ml-auto p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors shrink-0"
-        >
-          <IconX size={11} />
-        </button>
-      </div>
-
-      {/* Output panel */}
-      {!collapsed && selected && (
-        <div className="border-t border-border/60 px-3">
-          <TeamAgentOutput selected={selected} />
-        </div>
-      )}
     </div>
   )
 }
@@ -2303,7 +2053,7 @@ export function SetupView({ pending, onQueueMessage, queuedMessage }: { pending:
   }))
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full gap-5 px-8 overflow-hidden bg-background">
+    <div className="relative flex flex-col items-center justify-center h-full gap-5 px-8 overflow-hidden">
       <style>{`
         @keyframes sv-float { 0%, 100% { transform: translateY(0px) rotate(0deg) } 50% { transform: translateY(-8px) rotate(2deg) } }
         @keyframes sv-particle { 0% { transform: translateY(0) scale(1); opacity: var(--p-op) } 50% { transform: translateY(-24px) scale(1.4); opacity: calc(var(--p-op) * 2) } 100% { transform: translateY(0) scale(1); opacity: var(--p-op) } }
@@ -2577,7 +2327,7 @@ export function TeardownView({ deleting }: { deleting: { title: string; branch: 
   })
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full gap-4 px-8 overflow-hidden bg-background">
+    <div className="relative flex flex-col items-center justify-center h-full gap-4 px-8 overflow-hidden">
       <style>{`
         @keyframes td-fade-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
         @keyframes td-check { from { stroke-dashoffset: 16 } to { stroke-dashoffset: 0 } }
@@ -3513,7 +3263,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
   const isInPlanMode = planMode || claudeInPlanMode
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-background relative">
+    <div className="flex flex-col flex-1 min-h-0 relative">
       {/* Top metadata bar */}
       {!hideChrome && !hideHeader && <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
         {repoName && (
@@ -3980,7 +3730,6 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
             )}
             <div className="px-5 py-4">
             {getFlag("threads") && <ThreadAgentsBar agentId={agent.id} />}
-            <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
             <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} isStreaming={uiIsStreaming} />
             {pendingQuestion && pendingQuestion.agentId === agent.id && pendingQuestion.questions.length > 0 && (
               <AskUserQuestionCard
@@ -4054,14 +3803,14 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
               )}
               <div
                 className={cn(
-                  "bg-card rounded-xl transition-colors relative",
+                  "bg-card rounded-2xl transition-all relative shadow-sm",
                   isDragOver
-                    ? "border-2 border-dashed border-ring"
+                    ? "border-2 border-dashed border-ring shadow-ring/10"
                     : showPlanApproval
                       ? "border-2 border-dashed border-emerald-500/60"
                       : isInPlanMode
                         ? "border-2 border-dashed border-primary/60 focus-within:border-primary"
-                        : "border border-border focus-within:border-ring"
+                        : "border border-border/60 focus-within:border-ring/50 focus-within:shadow-md focus-within:shadow-ring/5"
                 )}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}

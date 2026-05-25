@@ -25,7 +25,7 @@ html.tauri body {
 
 #root {
   height: 100%;
-  background-color: var(--background, #1c1917);
+  background-color: var(--background, #111111);
   overflow: hidden;
   isolation: isolate;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;

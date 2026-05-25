@@ -25,6 +25,7 @@ import { statsRoutes } from "./routes/stats.js"
 import { wrappedRoutes } from "./routes/wrapped.js"
 import { systemRoutes } from "./routes/system.js"
 import { tasksRoutes } from "./routes/tasks.js"
+import { registerAutomationRoutes, startScheduler } from "./routes/automations.js"
 import { registerSocket } from "./ws/handler.js"
 import { registerPtySocket } from "./ws/pty.js"
 import { authHook } from "./auth.js"
@@ -94,6 +95,7 @@ await app.register(statsRoutes)
 await app.register(wrappedRoutes)
 await app.register(systemRoutes)
 await app.register(tasksRoutes)
+registerAutomationRoutes(app)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
@@ -106,6 +108,7 @@ app.get("/api/config", async () => ({
 
 // Startup — try requested port, then increment up to 10 times on EADDRINUSE
 runMigrations()
+startScheduler()
 
 // Clear any stale streaming=1 rows from a previous crashed/killed process.
 // The in-memory runningProcesses Map starts empty, so any row claiming to

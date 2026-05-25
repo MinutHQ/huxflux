@@ -18,6 +18,7 @@ export interface AppContextValue {
   setRefineSessions: React.Dispatch<React.SetStateAction<RefineSession[]>>
   feedbackEnabled: boolean
   githubEnabled: boolean
+  sidebarCollapsed: boolean
 }
 
 export const AppContext = createContext<AppContextValue | null>(null)

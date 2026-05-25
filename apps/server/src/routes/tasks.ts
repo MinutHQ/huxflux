@@ -456,35 +456,10 @@ export async function tasksRoutes(app: FastifyInstance) {
     const existing = db.select().from(tasks).where(eq(tasks.id, id)).get()
     if (!existing) return { error: "not found" }
 
-    const wasReady = existing.status === "ready"
     db.update(tasks).set({
       ...body,
       updatedAt: new Date().toISOString(),
     }).where(eq(tasks.id, id)).run()
-
-    // Auto-create agent when task moves to "ready" and has a repo
-    if (body.status === "ready" && !wasReady) {
-      const updated = db.select().from(tasks).where(eq(tasks.id, id)).get()
-      if (updated?.repoId) {
-        // Check if there's already a linked agent
-        const existingAgent = db.select().from(taskAgents).where(eq(taskAgents.taskId, id)).all()
-        if (existingAgent.length === 0) {
-          try {
-            // Fire start-work via internal HTTP to reuse full agent creation logic
-            await fetch(`http://localhost:${config.boundPort}/api/tasks/${id}/start-work`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
-              },
-              body: JSON.stringify({}),
-            })
-          } catch (err) {
-            console.error(`[tasks] auto-start failed for ${id}:`, err)
-          }
-        }
-      }
-    }
 
     return loadAllTasks()
   })
@@ -813,11 +788,20 @@ export async function tasksRoutes(app: FastifyInstance) {
 
   app.post("/api/tasks/:id/start-work", async (req) => {
     const { id: taskId } = req.params as { id: string }
+    const body = (req.body ?? {}) as { model?: string; provider?: string; repoId?: string }
     const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()
     if (!task) return { error: "Task not found" }
-    if (!task.repoId) return { error: "Task has no repo assigned — set a repo first" }
 
-    const repo = db.select().from(repos).where(eq(repos.id, task.repoId)).get()
+    // Allow overriding repo from request
+    const repoId = body.repoId ?? task.repoId
+    if (!repoId) return { error: "Task has no repo assigned — set a repo first" }
+
+    // Update repo on task if provided
+    if (body.repoId && body.repoId !== task.repoId) {
+      db.update(tasks).set({ repoId: body.repoId, updatedAt: new Date().toISOString() }).where(eq(tasks.id, taskId)).run()
+    }
+
+    const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
     if (!repo) return { error: "Repo not found" }
 
     // Build context from task + comments
@@ -841,17 +825,18 @@ export async function tasksRoutes(app: FastifyInstance) {
     const now = new Date().toISOString()
     const settings = getSettings()
     const agentLocation = `task-${taskId.slice(0, 8)}-${Date.now()}`
+    const model = body.model ?? settings.defaultModel ?? "Sonnet 4.6"
+    const provider = body.provider ?? settings.defaultProvider ?? "claude"
 
-    // Create agent with worktree — this is done via internal HTTP to reuse full worktree creation logic
     db.insert(agents).values({
       id: agentId,
-      repoId: task.repoId,
+      repoId,
       title: task.title.slice(0, 60),
       status: "in-progress",
       branch,
-      model: settings.defaultModel ?? "Sonnet 4.6",
+      model,
       location: agentLocation,
-      provider: settings.defaultProvider ?? "claude",
+      provider,
       taskId,
       createdAt: now,
       updatedAt: now,
@@ -893,8 +878,8 @@ When the task is complete, signal it via:
     runClaude(`Implement the following task:\n\n${task.description ?? task.title}`, {
       agentId,
       worktreePath,
-      model: settings.defaultModel,
-      provider: settings.defaultProvider,
+      model,
+      provider,
     })
 
     return { agentId, tasks: await loadAllTasks() }

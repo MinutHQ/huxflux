@@ -243,6 +243,7 @@ export const DiffView = React.memo(function DiffView({ agentId, file, hideHeader
     overflow: (hideHeader ? "wrap" : "scroll") as "wrap" | "scroll",
     expandedHunks,
     onHunkExpand,
+    unsafeCSS: `pre { background-color: transparent !important; } :host { background-color: transparent !important; }`,
     ...(useGutter ? {
       enableGutterUtility: true,
       onLineClick: handleLineClick,
@@ -250,7 +251,7 @@ export const DiffView = React.memo(function DiffView({ agentId, file, hideHeader
   }), [diffTheme, diffStyle, expandedHunks, handleLineClick, hideHeader, useGutter])
 
   return (
-    <div className={cn("flex flex-col bg-background", hideHeader ? "" : "h-full")}>
+    <div className={cn("flex flex-col", hideHeader ? "" : "h-full")}>
       {!hideHeader && <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border bg-card shrink-0 text-[11px]">
         <span className="text-muted-foreground font-mono truncate">
           {file.path.replace(`/${fileName}`, "")}/<span className="text-foreground font-semibold">{fileName}</span>
@@ -287,6 +288,7 @@ export const DiffView = React.memo(function DiffView({ agentId, file, hideHeader
             options={diffOptions as any}
             lineAnnotations={lineAnnotations as any}
             renderAnnotation={onAddComment ? renderAnnotation as any : undefined}
+            style={{ backgroundColor: "transparent" }}
           />
         )}
       </div>

@@ -8,6 +8,11 @@ import { handleExternalClick } from "@/lib/platform"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { DiffView } from "@/components/DiffView"
+import { FileTree, useFileTree } from "@pierre/trees/react"
+import { themeToTreeStyles } from "@pierre/trees"
+import type { GitStatusEntry } from "@pierre/trees"
+import { useSyncExternalStore } from "react"
+import { getDiffTheme } from "@/components/DiffView"
 import {
   IconChevronDown,
   IconChevronRight,
@@ -19,9 +24,7 @@ import {
   IconClock,
   IconCircleDashed,
   IconArrowUpRight,
-  IconFolder,
   IconFiles,
-  IconLayoutSidebarLeftExpand,
   IconAlertTriangle,
 } from "@tabler/icons-react"
 
@@ -510,6 +513,58 @@ export function PRView({ agentId, onAddComment }: { agentId: string; onAddCommen
   )
 }
 
+// ── Tree theme helper ────────────────────────────────────────────────────────
+
+const resolvedThemeCache = new Map<string, any>()
+
+function useTreeThemeStyles(): React.CSSProperties {
+  const themeName = useSyncExternalStore(
+    (cb) => {
+      window.addEventListener("huxflux:theme-change", cb)
+      window.addEventListener("huxflux:color-theme-change", cb)
+      return () => { window.removeEventListener("huxflux:theme-change", cb); window.removeEventListener("huxflux:color-theme-change", cb) }
+    },
+    getDiffTheme,
+  )
+
+  const [resolvedTheme, setResolvedTheme] = useState<any>(null)
+
+  useEffect(() => {
+    if (resolvedThemeCache.has(themeName)) {
+      setResolvedTheme(resolvedThemeCache.get(themeName))
+      return
+    }
+    import("@pierre/diffs").then(({ resolveTheme }) => {
+      resolveTheme(themeName).then((t) => {
+        resolvedThemeCache.set(themeName, t)
+        setResolvedTheme(t)
+      })
+    })
+  }, [themeName])
+
+  return useMemo(() => {
+    if (!resolvedTheme) return {} as React.CSSProperties
+    const s = getComputedStyle(document.documentElement)
+    const v = (name: string) => s.getPropertyValue(name).trim()
+    const cardFg = v("--card-foreground")
+    return {
+      ...themeToTreeStyles(resolvedTheme),
+      backgroundColor: "transparent",
+      color: cardFg,
+      "--trees-theme-sidebar-bg": "transparent",
+      "--trees-theme-sidebar-fg": cardFg,
+      "--trees-theme-panel-bg": "transparent",
+      "--trees-theme-panel-fg": cardFg,
+      "--trees-theme-input-bg": v("--muted"),
+      "--trees-theme-input-fg": cardFg,
+      "--trees-theme-input-border": v("--border"),
+      "--trees-theme-list-hover-bg": v("--accent"),
+      "--trees-theme-list-active-selection-bg": v("--accent"),
+      "--trees-theme-list-active-selection-fg": v("--accent-foreground"),
+    } as React.CSSProperties
+  }, [resolvedTheme])
+}
+
 // ── All files tree ───────────────────────────────────────────────────────────
 
 interface FileTreeEntry {
@@ -519,138 +574,6 @@ interface FileTreeEntry {
   children?: FileTreeEntry[]
 }
 
-function fileColor(name: string): string {
-  // Exact filename matches first
-  const lower = name.toLowerCase()
-  const nameMap: Record<string, string> = {
-    ".gitignore": "text-red-500",
-    ".git": "text-zinc-500",
-    ".env": "text-yellow-500",
-    "dockerfile": "text-sky-400",
-    "license": "text-zinc-400",
-    "readme.md": "text-zinc-400",
-  }
-  if (nameMap[lower]) return nameMap[lower]
-
-  const ext = name.split(".").pop()?.toLowerCase()
-  const colorMap: Record<string, string> = {
-    ts: "text-blue-400", tsx: "text-blue-400",
-    js: "text-yellow-400", jsx: "text-yellow-400",
-    json: "text-amber-400",
-    md: "text-sky-400",
-    css: "text-pink-400", scss: "text-pink-400",
-    html: "text-orange-400",
-    yaml: "text-green-400", yml: "text-green-400",
-    sh: "text-emerald-500",
-    lock: "text-zinc-600",
-    toml: "text-zinc-400",
-    svg: "text-amber-300",
-    png: "text-purple-400", jpg: "text-purple-400", gif: "text-purple-400",
-    env: "text-yellow-500",
-    sql: "text-orange-300",
-    graphql: "text-pink-500",
-    py: "text-yellow-300",
-    go: "text-cyan-400",
-    rs: "text-orange-400",
-    rb: "text-red-400",
-  }
-  return colorMap[ext ?? ""] ?? "text-zinc-500"
-}
-
-// Build a set of all directory paths that contain a changed file
-function getChangedPaths(changes: FileChange[]): Set<string> {
-  const paths = new Set<string>()
-  for (const f of changes) {
-    paths.add(f.path)
-    const parts = f.path.split("/")
-    for (let i = 1; i < parts.length; i++) {
-      paths.add(parts.slice(0, i).join("/"))
-    }
-  }
-  return paths
-}
-
-function TreeNode({
-  entry,
-  depth,
-  onSelect,
-  changesMap,
-  changedPaths,
-  changedOnly,
-}: {
-  entry: FileTreeEntry
-  depth: number
-  onSelect: (path: string) => void
-  changesMap: Map<string, FileChange>
-  changedPaths: Set<string>
-  changedOnly: boolean
-}) {
-  const [open, setOpen] = useState(depth < 2)
-  const change = changesMap.get(entry.path)
-
-  if (changedOnly && !changedPaths.has(entry.path)) return null
-
-  if (entry.type === "directory") {
-    return (
-      <div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors"
-          style={{ paddingLeft: `${12 + depth * 16}px` }}
-        >
-          <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", open && "rotate-90")} />
-          <IconFolder size={14} className="text-muted-foreground/50 shrink-0" />
-          <span className="text-[12px] text-muted-foreground truncate">{entry.name}</span>
-        </button>
-        {open && entry.children?.map((child) => (
-          <TreeNode key={child.path} entry={child} depth={depth + 1} onSelect={onSelect} changesMap={changesMap} changedPaths={changedPaths} changedOnly={changedOnly} />
-        ))}
-      </div>
-    )
-  }
-
-  const isAddOnly = change && change.deletions === 0
-  const isDelOnly = change && change.additions === 0
-
-  return (
-    <button
-      onClick={() => onSelect(entry.path)}
-      className="w-full flex items-center gap-1.5 px-4 py-[3px] text-left hover:bg-accent/40 transition-colors group"
-      style={{ paddingLeft: `${26 + depth * 16}px` }}
-    >
-      <span className={cn("text-[10px] shrink-0 leading-none", fileColor(entry.name))}>◆</span>
-      <span className={cn("text-[12px] truncate flex-1 min-w-0", change ? "text-foreground" : "text-muted-foreground")}>{entry.name}</span>
-      {change && (
-        <span className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono text-[10px]">
-            <span className="text-emerald-400">+{change.additions}</span>
-            {" "}
-            <span className="text-red-400">-{change.deletions}</span>
-          </span>
-          <span className={cn(
-            "w-2 h-2 rounded-full shrink-0",
-            isAddOnly ? "bg-emerald-400"
-              : isDelOnly ? "bg-red-400"
-              : "bg-amber-400"
-          )} />
-        </span>
-      )}
-    </button>
-  )
-}
-
-function filterTree(entries: FileTreeEntry[], query: string): FileTreeEntry[] {
-  const q = query.toLowerCase()
-  return entries.reduce<FileTreeEntry[]>((acc, entry) => {
-    if (entry.type === "file") {
-      if (entry.name.toLowerCase().includes(q) || entry.path.toLowerCase().includes(q)) acc.push(entry)
-    } else {
-      const filteredChildren = filterTree(entry.children ?? [], query)
-      if (filteredChildren.length > 0) acc.push({ ...entry, children: filteredChildren })
-    }
-    return acc
-  }, [])
-}
 
 
 // ── Stacked diff view ────────────────────────────────────────────────────────
@@ -773,7 +696,7 @@ export const StackedDiffView = React.memo(function StackedDiffView({
                 >
                   <button
                     onClick={() => toggleFile(file.path)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors bg-background border-b border-border/20"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/30 transition-colors border-b border-border/20"
                   >
                     <IconChevronRight size={11} className={cn("text-muted-foreground/40 shrink-0 transition-transform", isExpanded && "rotate-90")} />
                     <span className={cn(
@@ -909,7 +832,7 @@ function UnifiedFileTree({
   fileChanges: FileChange[]
   onFileContentSelect: (path: string) => void
   onFileSelect: (file: FileChange) => void
-  onOpenDiffBrowser?: () => void
+  onOpenDiffBrowser?: (scrollToPath?: string) => void
   onOpenPRTab?: () => void
   hasPR?: boolean
   prView?: React.ReactNode
@@ -917,28 +840,94 @@ function UnifiedFileTree({
   pendingComments?: PRComment[]
   onRemoveComment?: (id: string) => void
 }) {
-  const [changedOnly, setChangedOnly] = useState(true)
-  const [diffMode, setDiffMode] = useState(() => getDiffViewMode() === "stacked")
-  const [showFileList, setShowFileList] = useState(() => getDiffFileList())
+  const treeThemeStyles = useTreeThemeStyles()
   const [search, setSearch] = useState("")
   const { data: tree, isLoading } = useQuery({
     queryKey: ["file-tree", agentId],
     queryFn: () => api.getFileTree(agentId),
     staleTime: 30_000,
-    enabled: !changedOnly && !diffMode,
   })
 
-  const changesMap = new Map(fileChanges.map((f) => [f.path, f]))
-  const changedPaths = getChangedPaths(fileChanges)
+  const [activeView, setActiveView] = useState<"all" | "diff" | "pr">("all")
 
-  const rawTree = changedOnly ? buildTreeFromChanges(fileChanges) : (tree as FileTreeEntry[] | undefined)
-  const displayTree = rawTree && search ? filterTree(rawTree, search) : rawTree
+  // All repo file paths (leaves only) for the "All files" tree view
+  const allPaths = useMemo(() => {
+    if (!tree) return fileChanges.map(f => f.path)
+    const paths: string[] = []
+    function walk(entries: FileTreeEntry[]) {
+      for (const e of entries) {
+        if (e.type === "file") paths.push(e.path)
+        if (e.children) walk(e.children)
+      }
+    }
+    walk(tree as FileTreeEntry[])
+    return paths
+  }, [tree, fileChanges])
 
-  const [activeView, setActiveView] = useState<"all" | "diff" | "pr">(diffMode ? "diff" : "all")
-  const tooManyFiles = fileChanges.length > STACKED_DIFF_THRESHOLD
+  const gitStatus = useMemo<GitStatusEntry[]>(() =>
+    fileChanges.map(f => ({
+      path: f.path,
+      status: f.deletions === 0 ? "added" as const
+        : f.additions === 0 ? "deleted" as const
+        : "modified" as const,
+    })),
+  [fileChanges])
 
-  function switchToAll() { setActiveView("all"); setChangedOnly(false); setDiffMode(false); setDiffViewMode("tree") }
-  function switchToDiff() { setActiveView("diff"); setChangedOnly(true); setDiffMode(true); setDiffViewMode("stacked") }
+  const { model } = useFileTree({
+    paths: allPaths,
+    search: true,
+    fileTreeSearchMode: "hide-non-matches",
+    icons: { set: "complete", colored: true },
+    density: "compact",
+    flattenEmptyDirectories: true,
+    gitStatus,
+    initialExpansion: "closed",
+    onSelectionChange: (selectedPaths) => {
+      if (selectedPaths.length > 0) onFileContentSelect(selectedPaths[0])
+    },
+  })
+
+  useEffect(() => {
+    model.resetPaths(allPaths)
+  }, [allPaths, model])
+
+  useEffect(() => {
+    model.setGitStatus(gitStatus)
+  }, [gitStatus, model])
+
+  // Diff tree — changed files only
+  const changedPaths = useMemo(() => fileChanges.map(f => f.path), [fileChanges])
+
+  const { model: diffModel } = useFileTree({
+    paths: changedPaths,
+    search: true,
+    fileTreeSearchMode: "hide-non-matches",
+    icons: { set: "complete", colored: true },
+    density: "compact",
+    flattenEmptyDirectories: true,
+    gitStatus,
+    initialExpansion: "open",
+    onSelectionChange: (selectedPaths) => {
+      if (selectedPaths.length > 0) {
+        // Only open for files (files are in changedPaths), not directories
+        const p = selectedPaths[0]
+        if (changedPaths.includes(p)) {
+          onOpenDiffBrowser?.(p)
+        }
+      }
+    },
+  })
+
+  useEffect(() => {
+    diffModel.resetPaths(changedPaths)
+  }, [changedPaths, diffModel])
+
+  useEffect(() => {
+    diffModel.setGitStatus(gitStatus)
+  }, [gitStatus, diffModel])
+
+  function switchToAll() { setActiveView("all") }
+  function switchToDiff() { setActiveView("diff") }
   function switchToPR() { setActiveView("pr") }
 
   return (
@@ -994,148 +983,50 @@ function UnifiedFileTree({
           )}
         </div>
 
-        {/* Diff mode actions */}
-        {activeView === "diff" && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            {onOpenDiffBrowser && (
-              <Button variant="ghost" size="icon-xs" title="Open in full view" onClick={onOpenDiffBrowser}>
-                <IconArrowUpRight size={13} />
-              </Button>
-            )}
-            {!tooManyFiles && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                title={showFileList ? "Hide file list" : "Show file list"}
-                onClick={() => { const next = !showFileList; setShowFileList(next); setDiffFileList(next) }}
-                className={cn(showFileList && "text-primary")}
-              >
-                <IconLayoutSidebarLeftExpand size={13} />
-              </Button>
-            )}
-          </div>
-        )}
       </div>
-
-      {/* Search — only in All/Diff view */}
-      {activeView !== "pr" && (
-        <div className="flex items-center gap-1.5 mx-2.5 mb-1.5 bg-muted/50 rounded-md px-2 py-1 border border-transparent focus-within:border-border transition-colors">
-          <IconSearch size={12} className="text-muted-foreground/40 shrink-0" />
-          <input
-            type="text"
-            placeholder="Search files..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-0 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/40"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="text-muted-foreground/40 hover:text-muted-foreground">
-              <IconChevronRight size={10} className="rotate-45" />
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Content */}
       {activeView === "pr" && prView ? (
         <div className="flex-1 min-h-0">{prView}</div>
       ) : activeView === "diff" ? (
         <div className="flex-1 min-h-0">
-          {tooManyFiles ? (
-            /* Too many files — show simple list, open one-by-one in tabs */
-            <ScrollArea className="h-full">
-              <div className="py-1">
-                {(search ? fileChanges.filter(f => f.path.toLowerCase().includes(search.toLowerCase())) : fileChanges).map((file) => {
-                  const name = file.path.split("/").pop() ?? file.path
-                  const dir = file.path.split("/").slice(0, -1).join("/")
-                  const isAddOnly = file.deletions === 0
-                  const isDelOnly = file.additions === 0
-                  return (
-                    <button
-                      key={file.path}
-                      onClick={() => onFileSelect(file)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/40 transition-colors"
-                    >
-                      <span className={cn("w-2 h-2 rounded-full shrink-0", isAddOnly ? "bg-emerald-400" : isDelOnly ? "bg-red-400" : "bg-amber-400")} />
-                      <span className="text-[12px] font-mono truncate flex-1 min-w-0">
-                        {dir && <span className="text-muted-foreground/50">{dir}/</span>}
-                        <span className="text-foreground font-medium">{name}</span>
-                      </span>
-                      <span className="font-mono text-[10px] shrink-0">
-                        <span className="text-emerald-400">+{file.additions}</span>{" "}
-                        <span className="text-red-400">-{file.deletions}</span>
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </ScrollArea>
+          {fileChanges.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <IconFiles size={22} className="text-muted-foreground/30" />
+              <p className="text-xs text-muted-foreground/40">No changes</p>
+            </div>
           ) : (
-            <StackedDiffView agentId={agentId} fileChanges={fileChanges} search={search} showFileList={showFileList} onOpenFile={onFileSelect} onAddComment={onAddComment} pendingComments={pendingComments} onRemoveComment={onRemoveComment} />
+            <FileTree
+              model={diffModel}
+              className="h-full"
+              style={treeThemeStyles}
+            />
           )}
         </div>
       ) : (
         <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full">
-            {isLoading && !changedOnly ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-xs text-muted-foreground/40">Loading...</p>
-              </div>
-            ) : !displayTree || displayTree.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2">
-                <IconFiles size={22} className="text-muted-foreground/30" />
-                <p className="text-xs text-muted-foreground/40">{search ? "No matches" : changedOnly ? "No changes" : "No files"}</p>
-              </div>
-            ) : (
-              <div className="py-1">
-                {displayTree.map((entry) => (
-                  <TreeNode
-                    key={entry.path}
-                    entry={entry}
-                    depth={0}
-                    onSelect={onFileContentSelect}
-                    changesMap={changesMap}
-                    changedPaths={changedPaths}
-                    changedOnly={changedOnly}
-                  />
-                ))}
-              </div>
-            )}
-          </ScrollArea>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-xs text-muted-foreground/40">Loading...</p>
+            </div>
+          ) : allPaths.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <IconFiles size={22} className="text-muted-foreground/30" />
+              <p className="text-xs text-muted-foreground/40">{search ? "No matches" : "No files"}</p>
+            </div>
+          ) : (
+            <FileTree
+              model={model}
+              className="h-full"
+              style={treeThemeStyles}
+            />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-/** Build a minimal file tree from a flat list of changed file paths */
-function buildTreeFromChanges(files: FileChange[]): FileTreeEntry[] {
-  const root: FileTreeEntry[] = []
-  for (const file of files) {
-    const parts = file.path.split("/")
-    let children = root
-    let currentPath = ""
-    for (let i = 0; i < parts.length; i++) {
-      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i]
-      const isLast = i === parts.length - 1
-      let existing = children.find((c) => c.name === parts[i])
-      if (!existing) {
-        existing = {
-          name: parts[i],
-          path: currentPath,
-          type: isLast ? "file" : "directory",
-          children: isLast ? undefined : [],
-        }
-        children.push(existing)
-      }
-      if (!isLast) {
-        if (!existing.children) existing.children = []
-        children = existing.children
-      }
-    }
-  }
-  return root
-}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -1147,7 +1038,7 @@ interface FileChangesViewProps {
   onAddComment: (c: PRComment) => void
   pendingComments?: PRComment[]
   onRemoveComment?: (id: string) => void
-  onOpenDiffBrowser?: () => void
+  onOpenDiffBrowser?: (scrollToPath?: string) => void
   onOpenPRTab?: () => void
   /** When provided, tab state is controlled externally */
   tab?: "files" | "changes" | "pr"
@@ -1163,7 +1054,7 @@ export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSele
   const hasPR = !!agent.prNumber
 
   return (
-    <div className="flex flex-col h-full bg-background min-w-0 overflow-hidden">
+    <div className="flex flex-col h-full min-w-0 overflow-hidden">
       {/* Header — hidden when tabs are rendered in the workspace header */}
       {!hideHeader && (
         <div className="flex items-center px-2 py-2 border-b border-border shrink-0 gap-1">

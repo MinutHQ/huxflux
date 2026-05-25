@@ -14,6 +14,8 @@ import { Route as agentSetupRoute } from "./routes/_app/agent.setup"
 import { Route as agentTeardownRoute } from "./routes/_app/agent.teardown"
 import { Route as reviewRoute } from "./routes/_app/review.$prId"
 import { Route as refineRoute } from "./routes/_app/refine.$sessionId"
+import { Route as automationsRoute } from "./routes/_app/automations"
+import { Route as automationDetailRoute } from "./routes/_app/automations_.$automationId"
 
 const routeTree = rootRoute.addChildren([
   settingsRoute.addChildren(settingsChildren),
@@ -27,6 +29,8 @@ const routeTree = rootRoute.addChildren([
     agentTeardownRoute,
     reviewRoute,
     refineRoute,
+    automationsRoute,
+    automationDetailRoute,
   ]),
 ])
 

@@ -13,6 +13,7 @@ import { broadcast } from "../ws/handler.js"
 import { prStatusToAgentStatus } from "../github/prStatus.js"
 import { getClaudeBin, resolveModelAlias } from "../claude/runner.js"
 import { getSettings } from "../settings.js"
+import { DATA_DIR } from "../config.js"
 import type { PRStatus, PRDetails, OpenPRWithRepo } from "../types.js"
 
 /** Read skill body (content after frontmatter) for a given skill name. Returns null if not found. */
@@ -766,4 +767,40 @@ export async function githubRoutes(app: FastifyInstance) {
 
     return { ok: true, merged: true }
   })
+
+  // ── Review state persistence ───────────────────────────────────────────────
+
+  const reviewStateDir = path.join(DATA_DIR, "review-state")
+
+  function getReviewStatePath(owner: string, repo: string, number: number): string {
+    return path.join(reviewStateDir, `${owner}-${repo}-${number}.json`)
+  }
+
+  // GET /api/prs/:owner/:repo/:number/review-state
+  app.get<{ Params: { owner: string; repo: string; number: string } }>(
+    "/api/prs/:owner/:repo/:number/review-state",
+    async (req) => {
+      const filePath = getReviewStatePath(req.params.owner, req.params.repo, parseInt(req.params.number, 10))
+      try {
+        const data = fsSync.readFileSync(filePath, "utf8")
+        return JSON.parse(data)
+      } catch {
+        return { pendingComments: [], viewedFiles: [] }
+      }
+    }
+  )
+
+  // PUT /api/prs/:owner/:repo/:number/review-state
+  app.put<{
+    Params: { owner: string; repo: string; number: string }
+    Body: { pendingComments?: any[]; viewedFiles?: string[] }
+  }>(
+    "/api/prs/:owner/:repo/:number/review-state",
+    async (req) => {
+      const filePath = getReviewStatePath(req.params.owner, req.params.repo, parseInt(req.params.number, 10))
+      fsSync.mkdirSync(reviewStateDir, { recursive: true })
+      fsSync.writeFileSync(filePath, JSON.stringify(req.body, null, 2))
+      return { ok: true }
+    }
+  )
 }

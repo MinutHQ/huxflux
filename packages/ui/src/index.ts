@@ -1,5 +1,6 @@
 export { Badge, badgeVariants } from "./badge"
 export { Button, buttonVariants } from "./button"
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./dialog"
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from "./popover"
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizable"
 export { ScrollArea, ScrollBar } from "./scroll-area"

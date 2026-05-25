@@ -109,6 +109,42 @@ function RootComponent() {
     return () => { for (const cleanup of cleanups) cleanup() }
   }, [servers, activeId])
 
+  // Dev mode toast on window focus (works in both browser and Tauri)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    let blurred = false
+    let cleanup: (() => void) | null = null
+
+    function showDevToast() {
+      toast("Dev mode", {
+        description: "Running against development database",
+        duration: 2000,
+        style: { background: "#2563eb", color: "white", border: "1px solid #3b82f6" },
+      })
+    }
+
+    if (isTauri) {
+      // Tauri: use native window events
+      import("@tauri-apps/api/event").then(({ listen }) => {
+        const unlisten1 = listen("tauri://blur", () => { blurred = true })
+        const unlisten2 = listen("tauri://focus", () => {
+          if (blurred) { blurred = false; showDevToast() }
+        })
+        cleanup = () => { unlisten1.then((u) => u()); unlisten2.then((u) => u()) }
+      })
+    } else {
+      // Browser: use visibilitychange
+      const onVis = () => {
+        if (document.visibilityState === "hidden") blurred = true
+        else if (blurred) { blurred = false; showDevToast() }
+      }
+      document.addEventListener("visibilitychange", onVis)
+      cleanup = () => document.removeEventListener("visibilitychange", onVis)
+    }
+
+    return () => { cleanup?.() }
+  }, [])
+
   return (
     <div className="h-screen bg-sidebar text-foreground overflow-hidden flex flex-col">
       <Toaster theme={theme === "system" ? "system" : theme} position="bottom-right" />
@@ -118,11 +154,6 @@ function RootComponent() {
         agents={agents}
         onSelectAgent={(id) => navigate({ to: "/agent/$agentId", params: { agentId: id } })}
       />
-      {import.meta.env.DEV && (
-        <div data-tauri-drag-region className="px-3 py-1.5 bg-blue-600 border-b border-blue-400 text-center text-[11px] font-semibold uppercase tracking-wider text-white shrink-0">
-          Dev mode
-        </div>
-      )}
       <DisconnectedBanner />
       {isTauri && update && (
         <UpdateBanner

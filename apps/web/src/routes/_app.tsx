@@ -13,6 +13,9 @@ import { useBulkReview } from "@/hooks/useBulkReview"
 import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
 
 import { getFlag } from "@/lib/flags"
+import { isTauri, isMacOS } from "@/lib/platform"
+import { IconLayoutSidebarLeftExpand, IconLayoutSidebarLeftCollapse } from "@tabler/icons-react"
+import { Button } from "@huxflux/ui"
 import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
 import { Route as rootRoute } from "./__root"
 
@@ -41,10 +44,12 @@ function AppLayout() {
   const sidebarLayout = useDefaultLayout({ id: "huxflux-sidebar", panelIds: ["huxflux-sidebar-panel", "huxflux-content-panel"] })
 
   const toggleSidebar = useCallback(() => {
-    if (sidebarRef.current?.isCollapsed()) {
-      sidebarRef.current.expand()
-    } else {
+    const willCollapse = !sidebarRef.current?.isCollapsed()
+    setSidebarCollapsed(willCollapse)
+    if (willCollapse) {
       sidebarRef.current?.collapse()
+    } else {
+      sidebarRef.current?.expand()
     }
   }, [])
 
@@ -127,6 +132,7 @@ function AppLayout() {
     setRefineSessions,
     feedbackEnabled,
     githubEnabled,
+    sidebarCollapsed,
   }
 
   const sidebarProps = {
@@ -150,6 +156,14 @@ function AppLayout() {
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
         <div className="relative flex flex-1 min-h-0 w-full overflow-hidden">
+          {/* Sidebar toggle - fixed position, right of traffic lights, always visible */}
+          {isTauri && isMacOS && (
+            <div className="absolute left-[84px] z-40" style={{ top: 14 }}>
+              <Button variant="ghost" size="icon-xs" onClick={toggleSidebar} title={sidebarCollapsed ? "Show sidebar (⌘B)" : "Hide sidebar (⌘B)"}>
+                {sidebarCollapsed ? <IconLayoutSidebarLeftExpand size={14} /> : <IconLayoutSidebarLeftCollapse size={14} />}
+              </Button>
+            </div>
+          )}
           <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 w-full" defaultLayout={sidebarLayout.defaultLayout} onLayoutChanged={sidebarLayout.onLayoutChanged}>
               <ResizablePanel
                 id="huxflux-sidebar-panel"
@@ -159,7 +173,6 @@ function AppLayout() {
                 maxSize="28"
                 collapsible
                 collapsedSize="0"
-                onResize={(size) => setSidebarCollapsed(size.asPercentage < 1)}
                 className="overflow-hidden"
               >
                 <Sidebar {...sidebarProps} />
@@ -167,8 +180,8 @@ function AppLayout() {
 
               <ResizableHandle className="w-0 bg-transparent" />
 
-              <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10 py-1 pr-1">
-                <div className="flex h-full bg-background rounded-xl shadow-[-4px_0_16px_-4px_rgba(0,0,0,0.12)] overflow-hidden">
+              <ResizablePanel id="huxflux-content-panel" defaultSize="82" minSize="50" className="min-w-0 relative z-10">
+                <div className="flex h-full overflow-hidden">
                   <Outlet />
                 </div>
               </ResizablePanel>

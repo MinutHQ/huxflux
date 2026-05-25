@@ -404,7 +404,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full">
       {/* Top tab bar */}
       <div className="relative flex items-center px-2 pb-1.5 pt-1 shrink-0 gap-1">
         <div className="absolute inset-0 bg-gradient-to-b from-primary-foreground/[0.04] to-transparent pointer-events-none" />

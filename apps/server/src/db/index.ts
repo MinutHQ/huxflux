@@ -432,6 +432,44 @@ const MIGRATIONS: Migration[] = [
     version: 29,
     sql: `ALTER TABLE agents ADD COLUMN thread_parent_id TEXT;`,
   },
+  {
+    version: 30,
+    sql: `
+      CREATE TABLE IF NOT EXISTS automations (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        schedule TEXT,
+        steps_json TEXT,
+        script_path TEXT,
+        state_json TEXT,
+        builder_agent_id TEXT,
+        last_run_at TEXT,
+        last_run_status TEXT,
+        run_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id TEXT PRIMARY KEY,
+        automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        output TEXT,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id);
+      CREATE TABLE IF NOT EXISTS automation_skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        script_path TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `,
+  },
 ]
 
 export function runMigrations() {

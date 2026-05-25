@@ -1476,6 +1476,7 @@ function ExperimentalSettings() {
   const [remoteEditor, setRemoteEditor] = useState(() => getFlag("remoteEditor"))
   const [tasks, setTasks] = useState(() => getFlag("tasks"))
   const [threads, setThreads] = useState(() => getFlag("threads"))
+  const [automationsFlag, setAutomationsFlag] = useState(() => getFlag("automations"))
   const [threadsServer, setThreadsServer] = useState(false)
   useEffect(() => {
     api.getSettings().then((s) => setThreadsServer(s.threadsEnabled ?? false)).catch(() => {})
@@ -1532,6 +1533,15 @@ function ExperimentalSettings() {
           api.updateSettings({ threadsEnabled: v })
           setThreadsServer(v)
         }} />
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3 border-b border-border">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">Automations</div>
+          <div className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+            Create and manage server-side automations. Describe what you need in natural language and AI builds a scheduled pipeline. Reload required after toggling.
+          </div>
+        </div>
+        <Switch checked={automationsFlag} onCheckedChange={(v) => { setFlag("automations", v); setAutomationsFlag(v) }} />
       </div>
     </div>
   )

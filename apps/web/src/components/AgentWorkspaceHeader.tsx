@@ -152,9 +152,10 @@ interface AgentWorkspaceHeaderProps {
   onRun?: () => void
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
+  sidebarCollapsed?: boolean
 }
 
-export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCreatePR, onReview, onRun, rightPanelVisible = true, onToggleRightPanel }: AgentWorkspaceHeaderProps) {
+export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCreatePR, onReview, onRun, rightPanelVisible = true, onToggleRightPanel, sidebarCollapsed }: AgentWorkspaceHeaderProps) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { data: repos = [] } = useRepos()
@@ -282,11 +283,11 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
   const LastIcon = OPEN_IN_APPS.find((a) => a.key === lastOpenInApp)?.Icon ?? IconCode
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 shrink-0">
+    <div className={cn("flex items-center gap-3 px-4 py-1.5 shrink-0", isTauri && "min-h-10", sidebarCollapsed && isTauri && "pl-32")}>
       {/* Left: agent identity + branches */}
-      <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex flex-col gap-0 min-w-0">
         {/* Repo / Agent name */}
-        <div className="flex items-center gap-1 text-[13px] font-medium text-foreground truncate">
+        <div className="flex items-center gap-1.5 text-[13px] font-medium text-foreground truncate">
           {repoName && (
             <>
               <span className="text-muted-foreground/50">{repoName}</span>

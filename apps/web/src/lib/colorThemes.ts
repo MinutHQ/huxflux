@@ -54,6 +54,17 @@ export function applyColorTheme(id: string) {
 
 // ---------------------------------------------------------------------------
 // Theme definitions
+//
+// DEPTH HIERARCHY (dark themes):
+//   --sidebar    = darkest (root window, sidebar bg)
+//   --background = same as sidebar (gap color between panels)
+//   --card       = elevated panels (chat, file tree, terminal)
+//   --accent     = interactive states (hover, active tabs)
+//
+// IMPORTANT:
+//   - terminal.background MUST match --card so the terminal blends with its panel
+//   - No component should set bg-background on a panel wrapper (use transparent)
+//   - bg-card is set by the rounded-xl panel wrappers in the layout
 // ---------------------------------------------------------------------------
 
 export const colorThemes: ColorTheme[] = [
@@ -81,7 +92,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(255, 255, 255, 0.14)",
       "--input": "rgba(255, 255, 255, 0.20)",
       "--ring": "#78716c",
-      "--sidebar": "#292524",
+      "--sidebar": "#1c1917",
       "--sidebar-foreground": "#fafaf9",
       "--sidebar-primary": "#6366f1",
       "--sidebar-primary-foreground": "#fafaf9",
@@ -91,7 +102,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#78716c",
     },
     terminal: {
-      background: "#1c1917",
+      background: "#292524",
       foreground: "#e7e5e4",
       cursor: "#e7e5e4",
       selectionBackground: "#44403c",
@@ -126,7 +137,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(240, 192, 80, 0.15)",
       "--input": "rgba(240, 192, 80, 0.20)",
       "--ring": "#f0c050",
-      "--sidebar": "#0c1a30",
+      "--sidebar": "#0a1628",
       "--sidebar-foreground": "#e0d8c8",
       "--sidebar-primary": "#f0c050",
       "--sidebar-primary-foreground": "#0a1628",
@@ -136,7 +147,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#f0c050",
     },
     terminal: {
-      background: "#0a1628",
+      background: "#0f1f3a",
       foreground: "#e0d8c8",
       cursor: "#f0c050",
       selectionBackground: "#1a3050",
@@ -171,7 +182,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(167, 192, 128, 0.15)",
       "--input": "rgba(167, 192, 128, 0.18)",
       "--ring": "#a7c080",
-      "--sidebar": "#2a3338",
+      "--sidebar": "#272e33",
       "--sidebar-foreground": "#d3c6aa",
       "--sidebar-primary": "#a7c080",
       "--sidebar-primary-foreground": "#272e33",
@@ -181,7 +192,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#a7c080",
     },
     terminal: {
-      background: "#272e33",
+      background: "#2e383c",
       foreground: "#d3c6aa",
       cursor: "#a7c080",
       selectionBackground: "#3d4b50",
@@ -216,7 +227,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(242, 160, 176, 0.15)",
       "--input": "rgba(242, 160, 176, 0.18)",
       "--ring": "#f2a0b0",
-      "--sidebar": "#1e1826",
+      "--sidebar": "#1a1520",
       "--sidebar-foreground": "#e8d8e0",
       "--sidebar-primary": "#f2a0b0",
       "--sidebar-primary-foreground": "#1a1520",
@@ -226,7 +237,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#f2a0b0",
     },
     terminal: {
-      background: "#1a1520",
+      background: "#221c28",
       foreground: "#e8d8e0",
       cursor: "#f2a0b0",
       selectionBackground: "#352c40",
@@ -261,7 +272,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(180, 142, 173, 0.14)",
       "--input": "rgba(180, 142, 173, 0.18)",
       "--ring": "#b48ead",
-      "--sidebar": "#080818",
+      "--sidebar": "#050510",
       "--sidebar-foreground": "#d8dee9",
       "--sidebar-primary": "#b48ead",
       "--sidebar-primary-foreground": "#050510",
@@ -271,7 +282,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#b48ead",
     },
     terminal: {
-      background: "#050510",
+      background: "#0a0a1a",
       foreground: "#d8dee9",
       cursor: "#b48ead",
       selectionBackground: "#181835",
@@ -289,9 +300,9 @@ export const colorThemes: ColorTheme[] = [
     vars: {
       "--background": "#16161e",
       "--foreground": "#c0caf5",
-      "--card": "#1a1b26",
+      "--card": "#1f2030",
       "--card-foreground": "#c0caf5",
-      "--popover": "#1a1b26",
+      "--popover": "#1f2030",
       "--popover-foreground": "#c0caf5",
       "--primary": "#73daca",
       "--primary-foreground": "#16161e",
@@ -306,7 +317,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(115, 218, 202, 0.14)",
       "--input": "rgba(115, 218, 202, 0.18)",
       "--ring": "#73daca",
-      "--sidebar": "#181824",
+      "--sidebar": "#16161e",
       "--sidebar-foreground": "#c0caf5",
       "--sidebar-primary": "#73daca",
       "--sidebar-primary-foreground": "#16161e",
@@ -316,7 +327,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#73daca",
     },
     terminal: {
-      background: "#16161e",
+      background: "#1f2030",
       foreground: "#c0caf5",
       cursor: "#73daca",
       selectionBackground: "#292e48",
@@ -351,7 +362,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(216, 166, 87, 0.15)",
       "--input": "rgba(216, 166, 87, 0.18)",
       "--ring": "#d8a657",
-      "--sidebar": "#242424",
+      "--sidebar": "#1d2021",
       "--sidebar-foreground": "#d4be98",
       "--sidebar-primary": "#d8a657",
       "--sidebar-primary-foreground": "#1d2021",
@@ -361,7 +372,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#d8a657",
     },
     terminal: {
-      background: "#1d2021",
+      background: "#282828",
       foreground: "#d4be98",
       cursor: "#d8a657",
       selectionBackground: "#3c3836",
@@ -396,7 +407,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(217, 119, 6, 0.16)",
       "--input": "rgba(217, 119, 6, 0.20)",
       "--ring": "#d97706",
-      "--sidebar": "#1e1812",
+      "--sidebar": "#1a1410",
       "--sidebar-foreground": "#f5e6d3",
       "--sidebar-primary": "#d97706",
       "--sidebar-primary-foreground": "#1a1410",
@@ -406,7 +417,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#d97706",
     },
     terminal: {
-      background: "#1a1410",
+      background: "#211c16",
       foreground: "#f5e6d3",
       cursor: "#d97706",
       selectionBackground: "#33291c",
@@ -441,7 +452,7 @@ export const colorThemes: ColorTheme[] = [
       "--border": "rgba(255, 42, 109, 0.18)",
       "--input": "rgba(255, 42, 109, 0.22)",
       "--ring": "#ff2a6d",
-      "--sidebar": "#1e0e34",
+      "--sidebar": "#1a0a2e",
       "--sidebar-foreground": "#e0d0ff",
       "--sidebar-primary": "#ff2a6d",
       "--sidebar-primary-foreground": "#ffffff",
@@ -451,7 +462,7 @@ export const colorThemes: ColorTheme[] = [
       "--sidebar-ring": "#ff2a6d",
     },
     terminal: {
-      background: "#1a0a2e",
+      background: "#22103a",
       foreground: "#e0d0ff",
       cursor: "#ff2a6d",
       selectionBackground: "#301a52",

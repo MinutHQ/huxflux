@@ -12,6 +12,8 @@ import type {
   PRFileDiff,
   PRChatMessage,
   TaskItem,
+  Automation,
+  AutomationRun,
 } from "./types"
 
 export interface WrappedSummary {
@@ -260,6 +262,17 @@ export const api = {
       body: JSON.stringify(body),
     })
   },
+  getReviewState: (repoId: string, prNumber: number) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ pendingComments: any[]; viewedFiles: string[] }>(`/api/prs/${owner}/${repo}/${prNumber}/review-state`)
+  },
+  saveReviewState: (repoId: string, prNumber: number, state: { pendingComments?: any[]; viewedFiles?: string[] }) => {
+    const [owner, repo] = repoId.split("/")
+    return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/review-state`, {
+      method: "PUT",
+      body: JSON.stringify(state),
+    })
+  },
   sendSingleComment: (repoId: string, prNumber: number, body: string, path?: string, line?: number) => {
     const [owner, repo] = repoId.split("/")
     return req<{ ok: boolean }>(`/api/prs/${owner}/${repo}/${prNumber}/comment`, {
@@ -350,14 +363,30 @@ export const api = {
     req<{ method: string; ok: boolean; displayName?: string; error?: string }>("/api/tasks/jira-status"),
   refineTask: (taskId: string, message?: string) =>
     req<TaskItem[]>(`/api/tasks/${taskId}/reply`, { method: "POST", body: JSON.stringify({ content: message ?? "Please analyze this task and help me refine it. Explore the relevant code, then ask any clarifying questions." }), timeoutMs: 60_000 }),
-  startTaskWork: (taskId: string) =>
-    req<{ agentId: string; tasks: TaskItem[] }>(`/api/tasks/${taskId}/start-work`, { method: "POST", body: JSON.stringify({}), timeoutMs: 30_000 }),
+  startTaskWork: (taskId: string, opts?: { model?: string; provider?: string; repoId?: string }) =>
+    req<{ agentId: string; tasks: TaskItem[] }>(`/api/tasks/${taskId}/start-work`, { method: "POST", body: JSON.stringify(opts ?? {}), timeoutMs: 30_000 }),
   replyToTaskAgent: (taskId: string, content: string) =>
     req<{ agentId: string; tasks: TaskItem[] }>(`/api/tasks/${taskId}/reply`, { method: "POST", body: JSON.stringify({ content }) }),
   addTaskDependency: (taskId: string, dependsOnTaskId: string) =>
     req<TaskItem[]>(`/api/tasks/${taskId}/dependencies`, { method: "POST", body: JSON.stringify({ dependsOnTaskId }) }),
   removeTaskDependency: (taskId: string, depId: string) =>
     req<TaskItem[]>(`/api/tasks/${taskId}/dependencies/${depId}`, { method: "DELETE" }),
+
+  // Automations
+  getAutomations: () => req<Automation[]>("/api/automations"),
+  getAutomation: (id: string) => req<Automation>(`/api/automations/${id}`),
+  createAutomation: (body: { name: string; description?: string }) =>
+    req<Automation>("/api/automations", { method: "POST", body: JSON.stringify(body) }),
+  updateAutomation: (id: string, body: Partial<{ name: string; description: string; status: string; schedule: string; stepsJson: string }>) =>
+    req<Automation>(`/api/automations/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteAutomation: (id: string) =>
+    req<void>(`/api/automations/${id}`, { method: "DELETE" }),
+  runAutomation: (id: string) =>
+    req<AutomationRun>(`/api/automations/${id}/run`, { method: "POST" }),
+  getAutomationRuns: (id: string) =>
+    req<AutomationRun[]>(`/api/automations/${id}/runs`),
+  replyToAutomationBuilder: (id: string, content: string) =>
+    req<{ agentId: string }>(`/api/automations/${id}/reply`, { method: "POST", body: JSON.stringify({ content }) }),
 
   // Slash commands
   getSlashCommands: (agentId?: string, q?: string) => {

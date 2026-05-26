@@ -112,8 +112,8 @@ if [[ "$BUILD_MACOS" == "true" ]]; then
   X64_TAR="${X64_BUNDLE_DIR}/${APP_NAME}_${VERSION}_x64.app.tar.gz"
 
   echo "==> Creating and signing macOS updater tarballs..."
-  (cd "$ARM_BUNDLE_DIR" && tar -czf "$ARM_TAR" "${APP_NAME}.app")
-  (cd "$X64_BUNDLE_DIR" && tar -czf "$X64_TAR" "${APP_NAME}.app")
+  (cd "$ARM_BUNDLE_DIR" && COPYFILE_DISABLE=1 tar -czf "$ARM_TAR" "${APP_NAME}.app")
+  (cd "$X64_BUNDLE_DIR" && COPYFILE_DISABLE=1 tar -czf "$X64_TAR" "${APP_NAME}.app")
   pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
     --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
   pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" \

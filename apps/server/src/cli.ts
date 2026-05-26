@@ -86,15 +86,14 @@ function getRunningPid(): number | null {
 }
 
 function serverEnv(cfg: Config): NodeJS.ProcessEnv {
-  const isDev = devMode || process.env.NODE_ENV === "development"
   return {
     ...process.env,
-    NODE_ENV: isDev ? "development" : "production",
+    NODE_ENV: "production",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
     HUXFLUX_DIR: DATA_DIR,
-    DB_PATH: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
-    WORKSPACES_BASE: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, isDev ? "workspaces-dev" : "workspaces"),
+    DB_PATH: process.env.DB_PATH ?? path.join(DATA_DIR, "huxflux.db"),
+    WORKSPACES_BASE: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, "workspaces"),
     ...(cfg.sandbox ? { SANDBOX_CONFIG: JSON.stringify(cfg.sandbox) } : {}),
   }
 }
@@ -653,13 +652,198 @@ function cmdRun() {
   child.on("close", (code) => process.exit(code ?? 0))
 }
 
+// ── Setup wizard ─────────────────────────────────────────────────────────────
+
+async function cmdSetup() {
+  const p = await import("@clack/prompts")
+
+  p.intro("Huxflux Setup")
+
+  // Detect what's installed
+  const serverRunning = getRunningPid() !== null
+  const connectionFile = path.join(DATA_DIR, "connection.json")
+  const hasConnection = fs.existsSync(connectionFile)
+  const dbExists = fs.existsSync(path.join(DATA_DIR, "huxflux.db"))
+
+  // Check for desktop app (macOS)
+  const desktopPaths = [
+    "/Applications/Huxflux.app",
+    path.join(os.homedir(), "Applications", "Huxflux.app"),
+  ]
+  const hasDesktop = desktopPaths.some(p => fs.existsSync(p))
+
+  p.log.info(`Data directory: ${DATA_DIR}`)
+  if (serverRunning) p.log.success("Server is running")
+  else p.log.warning("Server is not running")
+  if (dbExists) p.log.success("Database exists")
+  if (hasDesktop) p.log.success("Desktop app found")
+  else p.log.warning("Desktop app not installed")
+
+  // Ask what to do
+  const components = await p.multiselect({
+    message: "What would you like to set up?",
+    options: [
+      { value: "server", label: "Start server", hint: serverRunning ? "already running" : "start in background" },
+      { value: "desktop", label: "Install desktop app", hint: hasDesktop ? "already installed" : "download for " + os.platform() },
+    ],
+    initialValues: [
+      ...(!serverRunning ? ["server"] : []),
+      ...(!hasDesktop ? ["desktop"] : []),
+    ],
+  })
+
+  if (p.isCancel(components)) {
+    p.cancel("Setup cancelled")
+    process.exit(0)
+  }
+
+  // Start server
+  if ((components as string[]).includes("server") && !serverRunning) {
+    const s = p.spinner()
+    s.start("Starting server...")
+    await cmdStart()
+    // Wait for connection.json to appear
+    for (let i = 0; i < 20; i++) {
+      if (fs.existsSync(connectionFile)) break
+      await new Promise(r => setTimeout(r, 500))
+    }
+    s.stop("Server started")
+
+    if (fs.existsSync(connectionFile)) {
+      const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
+      p.log.success(`Server running at ${conn.url}`)
+    }
+  }
+
+  // Download desktop
+  if ((components as string[]).includes("desktop") && !hasDesktop) {
+    const s = p.spinner()
+    s.start("Downloading desktop app...")
+
+    try {
+      // Fetch latest release info from GitHub
+      const platform = os.platform()
+      const arch = os.arch()
+      const releaseUrl = "https://github.com/AlexMartosP/huxflux-releases/releases/latest/download/latest.json"
+      const res = await fetch(releaseUrl)
+      const release = await res.json() as { version: string; platforms: Record<string, { url: string }> }
+
+      const platformKey = platform === "darwin"
+        ? (arch === "arm64" ? "darwin-aarch64" : "darwin-x86_64")
+        : platform === "linux" ? "linux-x86_64" : null
+
+      if (platformKey && release.platforms[platformKey]) {
+        const downloadUrl = release.platforms[platformKey].url
+        p.log.info(`Latest desktop version: ${release.version}`)
+        p.log.info(`Download: ${downloadUrl}`)
+        s.stop("Desktop download URL ready")
+        p.log.message(`\nTo install the desktop app:\n  1. Download from: ${downloadUrl}\n  2. Open the downloaded file\n  3. Drag to Applications\n\nThe desktop app will auto-connect to your local server.`)
+      } else {
+        s.stop("Platform not supported for desktop download")
+        p.log.warning(`No desktop build available for ${platform}-${arch}`)
+      }
+    } catch (err) {
+      s.stop("Failed to fetch desktop info")
+      p.log.error("Could not fetch release info. Check https://github.com/AlexMartosP/huxflux-releases/releases")
+    }
+  }
+
+  // Summary
+  p.outro("Setup complete! Run 'huxflux status' to check your server.")
+}
+
+// ── Data management ──────────────────────────────────────────────────────────
+
+async function cmdData(action?: string, direction?: string) {
+  const p = await import("@clack/prompts")
+
+  const prodDb = path.join(DATA_DIR, "huxflux.db")
+  const devDb = path.join(DATA_DIR, "huxflux-dev.db")
+
+  if (action === "copy") {
+    if (direction === "dev-to-prod") {
+      if (!fs.existsSync(devDb)) {
+        console.error("Dev database not found:", devDb)
+        process.exit(1)
+      }
+
+      p.intro("Copy dev data to production")
+      p.log.warning("This will REPLACE your production database with dev data!")
+
+      const confirm1 = await p.confirm({ message: "Are you sure? This is destructive." })
+      if (p.isCancel(confirm1) || !confirm1) { p.cancel("Cancelled"); process.exit(0) }
+
+      const confirm2 = await p.confirm({ message: "All production data will be lost. Continue?" })
+      if (p.isCancel(confirm2) || !confirm2) { p.cancel("Cancelled"); process.exit(0) }
+
+      const confirm3 = await p.confirm({ message: "Final confirmation. Type Y to proceed." })
+      if (p.isCancel(confirm3) || !confirm3) { p.cancel("Cancelled"); process.exit(0) }
+
+      // Stop server if running
+      const pid = getRunningPid()
+      if (pid) {
+        p.log.info("Stopping server first...")
+        process.kill(pid, "SIGTERM")
+        await new Promise(r => setTimeout(r, 2000))
+      }
+
+      // Backup current prod
+      if (fs.existsSync(prodDb)) {
+        const backup = prodDb + ".pre-copy-bak"
+        fs.copyFileSync(prodDb, backup)
+        p.log.info(`Backed up production DB to ${backup}`)
+      }
+
+      // Copy
+      fs.copyFileSync(devDb, prodDb)
+      p.log.success("Dev data copied to production")
+      p.outro("Done. Start the server with 'huxflux start' — migrations will run automatically.")
+
+    } else if (direction === "prod-to-dev") {
+      if (!fs.existsSync(prodDb)) {
+        console.error("Production database not found:", prodDb)
+        process.exit(1)
+      }
+
+      p.intro("Copy production data to dev")
+
+      const confirm = await p.confirm({ message: "This will replace your dev database. Continue?" })
+      if (p.isCancel(confirm) || !confirm) { p.cancel("Cancelled"); process.exit(0) }
+
+      if (fs.existsSync(devDb)) {
+        const backup = devDb + ".pre-copy-bak"
+        fs.copyFileSync(devDb, backup)
+        p.log.info(`Backed up dev DB to ${backup}`)
+      }
+
+      fs.copyFileSync(prodDb, devDb)
+      p.log.success("Production data copied to dev")
+      p.outro("Done. Run 'pnpm dev' to start with the copied data.")
+
+    } else {
+      console.error("Usage: huxflux data copy [dev-to-prod|prod-to-dev]")
+      process.exit(1)
+    }
+  } else {
+    console.log(`
+huxflux data — Manage databases
+
+Usage:
+  huxflux data copy dev-to-prod    Copy dev database to production (destructive, 3 confirmations)
+  huxflux data copy prod-to-dev    Copy production database to dev
+`)
+  }
+}
+
+// ── Help ─────────────────────────────────────────────────────────────────────
+
 function printHelp() {
   console.log(`
 huxflux — Huxflux server
 
 Usage:
-  huxflux [start]          Start the server in the background (auto-restarts on crash)
-  huxflux start --dev      Start with dev database and workspaces
+  huxflux [start]   Start the server in the background (auto-restarts on crash)
+  huxflux setup     Interactive setup wizard (install components, start server)
   huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
@@ -675,6 +859,8 @@ Usage:
   huxflux restore 2      Restore DB from older backup (.bak2)
   huxflux reset          ⚠️  Erase all data and start fresh (3 confirmations required)
   huxflux update         Update huxflux to the latest version
+  huxflux data copy dev-to-prod    Copy dev database to production
+  huxflux data copy prod-to-dev    Copy production database to dev
   huxflux help           Show this message
 
 Environment variables:
@@ -688,7 +874,6 @@ Environment variables:
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 const [,, cmd = "start", ...cmdArgs] = process.argv
-const devMode = cmdArgs.includes("--dev")
 
 switch (cmd) {
   case "start":       cmdStart().catch(console.error); break
@@ -704,6 +889,8 @@ switch (cmd) {
   case "restore":  cmdRestore(cmdArgs[0]); break
   case "reset":    cmdReset().catch(console.error); break
   case "update":   cmdUpdate(); break
+  case "setup":    cmdSetup().catch(console.error); break
+  case "data":     cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
   case "security": printDisclaimer(); break
   case "--version":

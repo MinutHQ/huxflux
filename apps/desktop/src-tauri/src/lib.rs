@@ -102,6 +102,13 @@ fn open_url(url: String) {
     let _ = Command::new("xdg-open").arg(&url).spawn();
 }
 
+#[tauri::command]
+fn read_local_connection() -> Option<String> {
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()?;
+    let path = Path::new(&home).join("huxflux").join("connection.json");
+    std::fs::read_to_string(path).ok()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -111,7 +118,7 @@ pub fn run() {
         .setup(|_app| {
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, open_url])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, open_url, read_local_connection])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

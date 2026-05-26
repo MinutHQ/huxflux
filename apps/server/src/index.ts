@@ -164,7 +164,23 @@ if (!boundPort) {
 
 // Persist actual port so CLI commands can read it
 try { fs.writeFileSync(PORT_FILE, String(boundPort)) } catch { /* non-fatal */ }
-const cleanupPortFile = () => { try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ } }
+
+// Write connection.json so desktop/web can auto-discover this server
+const CONNECTION_FILE = path.join(os.homedir(), "huxflux", "connection.json")
+try {
+  fs.writeFileSync(CONNECTION_FILE, JSON.stringify({
+    url: `http://localhost:${boundPort}`,
+    token: config.authToken || "",
+    pid: process.pid,
+    version: "0.2.33",
+    port: boundPort,
+  }, null, 2))
+} catch { /* non-fatal */ }
+
+const cleanupPortFile = () => {
+  try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+  try { fs.unlinkSync(CONNECTION_FILE) } catch { /* ignore */ }
+}
 
 // Kill all agent processes and clear port records on shutdown
 import { killWorktreeProcesses, clearAgentPorts } from "./git/processes.js"

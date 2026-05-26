@@ -33,8 +33,9 @@ fi
 
 NODE_VER=$(node --version 2>&1 | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
-if [ "$NODE_MAJOR" -lt 20 ]; then
-  die "Node.js 20+ required (found v$NODE_VER). Upgrade at https://nodejs.org"
+NODE_MINOR=$(echo "$NODE_VER" | cut -d. -f2)
+if [ "$NODE_MAJOR" -lt 22 ] || ([ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -lt 6 ]); then
+  die "Node.js >= 22.6.0 required (found v$NODE_VER). Upgrade at https://nodejs.org"
 fi
 ok "Node.js v$NODE_VER"
 
@@ -161,18 +162,8 @@ echo ""
 echo -e "  Run ${BOLD}huxflux security${NC} at any time to review these recommendations."
 echo ""
 
-# ── Done ──────────────────────────────────────────────────────────────────────
-header "Done"
+# ── Run setup wizard ──────────────────────────────────────────────────────────
+header "Starting setup"
+echo ""
 
-echo "  Run the server:"
-echo ""
-echo "    huxflux            # start in the background"
-echo "    huxflux status     # show URL + auth token"
-echo "    huxflux logs       # tail the log"
-echo "    huxflux stop       # stop the server"
-echo "    huxflux update     # update to the latest version"
-echo ""
-echo "  Then open the Huxflux web app and add your server under"
-echo "  Settings → Servers using the connection string shown by"
-echo "  'huxflux status'."
-echo ""
+exec huxflux setup

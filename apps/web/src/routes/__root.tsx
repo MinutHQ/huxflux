@@ -91,6 +91,29 @@ function RootComponent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Auto-discover local server from connection.json (Tauri desktop only)
+  useEffect(() => {
+    if (!isTauri) return
+    if (getServers().length > 0) return // already has servers, don't override
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke<string | null>("read_local_connection").then((json) => {
+        if (!json) return
+        try {
+          const conn = JSON.parse(json) as { url: string; token: string }
+          if (!conn.url) return
+          const existing = getServers()
+          const already = existing.find((s) => s.url === conn.url)
+          if (!already) {
+            const server = addServer({ name: "Local Server", url: conn.url, token: conn.token })
+            setActiveServerId(server.id)
+            refreshServers()
+          }
+        } catch {}
+      }).catch(() => {})
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Background WS connections for non-active servers
   useEffect(() => {
     const backgroundServers = servers.filter((s) => s.id !== activeId)

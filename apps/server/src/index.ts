@@ -37,14 +37,15 @@ import { db } from "./db/index.js"
 import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { isNull, eq } from "drizzle-orm"
 
+// pino-pretty is a dev dependency — only use it if available
+let hasPinoPretty = false
+if (isDev) {
+  try { await import("pino-pretty"); hasPinoPretty = true } catch {}
+}
+
 const app = Fastify({
-  logger: isDev
-    ? {
-        transport: {
-          target: "pino-pretty",
-          options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname,reqId", singleLine: true },
-        },
-      }
+  logger: isDev && hasPinoPretty
+    ? { transport: { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname,reqId", singleLine: true } } }
     : true,
 })
 

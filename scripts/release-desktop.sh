@@ -16,6 +16,9 @@ DOCKER_IMAGE="huxflux-linux-builder:1"
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 
+# Ensure build scripts are allowed (overrides global ignore-scripts)
+export npm_config_ignore_scripts=false
+
 TAG="${1:-}"
 if [[ -z "$TAG" ]]; then
   echo "Usage: $0 <tag> [--macos-only|--linux-only]  (e.g. v0.2.0)" >&2

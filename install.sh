@@ -1,169 +1,128 @@
 #!/usr/bin/env bash
-# huxflux installer
-# Usage: curl -fsSL https://get.huxflux.dev | bash
+# Huxflux installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux/main/install.sh | bash
 set -euo pipefail
 
-# ── Terminal colors ───────────────────────────────────────────────────────────
+# ── Colors & helpers ─────────────────────────────────────────────────────────
 if [ -t 1 ]; then
-  RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+  BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+  RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'
+  BLUE='\033[34m'; PURPLE='\033[35m'; CYAN='\033[36m'
 else
-  RED=''; GREEN=''; YELLOW=''; BLUE=''; BOLD=''; NC=''
+  BOLD=''; DIM=''; RESET=''; RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''
 fi
 
-info()    { echo -e "  ${BLUE}→${NC}  $*"; }
-ok()      { echo -e "  ${GREEN}✓${NC}  $*"; }
-warn()    { echo -e "  ${YELLOW}!${NC}  $*"; }
-die()     { echo -e "  ${RED}✗${NC}  $*" >&2; exit 1; }
-header()  { echo -e "\n${BOLD}$*${NC}"; }
+ok()   { echo -e "  ${GREEN}✓${RESET}  $*"; }
+fail() { echo -e "  ${RED}✗${RESET}  $*" >&2; exit 1; }
+info() { echo -e "  ${BLUE}→${RESET}  $*"; }
+warn() { echo -e "  ${YELLOW}!${RESET}  $*"; }
+step() { echo -e "\n  ${PURPLE}${BOLD}$*${RESET}"; }
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# ── Banner ───────────────────────────────────────────────────────────────────
 echo ""
-echo "  ╭───────────────────────────╮"
-echo "  │  huxflux  installer       │"
-echo "  ╰───────────────────────────╯"
+echo -e "  ${BOLD}╭─────────────────────────────────────╮${RESET}"
+echo -e "  ${BOLD}│                                     │${RESET}"
+echo -e "  ${BOLD}│   ${CYAN}⚡${RESET}${BOLD}  H U X F L U X               │${RESET}"
+echo -e "  ${BOLD}│      ${DIM}AI Agent Orchestrator${RESET}${BOLD}         │${RESET}"
+echo -e "  ${BOLD}│                                     │${RESET}"
+echo -e "  ${BOLD}╰─────────────────────────────────────╯${RESET}"
 echo ""
 
-# ── Check Node.js ─────────────────────────────────────────────────────────────
-header "Checking requirements"
+# ── Check Node.js ────────────────────────────────────────────────────────────
+step "Checking requirements"
 
 if ! command -v node >/dev/null 2>&1; then
-  die "Node.js not found. Install Node.js 18+ from https://nodejs.org and re-run."
+  echo ""
+  echo -e "  ${RED}Node.js is not installed.${RESET}"
+  echo ""
+  echo "  Huxflux requires Node.js 22.6 or later."
+  echo ""
+  echo -e "  Install via nvm (recommended):"
+  echo -e "    ${DIM}curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash${RESET}"
+  echo -e "    ${DIM}nvm install 22${RESET}"
+  echo ""
+  echo -e "  Or download from: ${BOLD}https://nodejs.org${RESET}"
+  echo ""
+  exit 1
 fi
 
 NODE_VER=$(node --version 2>&1 | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VER" | cut -d. -f1)
 NODE_MINOR=$(echo "$NODE_VER" | cut -d. -f2)
+
 if [ "$NODE_MAJOR" -lt 22 ] || ([ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -lt 6 ]); then
-  die "Node.js >= 22.6.0 required (found v$NODE_VER). Upgrade at https://nodejs.org"
-fi
-ok "Node.js v$NODE_VER"
-
-if ! command -v npm >/dev/null 2>&1; then
-  die "npm not found — it should ship with Node.js. Check your installation."
-fi
-ok "npm $(npm --version)"
-
-# ── GitHub auth check ─────────────────────────────────────────────────────────
-# huxflux is distributed via GitHub Packages, which requires authentication.
-# Check for a token in ~/.npmrc or prompt the user to add one.
-
-GH_TOKEN=$(npm config get //npm.pkg.github.com/:_authToken 2>/dev/null || true)
-if [ -z "$GH_TOKEN" ] || [ "$GH_TOKEN" = "undefined" ] || [ "$GH_TOKEN" = "null" ]; then
   echo ""
-  echo -e "  ${BOLD}GitHub authentication required${NC}"
+  echo -e "  ${RED}Node.js v${NODE_VER} is too old.${RESET}"
   echo ""
-  echo "  huxflux is distributed via GitHub Packages."
-  echo "  You need a GitHub personal access token (classic) with"
-  echo "  the 'read:packages' scope."
+  echo "  Huxflux requires Node.js >= 22.6.0"
   echo ""
-  echo "  1. Create a token: https://github.com/settings/tokens/new"
-  echo "     Scope required: read:packages"
+  echo -e "  Upgrade via nvm: ${DIM}nvm install 22${RESET}"
+  echo -e "  Or download:     ${BOLD}https://nodejs.org${RESET}"
   echo ""
-  echo "  2. Add it to ~/.npmrc (replace YOUR_TOKEN):"
-  echo "     echo '@alexmartosp:registry=https://npm.pkg.github.com' >> ~/.npmrc"
-  echo "     echo '//npm.pkg.github.com/:_authToken=YOUR_TOKEN' >> ~/.npmrc"
-  echo ""
-  echo "  3. Re-run this installer."
-  echo ""
-  die "No GitHub token found in ~/.npmrc"
-fi
-ok "GitHub token found"
-
-# Ensure the @alexmartosp scope is routed to GitHub Packages.
-# Only scoped routing is set — all other packages still resolve from npm.
-if ! grep -q "@alexmartosp:registry" "${HOME}/.npmrc" 2>/dev/null; then
-  echo "@alexmartosp:registry=https://npm.pkg.github.com" >> "${HOME}/.npmrc"
-  info "Added @alexmartosp scope routing to ~/.npmrc"
+  exit 1
 fi
 
-# ── Install ───────────────────────────────────────────────────────────────────
-header "Installing huxflux"
+ok "Node.js v${NODE_VER}"
 
-info "Running: npm install -g @alexmartosp/huxflux"
-if ! npm install -g @alexmartosp/huxflux 2>&1; then
+# ── Detect package manager ───────────────────────────────────────────────────
+if command -v pnpm >/dev/null 2>&1; then
+  PM="pnpm"; PM_GLOBAL="pnpm add -g"
+elif command -v yarn >/dev/null 2>&1; then
+  PM="yarn"; PM_GLOBAL="yarn global add"
+else
+  PM="npm"; PM_GLOBAL="npm install -g"
+fi
+ok "Package manager: ${PM}"
+
+# ── Check if already installed ───────────────────────────────────────────────
+if command -v huxflux >/dev/null 2>&1; then
+  CURRENT=$(huxflux --version 2>/dev/null || echo "unknown")
+  info "Huxflux ${CURRENT} is already installed, upgrading..."
+fi
+
+# ── Install ──────────────────────────────────────────────────────────────────
+step "Installing Huxflux"
+echo ""
+
+if ! $PM_GLOBAL @alexmartosp/huxflux 2>&1; then
   echo ""
-  warn "Global install failed. Trying with sudo..."
-  if ! sudo npm install -g @alexmartosp/huxflux 2>&1; then
-    die "Installation failed. Check npm permissions or use nvm/fnm for a user-level Node.js install."
+  if [ "$PM" = "npm" ]; then
+    warn "Global install failed. Trying with sudo..."
+    if ! sudo npm install -g @alexmartosp/huxflux 2>&1; then
+      fail "Installation failed. Try using nvm for a user-level Node.js install."
+    fi
+  else
+    fail "Installation failed. Check permissions and try again."
   fi
 fi
-ok "huxflux installed"
 
-# ── Verify PATH ───────────────────────────────────────────────────────────────
+# ── Verify ───────────────────────────────────────────────────────────────────
+echo ""
 if ! command -v huxflux >/dev/null 2>&1; then
-  NPM_PREFIX=$(npm config get prefix)
-  warn "huxflux is not in your PATH."
+  NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "")
+  warn "huxflux command not found in PATH"
   echo ""
-  echo "  Add npm's global bin directory to your PATH:"
+  echo "  Add the global bin directory to your PATH:"
   echo ""
-  echo "    export PATH=\"${NPM_PREFIX}/bin:\$PATH\""
+  echo -e "    ${DIM}export PATH=\"${NPM_PREFIX}/bin:\$PATH\"${RESET}"
   echo ""
-  echo "  Paste the above into ~/.bashrc or ~/.zshrc, then:"
-  echo "    source ~/.bashrc   # or ~/.zshrc"
+  echo -e "  Add it to your shell config (${DIM}~/.zshrc${RESET} or ${DIM}~/.bashrc${RESET}), then:"
+  echo -e "    ${DIM}source ~/.zshrc${RESET}"
   echo ""
-  echo "  Then run: huxflux"
+  echo -e "  Then run: ${BOLD}huxflux setup${RESET}"
   exit 0
 fi
 
 HUXFLUX_VER=$(huxflux --version 2>/dev/null || echo "installed")
-ok "huxflux $HUXFLUX_VER"
+ok "Huxflux ${HUXFLUX_VER}"
 
-# ── Security disclaimer ───────────────────────────────────────────────────────
+# ── Security notice (brief) ──────────────────────────────────────────────────
 echo ""
-echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${YELLOW}${BOLD}║                  ⚠  SECURITY — READ THIS                        ║${NC}"
-echo -e "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "  ${BOLD}The auth token grants full shell access to this machine.${NC}"
-echo -e "  ${BOLD}Treat it like an SSH private key — keep it secret.${NC}"
-echo ""
-echo -e "  ${BOLD}1. Use a dedicated non-root user  (strongly recommended)${NC}"
-echo "     Claude can read and write every file your OS user can access."
-echo "     Run huxflux as a separate low-privilege user, not your main"
-echo "     account and never as root."
-echo ""
-echo "     # Create a dedicated user (Linux):"
-echo "     #   sudo useradd -m -s /bin/bash huxflux-user"
-echo "     #   sudo -u huxflux-user npm install -g huxflux"
-echo "     #   sudo -u huxflux-user huxflux start"
-echo ""
-echo -e "  ${BOLD}2. Use Tailscale for encrypted access  (strongly recommended)${NC}"
-echo "     Without TLS your token and all data travel in plaintext."
-echo "     Tailscale (WireGuard-based) encrypts everything for free:"
-echo ""
-echo "       https://tailscale.com/download"
-echo ""
-echo "     Once installed, use the Tailscale IP in your connection string:"
-echo "       huxflux://100.x.x.x:4321?token=..."
-echo ""
-echo -e "  ${BOLD}3. Never expose port 4321 to the public internet${NC}"
-echo "     If you need public HTTPS access, put huxflux behind Caddy:"
-echo ""
-echo "       # Install: https://caddyserver.com/docs/install"
-echo "       # Caddyfile:"
-echo "       #   your.domain.com {"
-echo "       #       reverse_proxy localhost:4321"
-echo "       #   }"
-echo ""
-echo -e "  ${BOLD}4. Watch out for prompt injection${NC}"
-echo "     If you give Claude access to a repository, malicious content"
-echo "     in that repo (README, code comments, test fixtures) can"
-echo "     instruct Claude to exfiltrate data or run arbitrary commands."
-echo "     Only point huxflux at repositories you trust."
-echo ""
-echo -e "  ${BOLD}5. Rotate the token if it leaks${NC}"
-echo "       huxflux token rotate"
-echo "       huxflux stop && huxflux start"
-echo ""
-echo -e "  ${BOLD}6. Audit who is sending requests${NC}"
-echo "       huxflux audit    # tail the request audit log"
-echo ""
-echo -e "  Run ${BOLD}huxflux security${NC} at any time to review these recommendations."
-echo ""
+echo -e "  ${YELLOW}${BOLD}Security:${RESET} The auth token grants shell access to this machine."
+echo -e "  ${DIM}Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
 
-# ── Run setup wizard ──────────────────────────────────────────────────────────
-header "Starting setup"
+# ── Launch setup wizard ──────────────────────────────────────────────────────
+step "Launching setup wizard"
 echo ""
 
 exec huxflux setup

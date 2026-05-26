@@ -657,73 +657,97 @@ function cmdRun() {
 async function cmdSetup() {
   const p = await import("@clack/prompts")
 
-  p.intro("Huxflux Setup")
+  console.log("")
+  p.intro("⚡ Huxflux Setup")
 
-  // Detect what's installed
+  // ── Detect installed components ──
   const serverRunning = getRunningPid() !== null
   const connectionFile = path.join(DATA_DIR, "connection.json")
-  const hasConnection = fs.existsSync(connectionFile)
   const dbExists = fs.existsSync(path.join(DATA_DIR, "huxflux.db"))
-
-  // Check for desktop app (macOS)
   const desktopPaths = [
     "/Applications/Huxflux.app",
     path.join(os.homedir(), "Applications", "Huxflux.app"),
   ]
-  const hasDesktop = desktopPaths.some(p => fs.existsSync(p))
+  const hasDesktop = desktopPaths.some(dp => fs.existsSync(dp))
+  const platform = os.platform()
+  const arch = os.arch()
+  const platformLabel = platform === "darwin" ? `macOS ${arch === "arm64" ? "Apple Silicon" : "Intel"}`
+    : platform === "linux" ? "Linux" : platform === "win32" ? "Windows" : platform
 
-  p.log.info(`Data directory: ${DATA_DIR}`)
-  if (serverRunning) p.log.success("Server is running")
-  else p.log.warning("Server is not running")
-  if (dbExists) p.log.success("Database exists")
-  if (hasDesktop) p.log.success("Desktop app found")
-  else p.log.warning("Desktop app not installed")
+  p.log.step("Scanning your system...")
+  p.log.info(`Platform:  ${platformLabel}`)
+  p.log.info(`Data:      ${DATA_DIR}`)
 
-  // Ask what to do
+  if (serverRunning) p.log.success("Server:    running ✓")
+  else if (dbExists)  p.log.warning("Server:    installed but not running")
+  else                p.log.warning("Server:    not set up yet")
+
+  if (hasDesktop) p.log.success("Desktop:   installed ✓")
+  else            p.log.info("Desktop:   not installed")
+
+  // ── Nothing to do? ──
+  if (serverRunning && hasDesktop) {
+    const conn = fs.existsSync(connectionFile)
+      ? JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
+      : null
+
+    p.log.success("Everything is set up!")
+    if (conn) p.log.info(`Server URL: ${conn.url}`)
+    p.outro("Run 'huxflux status' for details, or 'huxflux update' to check for updates.")
+    return
+  }
+
+  // ── Component selection ──
+  const options: { value: string; label: string; hint: string }[] = []
+  if (!serverRunning) options.push({ value: "server", label: "Start server", hint: dbExists ? "resume" : "first time setup" })
+  if (!hasDesktop)    options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+
   const components = await p.multiselect({
     message: "What would you like to set up?",
-    options: [
-      { value: "server", label: "Start server", hint: serverRunning ? "already running" : "start in background" },
-      { value: "desktop", label: "Install desktop app", hint: hasDesktop ? "already installed" : "download for " + os.platform() },
-    ],
-    initialValues: [
-      ...(!serverRunning ? ["server"] : []),
-      ...(!hasDesktop ? ["desktop"] : []),
-    ],
+    options,
+    initialValues: options.map(o => o.value),
+    required: false,
   })
 
   if (p.isCancel(components)) {
-    p.cancel("Setup cancelled")
+    p.cancel("Setup cancelled.")
     process.exit(0)
   }
 
-  // Start server
-  if ((components as string[]).includes("server") && !serverRunning) {
-    const s = p.spinner()
-    s.start("Starting server...")
-    await cmdStart()
-    // Wait for connection.json to appear
-    for (let i = 0; i < 20; i++) {
-      if (fs.existsSync(connectionFile)) break
-      await new Promise(r => setTimeout(r, 500))
-    }
-    s.stop("Server started")
+  const selected = components as string[]
 
-    if (fs.existsSync(connectionFile)) {
-      const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
-      p.log.success(`Server running at ${conn.url}`)
+  // ── Start server ──
+  if (selected.includes("server")) {
+    const s = p.spinner()
+    s.start("Starting server in background...")
+
+    try {
+      await cmdStart()
+      // Wait for connection.json
+      for (let i = 0; i < 30; i++) {
+        if (fs.existsSync(connectionFile)) break
+        await new Promise(r => setTimeout(r, 500))
+      }
+      s.stop("Server started ✓")
+
+      if (fs.existsSync(connectionFile)) {
+        const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
+        p.log.success(`Running at ${conn.url}`)
+        p.log.info(`Auth token: ${conn.token.slice(0, 8)}...`)
+        p.log.info(`Web UI:     ${conn.url}`)
+      }
+    } catch (err: any) {
+      s.stop("Failed to start server")
+      p.log.error(err.message || "Unknown error")
     }
   }
 
-  // Download desktop
-  if ((components as string[]).includes("desktop") && !hasDesktop) {
+  // ── Install desktop ──
+  if (selected.includes("desktop")) {
     const s = p.spinner()
-    s.start("Downloading desktop app...")
+    s.start("Fetching latest desktop release...")
 
     try {
-      // Fetch latest release info from GitHub
-      const platform = os.platform()
-      const arch = os.arch()
       const releaseUrl = "https://github.com/AlexMartosP/huxflux-releases/releases/latest/download/latest.json"
       const res = await fetch(releaseUrl)
       const release = await res.json() as { version: string; platforms: Record<string, { url: string }> }
@@ -734,22 +758,81 @@ async function cmdSetup() {
 
       if (platformKey && release.platforms[platformKey]) {
         const downloadUrl = release.platforms[platformKey].url
-        p.log.info(`Latest desktop version: ${release.version}`)
-        p.log.info(`Download: ${downloadUrl}`)
-        s.stop("Desktop download URL ready")
-        p.log.message(`\nTo install the desktop app:\n  1. Download from: ${downloadUrl}\n  2. Open the downloaded file\n  3. Drag to Applications\n\nThe desktop app will auto-connect to your local server.`)
+        s.stop(`Desktop v${release.version} found`)
+
+        // Try to download and install automatically on macOS
+        if (platform === "darwin") {
+          const installDesktop = await p.confirm({ message: `Download and install Huxflux Desktop v${release.version}?` })
+          if (!p.isCancel(installDesktop) && installDesktop) {
+            const ds = p.spinner()
+            ds.start("Downloading...")
+
+            try {
+              const tmpDir = path.join(os.tmpdir(), `huxflux-desktop-${Date.now()}`)
+              fs.mkdirSync(tmpDir, { recursive: true })
+              const tarPath = path.join(tmpDir, "huxflux.tar.gz")
+
+              // Download
+              const dlRes = await fetch(downloadUrl)
+              const buffer = Buffer.from(await dlRes.arrayBuffer())
+              fs.writeFileSync(tarPath, buffer)
+
+              // Extract
+              spawnSync("tar", ["-xzf", tarPath, "-C", tmpDir], { stdio: "pipe" })
+
+              // Move to Applications
+              const appName = fs.readdirSync(tmpDir).find(f => f.endsWith(".app"))
+              if (appName) {
+                const dest = `/Applications/${appName}`
+                if (fs.existsSync(dest)) spawnSync("rm", ["-rf", dest], { stdio: "pipe" })
+                spawnSync("mv", [path.join(tmpDir, appName), dest], { stdio: "pipe" })
+                ds.stop("Desktop installed ✓")
+                p.log.success(`Installed to /Applications/${appName}`)
+
+                // Open the app
+                const openApp = await p.confirm({ message: "Open Huxflux Desktop now?" })
+                if (!p.isCancel(openApp) && openApp) {
+                  spawnSync("open", [dest], { stdio: "pipe" })
+                  p.log.success("Desktop app opened — it will auto-connect to your local server")
+                }
+              } else {
+                ds.stop("Extraction failed")
+                p.log.warning("Could not find .app in downloaded archive")
+              }
+
+              // Cleanup
+              try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
+            } catch (dlErr: any) {
+              ds.stop("Download failed")
+              p.log.error(dlErr.message)
+              p.log.info(`Manual download: ${downloadUrl}`)
+            }
+          }
+        } else {
+          p.log.info(`Download: ${downloadUrl}`)
+          p.log.message("Download and install the desktop app from the URL above.")
+          p.log.info("The desktop app will auto-connect to your local server.")
+        }
       } else {
-        s.stop("Platform not supported for desktop download")
-        p.log.warning(`No desktop build available for ${platform}-${arch}`)
+        s.stop("No desktop build for this platform")
+        p.log.warning(`Desktop builds are not available for ${platform}-${arch}`)
+        p.log.info("Use the web UI instead: open the server URL in your browser")
       }
-    } catch (err) {
-      s.stop("Failed to fetch desktop info")
-      p.log.error("Could not fetch release info. Check https://github.com/AlexMartosP/huxflux-releases/releases")
+    } catch (err: any) {
+      s.stop("Could not fetch release info")
+      p.log.error("Check: https://github.com/AlexMartosP/huxflux-releases/releases")
     }
   }
 
-  // Summary
-  p.outro("Setup complete! Run 'huxflux status' to check your server.")
+  // ── Summary ──
+  console.log("")
+  p.log.step("Quick reference:")
+  p.log.info("huxflux status     Show server URL and token")
+  p.log.info("huxflux logs       Tail the server log")
+  p.log.info("huxflux stop       Stop the server")
+  p.log.info("huxflux update     Update all components")
+  p.log.info("huxflux security   Security recommendations")
+  p.outro("You're all set! 🚀")
 }
 
 // ── Data management ──────────────────────────────────────────────────────────

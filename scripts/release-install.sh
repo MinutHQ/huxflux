@@ -30,15 +30,16 @@ if ! command -v gh &>/dev/null; then
   fail "gh CLI not found. Install: https://cli.github.com"
 fi
 
-# ── Switch to correct GitHub account ─────────────────────────────────────────
+# ── Switch to correct GitHub account and clone via HTTPS token ───────────────
 step "Syncing install.sh to ${RELEASES_REPO}"
 
 GITHUB_TOKEN="" gh auth switch --user AlexMartosP 2>/dev/null || true
+GH_TOKEN="$(GITHUB_TOKEN="" gh auth token)"
 
 RELEASES_DIR="$(mktemp -d)"
 trap "rm -rf '$RELEASES_DIR'" EXIT
 
-GITHUB_TOKEN="" gh repo clone "$RELEASES_REPO" "$RELEASES_DIR" -- --depth 1 2>/dev/null
+git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
 
 cp "$INSTALL_SRC" "$RELEASES_DIR/install.sh"
 chmod +x "$RELEASES_DIR/install.sh"

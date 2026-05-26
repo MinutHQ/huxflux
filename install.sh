@@ -20,16 +20,16 @@ step() { echo -e "\n  ${PURPLE}${BOLD}$*${RESET}"; }
 
 # ── Banner ───────────────────────────────────────────────────────────────────
 echo ""
-echo -e "  ${BOLD}╭─────────────────────────────────────╮${RESET}"
-echo -e "  ${BOLD}│                                     │${RESET}"
-echo -e "  ${BOLD}│   ${CYAN}⚡${RESET}${BOLD}  H U X F L U X               │${RESET}"
-echo -e "  ${BOLD}│      ${DIM}AI Agent Orchestrator${RESET}${BOLD}         │${RESET}"
-echo -e "  ${BOLD}│                                     │${RESET}"
-echo -e "  ${BOLD}╰─────────────────────────────────────╯${RESET}"
+echo -e "  ${YELLOW}    ╱╲${RESET}"
+echo -e "  ${YELLOW}   ╱  ╲${RESET}   ${BOLD}H U X F L U X${RESET}"
+echo -e "  ${YELLOW}  ╱ ⚡ ╲${RESET}   ${DIM}Run AI agents from anywhere${RESET}"
+echo -e "  ${YELLOW}  ╲    ╱${RESET}   ${DIM}Orchestrate. Automate. Ship.${RESET}"
+echo -e "  ${YELLOW}   ╲  ╱${RESET}"
+echo -e "  ${YELLOW}    ╲╱${RESET}"
 echo ""
 
 # ── Check Node.js ────────────────────────────────────────────────────────────
-step "Checking requirements"
+step "① Checking requirements"
 
 if ! command -v node >/dev/null 2>&1; then
   echo ""
@@ -65,14 +65,10 @@ fi
 ok "Node.js v${NODE_VER}"
 
 # ── Detect package manager ───────────────────────────────────────────────────
-if command -v pnpm >/dev/null 2>&1; then
-  PM="pnpm"; PM_GLOBAL="pnpm add -g"
-elif command -v yarn >/dev/null 2>&1; then
-  PM="yarn"; PM_GLOBAL="yarn global add"
-else
-  PM="npm"; PM_GLOBAL="npm install -g"
-fi
-ok "Package manager: ${PM}"
+# Always use npm for global installs — pnpm/yarn global can have PATH issues
+PM="npm"
+PM_GLOBAL="npm install -g"
+ok "npm $(npm --version)"
 
 # ── Check if already installed ───────────────────────────────────────────────
 if command -v huxflux >/dev/null 2>&1; then
@@ -81,7 +77,7 @@ if command -v huxflux >/dev/null 2>&1; then
 fi
 
 # ── Install ──────────────────────────────────────────────────────────────────
-step "Installing Huxflux"
+step "② Installing Huxflux"
 echo ""
 
 if ! $PM_GLOBAL @alexmartosp/huxflux 2>&1; then
@@ -118,11 +114,13 @@ ok "Huxflux ${HUXFLUX_VER}"
 
 # ── Security notice (brief) ──────────────────────────────────────────────────
 echo ""
-echo -e "  ${YELLOW}${BOLD}Security:${RESET} The auth token grants shell access to this machine."
-echo -e "  ${DIM}Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
+echo -e "  ${YELLOW}${BOLD}⚠ Security:${RESET} The auth token grants shell access to this machine."
+echo -e "  ${DIM}  Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
 
 # ── Launch setup wizard ──────────────────────────────────────────────────────
-step "Launching setup wizard"
+step "③ Setting up your environment"
+echo ""
+echo -e "  ${DIM}Launching interactive setup...${RESET}"
 echo ""
 
 exec huxflux setup

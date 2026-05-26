@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Huxflux installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s
 set -euo pipefail
+
+# Re-attach stdin to terminal (needed when piped from curl)
+if [ ! -t 0 ]; then
+  exec </dev/tty
+fi
 
 # ── Colors & helpers ─────────────────────────────────────────────────────────
 if [ -t 1 ]; then

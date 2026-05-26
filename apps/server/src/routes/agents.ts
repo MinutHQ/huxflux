@@ -184,6 +184,10 @@ export async function agentsRoutes(app: FastifyInstance) {
     const now = new Date().toISOString()
     const id = uuid()
 
+    // Folder-type repos never use git worktrees
+    const linkedRepo = repoId ? db.select().from(repos).where(eq(repos.id, repoId)).get() : null
+    const isFolderRepo = linkedRepo?.type === "folder"
+
     // If sharing a worktree, reuse the existing agent's location
     let agentLocation = location ?? `workspace-${id.slice(0, 8)}`
     let agentRepoId = repoId ?? null
@@ -219,20 +223,20 @@ export async function agentsRoutes(app: FastifyInstance) {
       repoId: agentRepoId,
       title,
       status: "in-progress",
-      branch,
+      branch: isFolderRepo ? "local" : branch,
       model,
       location: agentLocation,
       description: description ?? null,
       parentAgentId: shareWorktreeWith ?? null,
-      noWorktree: noWorktree ? 1 : null,
-      baseBranch: baseBranch ?? null,
+      noWorktree: (noWorktree || isFolderRepo) ? 1 : null,
+      baseBranch: isFolderRepo ? null : (baseBranch ?? null),
       provider,
       createdAt: now,
       updatedAt: now,
     })
 
     // If a repo is linked and not sharing an existing worktree, create a git worktree
-    if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
+    if (agentRepoId && !skipWorktreeCreation && !noWorktree && !isFolderRepo) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo) {
         if (!existsSync(repo.path)) {
@@ -240,25 +244,31 @@ export async function agentsRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: `Repo path does not exist on disk: ${repo.path}` })
         }
 
-        // Try to claim the hidden reserve worktree
-        const claimed = await claimReserve(agentRepoId, branch, baseBranch ?? repo.branchFrom)
-        if (claimed) {
-          agentLocation = claimed.location
-          db.update(agents).set({ location: agentLocation }).where(eq(agents.id, id)).run()
+        if (!existsSync(path.join(repo.path, ".git"))) {
+          app.log.info(`Repo path "${repo.path}" has no .git — falling back to direct/folder mode for agent ${id}`)
+          db.update(agents).set({ noWorktree: 1, branch: "local" }).where(eq(agents.id, id)).run()
+          db.update(repos).set({ type: "folder", workspacesPath: repo.path, branchFrom: "", remote: "" }).where(eq(repos.id, repo.id)).run()
         } else {
-          const worktreePath = path.join(repo.workspacesPath, agentLocation)
-          try {
-            await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
-          } catch (err) {
-            app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
-            await db.delete(agents).where(eq(agents.id, id))
-            return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
-          }
-          if (repo.setupScript) {
+          // Try to claim the hidden reserve worktree
+          const claimed = await claimReserve(agentRepoId, branch, baseBranch ?? repo.branchFrom)
+          if (claimed) {
+            agentLocation = claimed.location
+            db.update(agents).set({ location: agentLocation }).where(eq(agents.id, id)).run()
+          } else {
+            const worktreePath = path.join(repo.workspacesPath, agentLocation)
             try {
-              await runScript(repo.setupScript, worktreePath, id, repo.path)
+              await createWorktree(repo.path, branch, worktreePath, baseBranch ?? repo.branchFrom)
             } catch (err) {
-              app.log.warn(`Setup script failed: ${err}`)
+              app.log.error(`Failed to create worktree for agent ${id}: ${err}`)
+              await db.delete(agents).where(eq(agents.id, id))
+              return reply.code(500).send({ error: `Failed to create worktree: ${(err as Error).message}` })
+            }
+            if (repo.setupScript) {
+              try {
+                await runScript(repo.setupScript, worktreePath, id, repo.path)
+              } catch (err) {
+                app.log.warn(`Setup script failed: ${err}`)
+              }
             }
           }
         }
@@ -269,9 +279,9 @@ export async function agentsRoutes(app: FastifyInstance) {
     if (!created) return reply.code(500).send({ error: "Failed to create agent" })
 
     // Start live file watcher for the new worktree
-    if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
+    if (agentRepoId && !skipWorktreeCreation && !created.noWorktree && !isFolderRepo) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
-      if (repo) {
+      if (repo && existsSync(path.join(repo.path, ".git"))) {
         const worktreePath = path.join(repo.workspacesPath, agentLocation)
         watchWorktree(id, worktreePath, baseBranch ?? repo.branchFrom)
       }
@@ -289,7 +299,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     }
 
     // Auto-link PR when picking an existing branch (fire-and-forget)
-    if (existingBranch && agentRepoId && config.githubToken) {
+    if (existingBranch && agentRepoId && !isFolderRepo && config.githubToken) {
       const repo = db.select().from(repos).where(eq(repos.id, agentRepoId)).get()
       if (repo?.previewUrl || repo?.path) {
         // Derive remote URL from git config
@@ -347,10 +357,10 @@ export async function agentsRoutes(app: FastifyInstance) {
     const updated = db.select().from(agents).where(eq(agents.id, id)).get()
     if (!updated) return reply.code(404).send({ error: "Not found" })
 
-    // Rebase onto new base branch when baseBranch changes
+    // Rebase onto new base branch when baseBranch changes (git repos only)
     if (body.baseBranch !== undefined && updated.repoId && oldAgent) {
       const repo = db.select().from(repos).where(eq(repos.id, updated.repoId)).get()
-      if (repo) {
+      if (repo && repo.type !== "folder") {
         const worktreePath = updated.noWorktree ? repo.path : path.join(repo.workspacesPath, updated.location)
         const newBaseRaw = body.baseBranch
         const oldBaseRaw = oldAgent.baseBranch ?? repo.branchFrom
@@ -421,6 +431,8 @@ export async function agentsRoutes(app: FastifyInstance) {
     const agent = db.select().from(agents).where(and(eq(agents.id, id), isNull(agents.deletedAt))).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
     if (!agent.repoId) return reply.code(400).send({ error: "Agent has no repo" })
+    const switchRepo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (switchRepo?.type === "folder") return reply.code(400).send({ error: "Branch switching is not available for folder agents" })
     if (agent.branch === branch) return agent
 
     // Check if another agent in this repo already has this branch
@@ -503,6 +515,12 @@ export async function agentsRoutes(app: FastifyInstance) {
     const { branch } = req.body
     if (!branch) return reply.code(400).send({ error: "branch is required" })
 
+    const renameAgent = db.select().from(agents).where(eq(agents.id, id)).get()
+    if (renameAgent?.repoId) {
+      const renameRepo = db.select().from(repos).where(eq(repos.id, renameAgent.repoId)).get()
+      if (renameRepo?.type === "folder") return reply.code(400).send({ error: "Branch renaming is not available for folder agents" })
+    }
+
     const result = await applyBranchRename(id, branch)
     if (!result.ok) {
       const status = result.reason?.includes("already used") ? 409 : 400
@@ -543,7 +561,7 @@ export async function agentsRoutes(app: FastifyInstance) {
     const prefix = repo?.branchPrefix ? `${repo.branchPrefix}/` : ""
     const branchSuffix = agent.branch?.startsWith(prefix) ? agent.branch.slice(prefix.length) : (agent.branch ?? "")
     const shouldRenameBranch = req.body?.branch === true || isPlaceholderName(branchSuffix)
-    if (shouldRenameBranch && agent.repoId && !agent.parentAgentId) {
+    if (shouldRenameBranch && agent.repoId && !agent.parentAgentId && repo?.type !== "folder") {
       const slug = titleToBranchSlug(title)
       if (slug) {
         const result = await applyBranchRename(req.params.id, slug)
@@ -558,8 +576,11 @@ export async function agentsRoutes(app: FastifyInstance) {
 
   // DELETE /api/agents/:id — soft delete: marks deleted_at, removes worktree, never hard-deletes DB rows
   app.delete<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
+    const t0 = Date.now()
+    const log = (step: string) => app.log.info(`[delete ${req.params.id}] ${step} (+${Date.now() - t0}ms)`)
     const agent = db.select().from(agents).where(and(eq(agents.id, req.params.id), isNull(agents.deletedAt))).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
+    log(`start (noWorktree=${agent.noWorktree}, parentAgentId=${agent.parentAgentId ?? "-"})`)
 
     const now = new Date().toISOString()
 
@@ -571,32 +592,43 @@ export async function agentsRoutes(app: FastifyInstance) {
     for (const child of childRows) {
       killAgentTerminals(child.id)
     }
+    log(`killed terminals (children=${childRows.length})`)
 
     // Soft-delete child tabs too
     await db.update(agents)
       .set({ deletedAt: now })
       .where(eq(agents.parentAgentId, req.params.id))
+    log("soft-deleted children")
 
     // Stop live file watcher before removing worktree
     unwatchWorktree(req.params.id)
+    log("unwatched")
 
-    // Remove worktree from disk (frees space) but keep DB record
-    // Skip for child agents — they share the parent's worktree
+    // Remove worktree from disk (frees space) but keep DB record.
+    // Skip for: child agents (shared worktree), folder-type repos, and
+    // anything where noWorktree is set.
     if (agent.repoId && !agent.noWorktree && !agent.parentAgentId) {
       const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
-      if (repo) {
+      if (repo && repo.type !== "folder" && existsSync(path.join(repo.path, ".git"))) {
         const worktreePath = path.join(repo.workspacesPath, agent.location)
         try {
           await removeWorktree(repo.path, worktreePath)
         } catch (err) {
           app.log.warn(`Worktree removal failed: ${err}`)
         }
+        log("removed worktree")
+      } else {
+        log("worktree removal skipped (folder/no .git)")
       }
+    } else {
+      log("worktree removal skipped (noWorktree or child)")
     }
 
     await db.update(agents).set({ deletedAt: now }).where(eq(agents.id, req.params.id))
+    log("marked deleted")
     broadcast({ type: "agent:deleted", agentId: req.params.id })
     reply.code(204).send()
+    log("replied 204")
   })
 
   // POST /api/agents/:id/sync-files — refresh file changes from git diff
@@ -606,6 +638,7 @@ export async function agentsRoutes(app: FastifyInstance) {
 
     const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
+    if (repo.type === "folder") return { diffSummary: { additions: 0, deletions: 0 } }
 
     const worktreePath = path.join(repo.workspacesPath, agent.location)
     const summary = await getDiffSummary(worktreePath, agent.baseBranch ?? repo.branchFrom)

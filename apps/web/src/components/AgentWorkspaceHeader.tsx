@@ -161,6 +161,7 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
   const { data: repos = [] } = useRepos()
   const repo = repos.find((r) => r.id === agent.repoId)
   const repoName = repo?.name
+  const isGitRepo = repo?.type === "git" && agent.branch !== "local"
 
   // Branch pickers
   const [branchPickerOpen, setBranchPickerOpen] = useState(false)
@@ -316,7 +317,8 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
           )}
         </div>
 
-        {/* Branch info */}
+        {/* Branch info — hidden for folder agents */}
+        {isGitRepo && (
         <div className="flex items-center gap-1.5">
           <IconGitBranch size={11} className="text-muted-foreground/40 shrink-0" />
           <Popover open={branchPickerOpen} onOpenChange={(o) => { setBranchPickerOpen(o); if (o) setBranchSearch("") }}>
@@ -411,26 +413,33 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
             </PopoverContent>
           </Popover>
         </div>
+        )}
+        {!isGitRepo && repo && (
+          <div className="flex items-center gap-1.5">
+            <IconFolder size={11} className="text-muted-foreground/40 shrink-0" />
+            <span className="text-[11px] text-muted-foreground/60 font-mono truncate max-w-[240px]">{repo.path}</span>
+          </div>
+        )}
       </div>
 
       {/* Right side: PR status + actions */}
       <div className="ml-auto flex items-center gap-2 shrink-0">
-        {/* PR badges */}
-        {githubEnabled && agent.prStatus && (
+        {/* PR badges — hidden for folder agents */}
+        {isGitRepo && githubEnabled && agent.prStatus && (
           <PRBadges prStatus={agent.prStatus} agentId={agent.id} />
         )}
 
-        {githubEnabled && agent.prStatus && (
+        {isGitRepo && githubEnabled && agent.prStatus && (
           <div className="w-px h-4 bg-border" />
         )}
 
-        {githubEnabled && !agent.prStatus && !isStreaming && agent.messages.length > 0 && onCreatePR && (
+        {isGitRepo && githubEnabled && !agent.prStatus && !isStreaming && agent.messages.length > 0 && onCreatePR && (
           <Button variant="ghost" size="xs" onClick={onCreatePR}>
             <IconGitPullRequest size={12} />
             Create PR
           </Button>
         )}
-        {!isStreaming && agent.messages.length > 0 && onReview && (
+        {isGitRepo && !isStreaming && agent.messages.length > 0 && onReview && (
           <Button variant="ghost" size="xs" onClick={onReview}>
             <IconEye size={12} />
             Review

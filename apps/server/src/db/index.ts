@@ -470,6 +470,10 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 31,
+    sql: `ALTER TABLE repos ADD COLUMN type TEXT NOT NULL DEFAULT 'git';`,
+  },
 ]
 
 export function runMigrations() {

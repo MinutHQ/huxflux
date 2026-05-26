@@ -84,6 +84,7 @@ export async function reconcileWorktreeLocation(
   if (agent.noWorktree || agent.parentAgentId) return { ok: true, reason: "no top-level worktree to align" }
   const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
   if (!repo) return { ok: false, reason: "repo not found" }
+  if (repo.type === "folder") return { ok: true }
 
   const prefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
   const branch = agent.branch ?? ""
@@ -170,6 +171,7 @@ export async function applyBranchRename(
   if (!agent.repoId) return { ok: false, reason: "agent has no repo" }
   const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
   if (!repo) return { ok: false, reason: "repo not found" }
+  if (repo.type === "folder") return { ok: true }
 
   const sanitized = sanitizeBranchName(rawBranchName)
   if (!sanitized) return { ok: false, reason: "name is empty after sanitization" }

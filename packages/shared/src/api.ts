@@ -160,8 +160,12 @@ export const api = {
     fetch(`${getBase()}/api/agents/${agentId}/files/diff?path=${encodeURIComponent(path)}`, {
       headers: authHeaders(),
     }).then((r) => r.text()),
-  getFileTree: (agentId: string) =>
-    req<{ name: string; path: string; type: "file" | "directory"; children?: any[] }[]>(`/api/agents/${agentId}/files/tree`),
+  getFileTree: (agentId: string, subPath?: string) =>
+    req<{ name: string; path: string; type: "file" | "directory"; children?: any[] }[]>(
+      subPath
+        ? `/api/agents/${agentId}/files/tree?path=${encodeURIComponent(subPath)}`
+        : `/api/agents/${agentId}/files/tree`
+    ),
   getFileContent: (agentId: string, path: string) =>
     fetch(`${getBase()}/api/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
   getBaseFileContent: (agentId: string, path: string) =>

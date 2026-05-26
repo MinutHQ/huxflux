@@ -3,10 +3,6 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s
 set -euo pipefail
 
-# Re-attach stdin to terminal (needed when piped from curl)
-if [ ! -t 0 ]; then
-  exec </dev/tty
-fi
 
 # ── Colors & helpers ─────────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -122,10 +118,15 @@ echo ""
 echo -e "  ${YELLOW}${BOLD}⚠ Security:${RESET} The auth token grants shell access to this machine."
 echo -e "  ${DIM}  Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
 
-# ── Launch setup wizard ──────────────────────────────────────────────────────
-step "③ Setting up your environment"
+# ── Next steps ───────────────────────────────────────────────────────────────
+step "③ Almost there!"
 echo ""
-echo -e "  ${DIM}Launching interactive setup...${RESET}"
+echo -e "  Run the setup wizard to start the server and connect:"
 echo ""
-
-exec huxflux setup
+echo -e "    ${BOLD}huxflux setup${RESET}"
+echo ""
+echo -e "  ${DIM}Or start the server directly:${RESET}"
+echo ""
+echo -e "    ${DIM}huxflux start${RESET}      ${DIM}# start in background${RESET}"
+echo -e "    ${DIM}huxflux status${RESET}     ${DIM}# show URL + token${RESET}"
+echo ""

@@ -5,7 +5,7 @@ import { toast, Toaster } from "sonner"
 import { CommandPalette } from "@/components/CommandPalette"
 import { DisconnectedBanner } from "@/components/DisconnectedBanner"
 import { UpdateBanner } from "@/components/UpdateBanner"
-import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, connectBackgroundServer } from "@huxflux/shared"
+import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { useUpdater } from "@/hooks/useUpdater"
 import { isTauri } from "@/lib/platform"
@@ -92,9 +92,9 @@ function RootComponent() {
   }, [])
 
   // Auto-discover local server from connection.json (Tauri desktop only)
+  // Adds or updates the local server entry without overriding the user's active choice
   useEffect(() => {
     if (!isTauri) return
-    if (getServers().length > 0) return // already has servers, don't override
     import("@tauri-apps/api/core").then(({ invoke }) => {
       invoke<string | null>("read_local_connection").then((json) => {
         if (!json) return
@@ -103,9 +103,19 @@ function RootComponent() {
           if (!conn.url) return
           const existing = getServers()
           const already = existing.find((s) => s.url === conn.url)
-          if (!already) {
+          if (already) {
+            // Update token if it changed (e.g. after token rotate)
+            if (already.token !== conn.token) {
+              updateServer(already.id, { token: conn.token })
+              refreshServers()
+            }
+          } else {
+            // Add new local server
             const server = addServer({ name: "Local Server", url: conn.url, token: conn.token })
-            setActiveServerId(server.id)
+            // Only auto-activate if no server is currently active
+            if (!activeId) {
+              setActiveServerId(server.id)
+            }
             refreshServers()
           }
         } catch {}

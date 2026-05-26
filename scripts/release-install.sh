@@ -26,31 +26,26 @@ if [[ ! -f "$INSTALL_SRC" ]]; then
   fail "install.sh not found at $INSTALL_SRC"
 fi
 
-if ! command -v gh &>/dev/null && ! command -v git &>/dev/null; then
-  fail "Need gh CLI or git to push to releases repo"
+if ! command -v gh &>/dev/null; then
+  fail "gh CLI not found. Install: https://cli.github.com"
 fi
 
-# ── Clone, update, push ─────────────────────────────────────────────────────
+# ── Switch to correct GitHub account ─────────────────────────────────────────
 step "Syncing install.sh to ${RELEASES_REPO}"
+
+GITHUB_TOKEN="" gh auth switch --user AlexMartosP 2>/dev/null || true
 
 RELEASES_DIR="$(mktemp -d)"
 trap "rm -rf '$RELEASES_DIR'" EXIT
 
-git clone --depth 1 "git@github.com:${RELEASES_REPO}.git" "$RELEASES_DIR" 2>/dev/null || \
-git clone --depth 1 "https://github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
+GITHUB_TOKEN="" gh repo clone "$RELEASES_REPO" "$RELEASES_DIR" -- --depth 1 2>/dev/null
 
 cp "$INSTALL_SRC" "$RELEASES_DIR/install.sh"
 chmod +x "$RELEASES_DIR/install.sh"
 
 cd "$RELEASES_DIR"
 
-if git diff --quiet install.sh 2>/dev/null && ! git ls-files --error-unmatch install.sh &>/dev/null 2>&1; then
-  # New file
-  git add install.sh
-  git commit -m "add install script"
-  git push
-  ok "Install script added to releases repo"
-elif git diff --quiet install.sh; then
+if git diff --quiet install.sh 2>/dev/null && git ls-files --error-unmatch install.sh &>/dev/null 2>&1; then
   ok "Install script already up to date"
 else
   git add install.sh

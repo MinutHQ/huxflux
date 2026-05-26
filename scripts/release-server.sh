@@ -90,18 +90,19 @@ if [[ ! -f "$INSTALL_SRC" ]]; then
   fail "install.sh not found at $INSTALL_SRC"
 fi
 
-RELEASES_DIR="/tmp/huxflux-releases-$$"
 if [[ "$DRY_RUN" == "true" ]]; then
   echo -e "  ${YELLOW}!${RESET}  Dry run — skipping install script sync"
 else
-  # Clone releases repo, update install.sh, push
-  git clone --depth 1 "git@github.com:${RELEASES_REPO}.git" "$RELEASES_DIR" 2>/dev/null || \
-  git clone --depth 1 "https://github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
+  GITHUB_TOKEN="" gh auth switch --user AlexMartosP 2>/dev/null || true
+
+  RELEASES_DIR="/tmp/huxflux-releases-$$"
+  GITHUB_TOKEN="" gh repo clone "$RELEASES_REPO" "$RELEASES_DIR" -- --depth 1 2>/dev/null
 
   cp "$INSTALL_SRC" "$RELEASES_DIR/install.sh"
+  chmod +x "$RELEASES_DIR/install.sh"
 
   cd "$RELEASES_DIR"
-  if git diff --quiet install.sh 2>/dev/null; then
+  if git diff --quiet install.sh 2>/dev/null && git ls-files --error-unmatch install.sh &>/dev/null 2>&1; then
     ok "Install script unchanged"
   else
     git add install.sh

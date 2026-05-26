@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   ./scripts/release-server.sh              # auto-reads version from package.json
+#   ./scripts/release-server.sh --dry-run    # build only, don't publish
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SERVER_DIR="$REPO_ROOT/apps/server"
+RELEASES_REPO="AlexMartosP/huxflux-releases"
+
+BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+GREEN='\033[32m'; RED='\033[31m'; YELLOW='\033[33m'; PURPLE='\033[35m'
+
+ok()   { echo -e "  ${GREEN}✓${RESET}  $*"; }
+fail() { echo -e "  ${RED}✗${RESET}  $*" >&2; exit 1; }
+step() { echo -e "\n  ${PURPLE}${BOLD}$*${RESET}"; }
+
+DRY_RUN=false
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+
+# ── Read version ─────────────────────────────────────────────────────────────
+VERSION="$(node -p "require('$SERVER_DIR/package.json').version")"
+echo ""
+echo -e "  ${BOLD}Huxflux Server Release${RESET} — v${VERSION}"
+echo ""
+
+# ── Guards ───────────────────────────────────────────────────────────────────
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
+if [[ "$BRANCH" != "main" ]]; then
+  fail "Must be on main branch (currently on '$BRANCH')"
+fi
+
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+  fail "Working tree is dirty. Commit or stash changes first."
+fi
+
+# ── Build ────────────────────────────────────────────────────────────────────
+step "① Building server"
+
+cd "$SERVER_DIR"
+pnpm build 2>&1 | grep -E "success|error|ERR" || true
+ok "Build complete"
+
+# ── Test (quick sanity check) ────────────────────────────────────────────────
+step "② Verifying build"
+
+CLI_VERSION="$(node dist/cli.js --version 2>/dev/null || echo "FAIL")"
+if [[ "$CLI_VERSION" != "$VERSION" ]]; then
+  fail "CLI version mismatch: expected $VERSION, got $CLI_VERSION"
+fi
+ok "CLI version: $CLI_VERSION"
+
+# Check that setup command exists
+if ! node dist/cli.js help 2>&1 | grep -q "setup"; then
+  fail "Setup command not found in built CLI"
+fi
+ok "Setup command present"
+
+# ── Publish to npm ───────────────────────────────────────────────────────────
+step "③ Publishing to npm"
+
+# Ensure logged in
+echo -e "  Checking npm auth..."
+if ! npm whoami &>/dev/null; then
+  echo -e "  ${YELLOW}!${RESET}  Not logged in to npm. Logging in..."
+  npm login
+fi
+ok "Logged in as $(npm whoami)"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "  ${YELLOW}!${RESET}  Dry run — skipping npm publish"
+  npm pack --dry-run 2>&1 | tail -10
+else
+  # Check if this version already exists
+  PUBLISHED="$(npm view @alexmartosp/huxflux version 2>/dev/null || echo "none")"
+  if [[ "$PUBLISHED" == "$VERSION" ]]; then
+    echo -e "  ${YELLOW}!${RESET}  v${VERSION} already published, skipping"
+  else
+    npm publish --access public 2>&1
+    ok "Published @alexmartosp/huxflux@${VERSION}"
+  fi
+fi
+
+# ── Copy install script to releases repo ─────────────────────────────────────
+step "④ Updating install script"
+
+INSTALL_SRC="$REPO_ROOT/install.sh"
+if [[ ! -f "$INSTALL_SRC" ]]; then
+  fail "install.sh not found at $INSTALL_SRC"
+fi
+
+RELEASES_DIR="/tmp/huxflux-releases-$$"
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo -e "  ${YELLOW}!${RESET}  Dry run — skipping install script sync"
+else
+  # Clone releases repo, update install.sh, push
+  git clone --depth 1 "git@github.com:${RELEASES_REPO}.git" "$RELEASES_DIR" 2>/dev/null || \
+  git clone --depth 1 "https://github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
+
+  cp "$INSTALL_SRC" "$RELEASES_DIR/install.sh"
+
+  cd "$RELEASES_DIR"
+  if git diff --quiet install.sh 2>/dev/null; then
+    ok "Install script unchanged"
+  else
+    git add install.sh
+    git commit -m "chore: update install script (server v${VERSION})"
+    git push
+    ok "Install script updated in releases repo"
+  fi
+
+  rm -rf "$RELEASES_DIR"
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "  ${GREEN}${BOLD}✓ Server v${VERSION} released${RESET}"
+echo ""
+echo "  Users can update with:"
+echo "    huxflux update"
+echo "    npm install -g @alexmartosp/huxflux@latest"
+echo ""
+echo "  New users:"
+echo "    curl -fsSL https://raw.githubusercontent.com/${RELEASES_REPO}/main/install.sh | bash"
+echo ""

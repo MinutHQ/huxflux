@@ -51,26 +51,36 @@ export async function reposRoutes(app: FastifyInstance) {
   })
 
   app.post<{ Body: Omit<Repo, "id" | "createdAt"> }>("/api/repos", async (req, reply) => {
-    const existing = db.select().from(repos).where(eq(repos.path, req.body.path)).get()
+    const body = req.body
+    // Reject non-absolute paths and paths that don't exist on disk. Without
+    // this any caller can register `/` (or another user's home) and chain
+    // it into the file-content endpoints.
+    if (!body.path || !path.isAbsolute(body.path) || !fsSync.existsSync(body.path)) {
+      return reply.code(400).send({ error: "path must be an existing absolute path" })
+    }
+    let realPath: string
+    try { realPath = fsSync.realpathSync(body.path) } catch { return reply.code(400).send({ error: "path is not accessible" }) }
+    const existing = db.select().from(repos).where(eq(repos.path, realPath)).get()
     if (existing) {
       reply.code(409)
       return { error: "A repository with this path is already registered" }
     }
     const now = new Date().toISOString()
     const id = uuid()
-    const body = req.body
+    const isFolder = body.type === "folder" || (!body.type && !fsSync.existsSync(path.join(realPath, ".git")))
     await db.insert(repos).values({
       id,
       name: body.name,
-      path: body.path,
-      workspacesPath: body.workspacesPath ?? path.join(config.workspacesBase, body.name),
-      branchFrom: body.branchFrom ?? "origin/main",
-      branchPrefix: body.branchPrefix ?? null,
-      remote: body.remote ?? "origin",
+      path: realPath,
+      workspacesPath: isFolder ? realPath : (body.workspacesPath ?? path.join(config.workspacesBase, body.name)),
+      branchFrom: isFolder ? "" : (body.branchFrom ?? "origin/main"),
+      branchPrefix: isFolder ? null : (body.branchPrefix ?? null),
+      remote: isFolder ? "" : (body.remote ?? "origin"),
       previewUrl: body.previewUrl,
       setupScript: body.setupScript,
       runScript: body.runScript,
       archiveScript: body.archiveScript,
+      type: isFolder ? "folder" : "git",
       createdAt: now,
     })
     reply.code(201)
@@ -123,6 +133,7 @@ export async function reposRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/repos/:id/branches", async (req, reply) => {
     const repo = db.select().from(repos).where(eq(repos.id, req.params.id)).get()
     if (!repo) return reply.code(404).send({ error: "Not found" })
+    if (repo.type === "folder") return []
     const repoUrl = await getRemoteUrl(repo.path, repo.remote).catch(() => null)
     if (!repoUrl) return reply.code(400).send({ error: "Cannot resolve remote URL" })
     const branches = await listBranches(repoUrl).catch(() => [] as string[])

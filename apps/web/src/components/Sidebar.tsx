@@ -283,6 +283,10 @@ function NewAgentPopover({
   function handleSelectRepo(repoId: string) {
     const name = randomBeeName()
     const repo = repos.find((r) => r.id === repoId)
+    if (repo?.type === "folder") {
+      onSelect(repoId, name, "local", true)
+      return
+    }
     const prefix = repo?.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
     const branch = `${prefix}${name}`
     onSelect(repoId, name, branch, direct)
@@ -311,29 +315,32 @@ function NewAgentPopover({
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-1 p-1 border-b border-border">
-              <button
-                onClick={() => setDirect(false)}
-                className={cn(
-                  "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
-                  !direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Worktree
-              </button>
-              <button
-                onClick={() => setDirect(true)}
-                className={cn(
-                  "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
-                  direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Direct
-              </button>
-            </div>
-            <div className="p-1 space-y-0.5">
+            {repos.some((r) => r.type !== "folder") && (
+              <div className="flex items-center gap-1 p-1 border-b border-border">
+                <button
+                  onClick={() => setDirect(false)}
+                  className={cn(
+                    "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
+                    !direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Worktree
+                </button>
+                <button
+                  onClick={() => setDirect(true)}
+                  className={cn(
+                    "flex-1 text-[11px] font-medium py-1 rounded-md transition-colors",
+                    direct ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Direct
+                </button>
+              </div>
+            )}
+            <div className="p-1 space-y-0.5 max-h-72 overflow-y-auto">
               {repos.map((r, i) => {
                 const shortcut = i < 9 ? i + 1 : null
+                const isFolder = r.type === "folder"
                 return (
                   <button
                     key={r.id}
@@ -343,6 +350,7 @@ function NewAgentPopover({
                   >
                     <span className={cn("w-5 h-5 rounded border text-[10px] font-bold flex items-center justify-center shrink-0", repoColor(r.name))}>
                       {(() => {
+                        if (isFolder) return <IconFolder size={11} />
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const IconComp = r.icon ? (TablerIcons as any)[r.icon] as React.ComponentType<{ size?: number }> | undefined : undefined
                         return IconComp ? <IconComp size={11} /> : r.name[0].toUpperCase()
@@ -430,6 +438,9 @@ function StatusContextMenu({
   onDelete: (agent: AgentSummary) => void
 }) {
   const queryClient = useQueryClient()
+  const { data: repos = [] } = useRepos()
+  const agentRepo = repos.find((r) => r.id === agent.repoId)
+  const isFolderAgent = agentRepo?.type === "folder" || agent.branch === "local"
   const [confirmDelete, setConfirmDelete] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
@@ -515,14 +526,15 @@ function StatusContextMenu({
         })}
         <div className="border-t border-border my-1" />
         <button
-          onClick={() => handleGenerateTitle({ renameBranch: isPlaceholderTitle(agent.title) })}
+          onClick={() => handleGenerateTitle({ renameBranch: !isFolderAgent && isPlaceholderTitle(agent.title) })}
           className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
         >
           <IconSparkles size={13} className="text-muted-foreground/60 shrink-0" />
           <span className="flex-1 text-left">
-            {isPlaceholderTitle(agent.title) ? "Generate name + branch" : "Generate title"}
+            {!isFolderAgent && isPlaceholderTitle(agent.title) ? "Generate name + branch" : "Generate title"}
           </span>
         </button>
+        {!isFolderAgent && (
         <button
           onClick={handleRenameBranch}
           className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
@@ -530,6 +542,7 @@ function StatusContextMenu({
           <IconGitBranch size={13} className="text-muted-foreground/60 shrink-0" />
           <span className="flex-1 text-left">Rename branch…</span>
         </button>
+        )}
         <div className="border-t border-border my-1" />
         <button
           onClick={handleDelete}
@@ -544,7 +557,10 @@ function StatusContextMenu({
   )
 }
 
-function PrIcon({ agent }: { agent: AgentSummary }) {
+function PrIcon({ agent, repoType }: { agent: AgentSummary; repoType?: string }) {
+  if (repoType === "folder" || agent.branch === "local") {
+    return <IconFolder size={11} className="text-muted-foreground/30 shrink-0" />
+  }
   const pr = agent.prStatus
   if (!pr) {
     return <IconGitBranch size={11} className="text-muted-foreground/30 shrink-0" />
@@ -584,6 +600,7 @@ const AgentRow = React.memo(function AgentRow({
   port,
   repoName,
   repoIcon,
+  repoType,
 }: {
   agent: AgentSummary
   isSelected: boolean
@@ -595,6 +612,7 @@ const AgentRow = React.memo(function AgentRow({
   port?: number | null
   repoName?: string
   repoIcon?: string
+  repoType?: string
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -667,7 +685,7 @@ const AgentRow = React.memo(function AgentRow({
         <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>
           {RepoIconComp ? <RepoIconComp size={11} /> : initials}
         </div>
-        {isStreaming ? <StreamingDots /> : <PrIcon agent={agent} />}
+        {isStreaming ? <StreamingDots /> : <PrIcon agent={agent} repoType={repoType} />}
         {editing ? (
           <input
             ref={inputRef}
@@ -752,6 +770,7 @@ function StatusGroup({
   agentPorts,
   repoNames,
   repoIcons,
+  repoTypes,
 }: {
   status: AgentStatus
   agents: AgentSummary[]
@@ -764,6 +783,7 @@ function StatusGroup({
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
   repoIcons?: Record<string, string | undefined>
+  repoTypes?: Record<string, string>
   threadChildrenByParent?: Map<string, AgentSummary[]>
 }) {
   const [collapsed, setCollapsed] = useState(() => {
@@ -812,6 +832,7 @@ function StatusGroup({
                 port={agentPorts?.[agent.id]}
                 repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
                 repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
+                repoType={agent.repoId ? repoTypes?.[agent.repoId] : undefined}
               />
               {/* Thread children nested under parent */}
               {threadChildrenByParent?.get(agent.id)?.map((child) => (
@@ -827,6 +848,7 @@ function StatusGroup({
                     port={agentPorts?.[child.id]}
                     repoName={child.repoId ? repoNames[child.repoId] : undefined}
                     repoIcon={child.repoId ? repoIcons?.[child.repoId] : undefined}
+                    repoType={child.repoId ? repoTypes?.[child.repoId] : undefined}
                   />
                 </div>
               ))}
@@ -851,6 +873,7 @@ function StatusGroup({
 
 function RepoGroup({
   repoName,
+  repoType,
   agents,
   selectedId,
   onSelect,
@@ -860,6 +883,7 @@ function RepoGroup({
   agentPorts,
 }: {
   repoName: string
+  repoType?: string
   agents: AgentSummary[]
   selectedId: string
   onSelect: (id: string) => void
@@ -903,6 +927,7 @@ function RepoGroup({
               onDelete={onDelete}
               port={agentPorts?.[agent.id]}
               repoName={repoName}
+              repoType={repoType}
             />
           ))}
         </div>
@@ -916,12 +941,14 @@ function RepoGroup({
 function AddWorkspacePopover({
   onClose,
   onOpenProject,
+  onAddFolder,
   onClone,
   onQuickStart,
   anchorRef,
 }: {
   onClose: () => void
   onOpenProject: () => void
+  onAddFolder: () => void
   onClone: () => void
   onQuickStart: () => void
   anchorRef: React.RefObject<HTMLButtonElement | null>
@@ -930,6 +957,7 @@ function AddWorkspacePopover({
 
   const items = [
     { icon: IconFolder, label: "Open project", onClick: onOpenProject },
+    { icon: IconFolderPlus, label: "Add folder", onClick: onAddFolder },
     { icon: IconWorld, label: "Clone from URL", onClick: onClone },
     { icon: IconBolt, label: "Quick start", onClick: onQuickStart },
   ]
@@ -1581,6 +1609,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showAddWorkspace, setShowAddWorkspace] = useState(false)
   const [showAddRepo, setShowAddRepo] = useState(false)
+  const [showAddFolder, setShowAddFolder] = useState(false)
   const [showCloneRepo, setShowCloneRepo] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
   const addWorkspaceBtnRef = useRef<HTMLButtonElement>(null)
@@ -1708,6 +1737,12 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
     [repos]
   )
 
+  // Repo type lookup map (repoId → "git" | "folder")
+  const repoTypes = useMemo(
+    () => Object.fromEntries(repos.map((r) => [r.id, r.type ?? "git"])),
+    [repos]
+  )
+
   // Group by repo
   const repoGrouped = useMemo(() => {
     const map = new Map<string, { name: string; agents: AgentSummary[] }>()
@@ -1726,10 +1761,15 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
 
   async function handleCreateAgent(repoId: string, title: string, branch: string, direct: boolean, existingBranch?: boolean) {
     setShowNewAgent(false)
-    const repoName = repos.find(r => r.id === repoId)?.name ?? ""
-    const savedMs = getWorktreeDuration(repoId)
-    onAgentCreating({ title, branch, repoName, estimatedMs: savedMs })
-    navigate({ to: "/agent/setup" })
+    const repo = repos.find(r => r.id === repoId)
+    const repoName = repo?.name ?? ""
+    // Folder repos never create a worktree — skip the setup animation entirely.
+    const skipSetupAnim = repo?.type === "folder"
+    if (!skipSetupAnim) {
+      const savedMs = getWorktreeDuration(repoId)
+      onAgentCreating({ title, branch, repoName, estimatedMs: savedMs })
+      navigate({ to: "/agent/setup" })
+    }
     const t0 = Date.now()
     try {
       const agent = await api.createAgent({
@@ -1739,7 +1779,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
         noWorktree: direct || undefined,
         existingBranch: existingBranch || undefined,
       })
-      saveWorktreeDuration(repoId, Date.now() - t0)
+      if (!skipSetupAnim) saveWorktreeDuration(repoId, Date.now() - t0)
       // Pre-seed the cache so the agent view doesn't flash HomeView
       queryClient.setQueryData(["agent", agent.id], {
         ...agent,
@@ -1748,6 +1788,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
         terminalOutput: agent.terminalOutput ?? [],
       })
       queryClient.invalidateQueries({ queryKey: ["agents"] })
+      queryClient.invalidateQueries({ queryKey: ["repos"] })
       onAgentCreated(agent.id)
       navigate({ to: "/agent/$agentId", params: { agentId: agent.id } })
     } catch (err) {
@@ -2054,6 +2095,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                         agentPorts={agentPorts}
                         repoNames={repoNames}
                         repoIcons={repoIcons}
+                        repoTypes={repoTypes}
                         threadChildrenByParent={threadChildrenByParent}
                       />
                       </div>
@@ -2063,6 +2105,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                       <RepoGroup
                         key={group.id}
                         repoName={group.name}
+                        repoType={repoTypes[group.id]}
                         agents={group.agents}
                         selectedId={selectedId}
                         onSelect={onSelect}
@@ -2175,6 +2218,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
         <AddWorkspacePopover
           onClose={() => setShowAddWorkspace(false)}
           onOpenProject={() => setShowAddRepo(true)}
+          onAddFolder={() => setShowAddFolder(true)}
           onClone={() => setShowCloneRepo(true)}
           onQuickStart={() => setShowQuickStart(true)}
           anchorRef={addWorkspaceBtnRef}
@@ -2182,6 +2226,9 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
       )}
       {showAddRepo && (
         <AddRepoDialog onClose={() => setShowAddRepo(false)} onAdded={() => setShowAddRepo(false)} />
+      )}
+      {showAddFolder && (
+        <AddRepoDialog onClose={() => setShowAddFolder(false)} onAdded={() => setShowAddFolder(false)} initialType="folder" />
       )}
       {showCloneRepo && (
         <CloneRepoDialog onClose={() => setShowCloneRepo(false)} onAdded={() => setShowCloneRepo(false)} />

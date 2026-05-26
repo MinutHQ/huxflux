@@ -3,7 +3,7 @@ import { toast } from "sonner"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ScrollArea, Button, cn, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
 import type { Agent, FileChange, PRCheck, PRComment } from "@/data/mock"
-import { api } from "@huxflux/shared"
+import { api, useRepos } from "@huxflux/shared"
 import { handleExternalClick } from "@/lib/platform"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -817,6 +817,7 @@ const STACKED_DIFF_THRESHOLD = 100
 
 function UnifiedFileTree({
   agentId,
+  repoId,
   fileChanges,
   onFileContentSelect,
   onFileSelect,
@@ -829,6 +830,7 @@ function UnifiedFileTree({
   onRemoveComment,
 }: {
   agentId: string
+  repoId: string | null
   fileChanges: FileChange[]
   onFileContentSelect: (path: string) => void
   onFileSelect: (file: FileChange) => void
@@ -842,16 +844,43 @@ function UnifiedFileTree({
 }) {
   const treeThemeStyles = useTreeThemeStyles()
   const [search, setSearch] = useState("")
+  const { data: repos = [] } = useRepos()
+  const isFolderAgent = repos.find((r) => r.id === repoId)?.type === "folder"
+
   const { data: tree, isLoading } = useQuery({
-    queryKey: ["file-tree", agentId],
+    queryKey: ["file-tree", agentId, isFolderAgent ? "folder-root" : "full"],
     queryFn: () => api.getFileTree(agentId),
     staleTime: 30_000,
   })
 
   const [activeView, setActiveView] = useState<"all" | "diff" | "pr">("all")
 
-  // All repo file paths (leaves only) for the "All files" tree view
+  // Folder agents: incrementally-grown set of known paths (files + `dir/` markers
+  // for subdirs whose contents have or haven't been fetched yet).
+  const [folderPaths, setFolderPaths] = useState<Set<string>>(new Set())
+  // Directories we've already requested children for (the empty string represents root).
+  const loadedDirs = useRef<Set<string>>(new Set())
+
+  // Reset lazy-load bookkeeping when the agent changes.
+  useEffect(() => {
+    setFolderPaths(new Set())
+    loadedDirs.current = new Set()
+  }, [agentId])
+
+  // Seed folder paths from the initial root response.
+  useEffect(() => {
+    if (!isFolderAgent || !tree) return
+    setFolderPaths((prev) => {
+      const next = new Set(prev)
+      for (const e of tree as FileTreeEntry[]) next.add(e.path)
+      return next
+    })
+    loadedDirs.current.add("")
+  }, [tree, isFolderAgent])
+
+  // All repo file paths for the "All files" tree view.
   const allPaths = useMemo(() => {
+    if (isFolderAgent) return Array.from(folderPaths).sort()
     if (!tree) return fileChanges.map(f => f.path)
     const paths: string[] = []
     function walk(entries: FileTreeEntry[]) {
@@ -862,7 +891,7 @@ function UnifiedFileTree({
     }
     walk(tree as FileTreeEntry[])
     return paths
-  }, [tree, fileChanges])
+  }, [tree, fileChanges, isFolderAgent, folderPaths])
 
   const gitStatus = useMemo<GitStatusEntry[]>(() =>
     fileChanges.map(f => ({
@@ -887,13 +916,69 @@ function UnifiedFileTree({
     },
   })
 
+  // Sync model with allPaths.
+  //   • Git agents: `resetPaths` on every change (tree may change wholesale).
+  //   • Folder agents: incremental `add` only, so per-directory expansion state
+  //     survives across lazy fetches.
+  const prevAllPathsRef = useRef<string[]>([])
   useEffect(() => {
-    model.resetPaths(allPaths)
-  }, [allPaths, model])
+    if (!isFolderAgent) {
+      model.resetPaths(allPaths)
+      prevAllPathsRef.current = allPaths
+      return
+    }
+    const prev = new Set(prevAllPathsRef.current)
+    const toAdd = allPaths.filter((p) => !prev.has(p))
+    if (prevAllPathsRef.current.length === 0 && allPaths.length > 0) {
+      // First populate — single reset is cheaper than N adds.
+      model.resetPaths(allPaths)
+    } else if (toAdd.length > 0) {
+      model.batch(toAdd.map((path) => ({ type: "add" as const, path })))
+    }
+    prevAllPathsRef.current = allPaths
+  }, [allPaths, model, isFolderAgent])
 
   useEffect(() => {
     model.setGitStatus(gitStatus)
   }, [gitStatus, model])
+
+  // Folder agents: when a directory is expanded for the first time, fetch its
+  // immediate children and merge them into the path set. Pierre's FileTree
+  // doesn't expose explicit expand events, so we subscribe to its generic
+  // change notifier and poll the directory handle's isExpanded() state.
+  useEffect(() => {
+    if (!isFolderAgent) return
+    let cancelled = false
+    const checkExpansions = () => {
+      if (cancelled) return
+      for (const p of folderPaths) {
+        if (!p.endsWith("/")) continue
+        if (loadedDirs.current.has(p)) continue
+        const handle = model.getItem(p)
+        if (handle?.isDirectory() && handle.isExpanded()) {
+          loadedDirs.current.add(p)
+          const subPath = p.replace(/\/+$/, "")
+          api.getFileTree(agentId, subPath)
+            .then((children) => {
+              if (cancelled) return
+              setFolderPaths((prev) => {
+                const next = new Set(prev)
+                for (const e of children as FileTreeEntry[]) next.add(e.path)
+                return next
+              })
+            })
+            .catch(() => {
+              // Allow another attempt on the next expansion check.
+              loadedDirs.current.delete(p)
+            })
+        }
+      }
+    }
+    const unsubscribe = model.subscribe(checkExpansions)
+    // Run once immediately in case directories were already expanded.
+    checkExpansions()
+    return () => { cancelled = true; unsubscribe() }
+  }, [model, isFolderAgent, agentId, folderPaths])
 
   // Diff tree — changed files only
   const changedPaths = useMemo(() => fileChanges.map(f => f.path), [fileChanges])
@@ -1115,6 +1200,7 @@ export function FileChangesView({ agent, selectedFile: _selectedFile, onFileSele
       <div className="flex flex-col flex-1 min-h-0">
         <UnifiedFileTree
           agentId={agent.id}
+          repoId={agent.repoId ?? null}
           fileChanges={agent.fileChanges}
           onFileContentSelect={onFileContentSelect}
           onFileSelect={(file) => onFileSelect(file)}

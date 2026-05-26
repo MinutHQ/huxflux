@@ -97,6 +97,12 @@ async function refreshFileChanges(
   worktreePath: string,
   branchFrom: string,
 ): Promise<void> {
+  // Folder agents have no git baseline — skip file change tracking
+  const fcAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (fcAgent?.repoId) {
+    const fcRepo = db.select().from(reposTable).where(eq(reposTable.id, fcAgent.repoId)).get()
+    if (fcRepo?.type === "folder") return
+  }
   try {
     const files = await getFileChanges(worktreePath, branchFrom)
 
@@ -160,7 +166,7 @@ function checkMetaDirectives(state: StreamState, agentId: string): void {
       const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
       if (agent?.repoId) {
         const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-        if (repo) {
+        if (repo && repo.type !== "folder") {
           const prefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
           const newBranch = rawName.startsWith(prefix) ? rawName : `${prefix}${rawName}`
           const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
@@ -392,9 +398,29 @@ async function tryAutoRename(agentId: string, branchFrom: string): Promise<void>
   if (!agent.repoId) return
   if (agent.parentAgentId) return // children share the parent's branch/worktree
 
+  const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+
+  // Folder repos: only auto-rename the title, never touch branches/worktrees
+  if (repo?.type === "folder") {
+    if (isPlaceholderName(agent.title)) {
+      const firstUserMsg = db.select().from(messagesTable)
+        .where(eq(messagesTable.agentId, agentId))
+        .all()
+        .sort((a: { createdAt: string }, b: { createdAt: string }) => a.createdAt.localeCompare(b.createdAt))
+        .find((m: { role: string }) => m.role === "user")
+      if (!firstUserMsg?.content?.trim()) return
+      let synthesizedTitle: string
+      try { synthesizedTitle = await generateTitle(firstUserMsg.content) } catch { synthesizedTitle = deriveTitle(firstUserMsg.content) }
+      if (!synthesizedTitle) return
+      db.update(agentsTable).set({ title: synthesizedTitle, updatedAt: new Date().toISOString() }).where(eq(agentsTable.id, agentId)).run()
+      const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+      if (updated) broadcast({ type: "agent:updated", agent: updated as any })
+    }
+    return
+  }
+
   const titleNeedsFix = isPlaceholderName(agent.title)
   // Branch placeholder check: strip the repo prefix before comparing.
-  const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
   const prefix = repo?.branchPrefix ? `${repo.branchPrefix}/` : ""
   const branchSuffix = agent.branch?.startsWith(prefix) ? agent.branch.slice(prefix.length) : (agent.branch ?? "")
   const branchNeedsFix = isPlaceholderName(branchSuffix)
@@ -480,11 +506,13 @@ async function persistAssistantMessage(
     state.fullContent = state.fullContent.replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "").trim()
   }
   if (rawBranchName) {
-    // Safe to run regardless of state.firedBranch: applyBranchRename detects
-    // when the branch is already at the target and only does the worktree move.
-    const result = await applyBranchRename(agentId, rawBranchName, { branchFrom })
-    if (result.ok && result.worktreePath) worktreePath = result.worktreePath
-    else if (!result.ok) console.error(`[meta] message-end branch rename failed:`, result.reason)
+    const branchAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    const branchRepo = branchAgent?.repoId ? db.select().from(reposTable).where(eq(reposTable.id, branchAgent.repoId)).get() : null
+    if (branchRepo?.type !== "folder") {
+      const result = await applyBranchRename(agentId, rawBranchName, { branchFrom })
+      if (result.ok && result.worktreePath) worktreePath = result.worktreePath
+      else if (!result.ok) console.error(`[meta] message-end branch rename failed:`, result.reason)
+    }
   }
 
   // Fallback: if the agent never emitted <huxflux:title> or <huxflux:branch>
@@ -875,6 +903,8 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   // code see the agent's actual current title/branch/location.
   const liveAgentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get() ?? agentRow
 
+  const isFolderAgent = repoRow?.type === "folder"
+
   return new Promise((resolve, reject) => {
     // System prompt — provider-agnostic agent identity + instructions
     const agentTitle = liveAgentRow?.title ?? agentId
@@ -886,29 +916,41 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           opts.taskContext,
         ].join("\n")
       : [
-          `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
+          isFolderAgent
+            ? `You are a Huxflux agent. Your agent ID is "${agentId}" and your current title is "${agentTitle}". You are working directly in a folder (not a git repository).`
+            : `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`,
           ``,
-          // Hard-leading directive: the placeholder titles look like "dawnlit-carver-mu6rh".
-          // If we don't push this hard, the model treats it as optional advice and skips it
-          // entirely on chat-style tasks ("explain this repo", "what does X do").
           `## FIRST RESPONSE REQUIREMENT — name yourself`,
           ``,
-          `Your current title and branch are RANDOM PLACEHOLDERS (e.g. "${agentTitle}"). They are not real names.`,
-          `In your very first response — before anything else, including any tool calls — you MUST emit BOTH of these tags on their own lines:`,
-          ``,
-          `  <huxflux:title>A short task description</huxflux:title>`,
-          `  <huxflux:branch>kebab-case-version</huxflux:branch>`,
-          ``,
-          `This rule applies to EVERY task type, including questions, exploration, documentation, refactors, bug fixes, and chat-style conversations. There is no exception for "this isn't a code change" — name yourself anyway based on what you're being asked to do.`,
-          `Examples:`,
-          `- User asks "explain this repo" → <huxflux:title>Explain repo structure</huxflux:title> + <huxflux:branch>explain-repo</huxflux:branch>`,
-          `- User asks "fix the login bug" → <huxflux:title>Fix login bug</huxflux:title> + <huxflux:branch>fix-login-bug</huxflux:branch>`,
-          `- User asks "add CSV import" → <huxflux:title>Add CSV import</huxflux:title> + <huxflux:branch>add-csv-import</huxflux:branch>`,
-          ``,
-          `Title rules: max ~50 chars, describe the actual task (not "Help with code"), no repo or branch name.`,
-          `Branch rules: kebab-case, max ~50 chars, NO prefix${repoRow?.branchPrefix ? ` (the prefix "${repoRow.branchPrefix}/" is added automatically)` : ""}. The tag triggers "git branch -m" and a worktree relocation automatically — do NOT run git branch -m yourself.`,
-          `Do NOT run \`git push\`, \`gh\`, or any command that touches a remote (or that opens/updates a PR) before emitting both tags. Otherwise the remote branch will be created under the placeholder name and you'll have to clean it up by hand.`,
-          `If the focus changes later in the conversation, emit the tags again to rename.`,
+          ...(isFolderAgent ? [
+            `Your current title is a RANDOM PLACEHOLDER (e.g. "${agentTitle}"). It is not a real name.`,
+            `In your very first response — before anything else, including any tool calls — you MUST emit this tag on its own line:`,
+            ``,
+            `  <huxflux:title>A short task description</huxflux:title>`,
+            ``,
+            `This rule applies to EVERY task type, including questions, exploration, documentation, refactors, bug fixes, and chat-style conversations.`,
+            `Title rules: max ~50 chars, describe the actual task (not "Help with code").`,
+            `If the focus changes later in the conversation, emit the tag again to rename.`,
+            ``,
+            `This folder may not be a git repository. Do not assume git is available unless you verify it.`,
+          ] : [
+            `Your current title and branch are RANDOM PLACEHOLDERS (e.g. "${agentTitle}"). They are not real names.`,
+            `In your very first response — before anything else, including any tool calls — you MUST emit BOTH of these tags on their own lines:`,
+            ``,
+            `  <huxflux:title>A short task description</huxflux:title>`,
+            `  <huxflux:branch>kebab-case-version</huxflux:branch>`,
+            ``,
+            `This rule applies to EVERY task type, including questions, exploration, documentation, refactors, bug fixes, and chat-style conversations. There is no exception for "this isn't a code change" — name yourself anyway based on what you're being asked to do.`,
+            `Examples:`,
+            `- User asks "explain this repo" → <huxflux:title>Explain repo structure</huxflux:title> + <huxflux:branch>explain-repo</huxflux:branch>`,
+            `- User asks "fix the login bug" → <huxflux:title>Fix login bug</huxflux:title> + <huxflux:branch>fix-login-bug</huxflux:branch>`,
+            `- User asks "add CSV import" → <huxflux:title>Add CSV import</huxflux:title> + <huxflux:branch>add-csv-import</huxflux:branch>`,
+            ``,
+            `Title rules: max ~50 chars, describe the actual task (not "Help with code"), no repo or branch name.`,
+            `Branch rules: kebab-case, max ~50 chars, NO prefix${repoRow?.branchPrefix ? ` (the prefix "${repoRow.branchPrefix}/" is added automatically)` : ""}. The tag triggers "git branch -m" and a worktree relocation automatically — do NOT run git branch -m yourself.`,
+            `Do NOT run \`git push\`, \`gh\`, or any command that touches a remote (or that opens/updates a PR) before emitting both tags. Otherwise the remote branch will be created under the placeholder name and you'll have to clean it up by hand.`,
+            `If the focus changes later in the conversation, emit the tags again to rename.`,
+          ]),
           ``,
           `Linked workspaces:`,
           `When the user links other workspaces to your conversation, you can send tasks to them:`,

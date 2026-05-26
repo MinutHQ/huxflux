@@ -1021,7 +1021,8 @@ function ServerRow({
   }
 
   function handleRemove() {
-    if (window.confirm(`Remove server "${server.name}"?`)) onRemove()
+    // window.confirm can be blocked in some WebKit/Tauri contexts, so just remove directly
+    onRemove()
   }
 
   if (editing) {

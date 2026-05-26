@@ -25,6 +25,10 @@ if [[ "$BRANCH" != "main" ]]; then
   fail "Must be on main branch (currently on '$BRANCH')"
 fi
 
+if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
+  fail "Working tree is dirty. Commit or stash changes first."
+fi
+
 # ── Version bump ─────────────────────────────────────────────────────────────
 CURRENT_VERSION="$(node -p "require('$SERVER_DIR/package.json').version")"
 
@@ -69,10 +73,6 @@ fi
 echo ""
 echo -e "  ${BOLD}Releasing v${VERSION}${RESET}"
 echo ""
-
-if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
-  fail "Working tree is dirty. Commit or stash changes first."
-fi
 
 # ── Build ────────────────────────────────────────────────────────────────────
 step "① Building server"

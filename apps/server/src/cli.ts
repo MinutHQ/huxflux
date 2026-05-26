@@ -784,6 +784,21 @@ async function cmdSetup() {
         p.log.info(`Open ${conn.url} in your browser to get started`)
       }
 
+      // Offer to install as a system service (auto-start on boot)
+      const canService = platform === "darwin" || platform === "linux"
+      if (canService) {
+        const installService = await p.confirm({ message: "Start Huxflux automatically on boot?" })
+        if (!p.isCancel(installService) && installService) {
+          try {
+            installSystemService()
+            p.log.success("System service installed — Huxflux will start on boot")
+          } catch (err: any) {
+            p.log.warning(`Could not install service: ${err.message}`)
+            p.log.info("You can start manually with: huxflux start")
+          }
+        }
+      }
+
       // On headless: show connection string + QR
       if (isHeadless) {
         const cfg = loadConfig()
@@ -979,6 +994,180 @@ Usage:
   }
 }
 
+// ── System service ───────────────────────────────────────────────────────────
+
+function installSystemService() {
+  const platform = os.platform()
+  const huxfluxBin = process.argv[1] // path to the CLI entry
+
+  if (platform === "darwin") {
+    // macOS: LaunchAgent (runs as current user, starts on login)
+    const plistDir = path.join(os.homedir(), "Library", "LaunchAgents")
+    fs.mkdirSync(plistDir, { recursive: true })
+    const plistPath = path.join(plistDir, "com.huxflux.server.plist")
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.huxflux.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${process.execPath}</string>
+    <string>${SERVER_ENTRY}</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>HUXFLUX_DIR</key>
+    <string>${DATA_DIR}</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:${path.dirname(process.execPath)}</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${path.join(DATA_DIR, "server.log")}</string>
+  <key>StandardErrorPath</key>
+  <string>${path.join(DATA_DIR, "server.log")}</string>
+</dict>
+</plist>`
+    fs.writeFileSync(plistPath, plist)
+    spawnSync("launchctl", ["load", plistPath], { stdio: "pipe" })
+
+  } else if (platform === "linux") {
+    // Linux: systemd user service
+    const serviceDir = path.join(os.homedir(), ".config", "systemd", "user")
+    fs.mkdirSync(serviceDir, { recursive: true })
+    const servicePath = path.join(serviceDir, "huxflux.service")
+    const service = `[Unit]
+Description=Huxflux Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${process.execPath} ${SERVER_ENTRY}
+Environment=NODE_ENV=production
+Environment=HUXFLUX_DIR=${DATA_DIR}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+`
+    fs.writeFileSync(servicePath, service)
+    spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" })
+    spawnSync("systemctl", ["--user", "enable", "huxflux"], { stdio: "pipe" })
+    spawnSync("systemctl", ["--user", "start", "huxflux"], { stdio: "pipe" })
+    // Enable lingering so service runs even when user is not logged in
+    spawnSync("loginctl", ["enable-linger", os.userInfo().username], { stdio: "pipe" })
+  } else {
+    throw new Error(`System services not supported on ${platform}`)
+  }
+}
+
+function removeSystemService() {
+  const platform = os.platform()
+
+  if (platform === "darwin") {
+    const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")
+    if (fs.existsSync(plistPath)) {
+      spawnSync("launchctl", ["unload", plistPath], { stdio: "pipe" })
+      fs.unlinkSync(plistPath)
+    }
+  } else if (platform === "linux") {
+    spawnSync("systemctl", ["--user", "stop", "huxflux"], { stdio: "pipe" })
+    spawnSync("systemctl", ["--user", "disable", "huxflux"], { stdio: "pipe" })
+    const servicePath = path.join(os.homedir(), ".config", "systemd", "user", "huxflux.service")
+    if (fs.existsSync(servicePath)) fs.unlinkSync(servicePath)
+    spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" })
+  }
+}
+
+// ── Uninstall ────────────────────────────────────────────────────────────────
+
+async function cmdUninstall() {
+  const p = await import("@clack/prompts")
+
+  console.log("")
+  p.intro("Uninstall Huxflux")
+
+  // Detect what's installed
+  const pid = getRunningPid()
+  const desktopPaths = [
+    "/Applications/Huxflux.app",
+    path.join(os.homedir(), "Applications", "Huxflux.app"),
+  ]
+  const desktopPath = desktopPaths.find(dp => fs.existsSync(dp))
+  const dataExists = fs.existsSync(DATA_DIR)
+
+  p.log.step("This will remove:")
+  if (pid) p.log.info("Stop the running server")
+  if (desktopPath) p.log.info(`Delete desktop app (${desktopPath})`)
+  if (dataExists) p.log.info(`Delete all data (${DATA_DIR})`)
+  p.log.info("Uninstall the npm package")
+
+  const confirm1 = await p.confirm({ message: "Are you sure you want to uninstall Huxflux?" })
+  if (p.isCancel(confirm1) || !confirm1) {
+    p.cancel("Uninstall cancelled.")
+    process.exit(0)
+  }
+
+  let keepData = false
+  if (dataExists) {
+    const keep = await p.confirm({ message: "Keep your data (database, workspaces, config)?" })
+    if (!p.isCancel(keep)) keepData = !!keep
+  }
+
+  const confirm2 = await p.confirm({ message: keepData ? "Proceed with uninstall (keeping data)?" : "⚠ This will DELETE all your data. Proceed?" })
+  if (p.isCancel(confirm2) || !confirm2) {
+    p.cancel("Uninstall cancelled.")
+    process.exit(0)
+  }
+
+  // Remove system service
+  const s0 = p.spinner()
+  s0.start("Removing system service...")
+  try { removeSystemService() } catch {}
+  s0.stop("System service removed ✓")
+
+  // Stop server
+  if (pid) {
+    const s = p.spinner()
+    s.start("Stopping server...")
+    try { process.kill(pid, "SIGTERM") } catch {}
+    await new Promise(r => setTimeout(r, 2000))
+    try { fs.unlinkSync(path.join(DATA_DIR, "server.pid")) } catch {}
+    try { fs.unlinkSync(path.join(DATA_DIR, "server.port")) } catch {}
+    try { fs.unlinkSync(path.join(DATA_DIR, "connection.json")) } catch {}
+    s.stop("Server stopped ✓")
+  }
+
+  // Remove desktop app
+  if (desktopPath) {
+    const s = p.spinner()
+    s.start("Removing desktop app...")
+    spawnSync("rm", ["-rf", desktopPath], { stdio: "pipe" })
+    s.stop("Desktop app removed ✓")
+  }
+
+  // Remove data
+  if (dataExists && !keepData) {
+    const s = p.spinner()
+    s.start("Removing data...")
+    fs.rmSync(DATA_DIR, { recursive: true, force: true })
+    s.stop("Data removed ✓")
+  }
+
+  // Uninstall npm package
+  p.log.step("To complete the uninstall, run:")
+  p.log.message("\n    npm uninstall -g @alexmartosp/huxflux\n")
+  p.outro("Huxflux has been uninstalled.")
+}
+
 // ── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp() {
@@ -1005,6 +1194,7 @@ Usage:
   huxflux update         Update huxflux to the latest version
   huxflux data copy dev-to-prod    Copy dev database to production
   huxflux data copy prod-to-dev    Copy production database to dev
+  huxflux uninstall      Remove Huxflux (server, desktop, data)
   huxflux help           Show this message
 
 Environment variables:
@@ -1034,7 +1224,8 @@ switch (cmd) {
   case "reset":    cmdReset().catch(console.error); break
   case "update":   cmdUpdate(); break
   case "setup":    cmdSetup().catch(console.error); break
-  case "data":     cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
+  case "data":      cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
+  case "uninstall": cmdUninstall().catch(console.error); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
   case "security": printDisclaimer(); break
   case "--version":

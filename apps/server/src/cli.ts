@@ -819,7 +819,7 @@ async function cmdSetup() {
 
       if (platformKey && release.platforms[platformKey]) {
         const downloadUrl = release.platforms[platformKey].url
-        s.stop(`Desktop v${release.version} found`)
+        s.stop(`Desktop v${release.version} available for download`)
 
         // Try to download and install automatically on macOS
         if (platform === "darwin") {

@@ -996,9 +996,8 @@ function UnifiedFileTree({
       if (selectedPaths.length > 0) {
         const p = selectedPaths[0]
         if (changedPaths.includes(p)) {
-          // Open the file as a diff in the file viewer panel
-          const file = fileChanges.find(f => f.path === p)
-          if (file) onFileSelect(file)
+          // Open the Changes tab in the file viewer, scrolled to this file
+          onOpenDiffBrowser?.(p)
         }
       }
     },

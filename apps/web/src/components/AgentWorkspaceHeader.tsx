@@ -283,7 +283,17 @@ export function AgentWorkspaceHeader({ agent, isStreaming, githubEnabled, onCrea
   const LastIcon = OPEN_IN_APPS.find((a) => a.key === lastOpenInApp)?.Icon ?? IconCode
 
   return (
-    <div className={cn("flex items-center gap-3 px-4 py-1.5 shrink-0", isTauri && "min-h-10", sidebarCollapsed && isTauri && "pl-32")}>
+    <div
+      className={cn("flex items-center gap-3 px-4 py-1.5 shrink-0", isTauri && "min-h-10", sidebarCollapsed && isTauri && "pl-32")}
+      onMouseDown={isTauri ? (e) => {
+        if ((e.target as HTMLElement).closest("button, a, input, [role='dialog'], [data-slot='select-trigger']")) return
+        if (e.detail === 2) {
+          import("@tauri-apps/api/core").then(({ invoke }) => invoke("zoom_window"))
+        } else {
+          import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
+        }
+      } : undefined}
+    >
       {/* Left: agent identity + branches */}
       <div className="flex flex-col gap-0 min-w-0">
         {/* Repo / Agent name */}

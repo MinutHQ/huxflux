@@ -16,7 +16,7 @@ import { ServerSwitcher } from "@/components/ServerSwitcher"
 import { AddRepoDialog, CloneRepoDialog, QuickStartDialog } from "@/components/SettingsPage"
 import { FeedbackDialog } from "@/components/FeedbackDialog"
 import { getFlag } from "@/lib/flags"
-import { openExternal, handleExternalClick } from "@/lib/platform"
+import { openExternal, handleExternalClick, isTauri, isMacOS } from "@/lib/platform"
 import { toast } from "sonner"
 import { useWorkspaceContext } from "@/hooks/useWorkspaceContext"
 import {
@@ -1812,7 +1812,18 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
         {/* Traffic light space on macOS Tauri */}
-        <div className="h-10 shrink-0" />
+        <div
+          className="h-10 shrink-0"
+          onMouseDown={(e) => {
+            if (!isTauri || !isMacOS) return
+            if ((e.target as HTMLElement).closest("button")) return
+            if (e.detail === 2) {
+              import("@tauri-apps/api/core").then(({ invoke }) => invoke("zoom_window"))
+            } else {
+              import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().startDragging())
+            }
+          }}
+        />
 
         {/* Home button */}
         <div className="px-2 pt-0.5 shrink-0">

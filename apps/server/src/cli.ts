@@ -86,14 +86,15 @@ function getRunningPid(): number | null {
 }
 
 function serverEnv(cfg: Config): NodeJS.ProcessEnv {
+  const isDev = devMode || process.env.NODE_ENV === "development"
   return {
     ...process.env,
-    NODE_ENV: "production",
+    NODE_ENV: isDev ? "development" : "production",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
     HUXFLUX_DIR: DATA_DIR,
-    DB_PATH: path.join(DATA_DIR, "huxflux.db"),
-    WORKSPACES_BASE: path.join(DATA_DIR, "workspaces"),
+    DB_PATH: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
+    WORKSPACES_BASE: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, isDev ? "workspaces-dev" : "workspaces"),
     ...(cfg.sandbox ? { SANDBOX_CONFIG: JSON.stringify(cfg.sandbox) } : {}),
   }
 }
@@ -657,7 +658,8 @@ function printHelp() {
 huxflux — Huxflux server
 
 Usage:
-  huxflux [start]   Start the server in the background (auto-restarts on crash)
+  huxflux [start]          Start the server in the background (auto-restarts on crash)
+  huxflux start --dev      Start with dev database and workspaces
   huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
@@ -686,6 +688,7 @@ Environment variables:
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 const [,, cmd = "start", ...cmdArgs] = process.argv
+const devMode = cmdArgs.includes("--dev")
 
 switch (cmd) {
   case "start":       cmdStart().catch(console.error); break

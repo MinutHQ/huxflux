@@ -200,19 +200,8 @@ async function runConditionalStep(step: AutomationStep, ctx: StepContext): Promi
   }
 }
 
-import { resolve, dirname } from "path"
-import { statSync } from "fs"
-import { fileURLToPath } from "url"
-
 function getAgentBrowserBin(): string {
-  // Use the locally installed binary from node_modules
-  try {
-    const dir = dirname(fileURLToPath(import.meta.url))
-    const localBin = resolve(dir, "../../node_modules/.bin/agent-browser")
-    statSync(localBin)
-    return localBin
-  } catch {}
-  // Fallback to global
+  // Check global install
   return "agent-browser"
 }
 
@@ -227,7 +216,7 @@ async function runBrowserStep(step: AutomationStep, ctx: StepContext): Promise<S
   try {
     execSync(`${bin} --version`, { stdio: "pipe" })
   } catch {
-    throw new Error("agent-browser CLI not found. It should be installed as part of the server dependencies.")
+    throw new Error("agent-browser CLI not found. Install it with: npm install -g agent-browser")
   }
 
   const lines = commands.split("\n").map(l => l.trim()).filter(Boolean)

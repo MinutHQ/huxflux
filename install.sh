@@ -118,15 +118,14 @@ echo ""
 echo -e "  ${YELLOW}${BOLD}⚠ Security:${RESET} The auth token grants shell access to this machine."
 echo -e "  ${DIM}  Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
 
-# ── Next steps ───────────────────────────────────────────────────────────────
-step "③ Almost there!"
+# ── Launch setup wizard ───────────────────────────────────────────────────────
+step "③ Setting up your environment"
 echo ""
-echo -e "  Run the setup wizard to start the server and connect:"
-echo ""
-echo -e "    ${BOLD}huxflux setup${RESET}"
-echo ""
-echo -e "  ${DIM}Or start the server directly:${RESET}"
-echo ""
-echo -e "    ${DIM}huxflux start${RESET}      ${DIM}# start in background${RESET}"
-echo -e "    ${DIM}huxflux status${RESET}     ${DIM}# show URL + token${RESET}"
-echo ""
+
+# When piped from curl, stdin is the script not the terminal.
+# Launch setup in a fresh bash with proper TTY attached.
+if [ ! -t 0 ]; then
+  bash -c 'huxflux setup' </dev/tty
+else
+  huxflux setup
+fi

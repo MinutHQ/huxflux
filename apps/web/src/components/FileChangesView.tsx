@@ -909,10 +909,11 @@ function UnifiedFileTree({
     initialExpansion: "open",
     onSelectionChange: (selectedPaths) => {
       if (selectedPaths.length > 0) {
-        // Only open for files (files are in changedPaths), not directories
         const p = selectedPaths[0]
         if (changedPaths.includes(p)) {
-          onOpenDiffBrowser?.(p)
+          // Open the file as a diff in the file viewer panel
+          const file = fileChanges.find(f => f.path === p)
+          if (file) onFileSelect(file)
         }
       }
     },

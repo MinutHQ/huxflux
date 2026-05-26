@@ -55,8 +55,25 @@ export function useWorkspace(agents: AgentSummary[]) {
   const lastAgentId = useRef<string | null>(null)
   const closedTabIds = useRef(new Set<string>())
   const [openFileTab, setOpenFileTab] = useState<OpenFile | null>(null)
-  const [fileTabs, setFileTabs] = useState<FileTab[]>([])
-  const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null)
+  const [fileTabsByAgent, setFileTabsByAgent] = useState<Record<string, FileTab[]>>({})
+  const [activeFileTabByAgent, setActiveFileTabByAgent] = useState<Record<string, string | null>>({})
+
+  // Current agent's file tabs
+  const currentAgentId = activeTabId ?? ""
+  const fileTabs = fileTabsByAgent[currentAgentId] ?? []
+  const activeFileTabId = activeFileTabByAgent[currentAgentId] ?? null
+
+  function setFileTabs(updater: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
+    setFileTabsByAgent(prev => {
+      const current = prev[currentAgentId] ?? []
+      const next = typeof updater === "function" ? updater(current) : updater
+      return { ...prev, [currentAgentId]: next }
+    })
+  }
+
+  function setActiveFileTabId(id: string | null) {
+    setActiveFileTabByAgent(prev => ({ ...prev, [currentAgentId]: id }))
+  }
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
   const [pendingAgent, setPendingAgent] = useState<PendingAgent | null>(null)
   const [queuedSetupMessage, setQueuedSetupMessage] = useState<string | null>(null)

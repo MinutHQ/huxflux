@@ -208,6 +208,7 @@ export interface Repo {
   archiveScript?: string
   preferences?: string  // JSON blob: Record<string, string>
   icon?: string
+  type?: "git" | "folder"
   createdAt: string
 }
 

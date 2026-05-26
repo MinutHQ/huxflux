@@ -181,5 +181,6 @@ export interface Repo {
   archiveScript?: string
   preferences?: string
   icon?: string
+  type?: "git" | "folder"
   createdAt: string
 }

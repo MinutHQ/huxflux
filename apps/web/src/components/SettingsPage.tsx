@@ -769,6 +769,7 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
             {repo.path}
           </code>
         </div>
+        {repo.type !== "folder" && (
         <div>
           <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Workspaces path</label>
           <code className="flex w-full text-[12px] font-mono bg-secondary border border-border rounded-md px-3 py-2 text-muted-foreground">
@@ -781,9 +782,12 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
             </span>
           </div>
         </div>
+        )}
       </div>
 
-      {/* Branch + Remote */}
+      {/* Branch + Remote — git repos only */}
+      {repo.type !== "folder" && (
+      <>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
@@ -829,6 +833,8 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
         />
         <p className="text-[11px] text-muted-foreground/50 mt-1">Prepended to agent branch names. Defaults to <code className="font-mono">agent/</code>.</p>
       </div>
+      </>
+      )}
 
       {/* Preview URL */}
       <div>
@@ -1754,7 +1760,7 @@ const sectionTitles: Record<Section, string> = {
 
 // ── Add repo dialog ───────────────────────────────────────────────────────────
 
-export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (id: string) => void }) {
+export function AddRepoDialog({ onClose, onAdded, initialType }: { onClose: () => void; onAdded: (id: string) => void; initialType?: "git" | "folder" }) {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<{ name: string; path: string }[]>([])
@@ -1762,7 +1768,8 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
   const [selected, setSelected] = useState<{ name: string; path: string } | null>(null)
   const [manualPath, setManualPath] = useState("")
   const [manualName, setManualName] = useState("")
-  const [useManual, setUseManual] = useState(false)
+  const [useManual, setUseManual] = useState(initialType === "folder")
+  const [repoType, setRepoType] = useState<"git" | "folder">(initialType ?? "git")
   const [branchFrom, setBranchFrom] = useState("origin/main")
   const [branchLoading, setBranchLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1784,9 +1791,9 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
     }
   }, [manualPath])
 
-  // Auto-detect default branch from manual path (debounced)
+  // Auto-detect default branch from manual path (debounced, git repos only)
   useEffect(() => {
-    if (!useManual || !manualPath.trim()) return
+    if (!useManual || !manualPath.trim() || repoType === "folder") return
     const t = setTimeout(() => {
       setBranchLoading(true)
       api.getDefaultBranch(manualPath.trim())
@@ -1795,7 +1802,7 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
         .finally(() => setBranchLoading(false))
     }, 600)
     return () => clearTimeout(t)
-  }, [manualPath, useManual])
+  }, [manualPath, useManual, repoType])
 
   function handleQueryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const q = e.target.value
@@ -1842,8 +1849,9 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
       const repo = await api.createRepo({
         name: repoName,
         path: repoPath,
-        branchFrom,
-        remote: "origin",
+        branchFrom: repoType === "folder" ? "" : branchFrom,
+        remote: repoType === "folder" ? "" : "origin",
+        ...(repoType === "folder" && { type: "folder" as const }),
       })
       queryClient.invalidateQueries({ queryKey: ["repos"] })
       onAdded(repo.id)
@@ -1869,9 +1877,32 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
         className="relative z-10 w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-5"
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-foreground">Add repository</h2>
+          <h2 className="text-sm font-semibold text-foreground">Add {repoType === "folder" ? "folder" : "repository"}</h2>
           <button type="button" onClick={onClose} className="text-muted-foreground/50 hover:text-foreground transition-colors">
             <IconX size={15} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1 p-1 mb-4 bg-secondary rounded-lg">
+          <button
+            type="button"
+            onClick={() => setRepoType("git")}
+            className={cn(
+              "flex-1 text-[11px] font-medium py-1.5 rounded-md transition-colors",
+              repoType === "git" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Git repo
+          </button>
+          <button
+            type="button"
+            onClick={() => { setRepoType("folder"); setUseManual(true) }}
+            className={cn(
+              "flex-1 text-[11px] font-medium py-1.5 rounded-md transition-colors",
+              repoType === "folder" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Folder
           </button>
         </div>
 
@@ -1981,7 +2012,8 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
             </div>
           )}
 
-          {/* Branch from */}
+          {/* Branch from — hidden for folder type */}
+          {repoType !== "folder" && (
           <div>
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Branch from</label>
             <div className="relative">
@@ -1997,12 +2029,13 @@ export function AddRepoDialog({ onClose, onAdded }: { onClose: () => void; onAdd
               )}
             </div>
           </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 mt-5">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
           <Button type="submit" size="sm" disabled={!canSubmit || isSubmitting}>
-            {isSubmitting ? "Adding…" : "Add repository"}
+            {isSubmitting ? "Adding…" : repoType === "folder" ? "Add folder" : "Add repository"}
           </Button>
         </div>
       </form>

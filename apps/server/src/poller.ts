@@ -21,6 +21,8 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
   if (!agent.branch) return
   const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
   if (!repo) return
+  // Folder-type repos have no branches, no remotes, and no PRs — nothing to poll.
+  if (repo.type === "folder") return
 
   // ── 1. Sync branch name from git worktree ─────────────────────────────
   if (!agent.noWorktree) {

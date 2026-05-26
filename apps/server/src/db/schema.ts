@@ -15,6 +15,7 @@ export const repos = sqliteTable("repos", {
   preferences: text("preferences"), // JSON blob: Record<string, string>
   icon: text("icon"),
   poolSize: integer("pool_size").default(0),
+  type: text("type").notNull().default("git"), // "git" | "folder"
   createdAt: text("created_at").notNull(),
 })
 

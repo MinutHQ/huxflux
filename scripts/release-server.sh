@@ -19,17 +19,56 @@ step() { echo -e "\n  ${PURPLE}${BOLD}$*${RESET}"; }
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
-# ── Read version ─────────────────────────────────────────────────────────────
-VERSION="$(node -p "require('$SERVER_DIR/package.json').version")"
-echo ""
-echo -e "  ${BOLD}Huxflux Server Release${RESET} — v${VERSION}"
-echo ""
-
 # ── Guards ───────────────────────────────────────────────────────────────────
 BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" != "main" ]]; then
   fail "Must be on main branch (currently on '$BRANCH')"
 fi
+
+# ── Version bump ─────────────────────────────────────────────────────────────
+CURRENT_VERSION="$(node -p "require('$SERVER_DIR/package.json').version")"
+
+echo ""
+echo -e "  ${BOLD}Huxflux Server Release${RESET}"
+echo -e "  Current version: ${DIM}v${CURRENT_VERSION}${RESET}"
+echo ""
+
+# Parse semver
+IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$CURRENT_VERSION"
+NEXT_PATCH="${V_MAJOR}.${V_MINOR}.$((V_PATCH + 1))"
+NEXT_MINOR="${V_MAJOR}.$((V_MINOR + 1)).0"
+NEXT_MAJOR="$((V_MAJOR + 1)).0.0"
+
+echo "  Version bump:"
+echo "    1) patch  → ${NEXT_PATCH}"
+echo "    2) minor  → ${NEXT_MINOR}"
+echo "    3) major  → ${NEXT_MAJOR}"
+echo "    4) skip   → keep ${CURRENT_VERSION}"
+echo ""
+read -rp "  Select [1-4, default=1]: " BUMP_CHOICE
+
+case "${BUMP_CHOICE:-1}" in
+  1) VERSION="$NEXT_PATCH" ;;
+  2) VERSION="$NEXT_MINOR" ;;
+  3) VERSION="$NEXT_MAJOR" ;;
+  4) VERSION="$CURRENT_VERSION" ;;
+  *) fail "Invalid choice" ;;
+esac
+
+if [[ "$VERSION" != "$CURRENT_VERSION" ]]; then
+  # Update package.json
+  sed -i '' "s/\"version\": \"${CURRENT_VERSION}\"/\"version\": \"${VERSION}\"/" "$SERVER_DIR/package.json"
+  git -C "$REPO_ROOT" add "$SERVER_DIR/package.json"
+  git -C "$REPO_ROOT" commit -m "chore: bump server to ${VERSION}"
+  git -C "$REPO_ROOT" push
+  ok "Bumped to v${VERSION}"
+else
+  ok "Keeping v${VERSION}"
+fi
+
+echo ""
+echo -e "  ${BOLD}Releasing v${VERSION}${RESET}"
+echo ""
 
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
   fail "Working tree is dirty. Commit or stash changes first."

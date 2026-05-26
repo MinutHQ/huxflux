@@ -715,7 +715,8 @@ async function cmdSetup() {
 
     p.log.success("Everything is set up!")
     if (conn) {
-      p.log.info(`Server URL: ${conn.url}`)
+      p.log.info(`API:    ${conn.url}`)
+      p.log.info(`Web UI: ${conn.url}`)
       if (isHeadless) {
         const connStr = connectionString(loadConfig())
         p.log.message(`\n  Connect from your desktop:\n\n    ${connStr}\n`)
@@ -731,8 +732,16 @@ async function cmdSetup() {
 
   // ── Component selection ──
   const options: { value: string; label: string; hint: string }[] = []
-  if (!serverRunning) options.push({ value: "server", label: "Start server", hint: dbExists ? "resume" : "first time setup" })
-  if (canInstallDesktop && !hasDesktop) options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+  if (!serverRunning) {
+    options.push({
+      value: "server",
+      label: dbExists ? "Start server" : "Set up server",
+      hint: dbExists ? "resume existing setup" : "API + Web UI",
+    })
+  }
+  if (canInstallDesktop && !hasDesktop) {
+    options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+  }
 
   if (options.length === 0) {
     // Headless with server already running
@@ -757,7 +766,7 @@ async function cmdSetup() {
   // ── Start server ──
   if (selected.includes("server")) {
     const s = p.spinner()
-    s.start("Starting server in background...")
+    s.start(dbExists ? "Starting server..." : "Setting up server...")
 
     try {
       await cmdStart()
@@ -766,12 +775,13 @@ async function cmdSetup() {
         if (fs.existsSync(connectionFile)) break
         await new Promise(r => setTimeout(r, 500))
       }
-      s.stop("Server started ✓")
+      s.stop("Server running ✓")
 
       if (fs.existsSync(connectionFile)) {
         const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
-        p.log.success(`Running at ${conn.url}`)
-        p.log.info(`Web UI: ${conn.url}`)
+        p.log.success(`API:    ${conn.url}`)
+        p.log.success(`Web UI: ${conn.url}`)
+        p.log.info(`Open ${conn.url} in your browser to get started`)
       }
 
       // On headless: show connection string + QR

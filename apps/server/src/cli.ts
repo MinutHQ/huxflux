@@ -832,8 +832,17 @@ async function cmdSetup() {
         ? (arch === "arm64" ? "darwin-aarch64" : "darwin-x86_64")
         : platform === "linux" ? "linux-x86_64" : null
 
-      if (platformKey && release.platforms[platformKey]) {
-        const downloadUrl = release.platforms[platformKey].url
+      // Use stable DMG/AppImage/deb URLs for fresh install (not the updater tarballs)
+      const tag = `v${release.version}`
+      const baseUrl = `https://github.com/AlexMartosP/huxflux-releases/releases/download/${tag}`
+      const installUrls: Record<string, string> = {
+        "darwin-aarch64": `${baseUrl}/Huxflux-macos-arm.dmg`,
+        "darwin-x86_64": `${baseUrl}/Huxflux-macos-intel.dmg`,
+        "linux-x86_64": `${baseUrl}/Huxflux-linux-x86_64.AppImage`,
+      }
+
+      if (platformKey && (release.platforms[platformKey] || installUrls[platformKey])) {
+        const downloadUrl = installUrls[platformKey] ?? release.platforms[platformKey].url
         s.stop(`Desktop v${release.version} available for download`)
 
         // Try to download and install automatically on macOS
@@ -846,34 +855,42 @@ async function cmdSetup() {
             try {
               const tmpDir = path.join(os.tmpdir(), `huxflux-desktop-${Date.now()}`)
               fs.mkdirSync(tmpDir, { recursive: true })
-              const tarPath = path.join(tmpDir, "huxflux.tar.gz")
+              const dmgPath = path.join(tmpDir, "Huxflux.dmg")
 
-              // Download
+              // Download DMG
               const dlRes = await fetch(downloadUrl)
               const buffer = Buffer.from(await dlRes.arrayBuffer())
-              fs.writeFileSync(tarPath, buffer)
+              fs.writeFileSync(dmgPath, buffer)
 
-              // Extract
-              spawnSync("tar", ["-xzf", tarPath, "-C", tmpDir], { stdio: "pipe" })
+              // Mount DMG, copy app, unmount
+              const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse", "-quiet"], { encoding: "utf-8", stdio: "pipe" })
+              const mountLine = (mountResult.stdout || "").split("\n").find((l: string) => l.includes("/Volumes/"))
+              const mountPoint = mountLine?.trim().split("\t").pop()?.trim()
 
-              // Move to Applications
-              const appName = fs.readdirSync(tmpDir).find(f => f.endsWith(".app"))
-              if (appName) {
-                const dest = `/Applications/${appName}`
-                if (fs.existsSync(dest)) spawnSync("rm", ["-rf", dest], { stdio: "pipe" })
-                spawnSync("mv", [path.join(tmpDir, appName), dest], { stdio: "pipe" })
-                ds.stop("Desktop installed ✓")
-                p.log.success(`Installed to /Applications/${appName}`)
+              if (mountPoint) {
+                const appName = fs.readdirSync(mountPoint).find(f => f.endsWith(".app"))
+                if (appName) {
+                  const dest = `/Applications/${appName}`
+                  if (fs.existsSync(dest)) spawnSync("rm", ["-rf", dest], { stdio: "pipe" })
+                  spawnSync("cp", ["-R", path.join(mountPoint, appName), dest], { stdio: "pipe" })
+                  spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" })
+                  ds.stop("Desktop installed ✓")
+                  p.log.success(`Installed to /Applications/${appName}`)
 
-                // Open the app
-                const openApp = await p.confirm({ message: "Open Huxflux Desktop now?" })
-                if (!p.isCancel(openApp) && openApp) {
-                  spawnSync("open", [dest], { stdio: "pipe" })
-                  p.log.success("Desktop app opened — it will auto-connect to your local server")
+                  // Open the app
+                  const openApp = await p.confirm({ message: "Open Huxflux Desktop now?" })
+                  if (!p.isCancel(openApp) && openApp) {
+                    spawnSync("open", [dest], { stdio: "pipe" })
+                    p.log.success("Desktop app opened — it will auto-connect to your local server")
+                  }
+                } else {
+                  spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" })
+                  ds.stop("Install failed")
+                  p.log.warning("Could not find .app in DMG")
                 }
               } else {
-                ds.stop("Extraction failed")
-                p.log.warning("Could not find .app in downloaded archive")
+                ds.stop("Mount failed")
+                p.log.warning("Could not mount DMG")
               }
 
               // Cleanup

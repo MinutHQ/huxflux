@@ -660,39 +660,71 @@ async function cmdSetup() {
   console.log("")
   p.intro("⚡ Huxflux Setup")
 
-  // ── Detect installed components ──
+  // ── Detect environment ──
   const serverRunning = getRunningPid() !== null
   const connectionFile = path.join(DATA_DIR, "connection.json")
   const dbExists = fs.existsSync(path.join(DATA_DIR, "huxflux.db"))
+  const platform = os.platform()
+  const arch = os.arch()
+
+  // Headless detection: SSH, Docker, no display, or CI
+  const isHeadless = !!(
+    process.env.SSH_CONNECTION ||
+    process.env.SSH_TTY ||
+    fs.existsSync("/.dockerenv") ||
+    process.env.container === "docker" ||
+    process.env.CI ||
+    (platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY)
+  )
+
   const desktopPaths = [
     "/Applications/Huxflux.app",
     path.join(os.homedir(), "Applications", "Huxflux.app"),
   ]
-  const hasDesktop = desktopPaths.some(dp => fs.existsSync(dp))
-  const platform = os.platform()
-  const arch = os.arch()
+  const hasDesktop = !isHeadless && desktopPaths.some(dp => fs.existsSync(dp))
+  const canInstallDesktop = !isHeadless && (platform === "darwin" || platform === "linux")
+
   const platformLabel = platform === "darwin" ? `macOS ${arch === "arm64" ? "Apple Silicon" : "Intel"}`
-    : platform === "linux" ? "Linux" : platform === "win32" ? "Windows" : platform
+    : platform === "linux" ? "Linux x86_64" : platform === "win32" ? "Windows" : platform
+  const envLabel = isHeadless
+    ? (process.env.SSH_CONNECTION ? "Remote (SSH)" : fs.existsSync("/.dockerenv") ? "Docker" : "Headless")
+    : "Local"
 
   p.log.step("Scanning your system...")
-  p.log.info(`Platform:  ${platformLabel}`)
-  p.log.info(`Data:      ${DATA_DIR}`)
+  p.log.info(`Platform:    ${platformLabel}`)
+  p.log.info(`Environment: ${envLabel}`)
+  p.log.info(`Data:        ${DATA_DIR}`)
 
-  if (serverRunning) p.log.success("Server:    running ✓")
-  else if (dbExists)  p.log.warning("Server:    installed but not running")
-  else                p.log.warning("Server:    not set up yet")
+  if (serverRunning) p.log.success("Server:      running ✓")
+  else if (dbExists)  p.log.warning("Server:      installed but not running")
+  else                p.log.warning("Server:      not set up yet")
 
-  if (hasDesktop) p.log.success("Desktop:   installed ✓")
-  else            p.log.info("Desktop:   not installed")
+  if (isHeadless) {
+    p.log.info("Desktop:     not available (headless environment)")
+  } else if (hasDesktop) {
+    p.log.success("Desktop:     installed ✓")
+  } else {
+    p.log.info("Desktop:     not installed")
+  }
 
   // ── Nothing to do? ──
-  if (serverRunning && hasDesktop) {
+  if (serverRunning && (hasDesktop || isHeadless)) {
     const conn = fs.existsSync(connectionFile)
       ? JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
       : null
 
     p.log.success("Everything is set up!")
-    if (conn) p.log.info(`Server URL: ${conn.url}`)
+    if (conn) {
+      p.log.info(`Server URL: ${conn.url}`)
+      if (isHeadless) {
+        const connStr = connectionString(loadConfig())
+        p.log.message(`\n  Connect from your desktop:\n\n    ${connStr}\n`)
+        try {
+          const qr = await qrToString(connStr, { type: "terminal", small: true })
+          console.log(qr)
+        } catch {}
+      }
+    }
     p.outro("Run 'huxflux status' for details, or 'huxflux update' to check for updates.")
     return
   }
@@ -700,7 +732,13 @@ async function cmdSetup() {
   // ── Component selection ──
   const options: { value: string; label: string; hint: string }[] = []
   if (!serverRunning) options.push({ value: "server", label: "Start server", hint: dbExists ? "resume" : "first time setup" })
-  if (!hasDesktop)    options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+  if (canInstallDesktop && !hasDesktop) options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+
+  if (options.length === 0) {
+    // Headless with server already running
+    p.outro("Nothing to set up. Run 'huxflux status' for server details.")
+    return
+  }
 
   const components = await p.multiselect({
     message: "What would you like to set up?",
@@ -733,8 +771,21 @@ async function cmdSetup() {
       if (fs.existsSync(connectionFile)) {
         const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
         p.log.success(`Running at ${conn.url}`)
-        p.log.info(`Auth token: ${conn.token.slice(0, 8)}...`)
-        p.log.info(`Web UI:     ${conn.url}`)
+        p.log.info(`Web UI: ${conn.url}`)
+      }
+
+      // On headless: show connection string + QR
+      if (isHeadless) {
+        const cfg = loadConfig()
+        const connStr = connectionString(cfg)
+        p.log.step("Connect from your desktop or browser:")
+        p.log.message(`\n    ${connStr}\n`)
+        try {
+          const qr = await qrToString(connStr, { type: "terminal", small: true })
+          console.log(qr)
+        } catch {}
+        p.log.warning("Security: Use Tailscale or a reverse proxy for encrypted access.")
+        p.log.info("Run 'huxflux security' for full recommendations.")
       }
     } catch (err: any) {
       s.stop("Failed to start server")
@@ -742,7 +793,7 @@ async function cmdSetup() {
     }
   }
 
-  // ── Install desktop ──
+  // ── Install desktop (only on local machines with a display) ──
   if (selected.includes("desktop")) {
     const s = p.spinner()
     s.start("Fetching latest desktop release...")

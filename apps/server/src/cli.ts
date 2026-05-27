@@ -758,6 +758,7 @@ async function cmdSetup() {
   const desktopPaths = [
     "/Applications/Huxflux.app",
     path.join(os.homedir(), "Applications", "Huxflux.app"),
+    path.join(os.homedir(), ".local", "bin", "Huxflux.AppImage"),
   ]
   const hasDesktop = !isHeadless && desktopPaths.some(dp => fs.existsSync(dp))
   const canInstallDesktop = !isHeadless && (platform === "darwin" || platform === "linux")
@@ -976,6 +977,57 @@ async function cmdSetup() {
               } else {
                 ds.stop("Mount failed")
                 p.log.warning("Could not mount DMG")
+              }
+
+              try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
+            } catch (dlErr: any) {
+              ds.stop("Download failed")
+              p.log.error(dlErr.message)
+              p.log.info(`Download manually: ${downloadUrl}`)
+            }
+          }
+        } else if (platform === "linux") {
+          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${release.version}?` })
+          if (!p.isCancel(installDesktop) && installDesktop) {
+            const ds = p.spinner()
+            ds.start("Downloading...")
+
+            try {
+              const tmpDir = path.join(os.tmpdir(), `huxflux-desktop-${Date.now()}`)
+              fs.mkdirSync(tmpDir, { recursive: true })
+              const appImagePath = path.join(tmpDir, "Huxflux.AppImage")
+
+              const dlRes = await fetch(downloadUrl)
+              const buffer = Buffer.from(await dlRes.arrayBuffer())
+              fs.writeFileSync(appImagePath, buffer)
+
+              // Install to ~/.local/bin (user-writable, usually on PATH)
+              const localBin = path.join(os.homedir(), ".local", "bin")
+              fs.mkdirSync(localBin, { recursive: true })
+              const dest = path.join(localBin, "Huxflux.AppImage")
+              fs.copyFileSync(appImagePath, dest)
+              fs.chmodSync(dest, 0o755)
+              ds.stop("Desktop installed")
+              p.log.success(`Installed to ${dest}`)
+
+              // Create a .desktop entry for app launchers
+              const desktopDir = path.join(os.homedir(), ".local", "share", "applications")
+              fs.mkdirSync(desktopDir, { recursive: true })
+              const desktopEntry = `[Desktop Entry]
+Name=Huxflux
+Exec=${dest}
+Type=Application
+Categories=Development;
+Comment=AI Agent Orchestrator
+Terminal=false
+`
+              fs.writeFileSync(path.join(desktopDir, "huxflux.desktop"), desktopEntry)
+              p.log.info("Desktop entry created for app launchers")
+
+              const openApp = await p.confirm({ message: "Open it now?" })
+              if (!p.isCancel(openApp) && openApp) {
+                spawn(dest, [], { detached: true, stdio: "ignore" }).unref()
+                p.log.success("Launched — it will connect to your local server automatically")
               }
 
               try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
@@ -1228,6 +1280,7 @@ async function cmdUninstall() {
   const desktopPaths = [
     "/Applications/Huxflux.app",
     path.join(os.homedir(), "Applications", "Huxflux.app"),
+    path.join(os.homedir(), ".local", "bin", "Huxflux.AppImage"),
   ]
   const desktopPath = desktopPaths.find(dp => fs.existsSync(dp))
   const dataExists = fs.existsSync(DATA_DIR)

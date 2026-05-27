@@ -97,17 +97,71 @@ fi
 echo ""
 if ! command -v huxflux >/dev/null 2>&1; then
   NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "")
-  warn "huxflux command not found in PATH"
-  echo ""
-  echo "  Add the global bin directory to your PATH:"
-  echo ""
-  echo -e "    ${DIM}export PATH=\"${NPM_PREFIX}/bin:\$PATH\"${RESET}"
-  echo ""
-  echo -e "  Add it to your shell config (${DIM}~/.zshrc${RESET} or ${DIM}~/.bashrc${RESET}), then:"
-  echo -e "    ${DIM}source ~/.zshrc${RESET}"
-  echo ""
-  echo -e "  Then run: ${BOLD}huxflux setup${RESET}"
-  exit 0
+  NPM_BIN="${NPM_PREFIX}/bin"
+
+  if [ -d "$NPM_BIN" ]; then
+    warn "huxflux not found in PATH"
+    echo ""
+    echo -e "  The npm global bin directory ${DIM}${NPM_BIN}${RESET} is not in your PATH."
+    echo ""
+
+    # Detect shell config file
+    SHELL_RC=""
+    if [ -n "$ZSH_VERSION" ] || [ "$(basename "$SHELL" 2>/dev/null)" = "zsh" ]; then
+      SHELL_RC="$HOME/.zshrc"
+    elif [ -f "$HOME/.bashrc" ]; then
+      SHELL_RC="$HOME/.bashrc"
+    elif [ -f "$HOME/.profile" ]; then
+      SHELL_RC="$HOME/.profile"
+    fi
+
+    FIXED=false
+    if [ -n "$SHELL_RC" ] && [ -t 0 ] || [ -e /dev/tty ]; then
+      # Ask permission to fix PATH
+      echo -e "  Add it to ${DIM}${SHELL_RC}${RESET} automatically?"
+      echo ""
+      printf "  [Y/n] "
+      if [ -t 0 ]; then
+        read -r REPLY
+      else
+        read -r REPLY </dev/tty
+      fi
+
+      if [ -z "$REPLY" ] || [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
+        echo "" >> "$SHELL_RC"
+        echo "# Added by Huxflux installer" >> "$SHELL_RC"
+        echo "export PATH=\"${NPM_BIN}:\$PATH\"" >> "$SHELL_RC"
+        export PATH="${NPM_BIN}:$PATH"
+        ok "Added to ${SHELL_RC}"
+        FIXED=true
+      fi
+    fi
+
+    if [ "$FIXED" = "false" ]; then
+      echo "  Add this to your shell config manually:"
+      echo ""
+      echo -e "    ${DIM}export PATH=\"${NPM_BIN}:\$PATH\"${RESET}"
+      echo ""
+      echo -e "  Then run: ${BOLD}source ${SHELL_RC:-~/.bashrc} && huxflux setup${RESET}"
+      exit 0
+    fi
+  else
+    warn "huxflux command not found in PATH"
+    echo ""
+    echo -e "  Could not determine npm bin directory."
+    echo -e "  Try: ${DIM}npm bin -g${RESET} and add it to your PATH."
+    echo ""
+    echo -e "  Then run: ${BOLD}huxflux setup${RESET}"
+    exit 0
+  fi
+
+  # Verify again after PATH fix
+  if ! command -v huxflux >/dev/null 2>&1; then
+    warn "huxflux still not found after PATH update"
+    echo ""
+    echo -e "  Open a new terminal and run: ${BOLD}huxflux setup${RESET}"
+    exit 0
+  fi
 fi
 
 HUXFLUX_VER=$(huxflux --version 2>/dev/null || echo "installed")

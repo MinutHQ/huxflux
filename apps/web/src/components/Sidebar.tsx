@@ -45,6 +45,8 @@ import {
   IconBolt,
   IconRefresh,
   IconLayoutKanban,
+  IconPin,
+  IconPinnedOff,
 } from "@tabler/icons-react"
 
 // ── Status icons (Linear-style) ───────────────────────────────────────────────
@@ -464,6 +466,15 @@ function StatusContextMenu({
     )
   }
 
+  async function handleTogglePin() {
+    onClose()
+    const pinned = !agent.pinned
+    await api.updateAgent(agent.id, { pinned })
+    queryClient.setQueriesData<AgentSummary[]>({ queryKey: ["agents"] }, (old) =>
+      old ? old.map((a) => a.id === agent.id ? { ...a, pinned } : a) : old
+    )
+  }
+
   async function handleGenerateTitle(opts: { renameBranch?: boolean } = {}) {
     onClose()
     try {
@@ -524,6 +535,16 @@ function StatusContextMenu({
             </button>
           )
         })}
+        <div className="border-t border-border my-1" />
+        <button
+          onClick={handleTogglePin}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-accent/60 transition-colors"
+        >
+          {agent.pinned
+            ? <IconPinnedOff size={13} className="text-muted-foreground/60 shrink-0" />
+            : <IconPin size={13} className="text-muted-foreground/60 shrink-0" />}
+          <span className="flex-1 text-left">{agent.pinned ? "Unpin" : "Pin"}</span>
+        </button>
         <div className="border-t border-border my-1" />
         <button
           onClick={() => handleGenerateTitle({ renameBranch: !isFolderAgent && isPlaceholderTitle(agent.title) })}
@@ -863,6 +884,106 @@ function StatusGroup({
               Archive all
             </button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Pinned group ──────────────────────────────────────────────────────────────
+
+function PinnedGroup({
+  agents,
+  selectedId,
+  onSelect,
+  onHover,
+  onLeave,
+  onDelete,
+  threadChildrenByParent,
+  agentPorts,
+  repoNames,
+  repoIcons,
+  repoTypes,
+}: {
+  agents: AgentSummary[]
+  selectedId: string
+  onSelect: (id: string) => void
+  onHover: (agent: AgentSummary, y: number) => void
+  onLeave: () => void
+  onDelete: (agent: AgentSummary) => void
+  agentPorts?: Record<string, number | null>
+  repoNames: Record<string, string>
+  repoIcons?: Record<string, string | undefined>
+  repoTypes?: Record<string, string>
+  threadChildrenByParent?: Map<string, AgentSummary[]>
+}) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const stored = localStorage.getItem("huxflux:sidebar-group:pinned")
+      if (stored !== null) return stored === "true"
+    } catch {}
+    return false
+  })
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem("huxflux:sidebar-group:pinned", String(next)) } catch {}
+      return next
+    })
+  }
+
+  if (agents.length === 0) return null
+
+  return (
+    <div className="mb-2.5">
+      <button
+        onClick={toggleCollapsed}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
+      >
+        <IconPin size={14} className="text-muted-foreground shrink-0" />
+        <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
+          Pinned
+        </span>
+        <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
+      </button>
+      {!collapsed && (
+        <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
+          {agents.map((agent) => (
+            <div key={agent.id}>
+              <AgentRow
+                agent={agent}
+                isSelected={selectedId === agent.id}
+                isStreaming={!!agent.streaming}
+                onClick={() => onSelect(agent.id)}
+                onHover={onHover}
+                onLeave={onLeave}
+                onDelete={onDelete}
+                port={agentPorts?.[agent.id]}
+                repoName={agent.repoId ? repoNames[agent.repoId] : undefined}
+                repoIcon={agent.repoId ? repoIcons?.[agent.repoId] : undefined}
+                repoType={agent.repoId ? repoTypes?.[agent.repoId] : undefined}
+              />
+              {/* Thread children nested under parent */}
+              {threadChildrenByParent?.get(agent.id)?.map((child) => (
+                <div key={child.id} className="ml-4 border-l border-border/30 pl-1">
+                  <AgentRow
+                    agent={child}
+                    isSelected={selectedId === child.id}
+                    isStreaming={!!child.streaming}
+                    onClick={() => onSelect(child.id)}
+                    onHover={onHover}
+                    onLeave={onLeave}
+                    onDelete={onDelete}
+                    port={agentPorts?.[child.id]}
+                    repoName={child.repoId ? repoNames[child.repoId] : undefined}
+                    repoIcon={child.repoId ? repoIcons?.[child.repoId] : undefined}
+                    repoType={child.repoId ? repoTypes?.[child.repoId] : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -1713,11 +1834,18 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
     [agents, repoFilter]
   )
 
-  // Group by status
+  // Pinned agents render in their own section regardless of status, and are
+  // excluded from the status/repo groups so a PR status change never moves them.
+  const pinnedAgents = useMemo(
+    () => filteredAgents.filter((a) => a.pinned),
+    [filteredAgents]
+  )
+
+  // Group by status (pinned agents excluded — they live in the Pinned section)
   const grouped = useMemo(
     () => visibleStatuses.reduce<Record<string, AgentSummary[]>>(
       (acc, status) => {
-        acc[status] = filteredAgents.filter((a) => a.status === status)
+        acc[status] = filteredAgents.filter((a) => a.status === status && !a.pinned)
         return acc
       },
       {}
@@ -1747,6 +1875,7 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
   const repoGrouped = useMemo(() => {
     const map = new Map<string, { name: string; agents: AgentSummary[] }>()
     for (const agent of filteredAgents) {
+      if (agent.pinned) continue // pinned agents render in the Pinned section
       const repoId = agent.repoId ?? "unknown"
       const repoName = repos.find((r) => r.id === repoId)?.name ?? agent.location ?? "Unknown"
       let entry = map.get(repoId)
@@ -2077,7 +2206,22 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                       <IconSparkles size={20} />
                       <span className="text-[12px]">Create your first agent</span>
                     </button>
-                  ) : groupBy === "status" ? (
+                  ) : (
+                    <>
+                    <PinnedGroup
+                      agents={pinnedAgents}
+                      selectedId={selectedId}
+                      onSelect={onSelect}
+                      onHover={(agent, y) => setHoveredAgent({ agent, y })}
+                      onLeave={() => setHoveredAgent(null)}
+                      onDelete={handleDeleteAgent}
+                      agentPorts={agentPorts}
+                      repoNames={repoNames}
+                      repoIcons={repoIcons}
+                      repoTypes={repoTypes}
+                      threadChildrenByParent={threadChildrenByParent}
+                    />
+                    {groupBy === "status" ? (
                     visibleStatuses.map((status) => (
                       <div key={status}>
                         {status === "in-progress" && pendingAgent && (
@@ -2115,6 +2259,8 @@ export function Sidebar({ agents, onOpenSettings, prs, prsLoading = false, onRef
                         agentPorts={agentPorts}
                       />
                     ))
+                  )}
+                    </>
                   )}
                 </div>
             </div>

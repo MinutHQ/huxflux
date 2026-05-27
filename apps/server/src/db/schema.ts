@@ -57,6 +57,7 @@ export const agents = sqliteTable("agents", {
   threadParentId: text("thread_parent_id"), // if set, this agent was spawned by another agent for cross-repo work
   prCommentMonitoring: integer("pr_comment_monitoring"), // null = use global setting, 0 = off, 1 = on
   ciMonitoring: integer("ci_monitoring"), // null = use global setting, 0 = off, 1 = on
+  pinned: integer("pinned").default(0), // 1 = pinned to the Pinned sidebar section, never auto-moved by status
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

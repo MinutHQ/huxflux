@@ -40,7 +40,17 @@ function StatusDot({ status }: { status: "online" | "offline" | "checking" | "un
     status === "offline" ? c.error :
     status === "unauthorized" ? c.warning :
     c.fgSub
-  return <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
+  const label =
+    status === "online" ? "Online" :
+    status === "offline" ? "Offline" :
+    status === "unauthorized" ? "Unauthorized" :
+    "Checking…"
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
+      <Text style={{ color: c.fgSub, fontSize: 11 }}>{label}</Text>
+    </View>
+  )
 }
 
 export default function ServersScreen() {

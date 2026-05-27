@@ -105,11 +105,19 @@ function RootComponent() {
           const conn = JSON.parse(json) as { url: string; token: string }
           if (!conn.url) return
 
-          // Normalize: treat localhost and 127.0.0.1 as equivalent
-          const normalizeUrl = (u: string) => u.replace("://localhost", "://127.0.0.1")
+          // Match any existing server pointing to the same local address
+          const isLocalUrl = (u: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(u)
+          const getPort = (u: string) => { const m = u.match(/:(\d+)/); return m ? m[1] : "80" }
           const existing = getServers()
-          const connNorm = normalizeUrl(conn.url)
-          const already = existing.find((s) => normalizeUrl(s.url) === connNorm)
+          const connPort = getPort(conn.url)
+          const already = existing.find((s) => {
+            // Exact match (normalized)
+            const normalizeUrl = (u: string) => u.replace("://localhost", "://127.0.0.1")
+            if (normalizeUrl(s.url) === normalizeUrl(conn.url)) return true
+            // Same port on any local address
+            if (isLocalUrl(s.url) && isLocalUrl(conn.url) && getPort(s.url) === connPort) return true
+            return false
+          })
 
           if (already) {
             // Server already connected, just update token/URL if changed

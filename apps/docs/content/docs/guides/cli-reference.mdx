@@ -3,33 +3,74 @@ title: CLI Reference
 description: All Huxflux CLI commands.
 ---
 
+## Setup
+
+| Command | Description |
+|---|---|
+| `huxflux setup` | Interactive setup wizard (install server, desktop, auto-start) |
+| `huxflux uninstall` | Remove Huxflux (server, desktop, data) |
+
 ## Server management
 
 | Command | Description |
 |---|---|
-| `huxflux start` | Start the server |
+| `huxflux start` | Start the server in the background (auto-restarts on crash) |
 | `huxflux stop` | Stop the server |
-| `huxflux open [host]` | Open the web app and auto-connect to this server |
-| `huxflux status` | Show connection URL and auth token |
+| `huxflux run` | Run in the foreground (for debugging or process managers) |
+| `huxflux status` | Show connection URL, token, and QR code |
+| `huxflux open [host]` | Open the web app and auto-connect |
 | `huxflux logs` | Tail the server log |
+| `huxflux crashes` | Tail the crash log |
+
+## Updates
+
+| Command | Description |
+|---|---|
 | `huxflux update` | Update to the latest version |
+| `huxflux config auto-update on` | Enable automatic server updates when idle |
+| `huxflux config auto-update off` | Disable automatic server updates |
+| `huxflux config auto-update` | Show current auto-update setting |
 
 ## Token
 
 | Command | Description |
 |---|---|
-| `huxflux token rotate` | Rotate the auth token |
+| `huxflux token` | Print the auth token |
+| `huxflux token rotate` | Rotate to a new auth token |
 
-## Security & audit
+## Security and audit
 
 | Command | Description |
 |---|---|
 | `huxflux security` | Print security recommendations |
 | `huxflux audit` | Tail the request audit log |
+| `huxflux sandbox` | Show sandbox status |
+| `huxflux sandbox setup` | Interactive sandbox setup (Linux only, uses firejail) |
+| `huxflux sandbox enable` | Enable sandboxing |
+| `huxflux sandbox disable` | Disable sandboxing |
+| `huxflux sandbox add <bin>` | Allow an extra binary in the sandbox |
+| `huxflux sandbox remove <bin>` | Revoke a binary from the sandbox |
+
+## Data management
+
+| Command | Description |
+|---|---|
+| `huxflux restore` | Restore database from latest backup (server must be stopped) |
+| `huxflux restore 2` | Restore from older backup (.bak2) |
+| `huxflux reset` | Erase all data and start fresh (3 confirmations required) |
+| `huxflux data copy dev-to-prod` | Copy dev database to production |
+| `huxflux data copy prod-to-dev` | Copy production database to dev |
 
 ## Options
 
 | Flag | Description |
 |---|---|
-| `--port <number>` | Port to listen on (default: `4321`) |
-| `--version` | Print the installed version |
+| `--version`, `-v` | Print the installed version |
+| `--help`, `-h` | Show help |
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `HUXFLUX_DIR` | Data directory (default: `~/huxflux`). Set to a different path to run multiple independent instances. |
+| `PORT` | Override the server port (default: `4321`) |

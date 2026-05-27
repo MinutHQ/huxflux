@@ -3,36 +3,70 @@ title: Configuration
 description: Configure Huxflux after installation.
 ---
 
-## Adding a server
+## Connecting to a server
 
-After starting `huxflux`, open the web app and go to **Settings → Servers**. Paste the connection string shown by `huxflux status`:
+### Local server (automatic)
 
+If you installed the server and desktop app together (via the installer or setup wizard), the desktop app auto-connects on first launch. No manual configuration needed.
+
+### Remote server
+
+To connect to a server on another machine, get its connection string:
+
+```sh
+huxflux status    # prints URL, token, and QR code
 ```
-huxflux://100.x.x.x:4321?token=...
-```
 
-The token authenticates the web app to your server. Treat it like a password.
+Then paste the `huxflux://...` string into the server switcher in the sidebar, or go to **Settings > Servers** and add it manually.
 
-## Models
+The token authenticates the app to your server. Treat it like a password.
 
-Huxflux uses Claude models via the Anthropic API. Add your API key under **Settings → Providers** in the web app. You can switch models per-agent or set a default under **Settings → Models**.
+## Models and providers
+
+Huxflux supports multiple AI providers (Claude Code, Codex, OpenCode). Configure the default provider and model under **Settings > Models**.
+
+- Pick a **provider** first (only installed CLIs are shown)
+- Then pick a **model** from that provider
+- These defaults apply to new agents. You can override per-agent in the model selector at the bottom of the chat input.
+
+| Model | When to use |
+|---|---|
+| **Haiku 4.5** | Fast and cheap. Good for small, well-defined tasks. |
+| **Sonnet 4.6** | Balanced. Best default for most work. |
+| **Opus 4.6** | Most capable. Use for complex reasoning or architecture decisions. |
 
 ## Repositories
 
-Point Huxflux at a local directory containing your Git repositories. Set the path under **Settings → Repositories**. Agents run inside that directory and can read and write any files your OS user can access.
+Add repositories under **Settings > Git**. Enter the local path to a git repository, or use "Add folder" for non-git directories.
+
+Each agent gets an isolated git worktree under `~/huxflux/workspaces/`. Your main checkout is untouched.
 
 <Callout type="warn">
-  Only point Huxflux at repositories you trust. Malicious content in a
-  repository (README, comments, test fixtures) can instruct Claude to run
-  arbitrary commands.
+  Only add repositories you trust. Malicious content in a repository (README,
+  comments, test fixtures) can instruct Claude to run arbitrary commands.
 </Callout>
 
 ## Network
 
-By default, `huxflux` listens on port **4321**. We recommend keeping this port off the public internet and accessing it via [Tailscale](https://tailscale.com) instead.
-
-To use a custom port:
+By default, `huxflux` listens on port **4321**. Override with the `PORT` environment variable:
 
 ```sh
-huxflux --port 3002
+PORT=3002 huxflux start
 ```
+
+We recommend keeping this port off the public internet and accessing it via [Tailscale](https://tailscale.com) instead. See the [security guide](/docs/guides/security) for details.
+
+## Updates
+
+### Desktop app
+
+The desktop app checks for updates automatically. Configure auto-update behavior under **Settings > Updates**.
+
+### Server
+
+The server checks for new versions every 6 hours. You can:
+- Update from the desktop app under **Settings > Updates**
+- Update from the CLI: `huxflux update`
+- Enable auto-updates: `huxflux config auto-update on`
+
+When auto-update is enabled, the server updates itself when no agents are running.

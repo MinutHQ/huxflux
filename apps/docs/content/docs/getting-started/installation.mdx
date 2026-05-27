@@ -3,15 +3,49 @@ title: Installation
 description: Install Huxflux on your machine.
 ---
 
+## One-line install
+
+The fastest way to get started. Installs the server, sets up your environment, and optionally installs the desktop app.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash
+```
+
+The installer will:
+1. Check that Node.js 22.6+ is installed
+2. Install the `huxflux` CLI via npm
+3. Fix your PATH if needed (asks permission)
+4. Launch the setup wizard
+
+### Setup wizard
+
+The wizard detects your environment and walks you through:
+
+- **Server** -- creates the config, database, and starts the API
+- **Auto-start** -- optionally installs a system service (LaunchAgent on macOS, systemd on Linux) so Huxflux starts on login
+- **Desktop app** -- downloads and installs the native app (DMG on macOS, AppImage on Linux)
+
+The desktop app auto-connects to your local server on first launch.
+
+### Uninstall
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s -- --uninstall
+```
+
+This removes the server, desktop app, system service, and all data.
+
+---
+
 ## Desktop app
 
-Download the desktop app for a native experience with no browser required.
+Download the desktop app directly if you already have a server running.
 
-[Download on GitHub →](https://github.com/AlexMartosP/huxflux-releases/releases/latest)
+[Download on GitHub](https://github.com/AlexMartosP/huxflux-releases/releases/latest)
 
-Available as `.dmg` (macOS), `.AppImage` and `.deb` (Linux).
+Available as `.dmg` (macOS), `.AppImage` (Linux), and `.deb` (Linux).
 
-**macOS — app is unsigned**
+**macOS -- app is unsigned**
 
 If macOS blocks the app on first launch, remove the quarantine flag:
 
@@ -19,17 +53,23 @@ If macOS blocks the app on first launch, remove the quarantine flag:
 xattr -d com.apple.quarantine /Applications/Huxflux.app
 ```
 
+**Linux -- FUSE required for AppImage**
+
+If you see an error about `libfuse.so.2`:
+
+```sh
+sudo apt install libfuse2
+```
+
 ---
 
-## Server (CLI)
+## Manual server install
 
-Run the Huxflux server on any machine to access it from the desktop app or any browser.
+If you prefer to install the server manually without the setup wizard:
 
 ### Requirements
 
-- **Node.js** 22.5 or later
-
-## Install
+- **Node.js** 22.6 or later
 
 <Steps>
 
@@ -45,31 +85,40 @@ npm install -g @alexmartosp/huxflux
 
 <Step>
 
-### Start the server
+### Run the setup wizard
 
 ```sh
-huxflux start
+huxflux setup
 ```
 
 </Step>
 
 <Step>
 
-### Open the web app
+### Or start manually
 
 ```sh
-huxflux open
+huxflux start
+huxflux open    # opens web app and auto-connects
 ```
-
-This opens the web app in your browser and automatically connects it to your server.
 
 </Step>
 
 </Steps>
 
+---
+
 ## HTTPS / Remote access
 
-When using the hosted web app (served over HTTPS) with a self-hosted server, browsers block plain `ws://` connections. You need to put your server behind HTTPS using a reverse proxy.
+When using the hosted web app (served over HTTPS) with a self-hosted server, browsers block plain `ws://` connections. Put your server behind HTTPS using a reverse proxy.
+
+### Tailscale (recommended)
+
+[Tailscale](https://tailscale.com) encrypts all traffic with WireGuard. Install it on both machines, then connect using your Tailscale IP:
+
+```
+huxflux://100.x.x.x:4321?token=...
+```
 
 ### nginx + Let's Encrypt
 
@@ -90,16 +139,22 @@ location / {
 }
 ```
 
-The `Upgrade` headers are required for WebSocket proxying. Once set up, connect using `https://yourdomain.com`.
+The `Upgrade` headers are required for WebSocket proxying.
+
+---
 
 ## Troubleshooting
 
 **`huxflux` not found after install**
 
-npm's global bin directory may not be in your `PATH`. Add it:
+The installer offers to fix this automatically. If you skipped it, add npm's global bin directory to your PATH:
 
 ```sh
 export PATH="$(npm config get prefix)/bin:$PATH"
 ```
 
-Paste this into `~/.bashrc` or `~/.zshrc` and run `source ~/.zshrc`.
+Add this to `~/.bashrc` or `~/.zshrc` and run `source ~/.zshrc`.
+
+**Desktop app doesn't connect to local server**
+
+Make sure the server is running (`huxflux status`). The desktop app reads `~/huxflux/connection.json` on launch. If the server wasn't running when the app started, restart the app.

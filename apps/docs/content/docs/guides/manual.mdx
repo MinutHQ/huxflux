@@ -12,10 +12,10 @@ Huxflux is an AI agent orchestration system that gives Claude autonomous access 
 ## Quick start
 
 ```sh
-npm install -g @alexmartosp/huxflux
-huxflux start
-huxflux open          # opens web app and auto-connects
+curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash
 ```
+
+This installs the server, runs the setup wizard, and optionally installs the desktop app. The desktop app auto-connects to your local server.
 
 To connect from another device, get the connection string:
 
@@ -23,7 +23,7 @@ To connect from another device, get the connection string:
 huxflux status        # prints URL, token, and QR code
 ```
 
-Paste the `huxflux://...` string into **Settings → Servers** in the web app.
+Paste the `huxflux://...` string into the server switcher in the sidebar.
 
 ---
 
@@ -130,23 +130,28 @@ Requires a GitHub token set in Settings → Providers.
 | Expand terminal | `F1` |
 | New terminal tab | `+` button next to tabs |
 | Paste terminal output into chat | Type `@terminal` in input |
+| Open link in terminal output | `Cmd+click` (macOS) or `Ctrl+click` (Linux) |
 | Preview running server | Click detected port link in terminal header |
+| Search terminal | `Cmd+F` / `Ctrl+F` |
 
 ---
 
 ## CLI reference
 
 ```sh
+huxflux setup           # Interactive setup wizard
 huxflux start           # Start server in background
 huxflux stop            # Stop server
 huxflux status          # Show URL, token, and QR code
 huxflux open [host]     # Open web app and auto-connect
 huxflux logs            # Tail server log
 huxflux update          # Update to latest version
+huxflux config auto-update on   # Enable auto-updates
 huxflux token rotate    # Rotate auth token
 huxflux audit           # Tail request audit log
 huxflux security        # Print security recommendations
 huxflux restore         # Restore DB from backup
+huxflux uninstall       # Remove everything
 ```
 
 ---

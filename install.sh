@@ -1,8 +1,50 @@
 #!/usr/bin/env bash
 # Huxflux installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s
+#        curl -fsSL ... | bash -s -- --uninstall
 set -euo pipefail
 
+# ── Uninstall mode ──────────────────────────────────────────────────────────
+if [ "${1:-}" = "--uninstall" ]; then
+  echo ""
+  echo "  Removing Huxflux..."
+  echo ""
+
+  # Stop server
+  if command -v huxflux >/dev/null 2>&1; then
+    huxflux stop 2>/dev/null || true
+  fi
+
+  # Remove system service
+  if [ "$(uname -s)" = "Darwin" ]; then
+    PLIST="$HOME/Library/LaunchAgents/com.huxflux.server.plist"
+    [ -f "$PLIST" ] && launchctl unload "$PLIST" 2>/dev/null && rm -f "$PLIST"
+  elif [ "$(uname -s)" = "Linux" ]; then
+    systemctl --user stop huxflux 2>/dev/null || true
+    systemctl --user disable huxflux 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/huxflux.service"
+    systemctl --user daemon-reload 2>/dev/null || true
+  fi
+
+  # Remove npm package
+  npm uninstall -g @alexmartosp/huxflux 2>/dev/null || true
+
+  # Remove data
+  rm -rf "$HOME/huxflux"
+
+  # Remove desktop app
+  rm -f "$HOME/.local/bin/Huxflux.AppImage"
+  rm -f "$HOME/.local/share/applications/huxflux.desktop"
+  rm -rf "/Applications/Huxflux.app" 2>/dev/null || true
+  rm -rf "$HOME/Applications/Huxflux.app" 2>/dev/null || true
+
+  # Remove temp attachments
+  rm -rf "/tmp/huxflux-attachments" 2>/dev/null || true
+
+  echo "  ✓ Huxflux removed."
+  echo ""
+  exit 0
+fi
 
 # ── Colors & helpers ─────────────────────────────────────────────────────────
 if [ -t 1 ]; then

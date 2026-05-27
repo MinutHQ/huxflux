@@ -847,6 +847,12 @@ function UnifiedFileTree({
   const { data: repos = [] } = useRepos()
   const isFolderAgent = repos.find((r) => r.id === repoId)?.type === "folder"
 
+  // Refs for callbacks so useFileTree's stale closure always calls the latest version
+  const onFileContentSelectRef = useRef(onFileContentSelect)
+  onFileContentSelectRef.current = onFileContentSelect
+  const onOpenDiffBrowserRef = useRef(onOpenDiffBrowser)
+  onOpenDiffBrowserRef.current = onOpenDiffBrowser
+
   const { data: tree, isLoading } = useQuery({
     queryKey: ["file-tree", agentId, isFolderAgent ? "folder-root" : "full"],
     queryFn: () => api.getFileTree(agentId),
@@ -912,7 +918,7 @@ function UnifiedFileTree({
     gitStatus,
     initialExpansion: "closed",
     onSelectionChange: (selectedPaths) => {
-      if (selectedPaths.length > 0) onFileContentSelect(selectedPaths[0])
+      if (selectedPaths.length > 0) onFileContentSelectRef.current(selectedPaths[0])
     },
   })
 
@@ -996,8 +1002,7 @@ function UnifiedFileTree({
       if (selectedPaths.length > 0) {
         const p = selectedPaths[0]
         if (changedPaths.includes(p)) {
-          // Open the Changes tab in the file viewer, scrolled to this file
-          onOpenDiffBrowser?.(p)
+          onOpenDiffBrowserRef.current?.(p)
         }
       }
     },

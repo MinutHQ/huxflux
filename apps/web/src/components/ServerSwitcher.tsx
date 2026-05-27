@@ -16,17 +16,27 @@ import {
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 
+const STATUS_LABEL: Record<ServerStatus, string> = {
+  online: "Online",
+  offline: "Offline",
+  checking: "Checking…",
+  unauthorized: "Unauthorized",
+}
+
 function StatusDot({ status }: { status: ServerStatus }) {
   return (
-    <span
-      className={cn(
-        "w-2 h-2 rounded-full shrink-0",
-        status === "online" && "bg-emerald-400",
-        status === "offline" && "bg-red-400",
-        status === "checking" && "bg-amber-400 animate-pulse",
-        status === "unauthorized" && "bg-amber-400"
-      )}
-    />
+    <span className="flex items-center gap-1.5 shrink-0">
+      <span
+        className={cn(
+          "w-2 h-2 rounded-full shrink-0",
+          status === "online" && "bg-emerald-400",
+          status === "offline" && "bg-red-400",
+          status === "checking" && "bg-amber-400 animate-pulse",
+          status === "unauthorized" && "bg-amber-400"
+        )}
+      />
+      <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[status]}</span>
+    </span>
   )
 }
 

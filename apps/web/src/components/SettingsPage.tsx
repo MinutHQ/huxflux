@@ -978,15 +978,19 @@ function RepoSettings({ repo, color, onRemove }: { repo: Repo; color: string; on
 // ── Server status dot ─────────────────────────────────────────────────────────
 
 function SettingsStatusDot({ status }: { status: "online" | "offline" | "checking" }) {
+  const label = status === "online" ? "Online" : status === "offline" ? "Offline" : "Checking…"
   return (
-    <span
-      className={cn(
-        "w-2 h-2 rounded-full shrink-0",
-        status === "online" && "bg-emerald-400",
-        status === "offline" && "bg-red-400",
-        status === "checking" && "bg-amber-400 animate-pulse"
-      )}
-    />
+    <span className="flex items-center gap-1.5 shrink-0">
+      <span
+        className={cn(
+          "w-2 h-2 rounded-full shrink-0",
+          status === "online" && "bg-emerald-400",
+          status === "offline" && "bg-red-400",
+          status === "checking" && "bg-amber-400 animate-pulse"
+        )}
+      />
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+    </span>
   )
 }
 

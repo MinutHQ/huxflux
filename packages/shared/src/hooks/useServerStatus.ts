@@ -3,23 +3,35 @@ import type { HuxfluxServer } from "../serverStore"
 
 export type ServerStatus = "online" | "offline" | "checking" | "unauthorized"
 
-async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 5000)
+  const timer = setTimeout(() => controller.abort(), ms)
   try {
-    const healthRes = await fetch(`${server.url}/health`, { signal: controller.signal })
-    if (!healthRes.ok) return "offline"
-    const authRes = await fetch(`${server.url}/api/config`, {
-      headers: server.token ? { Authorization: `Bearer ${server.token}` } : {},
-      signal: controller.signal,
-    })
-    if (authRes.status === 401 || authRes.status === 403) return "unauthorized"
-    return "online"
-  } catch {
-    return "offline"
+    return await fetch(url, { ...init, cache: "no-store", signal: controller.signal })
   } finally {
     clearTimeout(timer)
   }
+}
+
+async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
+  // Reachability is determined solely by /health.
+  try {
+    const healthRes = await fetchWithTimeout(`${server.url}/health`, {}, 5000)
+    if (!healthRes.ok) return "offline"
+  } catch {
+    return "offline"
+  }
+  // Server is reachable. Check auth on its own budget — a failure here must
+  // not report the server as offline; only an explicit 401/403 is unauthorized.
+  try {
+    const authRes = await fetchWithTimeout(`${server.url}/api/config`, {
+      headers: server.token ? { Authorization: `Bearer ${server.token}` } : {},
+    }, 5000)
+    if (authRes.status === 401 || authRes.status === 403) return "unauthorized"
+  } catch {
+    // Transient auth-check failure — server is reachable, treat as online.
+  }
+  return "online"
 }
 
 export function useServerStatus(servers: HuxfluxServer[]): Record<string, ServerStatus> {

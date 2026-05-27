@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::Command;
+use tauri::Manager;
 
 #[tauri::command]
 fn zoom_window(window: tauri::WebviewWindow) {
@@ -124,7 +125,7 @@ pub fn run() {
                 let escaped = json.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
                 let script = format!("window.__huxflux_connection = '{}';", escaped);
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.eval(&script);
+                    let _: Result<(), _> = window.eval(&script);
                 }
             }
             Ok(())

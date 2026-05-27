@@ -894,7 +894,7 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
   const branchFrom = agentRow?.baseBranch ?? repoRow?.branchFrom ?? "HEAD"
 
   // Install provider-specific hooks (e.g. AskUserQuestion for Claude)
-  const apiBase = `http://localhost:${config.boundPort}`
+  const apiBase = `http://127.0.0.1:${config.boundPort}`
   if (provider.installHooks && provider.capabilities.askUserQuestion) {
     await provider.installHooks(agentId, cwd, apiBase, config.authToken)
   }

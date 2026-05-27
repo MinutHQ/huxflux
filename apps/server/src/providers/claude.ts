@@ -160,9 +160,10 @@ export const claudeProvider: ProviderAdapter = {
         `#!/bin/bash`,
         `# Huxflux AskUserQuestion hook — routes questions to the Hive UI`,
         `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
-        `curl -sf --max-time 300 -X POST "$HUXFLUX_API_BASE/api/agents/$HUXFLUX_AGENT_ID/ask" \\`,
-        `  -H "Content-Type: application/json" ${authHeader} -d @-`,
+        `curl -s --max-time 300 -X POST "$HUXFLUX_API_BASE/api/agents/$HUXFLUX_AGENT_ID/ask" \\`,
+        `  -H "Content-Type: application/json" ${authHeader} -d @- 2>/tmp/huxflux-ask-hook.log`,
       ].join("\n")
+      // Always overwrite the script so the URL stays current
       await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
 
       const settingsPath = `${homeClaudeDir}/settings.json`

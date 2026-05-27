@@ -133,8 +133,8 @@ export const api = {
   generateTitle: (id: string, body?: { branch?: boolean }) =>
     req<Agent>(`/api/agents/${id}/generate-title`, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   stopAgent: (id: string) => req<{ stopped: boolean }>(`/api/agents/${id}/stop`, { method: "POST" }),
-  answerQuestion: (id: string, answers: Record<string, string>) =>
-    req<{ ok: boolean }>(`/api/agents/${id}/answer`, { method: "POST", body: JSON.stringify({ answers }) }),
+  answerQuestion: (id: string, answers: Record<string, string>, toolUseId?: string) =>
+    req<{ ok: boolean }>(`/api/agents/${id}/answer`, { method: "POST", body: JSON.stringify({ answers, toolUseId }) }),
   switchBranch: (id: string, branch: string, force?: boolean) => req<Agent>(`/api/agents/${id}/switch-branch`, { method: "POST", body: JSON.stringify({ branch, force }) }),
   renameBranch: (id: string, branch: string) => req<Agent>(`/api/agents/${id}/rename-branch`, { method: "POST", body: JSON.stringify({ branch }) }),
 

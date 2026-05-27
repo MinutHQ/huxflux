@@ -269,6 +269,19 @@ function handleStreamEvent(
           }).run()
         } catch { /* duplicate ID from provider replaying events */ }
         emit(agentId, { type: "tool:call", agentId, messageId, toolCall: tc })
+
+        // Detect AskUserQuestion from the stream and notify the UI directly
+        // (no dependency on the hook script for notification)
+        if (block.name === "AskUserQuestion") {
+          try {
+            const { setPendingQuestion } = await import("../askStore.js")
+            const input = block.input as { questions?: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
+            if (input.questions?.length) {
+              setPendingQuestion(agentId, block.id)
+              emit(agentId, { type: "ask:question", agentId, toolUseId: block.id, questions: input.questions })
+            }
+          } catch { /* malformed input */ }
+        }
       }
     }
   } else if (event.type === "tool_result") {

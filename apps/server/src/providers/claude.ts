@@ -148,22 +148,30 @@ export const claudeProvider: ProviderAdapter = {
     return MODELS
   },
 
-  async installHooks(agentId: string, cwd: string, apiBase: string, authToken: string): Promise<void> {
+  async installHooks(_agentId: string, _cwd: string, _apiBase: string, _authToken: string): Promise<void> {
     try {
       const homeClaudeDir = `${process.env.HOME}/.claude`
       const hooksDir = `${homeClaudeDir}/hooks`
       await fs.mkdir(hooksDir, { recursive: true })
 
+      // The hook script waits for an answer file written by the server.
+      // No curl, no network, no API calls. The server detects AskUserQuestion
+      // from the streaming output and notifies the UI directly.
       const scriptPath = `${hooksDir}/huxflux-ask-user.sh`
-      const authHeader = authToken ? `-H "Authorization: Bearer $HUXFLUX_AUTH"` : ""
       const scriptContent = [
         `#!/bin/bash`,
-        `# Huxflux AskUserQuestion hook — routes questions to the Hive UI`,
-        `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
-        `curl -s --max-time 300 -X POST "$HUXFLUX_API_BASE/api/agents/$HUXFLUX_AGENT_ID/ask" \\`,
-        `  -H "Content-Type: application/json" ${authHeader} -d @- 2>/tmp/huxflux-ask-hook.log`,
+        `# Huxflux AskUserQuestion hook — waits for answer from the Hive UI`,
+        `# The server detects the question from the stream and writes the answer file.`,
+        `[ -z "$TOOL_USE_ID" ] && exit 0`,
+        `ANSWER_FILE="/tmp/huxflux-ask-$TOOL_USE_ID"`,
+        `# Wait up to 5 minutes for the user to answer`,
+        `for i in $(seq 1 1500); do`,
+        `  [ -f "$ANSWER_FILE" ] && { cat "$ANSWER_FILE"; rm -f "$ANSWER_FILE"; exit 0; }`,
+        `  sleep 0.2`,
+        `done`,
+        `# Timeout — let Claude proceed without modified input`,
+        `exit 0`,
       ].join("\n")
-      // Always overwrite the script so the URL stays current
       await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
 
       const settingsPath = `${homeClaudeDir}/settings.json`

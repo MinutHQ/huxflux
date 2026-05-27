@@ -3101,7 +3101,7 @@ export function ChatView({ agent, isStreaming, loadMore, hasMore = false, isLoad
 
   async function handleAnswerQuestion(answers: Record<string, string>) {
     try {
-      await api.answerQuestion(agent.id, answers)
+      await api.answerQuestion(agent.id, answers, pendingQuestion?.toolUseId)
     } catch { /* non-fatal */ }
     onClearPendingQuestion?.()
   }

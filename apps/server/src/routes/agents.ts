@@ -647,14 +647,12 @@ export async function agentsRoutes(app: FastifyInstance) {
     return { diffSummary: summary }
   })
 
-  // ── AskUserQuestion hook support ──────────────────────────────────────────
+  // ── AskUserQuestion support ──────────────────────────────────────────────
+  // Questions are detected from the streaming output in runner.ts and emitted
+  // via WebSocket. The hook script waits for an answer file written by the
+  // /answer endpoint. No curl or network calls in the hook.
 
-  // In-memory map of pending questions awaiting user answers
-  const pendingQuestions = new Map<string, {
-    resolve: (answers: Record<string, string>) => void
-  }>()
-
-  // POST /api/agents/:id/ask — called by the PreToolUse hook script; long-polls until user answers
+  // POST /api/agents/:id/ask — backwards compat with old curl-based hook scripts
   app.post<{
     Params: { id: string }
     Body: { tool_input: { questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }; tool_use_id: string }
@@ -663,48 +661,52 @@ export async function agentsRoutes(app: FastifyInstance) {
     const { tool_input, tool_use_id } = req.body
     const questions = tool_input?.questions ?? []
 
-    app.log.info(`[ask] Agent ${id} AskUserQuestion: ${questions.length} questions, tool_use_id=${tool_use_id}`)
+    app.log.info(`[ask] Agent ${id} AskUserQuestion (legacy hook): ${questions.length} questions, tool_use_id=${tool_use_id}`)
 
-    // Notify the frontend via WebSocket
+    const { setPendingQuestion } = await import("../askStore.js")
+    setPendingQuestion(id, tool_use_id)
     emit(id, { type: "ask:question", agentId: id, toolUseId: tool_use_id, questions })
 
-    // Long-poll: wait for the user to answer (up to 5 minutes)
-    const answers = await new Promise<Record<string, string>>((resolve) => {
-      pendingQuestions.set(id, { resolve })
-      setTimeout(() => {
-        if (pendingQuestions.has(id)) {
-          pendingQuestions.delete(id)
-          resolve({})
-        }
-      }, 300_000)
-    })
-
-    // Return the hook response format Claude expects
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "allow",
-        updatedInput: {
-          questions,
-          answers,
-        },
-      },
+    // Wait for answer file (written by the /answer endpoint)
+    const answerFile = `/tmp/huxflux-ask-${tool_use_id}`
+    const deadline = Date.now() + 300_000
+    while (Date.now() < deadline) {
+      try {
+        const fsP = await import("node:fs/promises")
+        const data = await fsP.readFile(answerFile, "utf8")
+        await fsP.unlink(answerFile)
+        return JSON.parse(data)
+      } catch { /* file doesn't exist yet */ }
+      await new Promise(r => setTimeout(r, 200))
     }
+    return {}
   })
 
   // POST /api/agents/:id/answer — called by frontend when user answers a question
   app.post<{
     Params: { id: string }
-    Body: { answers: Record<string, string> }
+    Body: { answers: Record<string, string>; toolUseId?: string }
   }>("/api/agents/:id/answer", async (req, reply) => {
     const { id } = req.params
-    const { answers } = req.body
+    const { answers, toolUseId } = req.body
 
-    const pending = pendingQuestions.get(id)
-    if (!pending) return reply.code(404).send({ error: "No pending question" })
+    const { getPendingToolUseId, clearPendingQuestion } = await import("../askStore.js")
+    const effectiveToolUseId = toolUseId || getPendingToolUseId(id)
+    if (!effectiveToolUseId) return reply.code(404).send({ error: "No pending question" })
 
-    pendingQuestions.delete(id)
-    pending.resolve(answers)
+    clearPendingQuestion(id)
+
+    // Write the answer file that the hook script is waiting for
+    const answerFile = `/tmp/huxflux-ask-${effectiveToolUseId}`
+    const hookResponse = JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        updatedInput: { answers },
+      },
+    })
+    const fsP = await import("node:fs/promises")
+    await fsP.writeFile(answerFile, hookResponse)
 
     return { ok: true }
   })

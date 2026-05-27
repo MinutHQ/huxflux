@@ -327,7 +327,7 @@ export async function agentsRoutes(app: FastifyInstance) {
   // PATCH /api/agents/:id — update status / metadata
   app.patch<{
     Params: { id: string }
-    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string; draft: string; model: string; provider: string; prCommentMonitoring: boolean | null; ciMonitoring: boolean | null }>
+    Body: Partial<{ title: string; status: string; branch: string; pr: string; description: string; unread: number; baseBranch: string; draft: string; model: string; provider: string; prCommentMonitoring: boolean | null; ciMonitoring: boolean | null; pinned: boolean }>
   }>("/api/agents/:id", async (req, reply) => {
     const { id } = req.params
     const body = req.body
@@ -351,6 +351,7 @@ export async function agentsRoutes(app: FastifyInstance) {
       ...(body.draft !== undefined && { draft: body.draft }),
       ...(body.prCommentMonitoring !== undefined && { prCommentMonitoring: body.prCommentMonitoring === null ? null : body.prCommentMonitoring ? 1 : 0 }),
       ...(body.ciMonitoring !== undefined && { ciMonitoring: body.ciMonitoring === null ? null : body.ciMonitoring ? 1 : 0 }),
+      ...(body.pinned !== undefined && { pinned: body.pinned ? 1 : 0 }),
       updatedAt: now,
     }).where(eq(agents.id, id))
 

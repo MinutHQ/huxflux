@@ -184,6 +184,7 @@ export interface Agent {
   diffSummary?: { additions: number; deletions: number; commits?: number }
   prCommentMonitoring?: number | null  // null = global default, 0 = off, 1 = on
   ciMonitoring?: number | null         // null = global default, 0 = off, 1 = on
+  pinned?: boolean                     // pinned to the Pinned sidebar section, never auto-moved by status
   messages: Message[]
   hasMore?: boolean
   fileChanges: FileChange[]

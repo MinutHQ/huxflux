@@ -121,7 +121,7 @@ export const api = {
   }) => req<Agent>("/api/agents", { method: "POST", body: JSON.stringify(body), timeoutMs: 120_000 }),
   updateAgent: (
     id: string,
-    body: Partial<Pick<Agent, "title" | "status" | "branch" | "pr" | "description" | "unread" | "baseBranch" | "draft">>
+    body: Partial<Pick<Agent, "title" | "status" | "branch" | "pr" | "description" | "unread" | "baseBranch" | "draft" | "pinned">>
   ) => req<Agent>(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteAgent: (id: string) => req<void>(`/api/agents/${id}`, { method: "DELETE" }),
   generateTitle: (id: string, body?: { branch?: boolean }) =>

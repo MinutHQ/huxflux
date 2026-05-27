@@ -474,6 +474,10 @@ const MIGRATIONS: Migration[] = [
     version: 31,
     sql: `ALTER TABLE repos ADD COLUMN type TEXT NOT NULL DEFAULT 'git';`,
   },
+  {
+    version: 32,
+    sql: `ALTER TABLE agents ADD COLUMN pinned INTEGER DEFAULT 0;`,
+  },
 ]
 
 export function runMigrations() {

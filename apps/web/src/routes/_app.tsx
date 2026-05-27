@@ -14,6 +14,7 @@ import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
 
 import { getFlag } from "@/lib/flags"
 import { isTauri, isMacOS } from "@/lib/platform"
+import { tryAutoConnectSync } from "@/lib/autoConnect"
 import { IconLayoutSidebarLeftExpand, IconLayoutSidebarLeftCollapse } from "@tabler/icons-react"
 import { Button } from "@huxflux/ui"
 import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
@@ -23,8 +24,14 @@ export const Route = createRoute({
   getParentRoute: () => rootRoute,
   id: "_app",
   beforeLoad: () => {
+    // On Tauri, try to auto-connect from connection.json before checking servers.
+    // This must be synchronous because beforeLoad runs before useEffect.
     if (getServersList().length === 0) {
-      throw redirect({ to: "/onboarding" })
+      if (isTauri) tryAutoConnectSync()
+      // Re-check after potential sync auto-connect
+      if (getServersList().length === 0) {
+        throw redirect({ to: "/onboarding" })
+      }
     }
   },
   component: AppLayout,

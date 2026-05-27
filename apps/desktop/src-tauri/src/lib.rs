@@ -115,7 +115,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
-        .setup(|_app| {
+        .setup(|app| {
+            // Inject connection.json into the webview so the frontend can read it
+            // synchronously before the router loads (avoids the onboarding flash).
+            let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
+            let conn_path = Path::new(&home).join("huxflux").join("connection.json");
+            if let Ok(json) = std::fs::read_to_string(&conn_path) {
+                let escaped = json.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
+                let script = format!("window.__huxflux_connection = '{}';", escaped);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.eval(&script);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, open_url, read_local_connection])

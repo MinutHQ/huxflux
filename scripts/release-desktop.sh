@@ -152,12 +152,13 @@ if [[ "$BUILD_LINUX" == "true" ]]; then
 
     echo "==> Building Docker image (cached after first run)..."
     docker build -t "$DOCKER_IMAGE" \
+      --platform linux/amd64 \
       -f "$REPO_ROOT/scripts/Dockerfile.linux-builder" \
       "$REPO_ROOT/scripts" \
       --quiet
 
     echo "==> Building Linux via Docker (Cargo cache persists in Docker volumes)..."
-    docker run --rm \
+    docker run --rm --platform linux/amd64 \
       -v "$REPO_ROOT:/src:ro" \
       -v "huxflux-linux-workspace:/build" \
       -v "huxflux-linux-target:/build/apps/desktop/src-tauri/target" \

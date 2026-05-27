@@ -1,5 +1,5 @@
 import { createRequire } from "node:module"
-import * as pty from "node-pty"
+import * as pty from "@homebridge/node-pty-prebuilt-multiarch"
 import * as path from "node:path"
 import * as fs from "node:fs"
 
@@ -7,7 +7,7 @@ import * as fs from "node:fs"
 // Fix spawn-helper at startup so the PTY can spawn processes on macOS/Linux.
 const _require = createRequire(import.meta.url)
 try {
-  const ptyPkg = path.dirname(_require.resolve("node-pty/package.json"))
+  const ptyPkg = path.dirname(_require.resolve("@homebridge/node-pty-prebuilt-multiarch/package.json"))
   const helper = path.join(ptyPkg, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper")
   if (fs.existsSync(helper) && !(fs.statSync(helper).mode & 0o111)) {
     fs.chmodSync(helper, 0o755)

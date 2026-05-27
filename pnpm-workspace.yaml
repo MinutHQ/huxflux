@@ -3,6 +3,7 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  '@homebridge/node-pty-prebuilt-multiarch': true
   esbuild: true
   msw: false
   node-pty: true

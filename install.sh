@@ -65,43 +65,6 @@ fi
 
 ok "Node.js v${NODE_VER}"
 
-# Check for build tools (needed by node-pty native addon on Linux)
-if [ "$(uname -s)" = "Linux" ]; then
-  MISSING_BUILD_TOOLS=""
-  command -v make >/dev/null 2>&1 || MISSING_BUILD_TOOLS="make"
-  command -v gcc >/dev/null 2>&1  || MISSING_BUILD_TOOLS="${MISSING_BUILD_TOOLS} gcc"
-  command -v g++ >/dev/null 2>&1  || MISSING_BUILD_TOOLS="${MISSING_BUILD_TOOLS} g++"
-
-  if [ -n "$MISSING_BUILD_TOOLS" ]; then
-    warn "Build tools required for native modules:${MISSING_BUILD_TOOLS}"
-    echo ""
-    echo -e "  Install them with:"
-    echo -e "    ${DIM}sudo apt install build-essential${RESET}    ${DIM}# Debian/Ubuntu${RESET}"
-    echo -e "    ${DIM}sudo dnf groupinstall 'Development Tools'${RESET}  ${DIM}# Fedora${RESET}"
-    echo ""
-
-    # Offer to install automatically on Debian/Ubuntu
-    if command -v apt >/dev/null 2>&1; then
-      printf "  Install build-essential now? [Y/n] "
-      if [ -t 0 ]; then
-        read -r REPLY
-      else
-        read -r REPLY </dev/tty
-      fi
-      if [ -z "$REPLY" ] || [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
-        sudo apt install -y build-essential
-        ok "Build tools installed"
-      else
-        fail "Build tools are required. Install them and re-run the installer."
-      fi
-    else
-      fail "Install build tools and re-run the installer."
-    fi
-  else
-    ok "Build tools"
-  fi
-fi
-
 # ── Detect package manager ───────────────────────────────────────────────────
 # Always use npm for global installs — pnpm/yarn global can have PATH issues
 PM="npm"

@@ -24,7 +24,6 @@ import {
   IconArrowLeft,
   IconSettings,
   IconBrain,
-  IconPlug,
   IconPalette,
   IconGitBranch,
   IconFlask,
@@ -56,7 +55,6 @@ import { parseConnectionString, type HuxfluxServer } from "@huxflux/shared"
 export type Section =
   | "general"
   | "models"
-  | "providers"
   | "appearance"
   | "git"
   | "review"
@@ -100,7 +98,6 @@ function repoColor(name: string) {
 const navMain = [
   { id: "general" as Section, label: "General", icon: IconSettings },
   { id: "models" as Section, label: "Models", icon: IconBrain },
-  { id: "providers" as Section, label: "Providers", icon: IconPlug },
   { id: "appearance" as Section, label: "Appearance", icon: IconPalette },
   { id: "git" as Section, label: "Git", icon: IconGitBranch },
   { id: "review" as Section, label: "Review", icon: IconSparkles },
@@ -372,54 +369,31 @@ function GeneralSettings() {
   )
 }
 
-const MODELS = [
-  { id: "Opus 4.7",    label: "Claude Opus 4.7",    api: "claude-opus-4-7",              context: "200K" },
-  { id: "Sonnet 4.6",  label: "Claude Sonnet 4.6",  api: "claude-sonnet-4-6",           context: "200K" },
-  { id: "Opus 4.6",    label: "Claude Opus 4.6",    api: "claude-opus-4-6",              context: "200K" },
-  { id: "Haiku 4.5",   label: "Claude Haiku 4.5",   api: "claude-haiku-4-5-20251001",    context: "200K" },
-]
-
 function ModelsSettings() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings })
-  const defaultModel = settings?.defaultModel ?? "Sonnet 4.6"
+  const { data: providers = [], isLoading } = useQuery({ queryKey: ["providers"], queryFn: api.getProviders, staleTime: 30_000 })
 
-  async function handleSetDefault(modelId: string) {
-    await api.updateSettings({ defaultModel: modelId })
+  const availableProviders = providers.filter(p => p.available)
+  const defaultProvider = settings?.defaultProvider ?? availableProviders[0]?.id ?? ""
+  const defaultModel = settings?.defaultModel ?? ""
+  const selectedProvider = providers.find(p => p.id === defaultProvider)
+  const models = selectedProvider?.models ?? []
+
+  // Auto-select first model if current default doesn't belong to selected provider
+  const effectiveModel = models.some(m => m.id === defaultModel) ? defaultModel : (models[0]?.id ?? "")
+
+  async function handleProviderChange(providerId: string) {
+    const provider = providers.find(p => p.id === providerId)
+    const firstModel = provider?.models[0]?.id ?? ""
+    await api.updateSettings({ defaultProvider: providerId, defaultModel: firstModel })
     queryClient.invalidateQueries({ queryKey: ["settings"] })
   }
 
-  return (
-    <div className="space-y-2">
-      <p className="text-[12px] text-muted-foreground mb-4">
-        The default model used for new agents. Can be overridden per agent.
-      </p>
-      {MODELS.map((model) => (
-        <button
-          key={model.id}
-          onClick={() => handleSetDefault(model.id)}
-          className={cn(
-            "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors text-left",
-            defaultModel === model.id
-              ? "border-primary bg-primary/5 text-foreground"
-              : "border-border bg-card text-foreground hover:bg-accent/50"
-          )}
-        >
-          <div>
-            <div className="text-sm font-medium">{model.label}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5 font-mono">{model.api} · {model.context} context</div>
-          </div>
-          {defaultModel === model.id && (
-            <span className="text-[11px] font-medium text-primary">Default</span>
-          )}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function ProvidersSettings() {
-  const { data: providers = [], isLoading, isError } = useQuery({ queryKey: ["providers"], queryFn: api.getProviders, staleTime: 30_000 })
+  async function handleModelChange(modelId: string) {
+    await api.updateSettings({ defaultModel: modelId })
+    queryClient.invalidateQueries({ queryKey: ["settings"] })
+  }
 
   const providerMeta: Record<string, { description: string; installHint: string }> = {
     claude: { description: "Anthropic's Claude Code CLI", installHint: "Run claude /login in your terminal to sign in." },
@@ -428,46 +402,94 @@ function ProvidersSettings() {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-[12px] text-muted-foreground mb-4">
-        CLI tools that Huxflux can use to run agents. Install a CLI to enable it.
+    <div className="space-y-6">
+      <p className="text-[12px] text-muted-foreground">
+        Default provider and model for new agents. Can be overridden per agent.
       </p>
-      {providers.map((p) => {
-        const meta = providerMeta[p.id] ?? { description: p.name, installHint: "" }
-        return (
-          <div key={p.id} className="p-4 rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-foreground">{p.name}</span>
-              <span className={cn(
-                "text-[11px] px-2 py-0.5 rounded-full border",
-                p.available
-                  ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
-                  : "bg-secondary text-muted-foreground border-border"
-              )}>
-                {p.available ? "Installed" : "Not installed"}
-              </span>
-            </div>
-            <p className="text-[12px] text-muted-foreground leading-snug mb-2">{meta.description}</p>
-            {!p.available && (
-              <p className="text-[11px] text-muted-foreground/60 leading-snug">{meta.installHint}</p>
+
+      {/* Provider selection */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Provider</div>
+        {availableProviders.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => handleProviderChange(p.id)}
+            className={cn(
+              "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors text-left",
+              defaultProvider === p.id
+                ? "border-primary bg-primary/5 text-foreground"
+                : "border-border bg-card text-foreground hover:bg-accent/50"
             )}
-            {p.available && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
+          >
+            <div>
+              <div className="text-sm font-medium">{p.name}</div>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {p.capabilities.planMode && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">Plan mode</span>}
                 {p.capabilities.toolUseEvents && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">Tool use</span>}
                 {p.capabilities.thinkingBlocks && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">Thinking</span>}
                 {p.capabilities.sessionResume && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">Sessions</span>}
                 {p.capabilities.subAgentSupport && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary text-muted-foreground">Sub-agents</span>}
               </div>
+            </div>
+            {defaultProvider === p.id && (
+              <span className="text-[11px] font-medium text-primary shrink-0">Active</span>
             )}
+          </button>
+        ))}
+
+        {/* Unavailable providers */}
+        {providers.filter(p => !p.available).map((p) => {
+          const meta = providerMeta[p.id] ?? { description: p.name, installHint: "" }
+          return (
+            <div key={p.id} className="px-4 py-3 rounded-lg border border-border bg-card opacity-60">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">{p.name}</span>
+                <span className="text-[11px] text-muted-foreground">Not installed</span>
+              </div>
+              {meta.installHint && (
+                <p className="text-[11px] text-muted-foreground/60 mt-1">{meta.installHint}</p>
+              )}
+            </div>
+          )
+        })}
+
+        {isLoading && (
+          <div className="px-4 py-3 rounded-lg border border-border bg-card">
+            <p className="text-[12px] text-muted-foreground">Loading providers...</p>
           </div>
-        )
-      })}
-      {providers.length === 0 && (
-        <div className="p-4 rounded-lg border border-border bg-card">
-          <p className="text-[12px] text-muted-foreground">
-            {isLoading ? "Loading providers..." : isError ? "Failed to load providers. Make sure the server is updated." : "No providers found."}
-          </p>
+        )}
+
+        {!isLoading && providers.length === 0 && (
+          <div className="px-4 py-3 rounded-lg border border-border bg-card">
+            <p className="text-[12px] text-muted-foreground">No providers found. Install Claude Code, Codex, or OpenCode CLI.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Model selection */}
+      {models.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Model</div>
+          {models.map((model) => (
+            <button
+              key={model.id}
+              onClick={() => handleModelChange(model.id)}
+              className={cn(
+                "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors text-left",
+                effectiveModel === model.id
+                  ? "border-primary bg-primary/5 text-foreground"
+                  : "border-border bg-card text-foreground hover:bg-accent/50"
+              )}
+            >
+              <div>
+                <div className="text-sm font-medium">{model.label}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono">{model.api}</div>
+              </div>
+              {effectiveModel === model.id && (
+                <span className="text-[11px] font-medium text-primary">Default</span>
+              )}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -1245,12 +1267,26 @@ function ServersSettings() {
 }
 
 function UpdatesSettings() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: api.getSettings })
+
+  // Desktop update state
   const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState<"none" | "available" | "error" | null>(null)
-  const [updateInfo, setUpdateInfo] = useState<{ version: string } | null>(null)
-  const [installing, setInstalling] = useState(false)
-  const [progress, setProgress] = useState<number | null>(null)
+  const [desktopUpdate, setDesktopUpdate] = useState<{ version: string } | null>(null)
+  const [desktopInstalling, setDesktopInstalling] = useState(false)
+  const [desktopProgress, setDesktopProgress] = useState<number | null>(null)
   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [checkError, setCheckError] = useState(false)
+
+  // Server update state
+  const [serverVersion, setServerVersion] = useState<{ current: string; latest: string | null; updateAvailable: boolean } | null>(null)
+  const [serverUpdating, setServerUpdating] = useState(false)
+  const [serverUpdateError, setServerUpdateError] = useState<string | null>(null)
+
+  // Auto-update desktop (localStorage)
+  const [autoUpdateDesktop, setAutoUpdateDesktop] = useState(() => {
+    try { return localStorage.getItem("huxflux-auto-update-desktop") !== "false" } catch { return true }
+  })
 
   useEffect(() => {
     if (!isTauri) return
@@ -1259,31 +1295,43 @@ function UpdatesSettings() {
     })
   }, [])
 
-  async function checkNow() {
-    if (!isTauri) return
+  // Load server version on mount
+  useEffect(() => {
+    api.getServerVersion().then(setServerVersion).catch(() => {})
+  }, [])
+
+  async function checkAll() {
     setChecking(true)
-    setResult(null)
-    try {
-      const { check } = await import("@tauri-apps/plugin-updater")
-      const update = await check()
-      if (update?.available) {
-        setResult("available")
-        setUpdateInfo({ version: update.version })
-      } else {
-        setResult("none")
-      }
-    } catch (err) {
-      console.error("[updater] check failed:", err)
-      setResult("error")
-    } finally {
-      setChecking(false)
+    setCheckError(false)
+    setDesktopUpdate(null)
+
+    // Check desktop and server in parallel
+    const results = await Promise.allSettled([
+      isTauri ? import("@tauri-apps/plugin-updater").then(({ check }) => check()) : Promise.resolve(null),
+      api.checkServerUpdate(),
+    ])
+
+    // Desktop result
+    const desktopResult = results[0]
+    if (desktopResult.status === "fulfilled" && desktopResult.value?.available) {
+      setDesktopUpdate({ version: desktopResult.value.version })
+    } else if (desktopResult.status === "rejected") {
+      setCheckError(true)
     }
+
+    // Server result
+    const serverResult = results[1]
+    if (serverResult.status === "fulfilled") {
+      setServerVersion(serverResult.value)
+    }
+
+    setChecking(false)
   }
 
-  async function installUpdate() {
+  async function installDesktopUpdate() {
     if (!isTauri) return
-    setInstalling(true)
-    setProgress(0)
+    setDesktopInstalling(true)
+    setDesktopProgress(0)
     try {
       const { check } = await import("@tauri-apps/plugin-updater")
       const update = await check()
@@ -1292,68 +1340,162 @@ function UpdatesSettings() {
       let total = 0
       await update.downloadAndInstall((event: any) => {
         if (event.event === "Started") total = event.data.contentLength ?? 0
-        else if (event.event === "Progress") { downloaded += event.data.chunkLength; if (total > 0) setProgress(Math.round((downloaded / total) * 100)) }
-        else if (event.event === "Finished") setProgress(100)
+        else if (event.event === "Progress") { downloaded += event.data.chunkLength; if (total > 0) setDesktopProgress(Math.round((downloaded / total) * 100)) }
+        else if (event.event === "Finished") setDesktopProgress(100)
       })
       const { relaunch } = await import("@tauri-apps/plugin-process")
       await relaunch()
     } catch {
-      setInstalling(false)
-      setProgress(null)
+      setDesktopInstalling(false)
+      setDesktopProgress(null)
     }
   }
 
-  if (!isTauri) {
-    return (
-      <div className="space-y-4">
-        <p className="text-[13px] text-muted-foreground">Auto-updates are only available in the desktop app.</p>
-      </div>
-    )
+  async function installServerUpdate() {
+    setServerUpdating(true)
+    setServerUpdateError(null)
+    try {
+      await api.triggerServerUpdate()
+      // Server will restart. Wait and re-check version.
+      await new Promise(r => setTimeout(r, 5000))
+      // Poll until server is back
+      for (let i = 0; i < 20; i++) {
+        try {
+          const v = await api.getServerVersion()
+          setServerVersion(v)
+          setServerUpdating(false)
+          return
+        } catch {
+          await new Promise(r => setTimeout(r, 1000))
+        }
+      }
+      setServerUpdateError("Server did not come back after update. Check 'huxflux logs'.")
+    } catch (err: any) {
+      setServerUpdateError(err.message || "Update failed")
+    }
+    setServerUpdating(false)
   }
+
+  const allUpToDate = !desktopUpdate && !serverVersion?.updateAvailable && !checking
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <div className="text-[13px] text-muted-foreground">Current version</div>
-        <div className="text-[14px] font-mono text-foreground">{appVersion ?? "…"}</div>
+      {/* Version overview */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-3 rounded-lg border border-border bg-card">
+          <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1">Desktop</div>
+          <div className="text-[14px] font-mono text-foreground">{appVersion ?? (isTauri ? "…" : "n/a")}</div>
+          {desktopUpdate && (
+            <div className="text-[11px] text-primary mt-1">v{desktopUpdate.version} available</div>
+          )}
+        </div>
+        <div className="p-3 rounded-lg border border-border bg-card">
+          <div className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1">Server</div>
+          <div className="text-[14px] font-mono text-foreground">{serverVersion?.current ?? "…"}</div>
+          {serverVersion?.updateAvailable && serverVersion.latest && (
+            <div className="text-[11px] text-primary mt-1">v{serverVersion.latest} available</div>
+          )}
+        </div>
       </div>
 
+      {/* Check + update buttons */}
       <div className="space-y-3">
-        <Button onClick={checkNow} disabled={checking || installing} variant="outline" size="sm" className="gap-2">
+        <Button onClick={checkAll} disabled={checking || desktopInstalling || serverUpdating} variant="outline" size="sm" className="gap-2">
           <TablerIcons.IconRefresh size={14} className={checking ? "animate-spin" : ""} />
           {checking ? "Checking…" : "Check for updates"}
         </Button>
 
-        {result === "none" && (
-          <p className="text-[12px] text-emerald-400">You're on the latest version.</p>
+        {allUpToDate && !checkError && (
+          <p className="text-[12px] text-emerald-400">Everything is up to date.</p>
         )}
-        {result === "error" && (
-          <p className="text-[12px] text-red-400">Failed to check for updates. No releases found or endpoint unreachable.</p>
-        )}
-        {result === "available" && updateInfo && (
-          <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
-            <p className="text-[13px] text-foreground font-medium">
-              Version {updateInfo.version} is available
-            </p>
-            {installing ? (
-              <div className="space-y-1">
-                <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress ?? 0}%` }} />
-                </div>
-                <p className="text-[11px] text-muted-foreground">{progress != null ? `${progress}%` : "Downloading…"}</p>
-              </div>
-            ) : (
-              <Button onClick={installUpdate} size="sm" className="gap-2">
-                <TablerIcons.IconDownload size={14} />
-                Download &amp; install
-              </Button>
-            )}
-          </div>
+        {checkError && (
+          <p className="text-[12px] text-red-400">Failed to check for desktop updates.</p>
         )}
       </div>
 
+      {/* Desktop update */}
+      {desktopUpdate && isTauri && (
+        <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] text-foreground font-medium">
+              Desktop v{desktopUpdate.version}
+            </p>
+            {desktopInstalling ? (
+              <div className="w-32 space-y-1">
+                <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${desktopProgress ?? 0}%` }} />
+                </div>
+                <p className="text-[10px] text-muted-foreground text-right">{desktopProgress != null ? `${desktopProgress}%` : "…"}</p>
+              </div>
+            ) : (
+              <Button onClick={installDesktopUpdate} size="sm" className="gap-1.5 h-7 text-[12px]">
+                <TablerIcons.IconDownload size={12} />
+                Update
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Server update */}
+      {serverVersion?.updateAvailable && serverVersion.latest && (
+        <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] text-foreground font-medium">
+              Server v{serverVersion.latest}
+            </p>
+            {serverUpdating ? (
+              <p className="text-[11px] text-muted-foreground">Updating and restarting…</p>
+            ) : (
+              <Button onClick={installServerUpdate} size="sm" className="gap-1.5 h-7 text-[12px]">
+                <TablerIcons.IconDownload size={12} />
+                Update
+              </Button>
+            )}
+          </div>
+          {serverUpdateError && (
+            <p className="text-[11px] text-red-400">{serverUpdateError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Auto-update settings */}
+      <div className="space-y-0.5 pt-2 border-t border-border">
+        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-3">Auto-update</div>
+
+        {isTauri && (
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <div className="text-sm text-foreground">Desktop app</div>
+              <div className="text-[11px] text-muted-foreground">Download and install updates automatically</div>
+            </div>
+            <Switch
+              checked={autoUpdateDesktop}
+              onCheckedChange={(v) => {
+                setAutoUpdateDesktop(v)
+                localStorage.setItem("huxflux-auto-update-desktop", String(v))
+              }}
+            />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <div className="text-sm text-foreground">Server</div>
+            <div className="text-[11px] text-muted-foreground">Update server when no agents are running</div>
+          </div>
+          <Switch
+            checked={settings?.autoUpdateServer ?? false}
+            onCheckedChange={async (v) => {
+              await api.updateSettings({ autoUpdateServer: v })
+              queryClient.invalidateQueries({ queryKey: ["settings"] })
+            }}
+          />
+        </div>
+      </div>
+
       <p className="text-[11px] text-muted-foreground/50">
-        Updates are checked automatically every hour while the app is running.
+        Updates are checked every hour for the desktop app and every 6 hours for the server.
       </p>
     </div>
   )
@@ -1734,7 +1876,6 @@ function ReviewSettings() {
 const sectionContent: Record<Section, React.ReactNode> = {
   general: <GeneralSettings />,
   models: <ModelsSettings />,
-  providers: <ProvidersSettings />,
   appearance: <AppearanceSettings />,
   git: <GitSettings />,
   review: <ReviewSettings />,
@@ -1748,7 +1889,6 @@ const sectionContent: Record<Section, React.ReactNode> = {
 const sectionTitles: Record<Section, string> = {
   general: "General",
   models: "Models",
-  providers: "Providers",
   appearance: "Appearance",
   git: "Git",
   review: "Review",

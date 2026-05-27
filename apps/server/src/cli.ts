@@ -322,20 +322,54 @@ async function cmdSandboxSetup(cfg: Config) {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-async function cmdStart() {
+interface StartResult { pid: number; port: number; cfg: Config }
+
+async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
   const existing = getRunningPid()
   if (existing) {
-    console.log(`huxflux is already running  (PID ${existing})`)
-    console.log(`  Status: huxflux status`)
-    console.log(`  Logs:   huxflux logs`)
-    process.exit(0)
+    const cfg = loadConfig()
+    const port = getActualPort(cfg.port)
+    if (!opts?.silent) {
+      console.log(`huxflux is already running  (PID ${existing})`)
+      console.log(`  Status: huxflux status`)
+      console.log(`  Logs:   huxflux logs`)
+    }
+    return { pid: existing, port, cfg }
+  }
+
+  // If the service was unloaded (by `huxflux stop`), re-load it so it starts again
+  if (isServiceInstalled()) {
+    // Service plist/unit file exists but process isn't running, re-activate it
+    const plat = os.platform()
+    if (plat === "darwin") {
+      spawnSync("launchctl", ["load", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
+    } else if (plat === "linux") {
+      spawnSync("systemctl", ["--user", "start", "huxflux"], { stdio: "pipe" })
+    }
+    // Wait for the service to write a PID file
+    const cfg = loadConfig()
+    const serviceDeadline = Date.now() + 5000
+    while (!getRunningPid() && Date.now() < serviceDeadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+    const pid = getRunningPid()
+    if (pid) {
+      const port = getActualPort(cfg.port)
+      return { pid, port, cfg }
+    }
+    // Service didn't start in time, fall through to manual start
   }
 
   const cfg = loadConfig()
-  const isFirstStart = !cfg.disclaimerShown
 
-  if (isFirstStart) {
-    printDisclaimer()
+  if (!opts?.silent) {
+    const isFirstStart = !cfg.disclaimerShown
+    if (isFirstStart) {
+      printDisclaimer()
+      cfg.disclaimerShown = true
+      saveConfig(cfg)
+    }
+  } else if (!cfg.disclaimerShown) {
     cfg.disclaimerShown = true
     saveConfig(cfg)
   }
@@ -353,8 +387,7 @@ async function cmdStart() {
   fs.closeSync(logFd)
 
   if (!child.pid) {
-    console.error("Failed to start server")
-    process.exit(1)
+    throw new Error("Failed to start server process")
   }
 
   fs.writeFileSync(PID_FILE, String(child.pid))
@@ -365,8 +398,15 @@ async function cmdStart() {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
   }
 
+  const port = getActualPort(cfg.port)
+  return { pid: child.pid, port, cfg }
+}
+
+async function cmdStart() {
+  const { pid, cfg } = await startServer()
+
   console.log(`\nhuxflux started\n`)
-  await printConnectInfo(cfg, child.pid)
+  await printConnectInfo(cfg, pid)
   console.log(`\n  huxflux logs    — tail the server log`)
   console.log(`  huxflux crashes — tail the crash log`)
   console.log(`  huxflux stop    — stop the server`)
@@ -379,6 +419,10 @@ async function cmdStart() {
 // ── Supervisor — restarts the server on crash ────────────────────────────────
 
 function runSupervisor() {
+  // Write our PID so `huxflux stop` can find us (covers both cmdStart and service launch)
+  ensureDataDir()
+  fs.writeFileSync(PID_FILE, String(process.pid))
+
   const MAX_RESTARTS = 5
   const RESTART_WINDOW_MS = 60_000
   const RESTART_DELAY_MS = 2_000
@@ -405,6 +449,13 @@ function runSupervisor() {
       // Clean exit (SIGTERM from `huxflux stop`, or code 0) — don't restart
       if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
         process.exit(0)
+      }
+
+      // Exit code 42 = planned restart after update (not a crash)
+      if (code === 42) {
+        console.log("[supervisor] Server updated, restarting with new version...")
+        setTimeout(startServer, 1000)
+        return
       }
 
       logCrash(code, signal)
@@ -436,9 +487,36 @@ function runSupervisor() {
   startServer()
 }
 
+function isServiceInstalled(): boolean {
+  const platform = os.platform()
+  if (platform === "darwin") {
+    return fs.existsSync(path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist"))
+  }
+  if (platform === "linux") {
+    return fs.existsSync(path.join(os.homedir(), ".config", "systemd", "user", "huxflux.service"))
+  }
+  return false
+}
+
 function cmdStop() {
   const pid = getRunningPid()
   if (!pid) {
+    // Check if a service is installed but PID file is missing
+    if (isServiceInstalled()) {
+      console.log("Stopping via system service...")
+      const plat = os.platform()
+      if (plat === "darwin") {
+        // Unload stops the process and prevents KeepAlive from restarting it
+        spawnSync("launchctl", ["unload", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
+      } else if (plat === "linux") {
+        spawnSync("systemctl", ["--user", "stop", "huxflux"], { stdio: "pipe" })
+      }
+      if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch {}
+      if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch {}
+      console.log("huxflux stopped")
+      console.log("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
+      return
+    }
     console.log("huxflux is not running")
     process.exit(0)
   }
@@ -658,7 +736,7 @@ async function cmdSetup() {
   const p = await import("@clack/prompts")
 
   console.log("")
-  p.intro("⚡ Huxflux Setup")
+  p.intro("Huxflux Setup")
 
   // ── Detect environment ──
   const serverRunning = getRunningPid() !== null
@@ -690,36 +768,34 @@ async function cmdSetup() {
     ? (process.env.SSH_CONNECTION ? "Remote (SSH)" : fs.existsSync("/.dockerenv") ? "Docker" : "Headless")
     : "Local"
 
-  p.log.step("Scanning your system...")
   p.log.info(`Platform:    ${platformLabel}`)
   p.log.info(`Environment: ${envLabel}`)
   p.log.info(`Data:        ${DATA_DIR}`)
 
-  if (serverRunning) p.log.success("Server:      running ✓")
-  else if (dbExists)  p.log.warning("Server:      installed but not running")
-  else                p.log.warning("Server:      not set up yet")
+  if (serverRunning) p.log.success("Server:      running")
+  else if (dbExists)  p.log.info("Server:      stopped")
+  else                p.log.info("Server:      not installed")
 
   if (isHeadless) {
-    p.log.info("Desktop:     not available (headless environment)")
+    p.log.info("Desktop:     n/a (headless)")
   } else if (hasDesktop) {
-    p.log.success("Desktop:     installed ✓")
+    p.log.success("Desktop:     installed")
   } else {
     p.log.info("Desktop:     not installed")
   }
 
-  // ── Nothing to do? ──
+  // ── Already set up ──
   if (serverRunning && (hasDesktop || isHeadless)) {
     const conn = fs.existsSync(connectionFile)
       ? JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
       : null
 
-    p.log.success("Everything is set up!")
+    p.log.success("Everything is already set up!")
     if (conn) {
-      p.log.info(`API:    ${conn.url}`)
-      p.log.info(`Web UI: ${conn.url}`)
+      p.log.info(`Server: ${conn.url}`)
       if (isHeadless) {
         const connStr = connectionString(loadConfig())
-        p.log.message(`\n  Connect from your desktop:\n\n    ${connStr}\n`)
+        p.log.message(`\n  Connect from another device:\n\n    ${connStr}\n`)
         try {
           const qr = await qrToString(connStr, { type: "terminal", small: true })
           console.log(qr)
@@ -735,22 +811,21 @@ async function cmdSetup() {
   if (!serverRunning) {
     options.push({
       value: "server",
-      label: dbExists ? "Start server" : "Set up server",
-      hint: dbExists ? "resume existing setup" : "API + Web UI",
+      label: "Server",
+      hint: dbExists ? "restart" : "API, database, and web UI",
     })
   }
   if (canInstallDesktop && !hasDesktop) {
-    options.push({ value: "desktop", label: "Install desktop app", hint: platformLabel })
+    options.push({ value: "desktop", label: "Desktop app", hint: platformLabel })
   }
 
   if (options.length === 0) {
-    // Headless with server already running
-    p.outro("Nothing to set up. Run 'huxflux status' for server details.")
+    p.outro("Nothing to install. Run 'huxflux status' for server details.")
     return
   }
 
   const components = await p.multiselect({
-    message: "What would you like to set up?",
+    message: "What would you like to install?",
     options,
     initialValues: options.map(o => o.value),
     required: false,
@@ -763,58 +838,72 @@ async function cmdSetup() {
 
   const selected = components as string[]
 
-  // ── Start server ──
+  // ── Server setup ──
   if (selected.includes("server")) {
+    // Ask about auto-start first, before starting anything
+    const canService = platform === "darwin" || platform === "linux"
+    let wantsService = false
+    if (canService) {
+      const installService = await p.confirm({ message: "Start automatically on login? (you can always run 'huxflux start' manually)" })
+      if (p.isCancel(installService)) { p.cancel("Setup cancelled."); process.exit(0) }
+      wantsService = !!installService
+    }
+
     const s = p.spinner()
-    s.start(dbExists ? "Starting server..." : "Setting up server...")
 
-    try {
-      await cmdStart()
-      // Wait for connection.json
-      for (let i = 0; i < 30; i++) {
-        if (fs.existsSync(connectionFile)) break
-        await new Promise(r => setTimeout(r, 500))
-      }
-      s.stop("Server running ✓")
-
-      if (fs.existsSync(connectionFile)) {
-        const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
-        p.log.success(`API:    ${conn.url}`)
-        p.log.success(`Web UI: ${conn.url}`)
-        p.log.info(`Open ${conn.url} in your browser to get started`)
-      }
-
-      // Offer to install as a system service (auto-start on boot)
-      const canService = platform === "darwin" || platform === "linux"
-      if (canService) {
-        const installService = await p.confirm({ message: "Start Huxflux automatically on boot?" })
-        if (!p.isCancel(installService) && installService) {
-          try {
-            installSystemService()
-            p.log.success("System service installed — Huxflux will start on boot")
-          } catch (err: any) {
-            p.log.warning(`Could not install service: ${err.message}`)
-            p.log.info("You can start manually with: huxflux start")
-          }
+    if (wantsService) {
+      // Install service, which starts the server via the supervisor
+      s.start("Installing service and starting server...")
+      try {
+        installSystemService()
+      } catch (err: any) {
+        s.stop("Could not install service")
+        p.log.warning(err.message)
+        p.log.info("Starting manually instead...")
+        try {
+          await startServer({ silent: true })
+        } catch (startErr: any) {
+          p.log.error(startErr.message || "Failed to start server")
         }
       }
-
-      // On headless: show connection string + QR
-      if (isHeadless) {
-        const cfg = loadConfig()
-        const connStr = connectionString(cfg)
-        p.log.step("Connect from your desktop or browser:")
-        p.log.message(`\n    ${connStr}\n`)
-        try {
-          const qr = await qrToString(connStr, { type: "terminal", small: true })
-          console.log(qr)
-        } catch {}
-        p.log.warning("Security: Use Tailscale or a reverse proxy for encrypted access.")
-        p.log.info("Run 'huxflux security' for full recommendations.")
+    } else {
+      s.start("Starting server...")
+      try {
+        await startServer({ silent: true })
+      } catch (err: any) {
+        s.stop("Failed to start server")
+        p.log.error(err.message || "Unknown error")
       }
-    } catch (err: any) {
-      s.stop("Failed to start server")
-      p.log.error(err.message || "Unknown error")
+    }
+
+    // Wait for connection.json (server writes it once it binds a port)
+    for (let i = 0; i < 30; i++) {
+      if (fs.existsSync(connectionFile)) break
+      await new Promise(r => setTimeout(r, 500))
+    }
+
+    if (fs.existsSync(connectionFile)) {
+      const conn = JSON.parse(fs.readFileSync(connectionFile, "utf-8"))
+      s.stop("Server is running")
+      p.log.success(`${conn.url}`)
+      if (wantsService) {
+        p.log.info("Auto-start on login enabled")
+      }
+    } else {
+      s.stop("Server started")
+      p.log.info("Run 'huxflux logs' if something looks off")
+    }
+
+    // On headless: show connection string + QR for remote access
+    if (isHeadless) {
+      const cfg = loadConfig()
+      const connStr = connectionString(cfg, getOutboundIp())
+      p.log.step("Connect from another device:")
+      p.log.message(`\n    ${connStr}\n`)
+      try {
+        const qr = await qrToString(connStr, { type: "terminal", small: true })
+        console.log(qr)
+      } catch {}
     }
   }
 
@@ -843,11 +932,10 @@ async function cmdSetup() {
 
       if (platformKey && (release.platforms[platformKey] || installUrls[platformKey])) {
         const downloadUrl = installUrls[platformKey] ?? release.platforms[platformKey].url
-        s.stop(`Desktop v${release.version} available for download`)
+        s.stop(`Found desktop v${release.version}`)
 
-        // Try to download and install automatically on macOS
         if (platform === "darwin") {
-          const installDesktop = await p.confirm({ message: `Download and install Huxflux Desktop v${release.version}?` })
+          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${release.version}?` })
           if (!p.isCancel(installDesktop) && installDesktop) {
             const ds = p.spinner()
             ds.start("Downloading...")
@@ -857,12 +945,10 @@ async function cmdSetup() {
               fs.mkdirSync(tmpDir, { recursive: true })
               const dmgPath = path.join(tmpDir, "Huxflux.dmg")
 
-              // Download DMG
               const dlRes = await fetch(downloadUrl)
               const buffer = Buffer.from(await dlRes.arrayBuffer())
               fs.writeFileSync(dmgPath, buffer)
 
-              // Mount DMG, copy app, unmount
               const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse", "-quiet"], { encoding: "utf-8", stdio: "pipe" })
               const mountLine = (mountResult.stdout || "").split("\n").find((l: string) => l.includes("/Volumes/"))
               const mountPoint = mountLine?.trim().split("\t").pop()?.trim()
@@ -874,14 +960,13 @@ async function cmdSetup() {
                   if (fs.existsSync(dest)) spawnSync("rm", ["-rf", dest], { stdio: "pipe" })
                   spawnSync("cp", ["-R", path.join(mountPoint, appName), dest], { stdio: "pipe" })
                   spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" })
-                  ds.stop("Desktop installed ✓")
+                  ds.stop("Desktop installed")
                   p.log.success(`Installed to /Applications/${appName}`)
 
-                  // Open the app
-                  const openApp = await p.confirm({ message: "Open Huxflux Desktop now?" })
+                  const openApp = await p.confirm({ message: "Open it now?" })
                   if (!p.isCancel(openApp) && openApp) {
                     spawnSync("open", [dest], { stdio: "pipe" })
-                    p.log.success("Desktop app opened — it will auto-connect to your local server")
+                    p.log.success("Launched — it will connect to your local server automatically")
                   }
                 } else {
                   spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" })
@@ -893,22 +978,19 @@ async function cmdSetup() {
                 p.log.warning("Could not mount DMG")
               }
 
-              // Cleanup
               try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
             } catch (dlErr: any) {
               ds.stop("Download failed")
               p.log.error(dlErr.message)
-              p.log.info(`Manual download: ${downloadUrl}`)
+              p.log.info(`Download manually: ${downloadUrl}`)
             }
           }
         } else {
           p.log.info(`Download: ${downloadUrl}`)
-          p.log.message("Download and install the desktop app from the URL above.")
           p.log.info("The desktop app will auto-connect to your local server.")
         }
       } else {
         s.stop("No desktop build for this platform")
-        p.log.warning(`Desktop builds are not available for ${platform}-${arch}`)
         p.log.info("Use the web UI instead: open the server URL in your browser")
       }
     } catch (err: any) {
@@ -919,13 +1001,27 @@ async function cmdSetup() {
 
   // ── Summary ──
   console.log("")
-  p.log.step("Quick reference:")
-  p.log.info("huxflux status     Show server URL and token")
-  p.log.info("huxflux logs       Tail the server log")
-  p.log.info("huxflux stop       Stop the server")
-  p.log.info("huxflux update     Update all components")
-  p.log.info("huxflux security   Security recommendations")
-  p.outro("You're all set! 🚀")
+  p.log.warning("The auth token grants shell access to this machine. Treat it like an SSH key.")
+  p.log.info("Run 'huxflux security' for details.")
+  console.log("")
+  p.log.step("Useful commands:")
+  p.log.info("huxflux status   Connection info and server URL")
+  p.log.info("huxflux logs     Tail the server log")
+  p.log.info("huxflux stop     Stop the server")
+  p.log.info("huxflux update   Update to the latest version")
+
+  // Build a helpful outro based on what was installed
+  const hasServer = selected.includes("server")
+  const installedDesktop = selected.includes("desktop")
+  if (hasServer && !installedDesktop) {
+    const cfg = loadConfig()
+    const port = getActualPort(cfg.port)
+    p.outro(`You're all set! Open http://127.0.0.1:${port} in your browser to get started.`)
+  } else if (installedDesktop) {
+    p.outro("You're all set! Open the desktop app to get started.")
+  } else {
+    p.outro("You're all set!")
+  }
 }
 
 // ── Data management ──────────────────────────────────────────────────────────
@@ -1015,10 +1111,12 @@ Usage:
 
 function installSystemService() {
   const platform = os.platform()
-  const huxfluxBin = process.argv[1] // path to the CLI entry
+  const cfg = loadConfig()
+  const cliEntry = fileURLToPath(import.meta.url)
 
   if (platform === "darwin") {
     // macOS: LaunchAgent (runs as current user, starts on login)
+    // Runs the supervisor for crash recovery and logging
     const plistDir = path.join(os.homedir(), "Library", "LaunchAgents")
     fs.mkdirSync(plistDir, { recursive: true })
     const plistPath = path.join(plistDir, "com.huxflux.server.plist")
@@ -1031,14 +1129,23 @@ function installSystemService() {
   <key>ProgramArguments</key>
   <array>
     <string>${process.execPath}</string>
-    <string>${SERVER_ENTRY}</string>
+    <string>${cliEntry}</string>
+    <string>_supervisor</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>NODE_ENV</key>
     <string>production</string>
+    <key>AUTH_TOKEN</key>
+    <string>${cfg.token}</string>
+    <key>PORT</key>
+    <string>${cfg.port}</string>
     <key>HUXFLUX_DIR</key>
     <string>${DATA_DIR}</string>
+    <key>DB_PATH</key>
+    <string>${path.join(DATA_DIR, "huxflux.db")}</string>
+    <key>WORKSPACES_BASE</key>
+    <string>${path.join(DATA_DIR, "workspaces")}</string>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:${path.dirname(process.execPath)}</string>
   </dict>
@@ -1056,7 +1163,7 @@ function installSystemService() {
     spawnSync("launchctl", ["load", plistPath], { stdio: "pipe" })
 
   } else if (platform === "linux") {
-    // Linux: systemd user service
+    // Linux: systemd user service running the supervisor
     const serviceDir = path.join(os.homedir(), ".config", "systemd", "user")
     fs.mkdirSync(serviceDir, { recursive: true })
     const servicePath = path.join(serviceDir, "huxflux.service")
@@ -1066,9 +1173,13 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${process.execPath} ${SERVER_ENTRY}
+ExecStart=${process.execPath} ${cliEntry} _supervisor
 Environment=NODE_ENV=production
+Environment=AUTH_TOKEN=${cfg.token}
+Environment=PORT=${cfg.port}
 Environment=HUXFLUX_DIR=${DATA_DIR}
+Environment=DB_PATH=${path.join(DATA_DIR, "huxflux.db")}
+Environment=WORKSPACES_BASE=${path.join(DATA_DIR, "workspaces")}
 Restart=on-failure
 RestartSec=5
 
@@ -1185,6 +1296,45 @@ async function cmdUninstall() {
   p.outro("Huxflux has been uninstalled.")
 }
 
+// ── Config ──────────────────────────────────────────────────────────────────
+
+function cmdConfig(key?: string, value?: string) {
+  if (key === "auto-update") {
+    // Read/write auto-update setting from settings.json (same file the server uses)
+    const settingsFile = path.join(DATA_DIR, "settings.json")
+    let settings: Record<string, unknown> = {}
+    try { settings = JSON.parse(fs.readFileSync(settingsFile, "utf8")) } catch {}
+
+    if (value === undefined) {
+      console.log(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
+      return
+    }
+
+    if (value === "on" || value === "true") {
+      settings.autoUpdateServer = true
+    } else if (value === "off" || value === "false") {
+      settings.autoUpdateServer = false
+    } else {
+      console.error(`Invalid value: ${value}. Use 'on' or 'off'.`)
+      process.exit(1)
+    }
+
+    ensureDataDir()
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
+    console.log(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
+    return
+  }
+
+  // No key or unknown key: show all config
+  console.log(`
+huxflux config — View and modify settings
+
+Usage:
+  huxflux config auto-update          Show auto-update status
+  huxflux config auto-update on|off   Enable/disable server auto-updates
+`)
+}
+
 // ── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp() {
@@ -1209,6 +1359,7 @@ Usage:
   huxflux restore 2      Restore DB from older backup (.bak2)
   huxflux reset          ⚠️  Erase all data and start fresh (3 confirmations required)
   huxflux update         Update huxflux to the latest version
+  huxflux config auto-update [on|off]  View or set server auto-update
   huxflux data copy dev-to-prod    Copy dev database to production
   huxflux data copy prod-to-dev    Copy production database to dev
   huxflux uninstall      Remove Huxflux (server, desktop, data)
@@ -1241,6 +1392,7 @@ switch (cmd) {
   case "reset":    cmdReset().catch(console.error); break
   case "update":   cmdUpdate(); break
   case "setup":    cmdSetup().catch(console.error); break
+  case "config":    cmdConfig(cmdArgs[0], cmdArgs[1]); break
   case "data":      cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
   case "uninstall": cmdUninstall().catch(console.error); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break

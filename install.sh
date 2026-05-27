@@ -81,11 +81,11 @@ fi
 step "② Installing Huxflux"
 echo ""
 
-if ! $PM_GLOBAL @alexmartosp/huxflux 2>&1; then
+if ! $PM_GLOBAL @alexmartosp/huxflux@latest 2>&1; then
   echo ""
   if [ "$PM" = "npm" ]; then
     warn "Global install failed. Trying with sudo..."
-    if ! sudo npm install -g @alexmartosp/huxflux 2>&1; then
+    if ! sudo npm install -g @alexmartosp/huxflux@latest 2>&1; then
       fail "Installation failed. Try using nvm for a user-level Node.js install."
     fi
   else
@@ -113,13 +113,8 @@ fi
 HUXFLUX_VER=$(huxflux --version 2>/dev/null || echo "installed")
 ok "Huxflux ${HUXFLUX_VER}"
 
-# ── Security notice (brief) ──────────────────────────────────────────────────
-echo ""
-echo -e "  ${YELLOW}${BOLD}⚠ Security:${RESET} The auth token grants shell access to this machine."
-echo -e "  ${DIM}  Treat it like an SSH key. Run 'huxflux security' for full details.${RESET}"
-
 # ── Launch setup wizard ───────────────────────────────────────────────────────
-step "③ Setting up your environment"
+step "③ Running setup"
 echo ""
 
 # When piped from curl, stdin is the script not the terminal.

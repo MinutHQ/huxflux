@@ -9,6 +9,7 @@ import type { Agent } from "@/data/mock"
 import { IconTerminal2, IconPlayerPlayFilled, IconSettings, IconPlus, IconX } from "@tabler/icons-react"
 import { getActiveServer, useRepos, api } from "@huxflux/shared"
 import { colorThemes, getColorTheme } from "@/lib/colorThemes"
+import { openExternal } from "@/lib/platform"
 import "@xterm/xterm/css/xterm.css"
 
 interface TerminalViewProps {
@@ -184,7 +185,7 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     term.loadAddon(fitAddon)
     term.loadAddon(searchAddon)
     term.loadAddon(new WebLinksAddon((event, uri) => {
-      if (event.metaKey || event.ctrlKey) window.open(uri, "_blank")
+      if (event.metaKey || event.ctrlKey) openExternal(uri)
     }))
 
     const session: Session = { term, fitAddon, searchAddon, ws: null, div, port: null, isRunning: false, outputBuf: "", onDataDisposable: null }

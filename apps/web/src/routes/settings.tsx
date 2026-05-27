@@ -57,7 +57,6 @@ function sectionRoute(section: Section) {
 }
 
 export const SettingsModelsRoute = sectionRoute("models")
-export const SettingsProvidersRoute = sectionRoute("providers")
 export const SettingsAppearanceRoute = sectionRoute("appearance")
 export const SettingsGitRoute = sectionRoute("git")
 export const SettingsReviewRoute = sectionRoute("review")
@@ -83,7 +82,6 @@ export const settingsChildren = [
   SettingsIndexRoute,
   SettingsGeneralRoute,
   SettingsModelsRoute,
-  SettingsProvidersRoute,
   SettingsAppearanceRoute,
   SettingsGitRoute,
   SettingsReviewRoute,

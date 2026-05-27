@@ -92,7 +92,10 @@ function RootComponent() {
   }, [])
 
   // Auto-discover local server from connection.json (Tauri desktop only)
-  // Adds or updates the local server entry without overriding the user's active choice
+  // First launch: adds and activates the local server automatically.
+  // After that: only updates token/URL for an already-connected server.
+  // If the user removed the local server, we store it for a UI hint
+  // (ServerSwitcher shows "Local server found" with a one-click add button).
   useEffect(() => {
     if (!isTauri) return
     import("@tauri-apps/api/core").then(({ invoke }) => {
@@ -101,22 +104,37 @@ function RootComponent() {
         try {
           const conn = JSON.parse(json) as { url: string; token: string }
           if (!conn.url) return
+
+          // Normalize: treat localhost and 127.0.0.1 as equivalent
+          const normalizeUrl = (u: string) => u.replace("://localhost", "://127.0.0.1")
           const existing = getServers()
-          const already = existing.find((s) => s.url === conn.url)
+          const connNorm = normalizeUrl(conn.url)
+          const already = existing.find((s) => normalizeUrl(s.url) === connNorm)
+
           if (already) {
-            // Update token if it changed (e.g. after token rotate)
-            if (already.token !== conn.token) {
-              updateServer(already.id, { token: conn.token })
+            // Server already connected, just update token/URL if changed
+            const updates: { token?: string; url?: string } = {}
+            if (already.token !== conn.token) updates.token = conn.token
+            if (already.url !== conn.url) updates.url = conn.url
+            if (Object.keys(updates).length > 0) {
+              updateServer(already.id, updates)
               refreshServers()
             }
-          } else {
-            // Add new local server
+            return
+          }
+
+          const hasAutoConnected = localStorage.getItem("huxflux-auto-connected") === "1"
+
+          if (!hasAutoConnected) {
+            // First launch: auto-add and activate
             const server = addServer({ name: "Local Server", url: conn.url, token: conn.token })
-            // Only auto-activate if no server is currently active
-            if (!activeId) {
-              setActiveServerId(server.id)
-            }
+            setActiveServerId(server.id)
+            localStorage.setItem("huxflux-auto-connected", "1")
             refreshServers()
+          } else {
+            // Not first launch and server not in list: store for UI hint
+            // ServerSwitcher reads this to show "Local server found" button
+            localStorage.setItem("huxflux-local-server", JSON.stringify(conn))
           }
         } catch {}
       }).catch(() => {})

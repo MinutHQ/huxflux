@@ -996,13 +996,15 @@ export async function runClaude(userContent: string, opts: RunnerOptions): Promi
           `- Before telling the user you are done, run the project's test/lint/typecheck commands if they exist in the project's CLAUDE.md or package.json.`,
           `- If any check fails, fix the issue and re-run. Do not declare work complete with failing checks.`,
           `- If you are unsure what commands to run, check package.json scripts or CLAUDE.md for guidance.`,
-          ...(agentRow?.prNumber ? [
-            ``,
-            `PR feedback:`,
-            `When you receive PR review comments (messages from "PR Review"), fix the issues and then reply on GitHub:`,
-            `  <huxflux:pr-reply commentId="COMMENT_ID">your reply explaining what you fixed</huxflux:pr-reply>`,
-            `The comment ID is included in the PR review message. After fixing and replying, push your changes.`,
-          ] : []),
+          ``,
+          `PR feedback:`,
+          `When you receive PR review comments (messages from "PR Review"), fix the issues and then reply on GitHub.`,
+          `Preferred: use the huxflux tag to reply (the server posts it via the GitHub API):`,
+          `  <huxflux:pr-reply commentId="COMMENT_ID">your reply explaining what you fixed</huxflux:pr-reply>`,
+          `The comment ID is included in the PR review message.`,
+          `If the tag does not work (e.g. no PR linked, no GitHub token), fall back to the gh CLI:`,
+          `  gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID/replies -f body='your reply'`,
+          `After fixing and replying, push your changes.`,
           ``,
           `Answer format:`,
           `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -1404,14 +1406,31 @@ async function parsePRReplyTags(content: string, agentId: string): Promise<void>
   // <huxflux:pr-reply commentId="123">reply text</huxflux:pr-reply>
   const replyRe = /<huxflux:pr-reply\s+commentId="([^"]+)">([\s\S]*?)<\/huxflux:pr-reply>/g
 
+  // Check if there are any tags before doing DB lookups
+  if (!/<huxflux:pr-reply/.test(content)) return
+
   const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-  if (!agent?.repoId || !agent.prNumber) return
+  if (!agent?.repoId) {
+    console.warn(`[pr-reply] agent ${agentId} has no repoId, skipping — agent should use gh CLI`)
+    return
+  }
 
   const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-  if (!repo) return
+  if (!repo) {
+    console.warn(`[pr-reply] repo ${agent.repoId} not found, skipping`)
+    return
+  }
 
   const [owner, repoName] = repo.name.includes("/") ? repo.name.split("/") : ["", repo.name]
-  if (!owner || !repoName) return
+
+  if (!agent.prNumber) {
+    console.warn(`[pr-reply] agent ${agentId} has no prNumber — agent should use gh CLI`)
+    return
+  }
+  if (!owner || !repoName) {
+    console.warn(`[pr-reply] could not parse owner/repo from "${repo.name}" — agent should use gh CLI`)
+    return
+  }
 
   for (const match of content.matchAll(replyRe)) {
     const [, commentId, replyText] = match

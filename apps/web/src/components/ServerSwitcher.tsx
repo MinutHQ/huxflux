@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@huxflux/ui"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId, useServerStatus } from "@huxflux/shared"
+import { setActiveServerId, useServerStatus, addServer } from "@huxflux/shared"
 import type { ServerStatus } from "@huxflux/shared"
 import {
   IconChevronDown,
@@ -147,7 +147,7 @@ interface DropdownProps {
 }
 
 function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
-  const { servers, activeId, setActive, remove, update } = useServers()
+  const { servers, activeId, setActive, remove, update, refresh } = useServers()
   const statuses = useServerStatus(servers)
   const [showAdd, setShowAdd] = useState(false)
   const [editingTokenId, setEditingTokenId] = useState<string | null>(null)
@@ -155,6 +155,23 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
   const [tokenError, setTokenError] = useState<string | null>(null)
   const [tokenSaving, setTokenSaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  // Check if there's a local server available that isn't connected
+  const [localServerHint, setLocalServerHint] = useState<{ url: string; token: string } | null>(null)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("huxflux-local-server")
+      if (!raw) return
+      const conn = JSON.parse(raw) as { url: string; token: string }
+      const normalizeUrl = (u: string) => u.replace("://localhost", "://127.0.0.1")
+      const alreadyConnected = servers.some((s) => normalizeUrl(s.url) === normalizeUrl(conn.url))
+      if (alreadyConnected) {
+        localStorage.removeItem("huxflux-local-server")
+      } else {
+        setLocalServerHint(conn)
+      }
+    } catch {}
+  }, [servers])
 
   async function handleSaveToken(serverId: string) {
     const server = servers.find((s) => s.id === serverId)
@@ -269,6 +286,29 @@ function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
           </div>
         )}
       </div>
+
+      {localServerHint && (
+        <div className="border-t border-border p-1.5">
+          <button
+            onClick={() => {
+              const server = addServer({ name: "Local Server", url: localServerHint.url, token: localServerHint.token })
+              setActiveServerId(server.id)
+              localStorage.removeItem("huxflux-local-server")
+              setLocalServerHint(null)
+              refresh()
+              onClose()
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[12px] text-emerald-400 hover:bg-accent/60 transition-colors"
+          >
+            <IconServer size={13} />
+            <div className="flex-1 min-w-0 text-left">
+              <div className="font-medium">Local server found</div>
+              <div className="text-[11px] font-mono text-muted-foreground/60 truncate">{localServerHint.url}</div>
+            </div>
+            <span className="text-[11px] shrink-0">Connect</span>
+          </button>
+        </div>
+      )}
 
       {showAdd ? (
         <AddServerForm onDone={() => { setShowAdd(false); onClose() }} />

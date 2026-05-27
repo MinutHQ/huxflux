@@ -7,6 +7,8 @@ import * as path from "node:path"
 import { config, isDev } from "./config.js"
 import { toString as qrToString } from "qrcode"
 
+import { SERVER_VERSION } from "./version.js"
+
 const PORT_FILE = path.join(os.homedir(), "huxflux", isDev ? "server-dev.port" : "server.port")
 import { runMigrations } from "./db/index.js"
 import { reposRoutes } from "./routes/repos.js"
@@ -99,7 +101,7 @@ await app.register(tasksRoutes)
 registerAutomationRoutes(app)
 
 // Health check
-app.get("/health", async () => ({ status: "ok", version: "0.0.0" }))
+app.get("/health", async () => ({ status: "ok", version: SERVER_VERSION }))
 
 // Server capabilities — exposes feature flags to the client (no secrets)
 app.get("/api/config", async () => ({
@@ -107,9 +109,12 @@ app.get("/api/config", async () => ({
   feedbackEnabled: !!config.feedbackRepo && !!config.githubToken,
 }))
 
+import { startUpdateChecker } from "./updater.js"
+
 // Startup — try requested port, then increment up to 10 times on EADDRINUSE
 runMigrations()
 startScheduler()
+startUpdateChecker()
 
 // Clear any stale streaming=1 rows from a previous crashed/killed process.
 // The in-memory runningProcesses Map starts empty, so any row claiming to
@@ -169,10 +174,10 @@ try { fs.writeFileSync(PORT_FILE, String(boundPort)) } catch { /* non-fatal */ }
 const CONNECTION_FILE = path.join(os.homedir(), "huxflux", "connection.json")
 try {
   fs.writeFileSync(CONNECTION_FILE, JSON.stringify({
-    url: `http://localhost:${boundPort}`,
+    url: `http://127.0.0.1:${boundPort}`,
     token: config.authToken || "",
     pid: process.pid,
-    version: "0.2.33",
+    version: SERVER_VERSION,
     port: boundPort,
   }, null, 2))
 } catch { /* non-fatal */ }

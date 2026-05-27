@@ -119,9 +119,7 @@ async function pollAgent(agent: typeof agents.$inferSelect) {
       await monitorMergeConflicts(agent, pr)
     }
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
-    }
+    console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
   }
 }
 
@@ -270,7 +268,7 @@ async function monitorMergeConflicts(
 
 async function sendToAgent(agentId: string, content: string, sender: string): Promise<void> {
   const body = JSON.stringify({ content, sender })
-  await fetch(`http://localhost:${config.boundPort}/api/agents/${agentId}/messages`, {
+  await fetch(`http://127.0.0.1:${config.boundPort}/api/agents/${agentId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -301,7 +299,7 @@ export function startPoller(intervalMs?: number) {
   // Periodic Jira sync (every 5 minutes)
   async function syncJira() {
     try {
-      await fetch(`http://localhost:${config.boundPort}/api/tasks/sync`, {
+      await fetch(`http://127.0.0.1:${config.boundPort}/api/tasks/sync`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

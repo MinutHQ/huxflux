@@ -81,6 +81,7 @@ export interface HuxfluxSettings {
   ciMonitoring?: boolean
   pollingIntervalMs?: number
   threadsEnabled?: boolean
+  autoUpdateServer?: boolean
 }
 
 export interface ProviderInfo {
@@ -95,6 +96,11 @@ export const api = {
   // Server config / feature flags
   getServerConfig: () => req<{ githubEnabled: boolean; feedbackEnabled: boolean }>("/api/config"),
   getProviders: () => req<ProviderInfo[]>("/api/providers"),
+
+  // System / updates
+  getServerVersion: () => req<{ current: string; latest: string | null; updateAvailable: boolean }>("/api/system/version"),
+  checkServerUpdate: () => req<{ current: string; latest: string | null; updateAvailable: boolean }>("/api/system/version/check", { method: "POST" }),
+  triggerServerUpdate: () => req<{ success: boolean; message: string }>("/api/system/update", { method: "POST" }),
 
   // Settings
   getSettings: () => req<HuxfluxSettings>("/api/settings"),

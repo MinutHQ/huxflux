@@ -86,7 +86,7 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     }
   }
 
-  // Exclude .huxflux directory via .git/info/exclude (local-only, never committed)
+  // Exclude huxflux temp files via .git/info/exclude (local-only, never committed)
   try {
     const { readFile, appendFile, mkdir: mkdirFs } = await import("node:fs/promises")
     // Worktrees use a .git file pointing to the main repo — resolve the actual git dir
@@ -101,8 +101,8 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     await mkdirFs(infoDir, { recursive: true })
     const excludeFile = path.join(infoDir, "exclude")
     const existing = await readFile(excludeFile, "utf8").catch(() => "")
-    if (!existing.includes(".huxflux")) {
-      await appendFile(excludeFile, `${existing.endsWith("\n") || !existing ? "" : "\n"}.huxflux\n`)
+    if (!existing.includes(".huxflux_attachments")) {
+      await appendFile(excludeFile, `${existing.endsWith("\n") || !existing ? "" : "\n"}.huxflux_attachments\n`)
     }
   } catch { /* non-critical */ }
 }

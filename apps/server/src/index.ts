@@ -9,6 +9,12 @@ import { toString as qrToString } from "qrcode"
 
 import { SERVER_VERSION } from "./version.js"
 
+// The CLI launches us with PORT set in our environment (serverEnv in cli.ts).
+// config.ts has already read it into config.port above, so drop it now — otherwise
+// every terminal, agent and setup script we spawn inherits PORT and clobbers the
+// default port of any dev server started inside them.
+delete process.env.PORT
+
 const PORT_FILE = path.join(os.homedir(), "huxflux", isDev ? "server-dev.port" : "server.port")
 import { runMigrations } from "./db/index.js"
 import { reposRoutes } from "./routes/repos.js"

@@ -6,8 +6,16 @@ import { DATA_DIR } from "../config.js"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 
+function getWorktreePath(agent: { repoId: string | null; location: string; noWorktree: number | null }): string | null {
+  if (!agent.repoId) return null
+  const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+  if (!repo) return null
+  return agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
+}
+
 export async function uploadRoutes(app: FastifyInstance) {
-  // POST /api/agents/:id/upload — accept a base64-encoded file, save to huxflux data dir
+  // POST /api/agents/:id/upload — accept a base64-encoded file, save to agent worktree
+  // so Claude CLI can read them (it restricts access to the project directory)
   app.post<{
     Params: { id: string }
     Body: { name: string; data: string; mimeType: string }
@@ -15,8 +23,11 @@ export async function uploadRoutes(app: FastifyInstance) {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
 
-    // Store attachments in huxflux data dir, not in the worktree
-    const attachmentsDir = path.join(DATA_DIR, "attachments", agent.id)
+    // Save inside the worktree so Claude CLI has access. Fall back to data dir.
+    const worktree = getWorktreePath(agent as any)
+    const attachmentsDir = worktree
+      ? path.join(worktree, ".huxflux", "attachments")
+      : path.join(DATA_DIR, "attachments", agent.id)
     await fs.mkdir(attachmentsDir, { recursive: true })
 
     // Sanitise filename — reject traversal attempts

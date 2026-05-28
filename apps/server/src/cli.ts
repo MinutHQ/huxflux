@@ -950,6 +950,9 @@ async function cmdSetup() {
               const buffer = Buffer.from(await dlRes.arrayBuffer())
               fs.writeFileSync(dmgPath, buffer)
 
+              // Remove quarantine from downloaded DMG so hdiutil can mount it
+              spawnSync("xattr", ["-rd", "com.apple.quarantine", dmgPath], { stdio: "pipe" })
+
               // Detach any stale Huxflux volumes from previous attempts
               try {
                 const volumes = fs.readdirSync("/Volumes").filter(v => v.startsWith("Huxflux"))
@@ -967,6 +970,8 @@ async function cmdSetup() {
                   if (fs.existsSync(dest)) spawnSync("rm", ["-rf", dest], { stdio: "pipe" })
                   spawnSync("cp", ["-R", path.join(mountPoint, appName), dest], { stdio: "pipe" })
                   spawnSync("hdiutil", ["detach", mountPoint, "-quiet"], { stdio: "pipe" })
+                  // Remove quarantine flag (app is unsigned, macOS blocks downloaded apps)
+                  spawnSync("xattr", ["-rd", "com.apple.quarantine", dest], { stdio: "pipe" })
                   ds.stop("Desktop installed")
                   p.log.success(`Installed to /Applications/${appName}`)
 

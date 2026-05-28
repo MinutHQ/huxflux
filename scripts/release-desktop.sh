@@ -89,6 +89,10 @@ PLATFORM_ENTRIES=""
 
 if [[ "$BUILD_MACOS" == "true" ]]; then
   echo "==> Cleaning up leftover DMG temp files..."
+  # Unmount any stale Huxflux DMG volumes
+  for vol in /Volumes/Huxflux*; do
+    [ -d "$vol" ] && hdiutil detach "$vol" -quiet 2>/dev/null || true
+  done
   find "$TARGET_DIR" -name "rw.*.dmg" -delete 2>/dev/null || true
   find "$TARGET_DIR" -path "*/bundle/dmg/*.dmg" -delete 2>/dev/null || true
 

@@ -950,6 +950,12 @@ async function cmdSetup() {
               const buffer = Buffer.from(await dlRes.arrayBuffer())
               fs.writeFileSync(dmgPath, buffer)
 
+              // Detach any stale Huxflux volumes from previous attempts
+              try {
+                const volumes = fs.readdirSync("/Volumes").filter(v => v.startsWith("Huxflux"))
+                for (const v of volumes) spawnSync("hdiutil", ["detach", `/Volumes/${v}`, "-quiet", "-force"], { stdio: "pipe" })
+              } catch {}
+
               const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse", "-quiet"], { encoding: "utf-8", stdio: "pipe" })
               const mountLine = (mountResult.stdout || "").split("\n").find((l: string) => l.includes("/Volumes/"))
               const mountPoint = mountLine?.trim().split("\t").pop()?.trim()

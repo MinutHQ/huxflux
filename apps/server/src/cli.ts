@@ -982,7 +982,10 @@ async function cmdSetup() {
                 }
               } else {
                 ds.stop("Mount failed")
-                p.log.warning("Could not mount DMG")
+                const mountErr = (mountResult.stderr || "").trim()
+                p.log.warning(`Could not mount DMG${mountErr ? `: ${mountErr}` : ""}`)
+                p.log.info(`DMG path: ${dmgPath}`)
+                p.log.info("Try manually: hdiutil attach " + dmgPath)
               }
 
               try { fs.rmSync(tmpDir, { recursive: true }) } catch {}

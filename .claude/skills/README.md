@@ -13,15 +13,11 @@ Skills are invoked through Claude Code as slash commands: `/scaffold-domain`, `/
 
 ### Scaffolding
 
-- **scaffold-domain**: Create a new `domains/<name>/` folder following the Huxflux domain pattern. Targets `apps/web`, `apps/mobile`, or `packages/shared`. Use when starting a new feature area outside the server.
-- **scaffold-server-domain**: Create a new `apps/server/src/domains/<name>/` folder. Sets up README, index, the Fastify plugin skeleton, and registers the plugin in the domain registry. Use when extracting or starting a server-side feature.
+- **scaffold-domain**: Create a new `domains/<name>/` folder for any platform (`web`, `server`, `mobile`, or `shared`). For server targets, also creates the Fastify plugin skeleton and registers it in the domain registry. Use when starting a new feature area.
 - **scaffold-component**: Create a new domain-internal React component inside an existing domain (web or mobile). Use when adding UI inside a domain you are already working on.
 - **scaffold-route**: Create a new TanStack Router route file (web) that delegates to a domain. Use when wiring a domain into the URL routing.
 - **scaffold-test**: Create a Vitest test file collocated next to a source module (server or `packages/shared`). Use when adding coverage to one of the categories listed in the root CLAUDE.md "When to test" section.
-
-### Migration
-
-- **promote-domain**: Promote a flat directory (or related set of flat files) into a proper `domains/<name>/` folder. Adds a README, rewrites consumers to import from specific top-level files in the new domain (no per-domain barrel), and clears matching legacy-path lint overrides. Use when a flat area has grown enough to deserve domain status.
+- **scaffold-provider**: Create a new provider adapter (e.g. Mistral, Cohere) for the orchestrator. Creates the adapter file, extends the ProviderId union, and registers in the provider registry.
 
 ### Verification
 
@@ -29,19 +25,20 @@ Skills are invoked through Claude Code as slash commands: `/scaffold-domain`, `/
 
 ### Commit and PR
 
-- **commit**: Generate a conventional-commit message from the current staged diff in the project's voice. Outputs the message only, does not run `git commit`. Use at the end of a session before commit.
-- **pr-description**: Generate a PR description for the current branch from its commits and diff vs `main`, fills in `.github/PULL_REQUEST_TEMPLATE.md`, outputs a ready-to-run `gh pr create` command. Use when opening a PR.
+- **commit**: Generate a commit message from the staged diff. Describes WHAT changed and WHY in plain language, no code references. Humans read these. Outputs the message only, does not run `git commit` unless asked.
+- **pr-description**: Generate a PR description from the branch's commits and diff. Explains what is being built, why, and the high-level approach. No code references. Outputs a ready-to-run `gh pr create` command.
 
-## When to use which (decision guide)
+## When to use which
 
 | You are about to... | Use |
 |---|---|
 | Start a new task and need to understand what the user wants | `/kickoff` |
 | Think through a design or debug session without writing code | `/discuss` |
-| Start a brand-new feature area | `/scaffold-domain` (web/mobile/shared) or `/scaffold-server-domain` (server) |
+| Start a brand-new feature area (any platform) | `/scaffold-domain` |
 | Add UI inside an existing domain | `/scaffold-component` |
 | Hook a domain into the URL | `/scaffold-route` |
-| Add coverage for runner / migration / git / parser code | `/scaffold-test` |
+| Add a new AI provider | `/scaffold-provider` |
+| Add test coverage | `/scaffold-test` |
 | Verify a domain still passes structural checks | `/check-domain` |
 | Commit staged changes | `/commit` |
 | Open a PR | `/pr-description` |
@@ -60,7 +57,3 @@ description: <one-line description shown in the skill picker>
 ```
 
 The body of the file describes what the agent does step by step. The harness loads the description into the skill list and the body becomes the instructions when the skill is invoked. Keep skills outcome-focused: they should produce a conforming artifact, not just explain a convention.
-
-## Backlog
-
-- **Merge `scaffold-domain` + `scaffold-server-domain` into one parameterized skill.** They share most of the workflow (verify path is empty, write README, run the structural check). The server variant adds three concerns: it writes `<name>.routes.ts`, registers the plugin in `apps/server/src/domains/index.ts`, and has a slightly different README template (Fastify plugin as the public top-level file). A single `scaffold-domain` with a `--target server|web|mobile|shared` argument would eliminate the duplication. Defer until either skill needs a substantial update so both can be aligned in one pass.

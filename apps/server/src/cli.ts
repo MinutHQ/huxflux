@@ -3,12 +3,18 @@
 declare const __PKG_VERSION__: string
 const VERSION = typeof __PKG_VERSION__ !== "undefined" ? __PKG_VERSION__ : "dev"
 
-// Enforce minimum Node.js version — 22.6.0+ required for node:sqlite setReturnArrays
+// Enforce Node.js version — 22.6+ required (LTS), 25+ not yet supported
 const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number)
 if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 6)) {
-  console.error(`\nError: huxflux requires Node.js >= 22.6.0 (current: ${process.versions.node})`)
-  console.error(`  Please upgrade Node.js: https://nodejs.org\n`)
+  console.error(`\nError: Huxflux requires Node.js 22.6 or later (you have ${process.versions.node})`)
+  console.error(`\n  Fix with nvm:  nvm install 22 && nvm use 22`)
+  console.error(`  Or download:   https://nodejs.org\n`)
   process.exit(1)
+}
+if (nodeMajor > 24) {
+  console.warn(`\nWarning: Node.js ${process.versions.node} is not fully supported yet.`)
+  console.warn(`  Terminal features may not work. Recommended: Node.js 22 (LTS).`)
+  console.warn(`  Switch with nvm: nvm install 22 && nvm use 22\n`)
 }
 
 import { spawn, spawnSync } from "node:child_process"
@@ -538,7 +544,10 @@ async function cmdStatus() {
     return
   }
 
-  console.info(`huxflux  running  (PID ${pid})\n`)
+  console.info(`huxflux  running  (PID ${pid})`)
+  console.info(`  Version: ${VERSION}`)
+  console.info(`  Node.js: ${process.versions.node}${nodeMajor > 24 ? " (unsupported, use Node 22 LTS)" : ""}`)
+  console.info("")
   await printConnectInfo(cfg)
 }
 

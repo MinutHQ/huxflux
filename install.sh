@@ -107,6 +107,12 @@ fi
 
 ok "Node.js v${NODE_VER}"
 
+if [ "$NODE_MAJOR" -gt 24 ]; then
+  warn "Node.js ${NODE_VER} is not fully supported. Terminal features may not work."
+  echo -e "  ${DIM}Recommended: Node.js 22 (LTS). Switch with: nvm install 22 && nvm use 22${RESET}"
+  echo ""
+fi
+
 # ── Detect package manager ───────────────────────────────────────────────────
 # Always use npm for global installs — pnpm/yarn global can have PATH issues
 PM="npm"

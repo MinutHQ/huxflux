@@ -12,6 +12,7 @@ import {
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
+import { fileURLToPath } from "node:url"
 import { config, isDev } from "./config.js"
 import { toString as qrToString } from "qrcode"
 
@@ -117,6 +118,26 @@ app.register(async (instance) => {
 for (const plugin of domainPlugins) await app.register(plugin)
 await app.register(fsRoutes)
 await app.register(systemRoutes)
+
+// Serve bundled web UI (if present in dist/web/)
+const webDistPath = path.join(fileURLToPath(import.meta.url), "../../web")
+if (fs.existsSync(webDistPath)) {
+  const fastifyStatic = await import("@fastify/static")
+  await app.register(fastifyStatic.default, {
+    root: webDistPath,
+    prefix: "/",
+    decorateReply: false,
+    // Don't serve index.html for API routes
+    serve: true,
+  })
+  // SPA fallback: serve index.html for any non-API, non-WS route
+  app.setNotFoundHandler(async (req, reply) => {
+    if (req.url.startsWith("/api/") || req.url.startsWith("/ws")) {
+      return reply.code(404).send({ error: "Not found" })
+    }
+    return reply.sendFile("index.html")
+  })
+}
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: SERVER_VERSION }))

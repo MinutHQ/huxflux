@@ -691,7 +691,7 @@ async function cmdReset() {
   console.info("  Tip: run 'git worktree prune' in each repo to remove stale refs.\n")
 }
 
-const WEB_APP_URL = "https://huxflux.netlify.app"
+const WEB_APP_FALLBACK = "https://huxflux.netlify.app"
 
 function cmdOpen(host?: string) {
   const cfg = loadConfig()
@@ -700,9 +700,19 @@ function cmdOpen(host?: string) {
     console.info("huxflux is not running — start it first: huxflux start")
     process.exit(1)
   }
-  const conn = connectionString(cfg, host ?? "localhost")
-  const url = `${WEB_APP_URL}/?connect=${encodeURIComponent(conn)}`
-  console.info(`Opening ${WEB_APP_URL}`)
+  const port = getActualPort(cfg.port)
+
+  // Use local web UI if bundled, otherwise fall back to hosted app
+  const webDistPath = path.join(fileURLToPath(import.meta.url), "../../web/index.html")
+  let url: string
+  if (fs.existsSync(webDistPath)) {
+    url = `http://127.0.0.1:${port}`
+    console.info(`Opening http://127.0.0.1:${port}`)
+  } else {
+    const conn = connectionString(cfg, host ?? "localhost")
+    url = `${WEB_APP_FALLBACK}/?connect=${encodeURIComponent(conn)}`
+    console.info(`Opening ${WEB_APP_FALLBACK}`)
+  }
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
   spawnSync(opener, [url], { stdio: "inherit", shell: true })
 }

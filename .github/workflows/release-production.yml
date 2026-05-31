@@ -97,6 +97,12 @@ jobs:
       - name: Build server
         run: pnpm build --filter @alexmartosp/huxflux
 
+      - name: Build and bundle web UI into server
+        run: |
+          pnpm build --filter web
+          mkdir -p apps/server/dist/web
+          cp -r apps/web/dist/* apps/server/dist/web/
+
       - name: Publish to npm (latest tag)
         run: |
           cd apps/server

@@ -1,0 +1,34 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check:
+    name: Conventional commit format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+
+          # Must match: type: description
+          if ! echo "$TITLE" | grep -qE '^(feat|fix|refactor|chore|docs|test): .+'; then
+            echo "::error::PR title must follow conventional commit format: <type>: <description>"
+            echo ""
+            echo "Valid types: feat, fix, refactor, chore, docs, test"
+            echo "Example: feat: add auto-connect for desktop app"
+            echo ""
+            echo "Got: $TITLE"
+            exit 1
+          fi
+
+          # Subject should be lowercase after prefix
+          SUBJECT=$(echo "$TITLE" | sed 's/^[a-z]*: //')
+          FIRST_CHAR=$(echo "$SUBJECT" | cut -c1)
+          if echo "$FIRST_CHAR" | grep -q '[A-Z]'; then
+            echo "::warning::PR title subject should start with lowercase: '$SUBJECT'"
+          fi
+
+          echo "PR title is valid: $TITLE"

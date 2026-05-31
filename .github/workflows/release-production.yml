@@ -1,0 +1,350 @@
+name: Release Production
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check if release needed
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version
+        id: check
+        run: |
+          VERSION=$(node -p "require('./apps/server/package.json').version")
+
+          # Only release if version has a beta suffix (meaning it came from beta branch)
+          if [[ "$VERSION" == *"-beta."* ]]; then
+            PROD_VERSION="${VERSION%-beta.*}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$PROD_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            # Check if this version is already on npm
+            PUBLISHED=$(npm view @alexmartosp/huxflux@latest version 2>/dev/null || echo "none")
+            if [ "$PUBLISHED" != "$VERSION" ]; then
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  release:
+    name: Release server (production)
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set production version
+        id: version
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          CURRENT=$(node -p "require('./apps/server/package.json').version")
+
+          if [ "$CURRENT" != "$VERSION" ]; then
+            cd apps/server
+            npm version "$VERSION" --no-git-tag-version
+            cd ../..
+
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add apps/server/package.json
+            git commit -m "chore: release server $VERSION"
+            git tag "v${VERSION}"
+            git push
+            git push origin "v${VERSION}"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build server
+        run: pnpm build --filter @alexmartosp/huxflux
+
+      - name: Publish to npm (latest tag)
+        run: |
+          cd apps/server
+          npm publish --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Sync install script
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          RELEASES_REPO="AlexMartosP/huxflux-releases"
+          RELEASES_DIR="/tmp/huxflux-releases"
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
+          cp install.sh "$RELEASES_DIR/install.sh"
+          chmod +x "$RELEASES_DIR/install.sh"
+          cd "$RELEASES_DIR"
+          if ! git diff --quiet install.sh 2>/dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add install.sh
+            git commit -m "chore: update install script (server v${{ needs.check.outputs.version }})"
+            git push
+          fi
+          rm -rf "$RELEASES_DIR"
+
+      - name: Summary
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          echo "## Production Release" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published \`@alexmartosp/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+
+  desktop-macos:
+    name: Build desktop (macOS)
+    runs-on: macos-latest
+    needs: [check, release]
+    if: needs.check.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS ARM
+        run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Build macOS Intel
+        run: cd apps/desktop && pnpm tauri build --target x86_64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Prepare and upload artifacts
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          TARGET="apps/desktop/src-tauri/target"
+
+          ARM_DMG=$(find "$TARGET/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
+          X64_DMG=$(find "$TARGET/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
+          cp "$ARM_DMG" "/tmp/Huxflux-macos-arm.dmg"
+          cp "$X64_DMG" "/tmp/Huxflux-macos-intel.dmg"
+
+          ARM_BUNDLE="$TARGET/aarch64-apple-darwin/release/bundle/macos"
+          X64_BUNDLE="$TARGET/x86_64-apple-darwin/release/bundle/macos"
+          ARM_TAR="${ARM_BUNDLE}/Huxflux_${VERSION}_aarch64.app.tar.gz"
+          X64_TAR="${X64_BUNDLE}/Huxflux_${VERSION}_x64.app.tar.gz"
+          (cd "$ARM_BUNDLE" && COPYFILE_DISABLE=1 tar -czf "$ARM_TAR" "Huxflux.app")
+          (cd "$X64_BUNDLE" && COPYFILE_DISABLE=1 tar -czf "$X64_TAR" "Huxflux.app")
+
+          cd apps/desktop
+          pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
+          pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$X64_TAR"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            /tmp/Huxflux-macos-arm.dmg
+            /tmp/Huxflux-macos-intel.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.tar.gz.sig
+            apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.tar.gz
+            apps/desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.tar.gz.sig
+
+  desktop-linux:
+    name: Build desktop (Linux)
+    runs-on: ubuntu-latest
+    needs: [check, release]
+    if: needs.check.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Linux
+        run: cd apps/desktop && pnpm tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Prepare artifacts
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          TARGET="apps/desktop/src-tauri/target"
+          APPIMAGE=$(find "$TARGET/release/bundle/appimage" -name "*.AppImage" | head -1)
+          DEB=$(find "$TARGET/release/bundle/deb" -name "*.deb" | head -1)
+          cp "$APPIMAGE" "/tmp/Huxflux-linux-x86_64.AppImage"
+          cp "$DEB" "/tmp/Huxflux-linux-amd64.deb"
+
+          LINUX_TAR="/tmp/Huxflux_${VERSION}_x86_64.AppImage.tar.gz"
+          (cd "$(dirname "$APPIMAGE")" && tar -czf "$LINUX_TAR" "$(basename "$APPIMAGE")")
+
+          cd apps/desktop
+          pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$LINUX_TAR"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            /tmp/Huxflux-linux-x86_64.AppImage
+            /tmp/Huxflux-linux-amd64.deb
+            /tmp/Huxflux_*.AppImage.tar.gz
+            /tmp/Huxflux_*.AppImage.tar.gz.sig
+
+  publish-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [check, desktop-macos, desktop-linux]
+    if: needs.check.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate latest.json and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          TAG="v${VERSION}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          ARM_SIG=$(cat artifacts/macos-artifacts/*.aarch64.app.tar.gz.sig 2>/dev/null || echo "")
+          X64_SIG=$(cat artifacts/macos-artifacts/*.x64.app.tar.gz.sig 2>/dev/null || echo "")
+          LINUX_SIG=$(cat artifacts/linux-artifacts/*.AppImage.tar.gz.sig 2>/dev/null || echo "")
+
+          cat > latest.json <<JSON
+          {
+            "version": "${VERSION}",
+            "notes": "",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "darwin-aarch64": { "signature": "${ARM_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_aarch64.app.tar.gz" },
+              "darwin-x86_64": { "signature": "${X64_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x64.app.tar.gz" },
+              "linux-x86_64": { "signature": "${LINUX_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x86_64.AppImage.tar.gz" }
+            }
+          }
+          JSON
+
+          FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
+          SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
+
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Huxflux ${TAG}" \
+            --notes "The macOS app is unsigned. Right-click the .dmg and select Open to bypass Gatekeeper." \
+            $FILES $SIG_FILES latest.json
+
+      - name: Also update releases repo latest.json
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          RELEASES_REPO="AlexMartosP/huxflux-releases"
+          TAG="v${VERSION}"
+
+          # Upload latest.json to the releases repo release too
+          gh release upload "$TAG" latest.json \
+            --repo "$RELEASES_REPO" \
+            --clobber 2>/dev/null || \
+          gh release create "$TAG" latest.json \
+            --repo "$RELEASES_REPO" \
+            --title "Huxflux ${TAG}" \
+            --notes "Production release."

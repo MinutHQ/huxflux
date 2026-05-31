@@ -75,11 +75,20 @@ echo -e "  ${BOLD}Releasing v${VERSION}${RESET}"
 echo ""
 
 # ── Build ────────────────────────────────────────────────────────────────────
-step "① Building server"
+step "① Building server and web UI"
 
 cd "$SERVER_DIR"
 pnpm build 2>&1 | grep -E "success|error|ERR" || true
-ok "Build complete"
+ok "Server build complete"
+
+# Build and bundle web UI into server dist
+cd "$REPO_ROOT"
+pnpm build --filter web 2>&1 | grep -E "success|error|ERR|built" || true
+mkdir -p "$SERVER_DIR/dist/web"
+cp -r apps/web/dist/* "$SERVER_DIR/dist/web/"
+ok "Web UI bundled into server"
+
+cd "$SERVER_DIR"
 
 # ── Test (quick sanity check) ────────────────────────────────────────────────
 step "② Verifying build"

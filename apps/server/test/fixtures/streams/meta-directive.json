@@ -1,0 +1,10 @@
+{
+  "exitCode": 0,
+  "stderr": [],
+  "events": [
+    { "type": "system", "subtype": "init", "session_id": "test-session-meta" },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "<huxflux:title>Add CSV import</huxflux:title>\n" }] } },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "I'll add CSV import." }] } },
+    { "type": "result", "usage": { "input_tokens": 30, "output_tokens": 8 } }
+  ]
+}

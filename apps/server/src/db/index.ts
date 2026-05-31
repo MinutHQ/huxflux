@@ -27,70 +27,65 @@ if (existsSync(config.dbPath)) {
   } catch { /* non-fatal */ }
 }
 
-const raw = new DatabaseSync(config.dbPath)
-
 // Shim: makes node:sqlite's DatabaseSync look like better-sqlite3 so that
 // drizzle-orm/better-sqlite3/session works without native bindings.
 // All methods are typed as `any` because the better-sqlite3 interface isn't
 // exported by drizzle and node:sqlite has slightly different TS signatures.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function makeStmt(sql: string): any {
-  return {
-    run:     (...p: any[]) => (raw.prepare(sql) as any).run(...p),
-    get:     (...p: any[]) => (raw.prepare(sql) as any).get(...p),
-    all:     (...p: any[]) => (raw.prepare(sql) as any).all(...p),
-    iterate: (...p: any[]) => (raw.prepare(sql) as any).iterate(...p),
-    columns: () => raw.prepare(sql).columns(),
-    // raw() returns arrays instead of objects — used by drizzle for mapped queries.
-    // setReturnArrays was added in Node 22.6.0; fall back to Object.values for older builds.
-    raw: (): any => ({
-      get: (...p: any[]) => {
-        const s = raw.prepare(sql)
-        if (typeof (s as any).setReturnArrays === "function") {
-          ;(s as any).setReturnArrays(true)
-          return (s as any).get(...p)
-        }
-        const row = (s as any).get(...p)
-        return row ? Object.values(row) : row
-      },
-      all: (...p: any[]) => {
-        const s = raw.prepare(sql)
-        if (typeof (s as any).setReturnArrays === "function") {
-          ;(s as any).setReturnArrays(true)
-          return (s as any).all(...p)
-        }
-        return ((s as any).all(...p) as any[]).map((r: any) => Object.values(r))
-      },
-    }),
-  }
-}
-
-const sqlite: any = {
-  prepare: makeStmt,
-  exec: (sql: string) => { raw.exec(sql) },
-  pragma: (text: string) => { raw.exec(`PRAGMA ${text}`) },
-  transaction: (fn: (...args: any[]) => any) => {
-    const execute = (...args: any[]) => {
-      raw.exec("BEGIN")
-      try {
-        const result = fn(...args)
-        raw.exec("COMMIT")
-        return result
-      } catch (err) {
-        try { raw.exec("ROLLBACK") } catch { /* ignore */ }
-        throw err
-      }
+function buildSqliteShim(raw: DatabaseSync) {
+  function makeStmt(sql: string): any {
+    return {
+      run:     (...p: any[]) => (raw.prepare(sql) as any).run(...p),
+      get:     (...p: any[]) => (raw.prepare(sql) as any).get(...p),
+      all:     (...p: any[]) => (raw.prepare(sql) as any).all(...p),
+      iterate: (...p: any[]) => (raw.prepare(sql) as any).iterate(...p),
+      columns: () => raw.prepare(sql).columns(),
+      raw: (): any => ({
+        get: (...p: any[]) => {
+          const s = raw.prepare(sql)
+          if (typeof (s as any).setReturnArrays === "function") {
+            ;(s as any).setReturnArrays(true)
+            return (s as any).get(...p)
+          }
+          const row = (s as any).get(...p)
+          return row ? Object.values(row) : row
+        },
+        all: (...p: any[]) => {
+          const s = raw.prepare(sql)
+          if (typeof (s as any).setReturnArrays === "function") {
+            ;(s as any).setReturnArrays(true)
+            return (s as any).all(...p)
+          }
+          return ((s as any).all(...p) as any[]).map((r: any) => Object.values(r))
+        },
+      }),
     }
-    execute.deferred  = execute
-    execute.immediate = execute
-    execute.exclusive = execute
-    return execute
-  },
-}
-/* eslint-enable @typescript-eslint/no-explicit-any */
+  }
 
-sqlite.pragma("journal_mode = WAL")
-sqlite.pragma("foreign_keys = ON")
+  const sqlite: any = {
+    prepare: makeStmt,
+    exec: (sql: string) => { raw.exec(sql) },
+    pragma: (text: string) => { raw.exec(`PRAGMA ${text}`) },
+    transaction: (fn: (...args: any[]) => any) => {
+      const execute = (...args: any[]) => {
+        raw.exec("BEGIN")
+        try {
+          const result = fn(...args)
+          raw.exec("COMMIT")
+          return result
+        } catch (err) {
+          try { raw.exec("ROLLBACK") } catch { /* ignore */ }
+          throw err
+        }
+      }
+      execute.deferred  = execute
+      execute.immediate = execute
+      execute.exclusive = execute
+      return execute
+    },
+  }
+  return sqlite
+}
 
 // Build schema config for relational queries
 const tablesConfig = extractTablesRelationalConfig(schema, createTableRelationsHelpers)
@@ -101,10 +96,57 @@ const schemaConfig = {
 }
 
 const dialect = new SQLiteSyncDialect({})
-const session = new BetterSQLiteSession(sqlite, dialect, schemaConfig, {})
-// Typed as BetterSQLite3Database shape via BaseSQLiteDatabase<"sync", ...>
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const db = new BaseSQLiteDatabase("sync", dialect, session, schemaConfig) as any
+
+/** Build a Drizzle DB instance backed by the given raw node:sqlite handle. */
+export function createDbFromRaw(rawDb: DatabaseSync): { db: any; sqlite: any; raw: DatabaseSync } {
+  const sqlite = buildSqliteShim(rawDb)
+  sqlite.pragma("journal_mode = WAL")
+  sqlite.pragma("foreign_keys = ON")
+  const session = new BetterSQLiteSession(sqlite, dialect, schemaConfig, {})
+  const drizzleDb = new BaseSQLiteDatabase("sync", dialect, session, schemaConfig) as any
+  return { db: drizzleDb, sqlite, raw: rawDb }
+}
+
+const production = createDbFromRaw(new DatabaseSync(config.dbPath))
+let _activeDb: any = production.db
+let _activeSqlite: any = production.sqlite
+let _activeRaw: DatabaseSync = production.raw
+
+// Proxy so cross-file `import { db }` references see whichever backing instance
+// is currently active. Tests use `setDb(...)` to swap in an in-memory instance
+// per test; production code never reassigns. The reflection here is a thin
+// passthrough — the underlying Drizzle methods do their own binding.
+export const db: any = new Proxy({}, {
+  get(_target, prop) {
+    const value = _activeDb[prop]
+    return typeof value === "function" ? value.bind(_activeDb) : value
+  },
+  set(_target, prop, value) {
+    _activeDb[prop] = value
+    return true
+  },
+  has(_target, prop) { return prop in _activeDb },
+})
+
+/**
+ * Swap the active Drizzle handle. Test-only helper: pass an instance returned
+ * by `createDbFromRaw(new DatabaseSync(":memory:"))` to point every consumer at
+ * an isolated in-memory database. The companion `sqlite` shim and raw handle
+ * are stored alongside so `runMigrations` operates on the same backing.
+ */
+export function setDb(next: { db: any; sqlite: any; raw: DatabaseSync }): void {
+  _activeDb = next.db
+  _activeSqlite = next.sqlite
+  _activeRaw = next.raw
+}
+
+/** Restore the production-backed DB. Test-only. */
+export function _resetDb(): void {
+  _activeDb = production.db
+  _activeSqlite = production.sqlite
+  _activeRaw = production.raw
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //
@@ -481,7 +523,7 @@ const MIGRATIONS: Migration[] = [
 ]
 
 export function runMigrations() {
-  sqlite.exec(`
+  _activeSqlite.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER NOT NULL
     );
@@ -489,28 +531,28 @@ export function runMigrations() {
       SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
   `)
 
-  const currentVersion = (raw.prepare("SELECT version FROM schema_version").get() as { version: number }).version
+  const currentVersion = (_activeRaw.prepare("SELECT version FROM schema_version").get() as { version: number }).version
 
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
   if (pending.length === 0) {
-    console.log(`[db] schema up to date (v${currentVersion})`)
+    console.info(`[db] schema up to date (v${currentVersion})`)
   } else {
-    console.log(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
+    console.info(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
     for (const migration of pending) {
       // Run DDL outside transactions — node:sqlite's shim silently swallows
       // ALTER TABLE and other DDL inside transaction wrappers.
       try {
-        sqlite.exec(migration.sql)
+        _activeSqlite.exec(migration.sql)
       } catch (err) {
         const msg = (err as Error).message ?? ""
         // Ignore "duplicate column" errors — column may have been added manually
         if (!msg.includes("duplicate column")) throw err
-        console.log(`[db] migration v${migration.version}: column already exists, skipping`)
+        console.info(`[db] migration v${migration.version}: column already exists, skipping`)
       }
-      raw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
-      console.log(`[db] applied migration v${migration.version}`)
+      _activeRaw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
+      console.info(`[db] applied migration v${migration.version}`)
     }
-    console.log(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
+    console.info(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
   }
 
   repairSchema()
@@ -524,13 +566,13 @@ function repairSchema() {
   const tables = [
     schema.repos, schema.agents, schema.messages, schema.toolCalls,
     schema.fileChanges, schema.terminalLines, schema.terminalTabs,
-    schema.prChatMessages, schema.wrappedSummaries,
+    schema.wrappedSummaries,
   ]
 
   for (const table of tables) {
     const tableName = getTableName(table)
     const existing = new Set(
-      (raw.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[]).map((c) => c.name)
+      (_activeRaw.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[]).map((c) => c.name)
     )
     // Table doesn't exist yet — nothing to repair (CREATE TABLE migration will handle it)
     if (existing.size === 0) continue
@@ -538,8 +580,8 @@ function repairSchema() {
     const columns = getTableColumns(table)
     for (const col of Object.values(columns)) {
       if (!existing.has(col.name)) {
-        sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.getSQLType()}`)
-        console.log(`[db] repaired: added missing ${tableName}.${col.name}`)
+        _activeSqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.getSQLType()}`)
+        console.info(`[db] repaired: added missing ${tableName}.${col.name}`)
       }
     }
   }

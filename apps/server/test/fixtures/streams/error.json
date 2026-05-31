@@ -1,0 +1,7 @@
+{
+  "exitCode": 1,
+  "stderr": ["fake-claude: simulated stderr line 1", "fake-claude: simulated stderr line 2"],
+  "events": [
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "Partial output before crash..." }] } }
+  ]
+}

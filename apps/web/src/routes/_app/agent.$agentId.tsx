@@ -1,21 +1,20 @@
 import { createRoute, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useRef, useMemo, useCallback } from "react"
-import { useDefaultLayout } from "react-resizable-panels"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle, Popover, PopoverTrigger, PopoverContent } from "@huxflux/ui"
 import { IconDots, IconLayoutBottombar, IconLayoutSidebar } from "@tabler/icons-react"
-import { ChatView } from "@/components/ChatView"
-import { FileChangesView } from "@/components/FileChangesView"
-import { FileViewerPanel } from "@/components/FileViewerPanel"
-import { TerminalView } from "@/components/TerminalView"
-import { HomeView } from "@/components/HomeView"
-import { AgentWorkspaceHeader } from "@/components/AgentWorkspaceHeader"
-import { useAgent, api } from "@huxflux/shared"
-import { useQuery } from "@tanstack/react-query"
+import { ChatView } from "@/domains/chat/ChatView"
+import { FileChangesView } from "@/domains/file-changes/FileChangesView"
+import { FileViewerPanel } from "@/domains/file-changes/FileViewerPanel"
+import { getDiffTheme } from "@/domains/file-changes/getDiffTheme"
+import { AgentWorkspaceHeader } from "@/domains/agents/AgentWorkspaceHeader"
+import { HomeView } from "@/domains/agents/HomeView"
+import { TerminalView } from "@/domains/agents/TerminalView"
+import { useAgentWorkspaceLayout } from "@/domains/agents/useAgentWorkspaceLayout"
+import { useAgent, api, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { toast } from "sonner"
 import { WorkerPoolContextProvider } from "@pierre/diffs/react"
-import { useWorkspaceContext } from "@/hooks/useWorkspaceContext"
+import { useWorkspaceContext } from "@/app-shell/workspace"
 import { useAppContext } from "@/hooks/useAppContext"
-import { getDiffTheme } from "@/components/DiffView"
 import { Route as appRoute } from "../_app"
 
 
@@ -30,37 +29,27 @@ function AgentRoute() {
   const navigate = useNavigate()
   const workspace = useWorkspaceContext()
   const { githubEnabled, sidebarCollapsed } = useAppContext()
-  const fileViewerOpen = workspace.fileTabs.length > 0
-  const [chatHidden, setChatHidden] = useState(false)
+  const layout = useAgentWorkspaceLayout(agentId)
+  const {
+    terminalTab, setTerminalTab,
+    maximizedPane,
+    setActiveRightPane,
+    rightPanelVisible, setRightPanelVisible,
+    terminalVisible,
+    rightLayout,
+  } = layout
 
-  // Show chat again when file viewer closes
-  useEffect(() => {
-    if (!fileViewerOpen) setChatHidden(false)
-  }, [fileViewerOpen])
-  const [terminalTab, setTerminalTab] = useState<"setup" | "run" | "terminal">("terminal")
-  const [maximizedPane, setMaximizedPane] = useState<"files" | "terminal" | null>(() => {
-    try {
-      const stored = localStorage.getItem(`huxflux:maximized:${agentId}`)
-      return stored === "files" || stored === "terminal" ? stored : null
-    } catch { return null }
-  })
-  const [activeRightPane, setActiveRightPane] = useState<"files" | "terminal">("files")
-  const [rightPanelVisible, setRightPanelVisible] = useState(true)
+  const fileViewerOpen = workspace.fileTabs.length > 0
+  const [chatHiddenWhileFileOpen, setChatHiddenWhileFileOpen] = useState(false)
+  // chatHidden only applies when the file viewer is open; once the viewer
+  // closes the chat is always visible. Deriving instead of setting in an
+  // effect avoids the cascading render that fires every time fileViewerOpen
+  // toggles.
+  const chatHidden = fileViewerOpen && chatHiddenWhileFileOpen
+  const setChatHidden = setChatHiddenWhileFileOpen
   const [terminalPosition, setTerminalPosition] = useState<"right" | "bottom">(() => {
     return (localStorage.getItem("huxflux:terminal-position") as "right" | "bottom") || "right"
   })
-
-  // Reset maximized + terminal position when switching agents
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`huxflux:maximized:${agentId}`)
-      setMaximizedPane(stored === "files" || stored === "terminal" ? stored : null)
-    } catch { setMaximizedPane(null) }
-  }, [agentId])
-  const [terminalVisible, setTerminalVisible] = useState(true)
-
-  const mainLayout = useDefaultLayout({ id: "huxflux-main", panelIds: ["huxflux-main-chat", "huxflux-main-right"] })
-  const rightLayout = useDefaultLayout({ id: "huxflux-right", panelIds: ["huxflux-right-files", "huxflux-right-terminal"] })
 
   const workerPoolOptions = useMemo(() => ({
     poolOptions: {
@@ -81,38 +70,10 @@ function AgentRoute() {
       prevAgentIdRef.current = agentId
       workspace.selectAgent(agentId)
     }
+  // workspace is unstable (re-created each render). Keying on agentId only is
+  // intentional: we just want to react when the route param changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId])
-
-  const activeRightPaneRef = useRef(activeRightPane)
-  activeRightPaneRef.current = activeRightPane
-
-  const toggleMaximize = useCallback(() => {
-    setMaximizedPane((v) => {
-      const next = v ? null : activeRightPaneRef.current
-      try { if (next) localStorage.setItem(`huxflux:maximized:${agentId}`, next); else localStorage.removeItem(`huxflux:maximized:${agentId}`) } catch {}
-      return next
-    })
-  }, [agentId])
-
-  useEffect(() => {
-    window.addEventListener("huxflux:toggle-terminal-maximize", toggleMaximize)
-    return () => window.removeEventListener("huxflux:toggle-terminal-maximize", toggleMaximize)
-  }, [toggleMaximize])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "u") {
-        e.preventDefault()
-        setRightPanelVisible((v) => !v)
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
-        e.preventDefault()
-        setTerminalVisible((v) => !v)
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [])
 
   const { data: activeAgent, isStreaming: activeIsStreaming, loadMore: activeLoadMore, hasMore: activeHasMore, isLoadingMore: activeIsLoadingMore, pendingQuestion: activePendingQuestion, clearPendingQuestion: activeClearPendingQuestion } = useAgent(workspace.resolvedActiveId)
 
@@ -127,12 +88,15 @@ function AgentRoute() {
       }
     }
     prevQuestionRef.current = qId
+  // Keyed on toolUseId only: title/questions update during the same question and
+  // we don't want to re-fire the toast/notification when they change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePendingQuestion?.toolUseId])
 
   const terminalAgentId = workspace.rootAgentId
-  const { data: terminalAgentData } = useQuery({
-    queryKey: ["agent", terminalAgentId],
-    queryFn: () => api.getAgent(terminalAgentId!),
+  const { data: terminalAgentData } = useHuxfluxQuery({
+    queryKey: queryKeys.agents.detail(terminalAgentId),
+    queryFn: () => api.agents.get(terminalAgentId!),
     enabled: !!terminalAgentId,
     staleTime: 10_000,
   })
@@ -150,7 +114,9 @@ function AgentRoute() {
   async function handleReview() {
     if (!activeAgent) return
     try {
-      const settings = await api.getSettings()
+      // fire-and-forget; intentional: one-off composite read for an event-driven review action
+      // eslint-disable-next-line no-restricted-syntax
+      const settings = await api.settings.current()
 
       // Fetch file changes and diffs for context
       const files = activeAgent.fileChanges ?? []
@@ -159,7 +125,9 @@ function AgentRoute() {
         const diffs = await Promise.all(
           files.map(async (f) => {
             try {
-              const patch = await api.getDiff(activeAgent!.id, f.path)
+              // fire-and-forget; intentional: bulk diff read for the review prompt body
+              // eslint-disable-next-line no-restricted-syntax
+              const patch = await api.agents.diff(activeAgent!.id, f.path)
               return { path: f.path, additions: f.additions, deletions: f.deletions, patch }
             } catch {
               return { path: f.path, additions: f.additions, deletions: f.deletions, patch: "" }

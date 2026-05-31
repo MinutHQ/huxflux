@@ -1,12 +1,13 @@
 {
   "name": "huxflux-mobile",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

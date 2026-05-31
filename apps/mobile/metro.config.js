@@ -46,6 +46,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     })
     return { filePath: resolved, type: "sourceFile" }
   }
+  // @/* alias → apps/mobile/*
+  if (moduleName === "@" || moduleName.startsWith("@/")) {
+    const rest = moduleName === "@" ? "" : moduleName.slice(2)
+    const target = path.resolve(projectRoot, rest)
+    return context.resolveRequest(context, target, platform)
+  }
   return context.resolveRequest(context, moduleName, platform)
 }
 

@@ -4,20 +4,20 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
-import { Sidebar } from "@/components/Sidebar"
+import { Sidebar } from "@/app-shell/sidebar/Sidebar"
 import { useAgents, useServerConfig, getServers as getServersList } from "@huxflux/shared"
-import { useNotifications } from "@/hooks/useNotifications"
+import { useNotifications } from "@/app-shell/useNotifications"
 
-import { usePRs } from "@/hooks/usePRs"
-import { useBulkReview } from "@/hooks/useBulkReview"
-import { WorkspaceProvider } from "@/hooks/useWorkspaceContext"
+import { usePRs } from "@/domains/pull-requests/usePRs"
+import { WorkspaceProvider } from "@/app-shell/workspace"
 
 import { getFlag } from "@/lib/flags"
 import { isTauri, isMacOS } from "@/lib/platform"
 import { tryAutoConnectSync } from "@/lib/autoConnect"
 import { IconLayoutSidebarLeftExpand, IconLayoutSidebarLeftCollapse } from "@tabler/icons-react"
 import { Button } from "@huxflux/ui"
-import { loadRefineSessions, saveRefineSessions, type RefineSession } from "@/components/RefineView"
+import { loadRefineSessions, saveRefineSessions } from "@/domains/tasks/utils"
+import type { RefineSession } from "@/domains/tasks/tasks.types"
 import { Route as rootRoute } from "./__root"
 
 export const Route = createRoute({
@@ -53,6 +53,9 @@ function AppLayout() {
   const toggleSidebar = useCallback(() => {
     const willCollapse = !sidebarRef.current?.isCollapsed()
     setSidebarCollapsed(willCollapse)
+    // Expanding the sidebar dismisses the floating overlay so the two never
+    // render at once. Done here (not in an effect) to avoid cascading renders.
+    if (!willCollapse) setFloatingSidebar(false)
     if (willCollapse) {
       sidebarRef.current?.collapse()
     } else {
@@ -79,23 +82,11 @@ function AppLayout() {
     return () => window.removeEventListener("mousemove", onMouseMove)
   }, [sidebarCollapsed])
 
-  // Hide floating sidebar when sidebar expands
-  useEffect(() => {
-    if (!sidebarCollapsed) setFloatingSidebar(false)
-  }, [sidebarCollapsed])
-
   useNotifications(agents)
 
   const prReviewEnabled = getFlag("prReview")
   const { githubEnabled, feedbackEnabled } = useServerConfig()
   const { prs, isLoading: prsLoading, refetch: refetchPRs } = usePRs()
-  const [reviewedPrIds, setReviewedPrIds] = useState<Set<string>>(new Set())
-  const [userReviewedPrIds, setUserReviewedPrIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("huxflux:user-reviewed") ?? "[]")) }
-    catch { return new Set() }
-  })
-  const [submittedPrIds, setSubmittedPrIds] = useState<Set<string>>(new Set())
-  const bulkReview = useBulkReview((prId) => setReviewedPrIds((prev) => new Set([...prev, prId])))
 
   const [refineSessions, setRefineSessions] = useState<RefineSession[]>(() => loadRefineSessions())
 
@@ -128,13 +119,6 @@ function AppLayout() {
     prs,
     prsLoading,
     refetchPRs,
-    reviewedPrIds,
-    setReviewedPrIds,
-    userReviewedPrIds,
-    setUserReviewedPrIds,
-    submittedPrIds,
-    setSubmittedPrIds,
-    bulkReview,
     refineSessions,
     setRefineSessions,
     feedbackEnabled,
@@ -145,17 +129,11 @@ function AppLayout() {
   const sidebarProps = {
     agents,
     onOpenSettings: () => navigate({ to: "/settings" }),
-    prs: prReviewEnabled ? prs.map((p) => ({
-      ...p,
-      reviewReady: reviewedPrIds.has(p.id) || !!(p.repoId && localStorage.getItem(`huxflux:review:${p.repoId}:${p.number}`)),
-      userReviewed: p.userReviewed || userReviewedPrIds.has(p.id),
-      reviewRequested: submittedPrIds.has(p.id) ? false : p.reviewRequested,
-    })) : [],
+    prs: prReviewEnabled ? prs : [],
     prsLoading,
     onRefetchPRs: refetchPRs,
     refineSessions,
     onNewRefine: handleNewRefine,
-    onToggle: toggleSidebar,
     feedbackEnabled,
   }
 

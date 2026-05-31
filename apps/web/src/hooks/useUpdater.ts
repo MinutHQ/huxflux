@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater"
 import { isTauri } from "@/lib/platform"
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Update = any
 
 interface UpdaterState {
   update: Update | null
@@ -44,7 +42,7 @@ export function useUpdater(): UpdaterState {
     try {
       let downloaded = 0
       let total = 0
-      await update.downloadAndInstall((event: any) => {
+      await update.downloadAndInstall((event: DownloadEvent) => {
         if (event.event === "Started") {
           total = event.data.contentLength ?? 0
         } else if (event.event === "Progress") {
@@ -55,7 +53,7 @@ export function useUpdater(): UpdaterState {
         }
       })
       // Update installed — try to relaunch
-      console.log("[updater] download+install complete, attempting relaunch")
+      console.info("[updater] download+install complete, attempting relaunch")
       try {
         const { relaunch } = await import("@tauri-apps/plugin-process")
         await relaunch()

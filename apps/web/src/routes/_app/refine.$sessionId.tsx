@@ -1,5 +1,6 @@
 import { createRoute, redirect } from "@tanstack/react-router"
-import { RefineView, saveRefineSessions } from "@/components/RefineView"
+import { RefineView } from "@/domains/tasks/RefineView"
+import { saveRefineSessions } from "@/domains/tasks/utils"
 import { getFlag } from "@/lib/flags"
 import { useAppContext } from "@/hooks/useAppContext"
 import { Route as appRoute } from "../_app"

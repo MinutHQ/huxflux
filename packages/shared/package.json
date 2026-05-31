@@ -2,13 +2,20 @@
   "name": "@huxflux/shared",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./settings-schema": "./src/domains/settings/settings.schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@huxflux/tokens": "workspace:*"
+    "@huxflux/tokens": "workspace:*",
+    "zod": "^3.25.76"
   },
   "peerDependencies": {
     "react": ">=18",

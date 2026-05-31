@@ -1,5 +1,5 @@
 import { createRoute, redirect } from "@tanstack/react-router"
-import { TasksView } from "@/components/TasksView"
+import { TasksView } from "@/domains/tasks/TasksView"
 import { getFlag } from "@/lib/flags"
 import { Route as appRoute } from "../_app"
 

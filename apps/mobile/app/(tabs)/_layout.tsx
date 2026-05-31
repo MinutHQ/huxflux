@@ -28,15 +28,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="review"
-        options={{
-          title: "Review",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "eye" : "eye-outline"} size={22} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="dashboard"
         options={{
           title: "Dashboard",

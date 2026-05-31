@@ -1,5 +1,6 @@
 import { createRoute, Outlet, useNavigate, redirect } from "@tanstack/react-router"
-import { SettingsPage, type Section } from "@/components/SettingsPage"
+import { SettingsPage } from "@/domains/settings/SettingsPage"
+import type { Section } from "@/domains/settings/settings.types"
 import { Route as rootRoute } from "./__root"
 
 // /settings — layout route
@@ -63,7 +64,6 @@ export const SettingsReviewRoute = sectionRoute("review")
 export const SettingsIntegrationsRoute = sectionRoute("integrations")
 export const SettingsServersRoute = sectionRoute("servers")
 export const SettingsExperimentalRoute = sectionRoute("experimental")
-export const SettingsAdvancedRoute = sectionRoute("advanced")
 export const SettingsUpdatesRoute = sectionRoute("updates")
 
 // /settings/repo/$repoId
@@ -88,7 +88,6 @@ export const settingsChildren = [
   SettingsIntegrationsRoute,
   SettingsServersRoute,
   SettingsExperimentalRoute,
-  SettingsAdvancedRoute,
   SettingsUpdatesRoute,
   SettingsRepoRoute,
 ]

@@ -1,5 +1,5 @@
 import { createRoute, useNavigate } from "@tanstack/react-router"
-import { Onboarding } from "@/components/Onboarding"
+import { Onboarding } from "@/app-shell/Onboarding"
 import { useServers } from "@/hooks/useServers"
 import { Route as rootRoute } from "./__root"
 

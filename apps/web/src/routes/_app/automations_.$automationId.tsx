@@ -1,5 +1,5 @@
 import { createRoute, redirect } from "@tanstack/react-router"
-import { AutomationWorkspace } from "@/components/AutomationWorkspace"
+import { AutomationWorkspace } from "@/domains/automations/AutomationWorkspace"
 import { getFlag } from "@/lib/flags"
 import { Route as appRoute } from "../_app"
 

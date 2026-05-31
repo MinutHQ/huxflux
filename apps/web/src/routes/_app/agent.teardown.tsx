@@ -1,7 +1,7 @@
 import { createRoute } from "@tanstack/react-router"
-import { TeardownView } from "@/components/ChatView"
-import { useWorkspaceContext } from "@/hooks/useWorkspaceContext"
-import { HomeView } from "@/components/HomeView"
+import { TeardownView } from "@/domains/chat/TeardownView"
+import { useWorkspaceContext } from "@/app-shell/workspace"
+import { HomeView } from "@/domains/agents/HomeView"
 import { Route as appRoute } from "../_app"
 
 export const Route = createRoute({

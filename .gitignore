@@ -49,8 +49,13 @@ Thumbs.db
 # pnpm
 .pnpm-store/
 
-# Claude Code
-.claude/
+# Claude Code (only user-local files; checked-in skills and agents live alongside)
+.claude/settings.local.json
+.claude/cache/
+.claude/projects/
+.claude/sessions/
+.claude/logs/
+.claude/worktrees/
 
 # Temp reference docs
 *.docs.txt

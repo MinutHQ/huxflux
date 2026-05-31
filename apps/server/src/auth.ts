@@ -5,8 +5,17 @@ import { config } from "./config.js"
 // Public endpoints that never require auth
 const PUBLIC = new Set(["/health", "/api/config"])
 
+// Public path prefixes that never require auth (e.g. interactive API docs).
+// Use a prefix rather than enumerating every static asset Swagger UI serves.
+const PUBLIC_PREFIXES = ["/docs"]
+
+function isPublicRoute(url: string): boolean {
+  if (PUBLIC.has(url)) return true
+  return PUBLIC_PREFIXES.some((prefix) => url === prefix || url.startsWith(`${prefix}/`))
+}
+
 export async function authHook(req: FastifyRequest, reply: FastifyReply) {
-  if (PUBLIC.has(req.routeOptions?.url ?? req.url)) return
+  if (isPublicRoute(req.routeOptions?.url ?? req.url)) return
 
   if (!config.authToken) {
     return reply.code(503).send({ error: "AUTH_TOKEN is not configured" })

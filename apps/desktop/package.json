@@ -1,12 +1,13 @@
 {
   "name": "huxflux-desktop",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "build": "tauri build",
     "build:install": "tauri build --bundles app && WAS_RUNNING=$(pgrep -x huxflux-desktop >/dev/null && echo 1 || echo 0); osascript -e 'quit app \"Huxflux\"' 2>/dev/null; pkill -x huxflux-desktop 2>/dev/null; sleep 1; rm -rf \"/Applications/Huxflux.app\" && cp -R src-tauri/target/release/bundle/macos/Huxflux.app /Applications/ && echo \"Installed Huxflux.app to /Applications\" && { [ \"$WAS_RUNNING\" = \"1\" ] && open -a Huxflux && echo \"Reopened Huxflux\"; true; }",
+    "typecheck": "tsc -b --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,6 +1,14 @@
 import Fastify from "fastify"
 import fastifyCors from "@fastify/cors"
 import fastifyWebsocket from "@fastify/websocket"
+import fastifySwagger from "@fastify/swagger"
+import fastifySwaggerUi from "@fastify/swagger-ui"
+import {
+  jsonSchemaTransform,
+  serializerCompiler,
+  validatorCompiler,
+  type ZodTypeProvider,
+} from "fastify-type-provider-zod"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -17,30 +25,18 @@ delete process.env.PORT
 
 const PORT_FILE = path.join(os.homedir(), "huxflux", isDev ? "server-dev.port" : "server.port")
 import { runMigrations } from "./db/index.js"
-import { reposRoutes } from "./routes/repos.js"
-import { agentsRoutes } from "./routes/agents.js"
-import { messagesRoutes } from "./routes/messages.js"
-import { filesRoutes } from "./routes/files.js"
-import { terminalRoutes } from "./routes/terminal.js"
-import { terminalTabsRoutes } from "./routes/terminalTabs.js"
-import { slashCommandsRoutes } from "./routes/slashCommands.js"
-import { fsRoutes } from "./routes/fs.js"
-import { githubRoutes } from "./routes/github.js"
-import { uploadRoutes } from "./routes/upload.js"
-import { feedbackRoutes } from "./routes/feedback.js"
-import { settingsRoutes } from "./routes/settings.js"
-import { statsRoutes } from "./routes/stats.js"
-import { wrappedRoutes } from "./routes/wrapped.js"
-import { systemRoutes } from "./routes/system.js"
-import { tasksRoutes } from "./routes/tasks.js"
-import { registerAutomationRoutes, startScheduler } from "./routes/automations.js"
-import { registerSocket } from "./ws/handler.js"
-import { registerPtySocket } from "./ws/pty.js"
+import { domainPlugins } from "./domains/index.js"
+import { fsRoutes } from "./fs-routes.js"
+import { systemRoutes } from "./system-routes.js"
+import { startScheduler } from "./domains/automations/scheduler.js"
+import { registerSocket } from "./domains/ws/handler.js"
+import { registerPtySocket } from "./domains/ws/pty.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
-import { startPoller } from "./poller.js"
-import { resetStreamingFlags } from "./claude/runner.js"
-import { watchWorktree, refreshWorktree } from "./git/watcher.js"
+import { registerErrorHandler } from "./errorHandler.js"
+import { startJobs } from "./jobs.js"
+import { resetStreamingFlags } from "./domains/agent-runner/agent-runner.service.js"
+import { watchWorktree, refreshWorktree } from "./domains/git/watcher.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { isNull, eq } from "drizzle-orm"
@@ -48,14 +44,22 @@ import { isNull, eq } from "drizzle-orm"
 // pino-pretty is a dev dependency — only use it if available
 let hasPinoPretty = false
 if (isDev) {
-  try { await import("pino-pretty"); hasPinoPretty = true } catch {}
+  try { await import("pino-pretty"); hasPinoPretty = true } catch { /* pino-pretty not installed */ }
 }
 
 const app = Fastify({
   logger: isDev && hasPinoPretty
     ? { transport: { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname,reqId", singleLine: true } } }
     : true,
-})
+}).withTypeProvider<ZodTypeProvider>()
+
+// Zod-based request validation + response serialization. Routes that pass a
+// `schema` option to Fastify now get auto-validated bodies / querystrings /
+// params, and response payloads are checked against the declared schema before
+// being sent. The error handler below normalizes ZodError into the standard
+// `{ code: "validation.failed", ... }` shape.
+app.setValidatorCompiler(validatorCompiler)
+app.setSerializerCompiler(serializerCompiler)
 
 await app.register(fastifyCors, {
   origin: config.corsOrigins,
@@ -63,6 +67,27 @@ await app.register(fastifyCors, {
 })
 
 await app.register(fastifyWebsocket)
+
+// OpenAPI / Swagger docs. The Zod schemas registered on each route are
+// transformed into JSON Schema and exposed at /docs (interactive UI) and
+// /docs/json (raw spec). The spec is auto-derived: adding a `schema` to a
+// route automatically documents it.
+await app.register(fastifySwagger, {
+  openapi: {
+    info: { title: "Huxflux API", version: SERVER_VERSION },
+    servers: [{ url: "/" }],
+  },
+  transform: jsonSchemaTransform,
+})
+
+await app.register(fastifySwaggerUi, {
+  routePrefix: "/docs",
+})
+
+// Global error handler — normalises every error into the shared
+// `{ code, message, details? }` shape. Registered before route plugins so
+// thrown errors from any of them are caught.
+registerErrorHandler(app)
 
 // Auth — enforced on all routes when AUTH_TOKEN is set
 app.addHook("preHandler", authHook)
@@ -88,23 +113,10 @@ app.register(async (instance) => {
 })
 
 // REST routes
-await app.register(reposRoutes)
-await app.register(agentsRoutes)
-await app.register(messagesRoutes)
-await app.register(filesRoutes)
-await app.register(terminalRoutes)
-await app.register(terminalTabsRoutes)
-await app.register(slashCommandsRoutes)
+// Domain-shaped plugins (auto-registered from src/domains/).
+for (const plugin of domainPlugins) await app.register(plugin)
 await app.register(fsRoutes)
-await app.register(githubRoutes)
-await app.register(uploadRoutes)
-await app.register(feedbackRoutes)
-await app.register(settingsRoutes)
-await app.register(statsRoutes)
-await app.register(wrappedRoutes)
 await app.register(systemRoutes)
-await app.register(tasksRoutes)
-registerAutomationRoutes(app)
 
 // Health check
 app.get("/health", async () => ({ status: "ok", version: SERVER_VERSION }))
@@ -128,7 +140,7 @@ startUpdateChecker()
 resetStreamingFlags()
 
 // Ensure each repo with a setup script has one hidden reserve worktree
-import { initializeReserves } from "./git/pool.js"
+import { initializeReserves } from "./domains/git/pool.js"
 initializeReserves().catch((err) => console.error("[reserve] initialization failed:", err))
 
 
@@ -158,8 +170,8 @@ for (let attempt = 0; attempt < 10; attempt++) {
     boundPort = port
     config.boundPort = port
     break
-  } catch (err: any) {
-    if (err?.code === "EADDRINUSE") {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "EADDRINUSE") {
       console.warn(`[server] Port ${port} in use, trying ${port + 1}…`)
     } else {
       app.log.error(err)
@@ -194,7 +206,7 @@ const cleanupPortFile = () => {
 }
 
 // Kill all agent processes and clear port records on shutdown
-import { killWorktreeProcesses, clearAgentPorts } from "./git/processes.js"
+import { killWorktreeProcesses, clearAgentPorts } from "./domains/git/processes.js"
 async function cleanupOnShutdown() {
   cleanupPortFile()
   try {
@@ -214,11 +226,11 @@ process.on("exit", cleanupPortFile)
 process.on("SIGTERM", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
 process.on("SIGINT", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
 
-startPoller()
+startJobs()
 if (!process.env.HUXFLUX_SSH_USER) {
-  console.log("[huxflux] SSH not configured. Set HUXFLUX_SSH_HOST and HUXFLUX_SSH_USER to enable remote editor launch.")
+  console.info("[huxflux] SSH not configured. Set HUXFLUX_SSH_HOST and HUXFLUX_SSH_USER to enable remote editor launch.")
 }
-console.log(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
+console.info(`\nHuxflux server running on http://0.0.0.0:${boundPort}`)
 if (boundPort !== config.port) {
   console.warn(`⚠  Started on port ${boundPort} (${config.port} was in use). Update your client URL if needed.\n`)
 }
@@ -231,10 +243,12 @@ if (config.authToken) {
   const lanIp = allIpv4.find((ip) => { const [a, b] = ip.split(".").map(Number); return a === 100 && b >= 64 && b <= 127 })
     ?? allIpv4[0] ?? "localhost"
   const connStr = `huxflux://${lanIp}:${boundPort}?token=${config.authToken}`
-  console.log(`\n  Connect: ${connStr}\n`)
+  console.info(`\n  Connect: ${connStr}\n`)
   try {
+    // qrcode's QRCodeToStringOptions type omits `small`, but the runtime accepts it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const qr = await qrToString(connStr, { type: "terminal", small: true } as any)
-    console.log(`  Scan to connect on mobile:\n`)
-    console.log(qr)
+    console.info(`  Scan to connect on mobile:\n`)
+    console.info(qr)
   } catch { /* non-fatal */ }
 }

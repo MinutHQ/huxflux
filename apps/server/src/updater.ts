@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { SERVER_VERSION } from "./version.js"
-import { getSettings } from "./settings.js"
+import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
@@ -9,7 +9,6 @@ const NPM_PACKAGE = "@alexmartosp/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
 
 let latestVersion: string | null = null
-let lastCheck: number = 0
 
 export function getVersionInfo() {
   return {
@@ -41,7 +40,6 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
     if (res.ok) {
       const data = await res.json() as { version: string }
       latestVersion = data.version
-      lastCheck = Date.now()
     }
   } catch {
     // Offline or registry down, keep previous value
@@ -54,7 +52,7 @@ function isIdle(): boolean {
     const active = db.select().from(agentsTable)
       .where(isNull(agentsTable.deletedAt))
       .all()
-    return !active.some((a: any) => a.streaming || a.status === "in-progress")
+    return !active.some((a) => a.streaming || a.status === "in-progress")
   } catch {
     return true
   }
@@ -93,7 +91,7 @@ export function startUpdateChecker() {
   setTimeout(() => {
     checkForUpdate().then((info) => {
       if (info.updateAvailable) {
-        console.log(`[updater] Update available: ${info.current} → ${info.latest}`)
+        console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
         maybeAutoUpdate()
       }
     })
@@ -102,7 +100,7 @@ export function startUpdateChecker() {
   checkInterval = setInterval(async () => {
     const info = await checkForUpdate()
     if (info.updateAvailable) {
-      console.log(`[updater] Update available: ${info.current} → ${info.latest}`)
+      console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
       maybeAutoUpdate()
     }
   }, CHECK_INTERVAL_MS)
@@ -112,10 +110,10 @@ async function maybeAutoUpdate() {
   const settings = getSettings()
   if (!settings.autoUpdateServer) return
   if (!isIdle()) {
-    console.log("[updater] Auto-update deferred: agents are active")
+    console.info("[updater] Auto-update deferred: agents are active")
     return
   }
-  console.log("[updater] Auto-updating server...")
+  console.info("[updater] Auto-updating server...")
   const result = await triggerServerUpdate()
   if (!result.success) {
     console.error("[updater] Auto-update failed:", result.error)

@@ -21,7 +21,7 @@ export function parseUnifiedDiff(raw: string): DiffLine[] {
   for (const line of raw.split("\n")) {
     if (line.startsWith("@@")) {
       const m = line.match(/@@ -(\d+).*\+(\d+)/)
-      if (m) {
+      if (m && m[1] && m[2]) {
         delNo = parseInt(m[1])
         addNo = parseInt(m[2])
       }
@@ -74,15 +74,16 @@ export function tokenize(text: string): DiffToken[] {
     let matched = false
     for (const { re, cls } of PATTERNS) {
       const m = rest.match(re)
-      if (m) {
-        tokens.push({ cls, text: m[1] })
-        rest = rest.slice(m[1].length)
+      if (m && m[1] !== undefined) {
+        const matchText = m[1]
+        tokens.push({ cls, text: matchText })
+        rest = rest.slice(matchText.length)
         matched = true
         break
       }
     }
     if (!matched) {
-      tokens.push({ cls: "other", text: rest[0] })
+      tokens.push({ cls: "other", text: rest[0]! })
       rest = rest.slice(1)
     }
   }

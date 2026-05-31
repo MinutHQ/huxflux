@@ -52,7 +52,10 @@ export function setFlag<K extends keyof Flags>(key: K, value: Flags[K]) {
 
 // Expose to browser console for easy toggling
 if (typeof window !== "undefined") {
-  (window as any).__huxflux_flags = {
+  // Attaching a debug helper to window; we don't want this in the global Window
+  // typings since it's intentionally inspector-only.
+  const w = window as unknown as Record<string, unknown>
+  w.__huxflux_flags = {
     set: setFlag,
     get: getFlag,
     all: load,

@@ -1,7 +1,7 @@
 {
   "name": "huxflux-docs",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "scripts": {
     "dev": "next dev --port 3050",
     "build": "next build",

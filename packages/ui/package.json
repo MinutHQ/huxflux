@@ -1,18 +1,24 @@
 {
   "name": "@huxflux/ui",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.0",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "peerDependencies": {
-    "react": ">=18"
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "typescript": "~5.9.3"
   },
   "dependencies": {

@@ -1,0 +1,11 @@
+{
+  "exitCode": 0,
+  "stderr": [],
+  "events": [
+    { "type": "system", "subtype": "init", "session_id": "test-session-malformed" },
+    "this is not JSON at all",
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "Recovered." }] } },
+    "garbage line {{{",
+    { "type": "result", "usage": { "input_tokens": 1, "output_tokens": 1 } }
+  ]
+}

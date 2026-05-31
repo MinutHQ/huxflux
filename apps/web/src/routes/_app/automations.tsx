@@ -1,5 +1,5 @@
 import { createRoute, redirect } from "@tanstack/react-router"
-import { AutomationsView } from "@/components/AutomationsView"
+import { AutomationsView } from "@/domains/automations/AutomationsView"
 import { getFlag } from "@/lib/flags"
 import { Route as appRoute } from "../_app"
 

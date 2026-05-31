@@ -11,7 +11,7 @@ if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 6)) {
   process.exit(1)
 }
 
-import { spawn, spawnSync, execFileSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import * as crypto from "node:crypto"
 import * as fs from "node:fs"
 import * as os from "node:os"
@@ -131,22 +131,24 @@ function getOutboundIp(): string {
 
 async function printConnectInfo(cfg: Config, pid?: number) {
   const connStr = connectionString(cfg, getOutboundIp())
-  console.log(`  Connection string (paste into Huxflux web app):`)
-  console.log(`\n    ${connStr}\n`)
+  console.info(`  Connection string (paste into Huxflux web app):`)
+  console.info(`\n    ${connStr}\n`)
   try {
+    // qrcode's QRCodeToStringOptions type omits `small`, but the runtime accepts it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const qr = await qrToString(connStr, { type: "terminal", small: true } as any)
-    console.log(`  Scan to connect on mobile:\n`)
-    console.log(qr)
+    console.info(`  Scan to connect on mobile:\n`)
+    console.info(qr)
   } catch { /* non-fatal */ }
-  if (pid) console.log(`  PID:     ${pid}`)
-  console.log(`  Logs:    ${LOG_FILE}`)
-  console.log(`  Sandbox: ${sandboxStatus(cfg.sandbox)}`)
+  if (pid) console.info(`  PID:     ${pid}`)
+  console.info(`  Logs:    ${LOG_FILE}`)
+  console.info(`  Sandbox: ${sandboxStatus(cfg.sandbox)}`)
 }
 
 // ── Security disclaimer ───────────────────────────────────────────────────────
 
 function printDisclaimer() {
-  console.log(`
+  console.info(`
   ┌─ Security recommendations ────────────────────────────────────┐
   │                                                               │
   │  The auth token grants full shell access to this machine.     │
@@ -194,29 +196,29 @@ function printSandboxStatus(cfg: Config) {
   const sb = cfg.sandbox
   const firejail = isFirejailAvailable()
 
-  console.log(`\nSandbox\n`)
+  console.info(`\nSandbox\n`)
 
   if (!sb?.enabled) {
-    console.log(`  Status:  disabled`)
+    console.info(`  Status:  disabled`)
   } else if (os.platform() !== "linux") {
-    console.log(`  Status:  unsupported on macOS`)
+    console.info(`  Status:  unsupported on macOS`)
   } else if (!firejail) {
-    console.log(`  Status:  enabled (firejail not installed — run: sudo apt install firejail)`)
+    console.info(`  Status:  enabled (firejail not installed — run: sudo apt install firejail)`)
   } else {
-    console.log(`  Status:  active`)
+    console.info(`  Status:  active`)
   }
 
   const extras = sb?.allowedBinaries ?? []
   const builtins = ["git", "node", "claude", "sh", "bash", "curl"]
-  console.log(`  Built-in binaries:  ${builtins.join(", ")}`)
-  console.log(`  Extra binaries:     ${extras.length > 0 ? extras.join(", ") : "(none)"}`)
-  console.log(`  Paths:              derived from registered repos + ${DATA_DIR}\n`)
-  console.log(`Commands:`)
-  console.log(`  huxflux sandbox add <bin> [bin...]   Allow extra binaries`)
-  console.log(`  huxflux sandbox remove <bin>         Revoke a binary`)
-  console.log(`  huxflux sandbox enable               Enable sandboxing`)
-  console.log(`  huxflux sandbox disable              Disable sandboxing`)
-  console.log(`  huxflux sandbox setup                Interactive first-time setup\n`)
+  console.info(`  Built-in binaries:  ${builtins.join(", ")}`)
+  console.info(`  Extra binaries:     ${extras.length > 0 ? extras.join(", ") : "(none)"}`)
+  console.info(`  Paths:              derived from registered repos + ${DATA_DIR}\n`)
+  console.info(`Commands:`)
+  console.info(`  huxflux sandbox add <bin> [bin...]   Allow extra binaries`)
+  console.info(`  huxflux sandbox remove <bin>         Revoke a binary`)
+  console.info(`  huxflux sandbox enable               Enable sandboxing`)
+  console.info(`  huxflux sandbox disable              Disable sandboxing`)
+  console.info(`  huxflux sandbox setup                Interactive first-time setup\n`)
 }
 
 async function cmdSandbox(sub?: string, ...rest: string[]) {
@@ -232,12 +234,12 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
     if (rest.length === 0) { console.error("Usage: huxflux sandbox add <bin> [bin...]"); process.exit(1) }
     const current = cfg.sandbox?.allowedBinaries ?? []
     const added = rest.filter((b) => !current.includes(b))
-    if (added.length === 0) { console.log("Nothing to add — all listed binaries already allowed."); return }
+    if (added.length === 0) { console.info("Nothing to add — all listed binaries already allowed."); return }
     cfg.sandbox = { enabled: cfg.sandbox?.enabled ?? true, allowedBinaries: [...current, ...added] }
     saveConfig(cfg)
-    console.log(`Added: ${added.join(", ")}`)
-    console.log(`Allowed now: ${cfg.sandbox.allowedBinaries.join(", ")}`)
-    console.log(`\nRestart to apply: huxflux stop && huxflux start`)
+    console.info(`Added: ${added.join(", ")}`)
+    console.info(`Allowed now: ${cfg.sandbox.allowedBinaries.join(", ")}`)
+    console.info(`\nRestart to apply: huxflux stop && huxflux start`)
     return
   }
 
@@ -246,12 +248,12 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
     const current = cfg.sandbox?.allowedBinaries ?? []
     const next = current.filter((b) => !rest.includes(b))
     const removed = current.filter((b) => rest.includes(b))
-    if (removed.length === 0) { console.log(`Not in allowed list: ${rest.join(", ")}`); return }
+    if (removed.length === 0) { console.info(`Not in allowed list: ${rest.join(", ")}`); return }
     cfg.sandbox = { enabled: cfg.sandbox?.enabled ?? true, allowedBinaries: next }
     saveConfig(cfg)
-    console.log(`Removed: ${removed.join(", ")}`)
-    console.log(`Allowed now: ${next.length > 0 ? next.join(", ") : "(none)"}`)
-    console.log(`\nRestart to apply: huxflux stop && huxflux start`)
+    console.info(`Removed: ${removed.join(", ")}`)
+    console.info(`Allowed now: ${next.length > 0 ? next.join(", ") : "(none)"}`)
+    console.info(`\nRestart to apply: huxflux stop && huxflux start`)
     return
   }
 
@@ -259,10 +261,10 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
     cfg.sandbox = { enabled: true, allowedBinaries: cfg.sandbox?.allowedBinaries ?? [] }
     saveConfig(cfg)
     if (!isFirejailAvailable() && os.platform() === "linux") {
-      console.log("Sandbox enabled — but firejail is not installed:")
-      console.log("  sudo apt install firejail")
+      console.info("Sandbox enabled — but firejail is not installed:")
+      console.info("  sudo apt install firejail")
     } else {
-      console.log("Sandbox enabled. Restart to apply: huxflux stop && huxflux start")
+      console.info("Sandbox enabled. Restart to apply: huxflux stop && huxflux start")
     }
     return
   }
@@ -270,7 +272,7 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
   if (sub === "disable") {
     cfg.sandbox = { enabled: false, allowedBinaries: cfg.sandbox?.allowedBinaries ?? [] }
     saveConfig(cfg)
-    console.log("Sandbox disabled. Restart to apply: huxflux stop && huxflux start")
+    console.info("Sandbox disabled. Restart to apply: huxflux stop && huxflux start")
     return
   }
 
@@ -286,26 +288,26 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
 
 async function cmdSandboxSetup(cfg: Config) {
   if (os.platform() !== "linux") {
-    console.log("Sandbox via firejail is only supported on Linux.")
+    console.info("Sandbox via firejail is only supported on Linux.")
     process.exit(0)
   }
 
   if (!isFirejailAvailable()) {
-    console.log("\nfirejail is not installed:\n")
-    console.log("  sudo apt install firejail     # Debian/Ubuntu")
-    console.log("  sudo dnf install firejail     # Fedora/RHEL")
-    console.log("  sudo pacman -S firejail       # Arch\n")
+    console.info("\nfirejail is not installed:\n")
+    console.info("  sudo apt install firejail     # Debian/Ubuntu")
+    console.info("  sudo dnf install firejail     # Fedora/RHEL")
+    console.info("  sudo pacman -S firejail       # Arch\n")
     process.exit(1)
   }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   const existing = cfg.sandbox?.allowedBinaries ?? []
 
-  console.log("\nhuxflux sandbox setup\n")
-  console.log("Repo paths are automatic — derived from repos registered in the web app.")
-  console.log(`Built-in: git, node, claude, sh, bash, curl`)
-  if (existing.length > 0) console.log(`Currently allowed extras: ${existing.join(", ")}`)
-  console.log("")
+  console.info("\nhuxflux sandbox setup\n")
+  console.info("Repo paths are automatic — derived from repos registered in the web app.")
+  console.info(`Built-in: git, node, claude, sh, bash, curl`)
+  if (existing.length > 0) console.info(`Currently allowed extras: ${existing.join(", ")}`)
+  console.info("")
 
   const binsInput = await prompt(rl, "Extra CLIs to allow (comma-separated, or Enter for none):\n> ")
   rl.close()
@@ -315,9 +317,9 @@ async function cmdSandboxSetup(cfg: Config) {
   cfg.sandbox = { enabled: true, allowedBinaries }
   saveConfig(cfg)
 
-  console.log("\nSandbox configured:")
-  console.log(`  Extra binaries: ${allowedBinaries.length > 0 ? allowedBinaries.join(", ") : "none"}`)
-  console.log(`\nRestart to apply: huxflux stop && huxflux start\n`)
+  console.info("\nSandbox configured:")
+  console.info(`  Extra binaries: ${allowedBinaries.length > 0 ? allowedBinaries.join(", ") : "none"}`)
+  console.info(`\nRestart to apply: huxflux stop && huxflux start\n`)
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -330,9 +332,9 @@ async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
     const cfg = loadConfig()
     const port = getActualPort(cfg.port)
     if (!opts?.silent) {
-      console.log(`huxflux is already running  (PID ${existing})`)
-      console.log(`  Status: huxflux status`)
-      console.log(`  Logs:   huxflux logs`)
+      console.info(`huxflux is already running  (PID ${existing})`)
+      console.info(`  Status: huxflux status`)
+      console.info(`  Logs:   huxflux logs`)
     }
     return { pid: existing, port, cfg }
   }
@@ -405,15 +407,15 @@ async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
 async function cmdStart() {
   const { pid, cfg } = await startServer()
 
-  console.log(`\nhuxflux started\n`)
+  console.info(`\nhuxflux started\n`)
   await printConnectInfo(cfg, pid)
-  console.log(`\n  huxflux logs    — tail the server log`)
-  console.log(`  huxflux crashes — tail the crash log`)
-  console.log(`  huxflux stop    — stop the server`)
+  console.info(`\n  huxflux logs    — tail the server log`)
+  console.info(`  huxflux crashes — tail the crash log`)
+  console.info(`  huxflux stop    — stop the server`)
   if (!cfg.sandbox?.enabled && os.platform() === "linux") {
-    console.log(`\n  Tip: run 'huxflux sandbox' to restrict Claude's file access.`)
+    console.info(`\n  Tip: run 'huxflux sandbox' to restrict Claude's file access.`)
   }
-  console.log("")
+  console.info("")
 }
 
 // ── Supervisor — restarts the server on crash ────────────────────────────────
@@ -453,7 +455,7 @@ function runSupervisor() {
 
       // Exit code 42 = planned restart after update (not a crash)
       if (code === 42) {
-        console.log("[supervisor] Server updated, restarting with new version...")
+        console.info("[supervisor] Server updated, restarting with new version...")
         setTimeout(startServer, 1000)
         return
       }
@@ -503,7 +505,7 @@ function cmdStop() {
   if (!pid) {
     // Check if a service is installed but PID file is missing
     if (isServiceInstalled()) {
-      console.log("Stopping via system service...")
+      console.info("Stopping via system service...")
       const plat = os.platform()
       if (plat === "darwin") {
         // Unload stops the process and prevents KeepAlive from restarting it
@@ -511,19 +513,19 @@ function cmdStop() {
       } else if (plat === "linux") {
         spawnSync("systemctl", ["--user", "stop", "huxflux"], { stdio: "pipe" })
       }
-      if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch {}
-      if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch {}
-      console.log("huxflux stopped")
-      console.log("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
+      if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* best-effort cleanup */ }
+      if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* best-effort cleanup */ }
+      console.info("huxflux stopped")
+      console.info("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
       return
     }
-    console.log("huxflux is not running")
+    console.info("huxflux is not running")
     process.exit(0)
   }
   try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
   if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE)
   if (fs.existsSync(PORT_FILE)) fs.unlinkSync(PORT_FILE)
-  console.log(`huxflux stopped  (PID ${pid})`)
+  console.info(`huxflux stopped  (PID ${pid})`)
 }
 
 async function cmdStatus() {
@@ -531,18 +533,18 @@ async function cmdStatus() {
   const cfg = loadConfig()
 
   if (!pid) {
-    console.log("huxflux  stopped\n")
-    console.log("Run 'huxflux start' to start the server.")
+    console.info("huxflux  stopped\n")
+    console.info("Run 'huxflux start' to start the server.")
     return
   }
 
-  console.log(`huxflux  running  (PID ${pid})\n`)
+  console.info(`huxflux  running  (PID ${pid})\n`)
   await printConnectInfo(cfg)
 }
 
 function cmdLogs() {
   if (!fs.existsSync(LOG_FILE)) {
-    console.log("No logs yet. Start the server first: huxflux start")
+    console.info("No logs yet. Start the server first: huxflux start")
     process.exit(1)
   }
   const tail = spawn("tail", ["-f", "-n", "100", LOG_FILE], { stdio: "inherit" })
@@ -552,7 +554,7 @@ function cmdLogs() {
 
 function cmdCrashes() {
   if (!fs.existsSync(CRASH_LOG)) {
-    console.log("No crashes recorded.")
+    console.info("No crashes recorded.")
     process.exit(0)
   }
   const tail = spawn("tail", ["-f", "-n", "50", CRASH_LOG], { stdio: "inherit" })
@@ -563,7 +565,7 @@ function cmdCrashes() {
 function cmdAudit() {
   const auditLog = path.join(DATA_DIR, "audit.log")
   if (!fs.existsSync(auditLog)) {
-    console.log("No audit log yet. Start the server first: huxflux start")
+    console.info("No audit log yet. Start the server first: huxflux start")
     process.exit(1)
   }
   const tail = spawn("tail", ["-f", "-n", "50", auditLog], { stdio: "inherit" })
@@ -576,13 +578,13 @@ function cmdToken(sub?: string) {
   if (sub === "rotate") {
     cfg.token = crypto.randomBytes(32).toString("hex")
     saveConfig(cfg)
-    console.log(`\nNew token generated.\n`)
-    console.log(`  Update the web app with the new connection string:`)
-    console.log(`\n    ${connectionString(cfg)}\n`)
-    console.log(`  Restart to apply: huxflux stop && huxflux start\n`)
+    console.info(`\nNew token generated.\n`)
+    console.info(`  Update the web app with the new connection string:`)
+    console.info(`\n    ${connectionString(cfg)}\n`)
+    console.info(`  Restart to apply: huxflux stop && huxflux start\n`)
     return
   }
-  console.log(cfg.token)
+  console.info(cfg.token)
 }
 
 function cmdRestore(slot?: string) {
@@ -605,32 +607,32 @@ function cmdRestore(slot?: string) {
   const age = Math.round((Date.now() - backupStat.mtimeMs) / 1000 / 60)
   const ageLabel = age < 60 ? `${age}m ago` : `${Math.round(age / 60)}h ago`
 
-  console.log(`\nRestore from ${slotLabel}`)
-  console.log(`  Source:  ${src}`)
-  console.log(`  Created: ${backupStat.mtime.toISOString()}  (${ageLabel})`)
+  console.info(`\nRestore from ${slotLabel}`)
+  console.info(`  Source:  ${src}`)
+  console.info(`  Created: ${backupStat.mtime.toISOString()}  (${ageLabel})`)
   if (fs.existsSync(DB_FILE)) {
     const dbStat = fs.statSync(DB_FILE)
-    console.log(`  Current: ${DB_FILE}  (${Math.round((Date.now() - dbStat.mtimeMs) / 1000 / 60)}m old)`)
+    console.info(`  Current: ${DB_FILE}  (${Math.round((Date.now() - dbStat.mtimeMs) / 1000 / 60)}m old)`)
   }
-  console.log("")
+  console.info("")
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   rl.question("Replace current database with this backup? [y/N] ", (answer) => {
     rl.close()
     if (answer.toLowerCase() !== "y") {
-      console.log("Aborted.")
+      console.info("Aborted.")
       process.exit(0)
     }
 
     // Save the current DB as a pre-restore snapshot before overwriting
     if (fs.existsSync(DB_FILE)) {
       fs.copyFileSync(DB_FILE, DB_FILE + ".pre-restore")
-      console.log(`  Saved current DB → ${DB_FILE}.pre-restore`)
+      console.info(`  Saved current DB → ${DB_FILE}.pre-restore`)
     }
 
     fs.copyFileSync(src, DB_FILE)
-    console.log(`  Restored ${src} → ${DB_FILE}`)
-    console.log("\nDone. Run 'huxflux start' to restart.\n")
+    console.info(`  Restored ${src} → ${DB_FILE}`)
+    console.info("\nDone. Run 'huxflux start' to restart.\n")
   })
 }
 
@@ -641,7 +643,7 @@ async function cmdReset() {
     process.exit(1)
   }
 
-  console.log(`
+  console.info(`
   ┌─ WARNING: DESTRUCTIVE OPERATION ──────────────────────────────┐
   │                                                               │
   │  This will PERMANENTLY DELETE your entire database:           │
@@ -665,28 +667,28 @@ async function cmdReset() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
 
   const a1 = await prompt(rl, "  Confirmation 1/3 — Do you want to erase all data? [y/N] ")
-  if (a1.toLowerCase() !== "y") { rl.close(); console.log("\n  Aborted.\n"); process.exit(0) }
+  if (a1.toLowerCase() !== "y") { rl.close(); console.info("\n  Aborted.\n"); process.exit(0) }
 
   const a2 = await prompt(rl, "  Confirmation 2/3 — Type \"yes\" to continue: ")
-  if (a2 !== "yes") { rl.close(); console.log("\n  Aborted.\n"); process.exit(0) }
+  if (a2 !== "yes") { rl.close(); console.info("\n  Aborted.\n"); process.exit(0) }
 
   const a3 = await prompt(rl, "  Confirmation 3/3 — Type \"huxflux\" to confirm the reset: ")
   rl.close()
-  if (a3 !== "huxflux") { console.log("\n  Aborted.\n"); process.exit(0) }
+  if (a3 !== "huxflux") { console.info("\n  Aborted.\n"); process.exit(0) }
 
-  console.log("")
+  console.info("")
   for (const f of [DB_FILE, DB_BAK, DB_BAK2]) {
     if (fs.existsSync(f)) {
       fs.unlinkSync(f)
-      console.log(`  Deleted ${f}`)
+      console.info(`  Deleted ${f}`)
     }
   }
   if (fs.existsSync(WORKSPACES)) {
     fs.rmSync(WORKSPACES, { recursive: true, force: true })
-    console.log(`  Deleted ${WORKSPACES}`)
+    console.info(`  Deleted ${WORKSPACES}`)
   }
-  console.log("\n  Reset complete. Run 'huxflux start' for a fresh instance.")
-  console.log("  Tip: run 'git worktree prune' in each repo to remove stale refs.\n")
+  console.info("\n  Reset complete. Run 'huxflux start' for a fresh instance.")
+  console.info("  Tip: run 'git worktree prune' in each repo to remove stale refs.\n")
 }
 
 const WEB_APP_URL = "https://huxflux.netlify.app"
@@ -695,21 +697,21 @@ function cmdOpen(host?: string) {
   const cfg = loadConfig()
   const pid = getRunningPid()
   if (!pid) {
-    console.log("huxflux is not running — start it first: huxflux start")
+    console.info("huxflux is not running — start it first: huxflux start")
     process.exit(1)
   }
   const conn = connectionString(cfg, host ?? "localhost")
   const url = `${WEB_APP_URL}/?connect=${encodeURIComponent(conn)}`
-  console.log(`Opening ${WEB_APP_URL}`)
+  console.info(`Opening ${WEB_APP_URL}`)
   const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open"
   spawnSync(opener, [url], { stdio: "inherit", shell: true })
 }
 
 function cmdUpdate() {
-  console.log(`\nUpdating huxflux (current: ${VERSION})...\n`)
+  console.info(`\nUpdating huxflux (current: ${VERSION})...\n`)
   let result = spawnSync("npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
   if (result.status !== 0) {
-    console.log("\nRetrying with sudo...")
+    console.info("\nRetrying with sudo...")
     result = spawnSync("sudo npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
   }
   if (result.status !== 0) {
@@ -718,7 +720,7 @@ function cmdUpdate() {
     console.error("  # or: sudo npm install -g @alexmartosp/huxflux@latest\n")
     process.exit(result.status ?? 1)
   }
-  console.log(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)
+  console.info(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)
 }
 
 function cmdRun() {
@@ -735,7 +737,7 @@ function cmdRun() {
 async function cmdSetup() {
   const p = await import("@clack/prompts")
 
-  console.log("")
+  console.info("")
   p.intro("Huxflux Setup")
 
   // ── Detect environment ──
@@ -799,8 +801,8 @@ async function cmdSetup() {
         p.log.message(`\n  Connect from another device:\n\n    ${connStr}\n`)
         try {
           const qr = await qrToString(connStr, { type: "terminal", small: true })
-          console.log(qr)
-        } catch {}
+          console.info(qr)
+        } catch { /* QR generation is best-effort */ }
       }
     }
     p.outro("Run 'huxflux status' for details, or 'huxflux update' to check for updates.")
@@ -857,23 +859,23 @@ async function cmdSetup() {
       s.start("Installing service and starting server...")
       try {
         installSystemService()
-      } catch (err: any) {
+      } catch (err) {
         s.stop("Could not install service")
-        p.log.warning(err.message)
+        p.log.warning((err as Error).message)
         p.log.info("Starting manually instead...")
         try {
           await startServer({ silent: true })
-        } catch (startErr: any) {
-          p.log.error(startErr.message || "Failed to start server")
+        } catch (startErr) {
+          p.log.error((startErr as Error).message || "Failed to start server")
         }
       }
     } else {
       s.start("Starting server...")
       try {
         await startServer({ silent: true })
-      } catch (err: any) {
+      } catch (err) {
         s.stop("Failed to start server")
-        p.log.error(err.message || "Unknown error")
+        p.log.error((err as Error).message || "Unknown error")
       }
     }
 
@@ -903,8 +905,8 @@ async function cmdSetup() {
       p.log.message(`\n    ${connStr}\n`)
       try {
         const qr = await qrToString(connStr, { type: "terminal", small: true })
-        console.log(qr)
-      } catch {}
+        console.info(qr)
+      } catch { /* QR generation is best-effort */ }
     }
   }
 
@@ -957,7 +959,7 @@ async function cmdSetup() {
               try {
                 const volumes = fs.readdirSync("/Volumes").filter(v => v.startsWith("Huxflux"))
                 for (const v of volumes) spawnSync("hdiutil", ["detach", `/Volumes/${v}`, "-quiet", "-force"], { stdio: "pipe" })
-              } catch {}
+              } catch { /* best-effort detach */ }
 
               const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse", "-quiet"], { encoding: "utf-8", stdio: "pipe" })
               const mountLine = (mountResult.stdout || "").split("\n").find((l: string) => l.includes("/Volumes/"))
@@ -993,10 +995,10 @@ async function cmdSetup() {
                 p.log.info("Try manually: hdiutil attach " + dmgPath)
               }
 
-              try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
-            } catch (dlErr: any) {
+              try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* tmp cleanup is best-effort */ }
+            } catch (dlErr) {
               ds.stop("Download failed")
-              p.log.error(dlErr.message)
+              p.log.error((dlErr as Error).message)
               p.log.info(`Download manually: ${downloadUrl}`)
             }
           }
@@ -1044,10 +1046,10 @@ Terminal=false
                 p.log.success("Launched — it will connect to your local server automatically")
               }
 
-              try { fs.rmSync(tmpDir, { recursive: true }) } catch {}
-            } catch (dlErr: any) {
+              try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* tmp cleanup is best-effort */ }
+            } catch (dlErr) {
               ds.stop("Download failed")
-              p.log.error(dlErr.message)
+              p.log.error((dlErr as Error).message)
               p.log.info(`Download manually: ${downloadUrl}`)
             }
           }
@@ -1059,17 +1061,17 @@ Terminal=false
         s.stop("No desktop build for this platform")
         p.log.info("Use the web UI instead: open the server URL in your browser")
       }
-    } catch (err: any) {
+    } catch {
       s.stop("Could not fetch release info")
       p.log.error("Check: https://github.com/AlexMartosP/huxflux-releases/releases")
     }
   }
 
   // ── Summary ──
-  console.log("")
+  console.info("")
   p.log.warning("The auth token grants shell access to this machine. Treat it like an SSH key.")
   p.log.info("Run 'huxflux security' for details.")
-  console.log("")
+  console.info("")
   p.log.step("Useful commands:")
   p.log.info("huxflux status   Connection info and server URL")
   p.log.info("huxflux logs     Tail the server log")
@@ -1163,7 +1165,7 @@ async function cmdData(action?: string, direction?: string) {
       process.exit(1)
     }
   } else {
-    console.log(`
+    console.info(`
 huxflux data — Manage databases
 
 Usage:
@@ -1286,7 +1288,7 @@ function removeSystemService() {
 async function cmdUninstall() {
   const p = await import("@clack/prompts")
 
-  console.log("")
+  console.info("")
   p.intro("Uninstall Huxflux")
 
   // Detect what's installed
@@ -1326,18 +1328,18 @@ async function cmdUninstall() {
   // Remove system service
   const s0 = p.spinner()
   s0.start("Removing system service...")
-  try { removeSystemService() } catch {}
+  try { removeSystemService() } catch { /* not installed */ }
   s0.stop("System service removed ✓")
 
   // Stop server
   if (pid) {
     const s = p.spinner()
     s.start("Stopping server...")
-    try { process.kill(pid, "SIGTERM") } catch {}
+    try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
     await new Promise(r => setTimeout(r, 2000))
-    try { fs.unlinkSync(path.join(DATA_DIR, "server.pid")) } catch {}
-    try { fs.unlinkSync(path.join(DATA_DIR, "server.port")) } catch {}
-    try { fs.unlinkSync(path.join(DATA_DIR, "connection.json")) } catch {}
+    try { fs.unlinkSync(path.join(DATA_DIR, "server.pid")) } catch { /* already removed */ }
+    try { fs.unlinkSync(path.join(DATA_DIR, "server.port")) } catch { /* already removed */ }
+    try { fs.unlinkSync(path.join(DATA_DIR, "connection.json")) } catch { /* already removed */ }
     s.stop("Server stopped ✓")
   }
 
@@ -1370,10 +1372,10 @@ function cmdConfig(key?: string, value?: string) {
     // Read/write auto-update setting from settings.json (same file the server uses)
     const settingsFile = path.join(DATA_DIR, "settings.json")
     let settings: Record<string, unknown> = {}
-    try { settings = JSON.parse(fs.readFileSync(settingsFile, "utf8")) } catch {}
+    try { settings = JSON.parse(fs.readFileSync(settingsFile, "utf8")) } catch { /* file missing or malformed */ }
 
     if (value === undefined) {
-      console.log(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
+      console.info(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
       return
     }
 
@@ -1388,12 +1390,12 @@ function cmdConfig(key?: string, value?: string) {
 
     ensureDataDir()
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
-    console.log(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
+    console.info(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
     return
   }
 
   // No key or unknown key: show all config
-  console.log(`
+  console.info(`
 huxflux config — View and modify settings
 
 Usage:
@@ -1405,7 +1407,7 @@ Usage:
 // ── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp() {
-  console.log(`
+  console.info(`
 huxflux — Huxflux server
 
 Usage:
@@ -1465,7 +1467,7 @@ switch (cmd) {
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
   case "security": printDisclaimer(); break
   case "--version":
-  case "-v":       console.log(VERSION); break
+  case "-v":       console.info(VERSION); break
   case "help":
   case "--help":
   case "-h":       printHelp(); break

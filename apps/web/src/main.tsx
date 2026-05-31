@@ -16,7 +16,7 @@ if (!!import.meta.env.TAURI_PLATFORM || '__TAURI_INTERNALS__' in window) {
 }
 import { RouterProvider } from "@tanstack/react-router"
 import { createAppRouter } from "./router"
-import { ErrorBoundary } from "./components/ErrorBoundary.tsx"
+import { ErrorBoundary } from "@/app-shell/ErrorBoundary"
 
 // Initialize shared library with web-specific platform adapters
 configureStorage(localStorage)

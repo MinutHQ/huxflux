@@ -5,7 +5,6 @@ const ENABLED_KEY = "huxflux:notif:enabled"
 const SEND_WITH_KEY = "huxflux:send:with"
 const AUTO_CONVERT_KEY = "huxflux:auto:convert"
 const STRIP_YOURE_RIGHT_KEY = "huxflux:strip:youre-right"
-const ALWAYS_CONTEXT_KEY = "huxflux:always:context"
 const DESKTOP_NOTIF_KEY = "huxflux:notif:desktop"
 
 export function getSoundPref(): SoundId {
@@ -50,14 +49,6 @@ export function getStripYoureRight(): boolean {
 
 export function setStripYoureRight(v: boolean) {
   localStorage.setItem(STRIP_YOURE_RIGHT_KEY, String(v))
-}
-
-export function getAlwaysContext(): boolean {
-  return localStorage.getItem(ALWAYS_CONTEXT_KEY) === "true"
-}
-
-export function setAlwaysContext(v: boolean) {
-  localStorage.setItem(ALWAYS_CONTEXT_KEY, String(v))
 }
 
 export function getDesktopNotif(): boolean {

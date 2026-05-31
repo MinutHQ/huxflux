@@ -1,41 +1,41 @@
-# HuxFlux
+# Huxflux
 
-HuxFlux is an AI agent orchestrator that lets you manage, monitor, and coordinate multiple coding agents from a single interface. Think of it as a control room for your AI-powered development workflow.
+Huxflux is a self-hosted orchestrator for AI coding agents. Spawn Claude Code, Codex, OpenCode, and other CLI agents in parallel across your repositories, each on its own isolated git worktree, and watch chat, file diffs, terminal output, and PR status in one interface. Built and maintained by [Minut](https://minut.com).
 
-Spawn agents, assign them tasks, watch their progress in real time, review their code changes, and interact with them through chat. HuxFlux handles the orchestration so you can focus on directing the work rather than babysitting individual agents.
+## Getting started
 
-**Key features:**
+The fastest way to get going is the one-line installer. It installs the server, runs the setup wizard, and optionally installs the desktop app.
 
-- Run multiple coding agents in parallel across repositories
-- Real-time chat, file diffs, and terminal views per agent
-- GitHub PR integration (status tracking, review comments, CI monitoring)
-- Jira integration for task management and syncing
-- Tauri desktop app with web and mobile clients
-- Kanban board for organizing agent tasks
+```sh
+curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash
+```
 
-## Project structure
+The desktop app auto-connects to your local server on first launch. For manual installation, remote-access setup (Tailscale, nginx), and provider configuration see the [installation guide](https://huxflux.dev/docs/getting-started/installation).
 
-- `apps/web` - React web client (TanStack Router, Tailwind, shadcn)
-- `apps/server` - Node.js backend (Hono, Drizzle, SQLite)
-- `apps/desktop` - Tauri desktop wrapper
-- `apps/mobile` - Mobile client
-- `apps/docs` - Documentation
-- `apps/marketing` - Marketing site
+## How this repo is built
 
-## Status
+This codebase is authored by AI coding agents end-to-end. Humans do not write code here directly. If you want to contribute, use an agentic coder (Claude Code, Cursor, Aider, similar). See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow and quality gates.
 
-HuxFlux has not yet had a stable release. We are actively working on a testing framework designed to let us ship confidently while keeping the entire codebase vibe coded. The goal is to prove that stability and vibe coding are not mutually exclusive.
+## Architecture
 
-## Contributing
+Monorepo, pnpm workspaces.
 
-Contributions are welcome. This is a 100% vibe coded project and we intend to keep it that way.
+- `apps/web` — Vite + React + TanStack Router. The primary client.
+- `apps/server` — Node + Fastify + Drizzle SQLite. The orchestrator backend.
+- `apps/desktop` — Tauri shell wrapping the web app.
+- `apps/mobile` — Expo React Native client.
+- `apps/docs` — Next.js docs site (Fumadocs).
+- `apps/marketing` — Static HTML marketing experiments.
+- `packages/shared` — Cross-platform types, hooks, API client, websocket logic.
+- `packages/ui` — Headless / shadcn primitives shared by web (and mobile where compatible).
+- `packages/tokens` — Design tokens (CSS variables, TS exports).
 
-**What we care about:**
+Most apps and packages follow a strict `domains/<name>/` pattern with eslint-enforced public-surface boundaries. See [CLAUDE.md](./CLAUDE.md) for the full architecture rules.
 
-- A clear description of *what* your change does and *why* it exists. Explain the problem, the motivation, and how your approach solves it. The better the context, the faster we merge.
+## License
 
-**What we don't care much about:**
+Proprietary. All rights reserved. Built and maintained by [Minut](https://minut.com).
 
-- Code style, patterns, or how "clean" the implementation is. We won't nitpick your code unless there's a major bug or security issue that needs fixing. AI-generated code is not just accepted, it's expected. The AI is a first-class contributor here.
+---
 
-**In short:** describe the what and why well, let the AI write the code, and we'll ship it.
+Built and maintained by [Minut](https://minut.com).

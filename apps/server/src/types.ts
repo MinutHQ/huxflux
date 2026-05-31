@@ -72,6 +72,9 @@ export interface PRDetails extends PRStatus {
   checks: PRCheck[]
   threads: PRThread[]
   issueComments: PRIssueComment[]
+  // Authenticated user's GitHub login, used by the web UI to flag which
+  // comments are "mine" and which review threads can be resolved.
+  currentUser?: string
 }
 
 export interface OpenPR {
@@ -88,12 +91,21 @@ export interface OpenPR {
   hasChangeRequests: boolean
   draft: boolean
   url: string
+  reviewRequested?: boolean
+  userReviewed?: boolean
+  // Raw GitHub mergeable state ("clean" | "blocked" | "dirty" | "unknown" |
+  // "unstable"). Populated by listReviewRequestedPRs so the client can decide
+  // whether a PR is ready to merge.
+  mergeableState?: string
 }
 
 export interface OpenPRWithRepo extends OpenPR {
   repoId: string
   repoName: string
   agentId?: string
+  // Convenience flag computed by the route handler: clean mergeable state,
+  // no outstanding change requests, not a draft.
+  isReadyToMerge?: boolean
 }
 
 export interface PRFileDiff {
@@ -165,7 +177,7 @@ export interface Agent {
   updatedAt: string
 }
 
-export interface AgentSummary extends Omit<Agent, "messages" | "fileChanges" | "terminalOutput"> {}
+export type AgentSummary = Omit<Agent, "messages" | "fileChanges" | "terminalOutput">
 
 export interface Repo {
   id: string
@@ -178,8 +190,6 @@ export interface Repo {
   previewUrl?: string
   setupScript?: string
   runScript?: string
-  archiveScript?: string
-  preferences?: string
   icon?: string
   type?: "git" | "folder"
   createdAt: string

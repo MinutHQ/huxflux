@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://huxflux.dev/docs
+    about: Installation, configuration, and user manual.
+  - name: Minut
+    url: https://minut.com
+    about: Huxflux is built and maintained by Minut.

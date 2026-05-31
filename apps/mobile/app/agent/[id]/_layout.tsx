@@ -1,6 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router"
-import { useQuery } from "@tanstack/react-query"
-import { api } from "@huxflux/shared"
+import { api, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { c } from "../../../theme"
 
@@ -9,9 +8,9 @@ export default function AgentLayout() {
   const { id } = useLocalSearchParams<{ id: string }>()
   // Use a plain query (no WS subscription) — index.tsx handles streaming via useAgent.
   // This avoids double-processing WS events.
-  const { data: agent, isLoading } = useQuery({
-    queryKey: ["agent", id],
-    queryFn: () => api.getAgent(id!),
+  const { data: agent, isLoading } = useHuxfluxQuery({
+    queryKey: queryKeys.agents.detail(id),
+    queryFn: () => api.agents.get(id!),
     enabled: !!id,
     staleTime: 10_000,
   })

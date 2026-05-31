@@ -1,20 +1,25 @@
-import { createContext, useState, useEffect, useContext, useMemo } from "react"
+import { useState, useEffect, useContext, useMemo } from "react"
 import { Platform } from "react-native"
 import { Stack, useRouter } from "expo-router"
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { configureStorage, configureAgentErrorHandler, useAgentEvents, getActiveServer } from "@huxflux/shared"
+import { configureStorage, configureAgentErrorHandler, useAgentEvents, getActiveServer, queryKeys } from "@huxflux/shared"
 import type { AgentSummary } from "@huxflux/shared"
-import { ModalProvider, useModal } from "../components/Modal"
+import { ModalProvider, useModal } from "@/ui"
 import { StatusBar } from "expo-status-bar"
 import { ThemeContext, applyTheme, themes, c } from "../theme"
 import { PREF_KEYS } from "../lib/prefs"
+import { HydrationContext } from "../lib/hydration"
+import { setGlobalAlert, getGlobalAlert } from "../lib/globalAlert"
 import * as Notifications from "expo-notifications"
 
 // Show notifications when app is in the foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    // iOS — fine-grained equivalents of shouldShowAlert in newer expo-notifications.
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -46,18 +51,18 @@ configureStorage({
 
 const STORAGE_KEYS = ["huxflux:servers", "huxflux:active-server", "huxflux:mobile-theme", ...PREF_KEYS]
 
-const HydrationContext = createContext(false)
-export function useHydrated() { return useContext(HydrationContext) }
-
-// Deferred — set once ModalProvider mounts
-let _showAlert: ((title: string, message?: string) => void) | null = null
-export function setGlobalAlert(fn: typeof _showAlert) { _showAlert = fn }
-
 configureAgentErrorHandler((message) => {
-  if (_showAlert) _showAlert("Agent error", message)
+  const showAlert = getGlobalAlert()
+  if (showAlert) showAlert("Agent error", message)
 })
 
-let queryClient: QueryClient
+function createQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: 1, refetchOnWindowFocus: false },
+    },
+  })
+}
 
 function AppContent({ hydrated }: { hydrated: boolean }) {
   const modal = useModal()
@@ -99,7 +104,7 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
   useAgentEvents(null, (event) => {
     if (event.type !== "message:done") return
     const serverUrl = getActiveServer()?.url ?? null
-    const agents = queryClient.getQueryData<AgentSummary[]>(["agents", serverUrl])
+    const agents = queryClient.getQueryData<AgentSummary[]>(queryKeys.agents.list(serverUrl))
     const agent = agents?.find((a) => a.id === event.agentId)
     Notifications.scheduleNotificationAsync({
       content: {
@@ -126,8 +131,6 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="agent/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="pr-review" options={{ headerShown: false }} />
-        <Stack.Screen name="pr-diff" options={{ headerShown: false }} />
         <Stack.Screen name="servers" options={{ title: "Servers", presentation: "modal" }} />
         <Stack.Screen name="new-agent" options={{ title: "New Agent", presentation: "modal" }} />
         <Stack.Screen name="add-repo" options={{ title: "Add Repo", presentation: "modal" }} />
@@ -139,6 +142,9 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
 export default function RootLayout() {
   const [hydrated, setHydrated] = useState(false)
   const [themeId, setThemeIdState] = useState("stone")
+  // QueryClient is created once via lazy useState initializer so the same
+  // instance survives every re-render of the root layout.
+  const [queryClient] = useState(createQueryClient)
 
   function setThemeId(id: string) {
     applyTheme(id)
@@ -148,14 +154,6 @@ export default function RootLayout() {
   }
 
   const themeCtx = useMemo(() => ({ themeId, setThemeId }), [themeId])
-
-  if (!queryClient) {
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: 1, refetchOnWindowFocus: false },
-      },
-    })
-  }
 
   useEffect(() => {
     AsyncStorage.multiGet(STORAGE_KEYS).then((pairs) => {
@@ -171,6 +169,9 @@ export default function RootLayout() {
       setHydrated(true)
       queryClient.invalidateQueries()
     })
+  // Mount-only effect; queryClient is created once via the lazy initializer
+  // above so it is stable for the whole component lifetime.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const isLight = themes.find((t) => t.id === themeId)?.light ?? false

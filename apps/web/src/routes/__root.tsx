@@ -2,9 +2,9 @@ import { createRootRouteWithContext, Outlet } from "@tanstack/react-router"
 import { useState, useEffect, useSyncExternalStore } from "react"
 import type { QueryClient } from "@tanstack/react-query"
 import { toast, Toaster } from "sonner"
-import { CommandPalette } from "@/components/CommandPalette"
-import { DisconnectedBanner } from "@/components/DisconnectedBanner"
-import { UpdateBanner } from "@/components/UpdateBanner"
+import { CommandPalette } from "@/app-shell/CommandPalette"
+import { DisconnectedBanner } from "@/app-shell/banners/DisconnectedBanner"
+import { UpdateBanner } from "@/app-shell/banners/UpdateBanner"
 import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { useUpdater } from "@/hooks/useUpdater"
@@ -115,8 +115,8 @@ function RootComponent() {
               refreshServers()
             }
           }
-        } catch {}
-      }).catch(() => {})
+        } catch { /* malformed connection JSON; ignore */ }
+      }).catch(() => { /* no local connection */ })
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

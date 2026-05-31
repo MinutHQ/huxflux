@@ -1,18 +1,24 @@
 import { createRequire } from "node:module"
-import * as pty from "@homebridge/node-pty-prebuilt-multiarch"
 import * as path from "node:path"
 import * as fs from "node:fs"
 
-// pnpm strips execute permissions from prebuilt binaries in tarballs.
-// Fix spawn-helper at startup so the PTY can spawn processes on macOS/Linux.
-const _require = createRequire(import.meta.url)
+// Load node-pty gracefully. If the native binary isn't available (e.g. unsupported
+// Node version, missing prebuilds), the server still starts but terminals won't work.
+let pty: typeof import("@homebridge/node-pty-prebuilt-multiarch") | null = null
 try {
+  pty = await import("@homebridge/node-pty-prebuilt-multiarch")
+
+  // pnpm strips execute permissions from prebuilt binaries in tarballs.
+  // Fix spawn-helper at startup so the PTY can spawn processes on macOS/Linux.
+  const _require = createRequire(import.meta.url)
   const ptyPkg = path.dirname(_require.resolve("@homebridge/node-pty-prebuilt-multiarch/package.json"))
   const helper = path.join(ptyPkg, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper")
   if (fs.existsSync(helper) && !(fs.statSync(helper).mode & 0o111)) {
     fs.chmodSync(helper, 0o755)
   }
-} catch { /* not on a platform that needs it */ }
+} catch {
+  console.warn("[pty] node-pty not available. Terminal feature disabled. This is normal on unsupported Node versions.")
+}
 
 import type { WebSocket } from "@fastify/websocket"
 import { db } from "../../db/index.js"
@@ -28,7 +34,7 @@ type PtyMessage =
 const OUTPUT_BUF_SIZE = 100_000 // ~100KB
 
 interface PtyEntry {
-  process: pty.IPty
+  process: ReturnType<NonNullable<typeof pty>["spawn"]>
   outputBuf: string
   clients: Set<WebSocket>
 }
@@ -127,6 +133,12 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
   }
 
   const shell = process.env.SHELL ?? "/bin/bash"
+
+  if (!pty) {
+    socket.send(JSON.stringify({ type: "error", message: "Terminal not available (node-pty not installed for this Node version)" }))
+    socket.close()
+    return
+  }
 
   const ptyProcess = pty.spawn(shell, ["-l"], {
     name: "xterm-256color",

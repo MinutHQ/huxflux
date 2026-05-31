@@ -276,8 +276,8 @@ importers:
         specifier: ^11.0.2
         version: 11.2.0
       '@homebridge/node-pty-prebuilt-multiarch':
-        specifier: ^0.13.1
-        version: 0.13.1
+        specifier: ^0.14.0
+        version: 0.14.0
       '@octokit/rest':
         specifier: ^21.1.1
         version: 21.1.1
@@ -2148,9 +2148,10 @@ packages:
   '@formatjs/intl-localematcher@0.6.2':
     resolution: {integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==}
 
-  '@homebridge/node-pty-prebuilt-multiarch@0.13.1':
-    resolution: {integrity: sha512-ccQ60nMcbEGrQh0U9E6x0ajW9qJNeazpcM/9CH6J8leyNtJgb+gu24WTBAfBUVeO486ZhscnaxLEITI2HXwhow==}
-    engines: {node: '>=18.0.0 <25.0.0'}
+  '@homebridge/node-pty-prebuilt-multiarch@0.14.0':
+    resolution: {integrity: sha512-uCeUnFierwrXN+QvkSxzLXOOKxV1fnCFlZ2N51+dXNNlsu3iMUVnXGdv4jcxINUQwcntfLecdbnMmAhetddSVg==}
+    engines: {node: '>=20.0.0 <25.0.0'}
+    deprecated: this package has been deprecated
 
   '@hono/node-server@1.19.12':
     resolution: {integrity: sha512-txsUW4SQ1iilgE0l9/e9VQWmELXifEFvmdA1j6WFh/aFPj99hIntrSsq/if0UWyGVkmrRPKA1wCeP+UCr1B9Uw==}
@@ -10956,7 +10957,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@homebridge/node-pty-prebuilt-multiarch@0.13.1':
+  '@homebridge/node-pty-prebuilt-multiarch@0.14.0':
     dependencies:
       node-addon-api: 7.1.1
       prebuild-install: 7.1.3

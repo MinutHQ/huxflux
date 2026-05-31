@@ -194,16 +194,58 @@ For deeper discussion before any code is written, use `/discuss`. That skill for
 4. Prefer using a `/scaffold-*` skill if one exists for what you're doing. It produces conforming code by construction.
 5. Keep the change minimal. Don't refactor adjacent code. Don't add fallbacks for impossible cases.
 
+## Commit Convention
+
+All commits use conventional commit format. The type prefix determines automatic version bumping.
+
+**Format:** `<type>: <imperative summary>`
+
+| Prefix | Version bump | When to use |
+|--------|-------------|-------------|
+| `feat:` | patch | New user-visible feature or capability |
+| `fix:` | patch | Bug fix |
+| `refactor:` | none | Internal restructuring, no behavior change |
+| `chore:` | none | Tooling, build, dependencies, non-functional |
+| `docs:` | none | Documentation only |
+| `test:` | none | Test files only |
+
+**Versioning rules (sub-v1):**
+- We are pre-1.0. No major bumps. No minor bumps unless explicitly decided by a human.
+- `feat:` and `fix:` bump **patch** (e.g. 0.3.5 to 0.3.6), not minor.
+- Minor bumps (0.3.x to 0.4.0) only happen when a human explicitly says so.
+- Breaking changes are noted in the commit body but do not trigger a major bump while sub-v1.
+
+**PR titles** follow the same convention. The PR title becomes the merge commit message, so it must use the correct prefix. This drives the automated release flow.
+
+**Message style:**
+- Describe WHAT changed and WHY in plain language.
+- No file paths, function names, or code references in the subject or body.
+- Write for someone who will never read the diff.
+- Use `/commit` skill to generate messages that follow these rules.
+
+## Branch and Release Model
+
+- `beta` — default branch, where all development happens. PRs target `beta`.
+- `main` — production branch. Only receives merges from `beta`.
+
+**Release flow:**
+1. Work on feature branches, merge PRs into `beta`.
+2. When ready to test: "Release Beta" workflow dispatch bumps version and publishes to npm `@beta` tag + GitHub pre-release.
+3. Test on real machines.
+4. When stable: merge `beta` into `main`. CI publishes to npm `@latest` + GitHub release.
+
+Agents should always branch from and PR into `beta`, never `main`.
+
 ## Contributor Workflow (agentic)
 
 Every contribution comes from an agentic coder. The required workflow:
 
 1. Start from a task description (chat, ticket, issue). Run `/kickoff` to establish shared understanding before writing any code. See "Working With Humans" above.
 2. Open or update the relevant CLAUDE.md or domain README if the scope changes the contract.
-3. Build the change inside the appropriate domain. Use `/scaffold-domain`, `/scaffold-server-domain`, or `/scaffold-component` when starting fresh.
+3. Build the change inside the appropriate domain. Use `/scaffold-domain` or `/scaffold-component` when starting fresh.
 4. Run the quality gates locally before opening the PR: structural (`check-domains`, `check-migrations`) plus `typecheck`, `lint`, `build`, `test`. All must exit 0. See "Quality Gate Commands" above.
 5. Use `/commit` to produce a conventional-commit message from the staged diff. Do not commit after every fix during a session; commit once at the end.
-6. Open the PR with `/pr-description`. It reads the branch's commits plus diff vs `main`, fills `.github/PULL_REQUEST_TEMPLATE.md`, and outputs a `gh pr create` command. Do not push or run `gh` without explicit user approval (see global Push Policy).
+6. Open the PR with `/pr-description`. It reads the branch's commits plus diff vs `beta`, fills `.github/PULL_REQUEST_TEMPLATE.md`, and outputs a `gh pr create` command. Do not push or run `gh` without explicit user approval (see global Push Policy).
 7. Address review comments by replying to each thread with how it was fixed, resolving the thread, and re-requesting review.
 
 ## Pointers

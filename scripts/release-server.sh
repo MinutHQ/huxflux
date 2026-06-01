@@ -83,7 +83,7 @@ ok "Server build complete"
 
 # Build and bundle web UI into server dist
 cd "$REPO_ROOT"
-pnpm build --filter huxflux-web 2>&1 | grep -E "success|error|ERR|built" || true
+pnpm --filter huxflux-web build 2>&1 | tail -3
 mkdir -p "$SERVER_DIR/dist/web"
 cp -r apps/web/dist/* "$SERVER_DIR/dist/web/"
 if [[ ! -f "$SERVER_DIR/dist/web/index.html" ]]; then

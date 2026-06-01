@@ -80,11 +80,11 @@ jobs:
           git push
 
       - name: Build server
-        run: pnpm build --filter @alexmartosp/huxflux
+        run: pnpm --filter @alexmartosp/huxflux build
 
       - name: Build and bundle web UI into server
         run: |
-          pnpm build --filter huxflux-web
+          pnpm --filter huxflux-web build
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 

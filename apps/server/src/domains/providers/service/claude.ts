@@ -172,15 +172,12 @@ export const claudeProvider: ProviderAdapter = {
       const scriptContent = [
         `#!/bin/bash`,
         `# Huxflux AskUserQuestion hook — waits for answer from the Hive UI`,
-        `# Uses HUXFLUX_AGENT_ID (inherited from the Claude process env) as the file key.`,
         `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
         `ANSWER_FILE="/tmp/huxflux-ask-$HUXFLUX_AGENT_ID"`,
-        `# Wait up to 5 minutes for the user to answer`,
         `for i in $(seq 1 1500); do`,
         `  [ -f "$ANSWER_FILE" ] && { cat "$ANSWER_FILE"; rm -f "$ANSWER_FILE"; exit 0; }`,
         `  sleep 0.2`,
         `done`,
-        `# Timeout — let Claude proceed without modified input`,
         `exit 0`,
       ].join("\n")
       await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })

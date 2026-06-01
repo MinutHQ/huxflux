@@ -119,7 +119,9 @@ for (const plugin of domainPlugins) await app.register(plugin)
 await app.register(fsRoutes)
 await app.register(systemRoutes)
 
-// Serve bundled web UI at / (if present in dist/web/)
+// Serve bundled web UI (if present in dist/web/)
+// Static assets (JS/CSS/images) served by @fastify/static.
+// index.html served with injected connection data for auto-connect.
 const webDistDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "web")
 if (fs.existsSync(webDistDir)) {
   const fastifyStatic = await import("@fastify/static")
@@ -128,6 +130,18 @@ if (fs.existsSync(webDistDir)) {
     prefix: "/",
     decorateReply: false,
     serve: true,
+    // Don't serve index.html for / (we handle it with injection below)
+    index: false,
+  })
+
+  // Serve index.html with connection data injected
+  const rawHtml = fs.readFileSync(path.join(webDistDir, "index.html"), "utf8")
+  const connJson = JSON.stringify({ url: `http://127.0.0.1:${config.boundPort}`, token: config.authToken })
+  const injection = `<script>window.__huxflux_connection=${JSON.stringify(connJson)}</script>`
+  const injectedHtml = rawHtml.replace("</head>", `${injection}</head>`)
+
+  app.get("/", async (_req, reply) => {
+    return reply.code(200).header("Content-Type", "text/html").send(injectedHtml)
   })
 }
 

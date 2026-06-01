@@ -73,22 +73,26 @@ export function registerErrorHandler(app: FastifyInstance): void {
   })
 
   // SPA fallback: serve index.html for non-API routes when web UI is bundled.
-  // Injects connection info so the web app auto-connects to this server.
-  const indexHtml = path.join(path.dirname(fileURLToPath(import.meta.url)), "web", "index.html")
-  const webBundled = fs.existsSync(indexHtml)
-  let indexContent: string | null = null
-  if (webBundled) {
-    const raw = fs.readFileSync(indexHtml, "utf8")
-    // Inject connection data as a global variable (same pattern as Tauri's setup hook)
+  const indexHtmlPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "web", "index.html")
+  const webBundled = fs.existsSync(indexHtmlPath)
+  const rawHtml = webBundled ? fs.readFileSync(indexHtmlPath, "utf8") : null
+  let cachedInjectedHtml: string | null = null
+
+  function getInjectedHtml(): string | null {
+    if (!rawHtml) return null
+    if (cachedInjectedHtml) return cachedInjectedHtml
+    // Build lazily so config.boundPort is set (server binds after registration)
     const connJson = JSON.stringify({ url: `http://127.0.0.1:${config.boundPort}`, token: config.authToken })
     const injection = `<script>window.__huxflux_connection=${JSON.stringify(connJson)}</script>`
-    indexContent = raw.replace("</head>", `${injection}</head>`)
+    cachedInjectedHtml = rawHtml.replace("</head>", `${injection}</head>`)
+    return cachedInjectedHtml
   }
 
   app.setNotFoundHandler((req, reply) => {
     const isApi = req.url.startsWith("/api/") || req.url.startsWith("/ws") || req.url.startsWith("/docs")
-    if (!isApi && indexContent) {
-      return reply.code(200).header("Content-Type", "text/html").send(indexContent)
+    const injected = getInjectedHtml()
+    if (!isApi && injected) {
+      return reply.code(200).header("Content-Type", "text/html").send(injected)
     }
     reply.code(404).header("Content-Type", "application/json").send({
       code: "not_found",

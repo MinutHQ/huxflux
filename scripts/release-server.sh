@@ -83,9 +83,12 @@ ok "Server build complete"
 
 # Build and bundle web UI into server dist
 cd "$REPO_ROOT"
-pnpm build --filter web 2>&1 | grep -E "success|error|ERR|built" || true
+pnpm build --filter huxflux-web 2>&1 | grep -E "success|error|ERR|built" || true
 mkdir -p "$SERVER_DIR/dist/web"
 cp -r apps/web/dist/* "$SERVER_DIR/dist/web/"
+if [[ ! -f "$SERVER_DIR/dist/web/index.html" ]]; then
+  fail "Web UI build failed — dist/web/index.html not found"
+fi
 ok "Web UI bundled into server"
 
 cd "$SERVER_DIR"

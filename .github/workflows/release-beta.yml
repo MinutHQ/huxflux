@@ -84,7 +84,7 @@ jobs:
 
       - name: Build and bundle web UI into server
         run: |
-          pnpm build --filter web
+          pnpm build --filter huxflux-web
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 

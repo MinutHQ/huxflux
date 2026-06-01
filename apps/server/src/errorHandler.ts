@@ -10,6 +10,9 @@
 import type { FastifyInstance, FastifyError, FastifyRequest, FastifyReply } from "fastify"
 import { ZodError } from "zod/v4"
 import { HuxfluxApiError } from "@huxflux/shared"
+import * as path from "node:path"
+import * as fs from "node:fs"
+import { fileURLToPath } from "node:url"
 
 interface NormalisedError {
   status: number
@@ -68,7 +71,16 @@ export function registerErrorHandler(app: FastifyInstance): void {
     })
   })
 
-  app.setNotFoundHandler((_req, reply) => {
+  // SPA fallback: serve index.html for non-API routes when web UI is bundled
+  const indexHtml = path.join(path.dirname(fileURLToPath(import.meta.url)), "web", "index.html")
+  const webBundled = fs.existsSync(indexHtml)
+  const indexContent = webBundled ? fs.readFileSync(indexHtml, "utf8") : null
+
+  app.setNotFoundHandler((req, reply) => {
+    const isApi = req.url.startsWith("/api/") || req.url.startsWith("/ws") || req.url.startsWith("/docs")
+    if (!isApi && indexContent) {
+      return reply.code(200).header("Content-Type", "text/html").send(indexContent)
+    }
     reply.code(404).header("Content-Type", "application/json").send({
       code: "not_found",
       message: "Route not found",

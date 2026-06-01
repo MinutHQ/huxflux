@@ -121,24 +121,13 @@ await app.register(systemRoutes)
 
 // Serve bundled web UI at / (if present in dist/web/)
 const webDistDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "web")
-export const hasWebUI = fs.existsSync(webDistDir)
-if (hasWebUI) {
+if (fs.existsSync(webDistDir)) {
   const fastifyStatic = await import("@fastify/static")
-  // Register in a scoped plugin so the not-found handler only applies to non-API routes
-  await app.register(async (webApp) => {
-    await webApp.register(fastifyStatic.default, {
-      root: webDistDir,
-      prefix: "/",
-      decorateReply: false,
-      serve: true,
-    })
-    // SPA fallback for client-side routing
-    webApp.setNotFoundHandler(async (req, reply) => {
-      if (req.url.startsWith("/api/") || req.url.startsWith("/ws") || req.url.startsWith("/docs")) {
-        return reply.code(404).send({ error: "Not found" })
-      }
-      return (reply as any).sendFile("index.html")
-    })
+  await app.register(fastifyStatic.default, {
+    root: webDistDir,
+    prefix: "/",
+    decorateReply: false,
+    serve: true,
   })
 }
 

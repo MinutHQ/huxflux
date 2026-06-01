@@ -9,7 +9,7 @@ import { agents, repos } from "../../../db/schema.js"
 import { agentsWs } from "../agents.ws.js"
 import { getAvailableProviders } from "../../providers/registry.js"
 import { getClaudeBin } from "../../agent-runner/agent-runner.service.js"
-import { setPendingQuestion, getPendingToolUseId, clearPendingQuestion } from "../../../askStore.js"
+import { setPendingQuestion, getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
 import * as fsP from "node:fs/promises"
@@ -51,7 +51,7 @@ function registerAskAnswer(app: ZodApp): void {
 
     app.log.info(`[ask] Agent ${id} AskUserQuestion (legacy hook): ${questions.length} questions, tool_use_id=${tool_use_id}`)
 
-    setPendingQuestion(id, tool_use_id)
+    setPendingQuestion(id, tool_use_id, questions)
     agentsWs.askQuestion(id, tool_use_id, questions)
 
     // Wait for the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID)
@@ -76,17 +76,21 @@ function registerAskAnswer(app: ZodApp): void {
       const { id } = req.params
       const { answers, toolUseId } = req.body
 
-      if (!toolUseId && !getPendingToolUseId(id)) return reply.code(404).send({ error: "No pending question" })
+      const pendingQ = getPendingQuestion(id)
+      if (!toolUseId && !pendingQ) return reply.code(404).send({ error: "No pending question" })
 
+      const questions = pendingQ?.questions ?? []
       clearPendingQuestion(id)
 
-      // Write the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID)
+      // Write the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID).
+      // updatedInput must include the original questions + the user's answers
+      // so Claude sees the complete tool input.
       const answerFile = `/tmp/huxflux-ask-${id}`
       const hookResponse = JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          updatedInput: { answers },
+          updatedInput: { questions, answers },
         },
       })
       await fsP.writeFile(answerFile, hookResponse)

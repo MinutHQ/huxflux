@@ -140,7 +140,7 @@ function detectAskUserQuestion(toolUseId: string, input: unknown, agentId: strin
       }>
     }
     if (!parsed.questions?.length) return
-    setPendingQuestion(agentId, toolUseId)
+    setPendingQuestion(agentId, toolUseId, parsed.questions)
     agentsWs.askQuestion(agentId, toolUseId, parsed.questions)
   } catch { /* malformed input */ }
 }

@@ -9,9 +9,15 @@ const PUBLIC = new Set(["/health", "/api/config"])
 // Use a prefix rather than enumerating every static asset Swagger UI serves.
 const PUBLIC_PREFIXES = ["/docs"]
 
+// Routes that require auth (everything else is public when web UI is bundled)
+const AUTH_PREFIXES = ["/api/", "/ws"]
+
 function isPublicRoute(url: string): boolean {
   if (PUBLIC.has(url)) return true
-  return PUBLIC_PREFIXES.some((prefix) => url === prefix || url.startsWith(`${prefix}/`))
+  if (PUBLIC_PREFIXES.some((prefix) => url === prefix || url.startsWith(`${prefix}/`))) return true
+  // Only API and WebSocket routes require auth. Static files and SPA routes are public.
+  if (!AUTH_PREFIXES.some((prefix) => url.startsWith(prefix))) return true
+  return false
 }
 
 export async function authHook(req: FastifyRequest, reply: FastifyReply) {

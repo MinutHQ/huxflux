@@ -1,6 +1,6 @@
 {
   "name": "@alexmartosp/huxflux",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {

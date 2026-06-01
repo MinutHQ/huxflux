@@ -54,8 +54,8 @@ function registerAskAnswer(app: ZodApp): void {
     setPendingQuestion(id, tool_use_id)
     agentsWs.askQuestion(id, tool_use_id, questions)
 
-    // Wait for the answer file (written by /answer) — no in-memory promise map.
-    const answerFile = `/tmp/huxflux-ask-${tool_use_id}`
+    // Wait for the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID)
+    const answerFile = `/tmp/huxflux-ask-${id}`
     const deadline = Date.now() + 300_000
     while (Date.now() < deadline) {
       try {
@@ -76,13 +76,12 @@ function registerAskAnswer(app: ZodApp): void {
       const { id } = req.params
       const { answers, toolUseId } = req.body
 
-      const effectiveToolUseId = toolUseId ?? getPendingToolUseId(id)
-      if (!effectiveToolUseId) return reply.code(404).send({ error: "No pending question" })
+      if (!toolUseId && !getPendingToolUseId(id)) return reply.code(404).send({ error: "No pending question" })
 
       clearPendingQuestion(id)
 
-      // Write the answer file the hook script is polling for.
-      const answerFile = `/tmp/huxflux-ask-${effectiveToolUseId}`
+      // Write the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID)
+      const answerFile = `/tmp/huxflux-ask-${id}`
       const hookResponse = JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",

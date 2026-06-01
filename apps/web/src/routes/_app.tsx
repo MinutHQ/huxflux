@@ -24,10 +24,11 @@ export const Route = createRoute({
   getParentRoute: () => rootRoute,
   id: "_app",
   beforeLoad: () => {
-    // On Tauri, try to auto-connect from connection.json before checking servers.
-    // This must be synchronous because beforeLoad runs before useEffect.
+    // Try to auto-connect before checking servers.
+    // Works on Tauri (connection.json injected at startup) and bundled web UI
+    // (server injects connection data into index.html).
     if (getServersList().length === 0) {
-      if (isTauri) tryAutoConnectSync()
+      tryAutoConnectSync()
       // Re-check after potential sync auto-connect
       if (getServersList().length === 0) {
         throw redirect({ to: "/onboarding" })

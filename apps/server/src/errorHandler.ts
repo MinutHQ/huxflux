@@ -13,6 +13,7 @@ import { HuxfluxApiError } from "@huxflux/shared"
 import * as path from "node:path"
 import * as fs from "node:fs"
 import { fileURLToPath } from "node:url"
+import { config } from "./config.js"
 
 interface NormalisedError {
   status: number
@@ -71,10 +72,18 @@ export function registerErrorHandler(app: FastifyInstance): void {
     })
   })
 
-  // SPA fallback: serve index.html for non-API routes when web UI is bundled
+  // SPA fallback: serve index.html for non-API routes when web UI is bundled.
+  // Injects connection info so the web app auto-connects to this server.
   const indexHtml = path.join(path.dirname(fileURLToPath(import.meta.url)), "web", "index.html")
   const webBundled = fs.existsSync(indexHtml)
-  const indexContent = webBundled ? fs.readFileSync(indexHtml, "utf8") : null
+  let indexContent: string | null = null
+  if (webBundled) {
+    const raw = fs.readFileSync(indexHtml, "utf8")
+    // Inject connection data as a global variable (same pattern as Tauri's setup hook)
+    const connJson = JSON.stringify({ url: `http://127.0.0.1:${config.boundPort}`, token: config.authToken })
+    const injection = `<script>window.__huxflux_connection=${JSON.stringify(connJson)}</script>`
+    indexContent = raw.replace("</head>", `${injection}</head>`)
+  }
 
   app.setNotFoundHandler((req, reply) => {
     const isApi = req.url.startsWith("/api/") || req.url.startsWith("/ws") || req.url.startsWith("/docs")

@@ -1,23 +1,14 @@
-import { createRequire } from "node:module"
 import * as path from "node:path"
 import * as fs from "node:fs"
 
-// Load node-pty gracefully. If the native binary isn't available (e.g. unsupported
-// Node version, missing prebuilds), the server still starts but terminals won't work.
-let pty: typeof import("@homebridge/node-pty-prebuilt-multiarch") | null = null
+// @lydell/node-pty ships prebuilt binaries for all platforms as optional deps
+// (same pattern as esbuild). No compilation needed anywhere.
+// If unavailable, server still runs but terminals won't work.
+let pty: typeof import("@lydell/node-pty") | null = null
 try {
-  pty = await import("@homebridge/node-pty-prebuilt-multiarch")
-
-  // pnpm strips execute permissions from prebuilt binaries in tarballs.
-  // Fix spawn-helper at startup so the PTY can spawn processes on macOS/Linux.
-  const _require = createRequire(import.meta.url)
-  const ptyPkg = path.dirname(_require.resolve("@homebridge/node-pty-prebuilt-multiarch/package.json"))
-  const helper = path.join(ptyPkg, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper")
-  if (fs.existsSync(helper) && !(fs.statSync(helper).mode & 0o111)) {
-    fs.chmodSync(helper, 0o755)
-  }
+  pty = await import("@lydell/node-pty")
 } catch {
-  console.warn("[pty] node-pty not available. Terminal feature disabled. This is normal on unsupported Node versions.")
+  console.warn("[pty] node-pty not available. Terminal feature disabled.")
 }
 
 import type { WebSocket } from "@fastify/websocket"

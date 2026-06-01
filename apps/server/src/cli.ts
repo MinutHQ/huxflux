@@ -712,7 +712,7 @@ function cmdOpen(host?: string) {
   const port = getActualPort(cfg.port)
 
   // Use local web UI if bundled, otherwise fall back to hosted app
-  const webDistPath = path.join(fileURLToPath(import.meta.url), "../../web/index.html")
+  const webDistPath = path.join(fileURLToPath(import.meta.url), "../web/index.html")
   let url: string
   if (fs.existsSync(webDistPath)) {
     url = `http://127.0.0.1:${port}`

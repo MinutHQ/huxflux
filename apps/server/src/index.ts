@@ -120,7 +120,7 @@ await app.register(fsRoutes)
 await app.register(systemRoutes)
 
 // Serve bundled web UI (if present in dist/web/)
-const webDistPath = path.join(fileURLToPath(import.meta.url), "../../web")
+const webDistPath = path.join(fileURLToPath(import.meta.url), "../web")
 if (fs.existsSync(webDistPath)) {
   const fastifyStatic = await import("@fastify/static")
   await app.register(fastifyStatic.default, {

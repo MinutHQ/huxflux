@@ -77,7 +77,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/server/package.json
           git commit -m "chore: bump server to $VERSION"
+          git tag "v${VERSION}"
           git push
+          git push origin "v${VERSION}"
 
       - name: Build server
         run: pnpm --filter @alexmartosp/huxflux build

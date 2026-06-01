@@ -1201,11 +1201,44 @@ function installSystemService() {
   const cfg = loadConfig()
   const cliEntry = fileURLToPath(import.meta.url)
 
+  // Find the huxflux binary path (works across nvm switches)
+  const huxfluxBin = spawnSync("which", ["huxflux"], { encoding: "utf-8", stdio: "pipe" }).stdout.trim()
+    || path.join(path.dirname(process.execPath), "huxflux")
+
+  // Build a PATH that includes nvm shims, homebrew, and standard dirs
+  const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), ".nvm")
+  const currentNodeBin = path.dirname(process.execPath)
+  const servicePath = [
+    currentNodeBin,
+    `${nvmDir}/current/bin`,
+    `${os.homedir()}/.local/bin`,
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ].join(":")
+
   if (platform === "darwin") {
     // macOS: LaunchAgent (runs as current user, starts on login)
-    // Runs the supervisor for crash recovery and logging
+    // Uses a shell wrapper so it picks up the current nvm Node version
     const plistDir = path.join(os.homedir(), "Library", "LaunchAgents")
     fs.mkdirSync(plistDir, { recursive: true })
+
+    // Write a launcher script that sources nvm before running huxflux
+    const launcherPath = path.join(DATA_DIR, "launch-service.sh")
+    const launcherContent = [
+      `#!/bin/bash`,
+      `export NVM_DIR="${nvmDir}"`,
+      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
+      `export NODE_ENV=production`,
+      `export AUTH_TOKEN="${cfg.token}"`,
+      `export PORT="${cfg.port}"`,
+      `export HUXFLUX_DIR="${DATA_DIR}"`,
+      `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
+      `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      `exec "${huxfluxBin}" _supervisor`,
+    ].join("\n")
+    fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
+
     const plistPath = path.join(plistDir, "com.huxflux.server.plist")
     const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1215,26 +1248,12 @@ function installSystemService() {
   <string>com.huxflux.server</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${process.execPath}</string>
-    <string>${cliEntry}</string>
-    <string>_supervisor</string>
+    <string>${launcherPath}</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>NODE_ENV</key>
-    <string>production</string>
-    <key>AUTH_TOKEN</key>
-    <string>${cfg.token}</string>
-    <key>PORT</key>
-    <string>${cfg.port}</string>
-    <key>HUXFLUX_DIR</key>
-    <string>${DATA_DIR}</string>
-    <key>DB_PATH</key>
-    <string>${path.join(DATA_DIR, "huxflux.db")}</string>
-    <key>WORKSPACES_BASE</key>
-    <string>${path.join(DATA_DIR, "workspaces")}</string>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:${path.dirname(process.execPath)}</string>
+    <string>${servicePath}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -1250,30 +1269,42 @@ function installSystemService() {
     spawnSync("launchctl", ["load", plistPath], { stdio: "pipe" })
 
   } else if (platform === "linux") {
-    // Linux: systemd user service running the supervisor
+    // Linux: systemd user service running the supervisor via shell wrapper
     const serviceDir = path.join(os.homedir(), ".config", "systemd", "user")
     fs.mkdirSync(serviceDir, { recursive: true })
-    const servicePath = path.join(serviceDir, "huxflux.service")
+
+    // Write launcher script that sources nvm
+    const launcherPath = path.join(DATA_DIR, "launch-service.sh")
+    const launcherContent = [
+      `#!/bin/bash`,
+      `export NVM_DIR="${nvmDir}"`,
+      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
+      `export NODE_ENV=production`,
+      `export AUTH_TOKEN="${cfg.token}"`,
+      `export PORT="${cfg.port}"`,
+      `export HUXFLUX_DIR="${DATA_DIR}"`,
+      `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
+      `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      `exec "${huxfluxBin}" _supervisor`,
+    ].join("\n")
+    fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
+
+    const systemdServicePath = path.join(serviceDir, "huxflux.service")
     const service = `[Unit]
 Description=Huxflux Server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${process.execPath} ${cliEntry} _supervisor
-Environment=NODE_ENV=production
-Environment=AUTH_TOKEN=${cfg.token}
-Environment=PORT=${cfg.port}
-Environment=HUXFLUX_DIR=${DATA_DIR}
-Environment=DB_PATH=${path.join(DATA_DIR, "huxflux.db")}
-Environment=WORKSPACES_BASE=${path.join(DATA_DIR, "workspaces")}
+ExecStart=${launcherPath}
+Environment=PATH=${servicePath}
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
 `
-    fs.writeFileSync(servicePath, service)
+    fs.writeFileSync(systemdServicePath, service)
     spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" })
     spawnSync("systemctl", ["--user", "enable", "huxflux"], { stdio: "pipe" })
     spawnSync("systemctl", ["--user", "start", "huxflux"], { stdio: "pipe" })

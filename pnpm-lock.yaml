@@ -284,6 +284,9 @@ importers:
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
+      claude-p:
+        specifier: ^0.1.0
+        version: 0.1.0
       dotenv:
         specifier: ^16.5.0
         version: 16.6.1
@@ -4752,6 +4755,13 @@ packages:
 
   class-variance-authority@0.7.1:
     resolution: {integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==}
+
+  claude-p@0.1.0:
+    resolution: {integrity: sha512-ZgKoOui3GzP35jhCa/KxmTenxcCLTj3zHdyFanR34/RJMLg3g/A1V1/46kEfW79ELe2BFi2x9A5MxKvw1pm3+w==}
+    engines: {node: '>=18'}
+    cpu: [x64, arm64]
+    os: [darwin, linux]
+    hasBin: true
 
   cli-cursor@2.1.0:
     resolution: {integrity: sha512-8lgKz8LmCRYZZQDpRyT2m5rKJ08TnU4tR9FFFW2rxpxR1FzWi4PQ/NfyODchAatHaUgnSPVcx/R5w6NuTBzFiw==}
@@ -9340,7 +9350,7 @@ snapshots:
 
   '@babel/helper-wrap-function@7.28.6':
     dependencies:
-      '@babel/template': 7.28.6
+      '@babel/template': 7.29.7
       '@babel/traverse': 7.29.0
       '@babel/types': 7.29.7
     transitivePeerDependencies:
@@ -13932,6 +13942,8 @@ snapshots:
   class-variance-authority@0.7.1:
     dependencies:
       clsx: 2.1.1
+
+  claude-p@0.1.0: {}
 
   cli-cursor@2.1.0:
     dependencies:

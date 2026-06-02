@@ -9,14 +9,23 @@ import { execFileSync } from "node:child_process"
  *   3. Fall back to the bare name (so the OS-level PATH still resolves it).
  * The result is cached in module scope until `reset()` is called (test seam).
  *
- * `isAvailable()` re-probes `which <bin>` and returns true on exit 0. Providers
- * that need a fallback probe (e.g. `npx claude-p --help` when `claude-p` isn't
- * on PATH) pass an `extraAvailabilityCheck` that runs only if the primary probe
- * fails.
+ * `isAvailable()` is **synchronous** and returns the cached availability
+ * answer in O(1) — it never spawns a slow probe inline. The actual probe
+ * (`which <bin>`, plus an optional async fallback like `npx claude-p --help`)
+ * runs in `warmAvailability()`, which the server calls at startup. Before
+ * the warm completes we optimistically report `true` for providers that have
+ * a fallback configured; without a fallback, the answer is whatever the
+ * single fast `which` probe returns.
+ *
+ * Why the split: the previous design ran the fallback probe inside the
+ * synchronous `isAvailable()` from request handlers. `npx claude-p --help`
+ * downloads the package on first use, which blocked Node's event loop for
+ * 30+ seconds and froze every other HTTP/WS request the server was serving.
  */
 export interface BinaryResolver {
   resolve(): string
   isAvailable(): boolean
+  warmAvailability(): Promise<void>
   reset(): void
 }
 
@@ -33,14 +42,20 @@ export interface BinaryResolverOptions {
    */
   fallbackBin?: string
   /**
-   * Optional second-chance availability probe. Used when the primary `which`
-   * check fails but the binary might still be reachable via `npx` etc.
+   * Optional second-chance availability probe. Runs only inside
+   * `warmAvailability()` (never inline from `isAvailable()`). Must be async
+   * so it doesn't block the event loop — use `execFile` from
+   * `node:child_process`, promisified, not `execFileSync`.
    */
-  extraAvailabilityCheck?: () => boolean
+  extraAvailabilityCheck?: () => Promise<boolean>
 }
 
 export function createBinaryResolver(opts: BinaryResolverOptions): BinaryResolver {
   let cached: string | null = null
+  // `availabilityCached === null` means "warm hasn't completed yet"; treat
+  // that as optimistically available when a fallback is configured.
+  let availabilityCached: boolean | null = null
+  let warmPromise: Promise<void> | null = null
 
   function resolve(): string {
     if (cached) return cached
@@ -52,15 +67,46 @@ export function createBinaryResolver(opts: BinaryResolverOptions): BinaryResolve
   }
 
   function isAvailable(): boolean {
+    if (availabilityCached !== null) return availabilityCached
+    // Pre-warm: optimistic when a fallback exists, otherwise rely on the
+    // fast `which` probe.
+    if (opts.extraAvailabilityCheck) return true
     try {
       execFileSync("which", [opts.defaultBin], { encoding: "utf8" })
       return true
     } catch {
-      return opts.extraAvailabilityCheck?.() ?? false
+      return false
     }
   }
 
-  function reset(): void { cached = null }
+  function warmAvailability(): Promise<void> {
+    if (warmPromise) return warmPromise
+    warmPromise = (async () => {
+      // Fast `which` probe first — settles the answer for providers whose
+      // binary is on PATH, no slow async work needed.
+      try {
+        execFileSync("which", [opts.defaultBin], { encoding: "utf8" })
+        availabilityCached = true
+        return
+      } catch { /* fall through to extra check */ }
+      if (!opts.extraAvailabilityCheck) {
+        availabilityCached = false
+        return
+      }
+      try {
+        availabilityCached = await opts.extraAvailabilityCheck()
+      } catch {
+        availabilityCached = false
+      }
+    })()
+    return warmPromise
+  }
 
-  return { resolve, isAvailable, reset }
+  function reset(): void {
+    cached = null
+    availabilityCached = null
+    warmPromise = null
+  }
+
+  return { resolve, isAvailable, warmAvailability, reset }
 }

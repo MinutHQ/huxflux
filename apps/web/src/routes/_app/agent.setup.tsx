@@ -23,6 +23,8 @@ function SetupRoute() {
         pending={workspace.pendingAgent}
         onQueueMessage={workspace.setQueuedSetupMessage}
         queuedMessage={workspace.queuedSetupMessage}
+        draft={workspace.setupDraft}
+        onDraftChange={workspace.setSetupDraft}
       />
     </div>
   )

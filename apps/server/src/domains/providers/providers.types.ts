@@ -54,8 +54,15 @@ export interface ProviderAdapter {
   /** Resolve the CLI binary path */
   resolveBinary(): string
 
-  /** Check if the CLI is installed */
+  /** Check if the CLI is installed (synchronous, O(1) — reads a cached value
+   *  populated by `warmAvailability()`). */
   isAvailable(): boolean
+
+  /** Compute and cache the availability result. Called once at server start.
+   *  May take several seconds (e.g. `npx` downloading a package); runs in the
+   *  background so it does not block the event loop. Optional — providers
+   *  whose probe is already fast/sync can omit it. */
+  warmAvailability?(): Promise<void>
 
   /** Build spawn arguments for the CLI process */
   buildSpawnArgs(opts: SpawnOptions): SpawnResult

@@ -88,6 +88,10 @@ export interface ChatViewProps {
   initialMessage?: string | null
   /** Called after the initial message is consumed */
   onConsumeInitialMessage?: () => void
+  /** Text the user typed on the setup screen but never submitted — pre-fills the input on mount */
+  initialDraft?: string | null
+  /** Called after the initial draft is consumed */
+  onConsumeInitialDraft?: () => void
 }
 
 export type { Agent, AgentSummary, FileChange, PRComment, ToolCall }

@@ -58,6 +58,24 @@ export function useInitialMessage(initialMessage: string | null | undefined, onC
   }, [initialMessage])
 }
 
+/**
+ * Pre-fill the chat input with text the user was typing on the setup screen
+ * but never explicitly submitted (no Enter / no send-button click). Runs once
+ * on mount; the consume callback clears the source so a tab switch doesn't
+ * re-apply the same draft. Distinct from `useInitialMessage`, which auto-sends.
+ */
+export function useInitialDraft(initialDraft: string | null | undefined, onConsume: (() => void) | undefined, setInput: (v: string) => void) {
+  const applied = useRef(false)
+  useEffect(() => {
+    if (initialDraft && !applied.current) {
+      applied.current = true
+      setInput(initialDraft)
+      onConsume?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDraft])
+}
+
 export function useResetOnAgentSwitch(agentId: string, setActiveTab: (t: ActiveTab) => void, setIsAtBottom: (v: boolean) => void, bottomRef: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     setActiveTab("chat")

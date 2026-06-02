@@ -24,6 +24,16 @@ import { SERVER_VERSION } from "./version.js"
 // default port of any dev server started inside them.
 delete process.env.PORT
 
+// Force every git subprocess we spawn (reserve warm-up, worktree creation,
+// fetches) to fail fast on credential / host-key prompts instead of hanging
+// on a tty that doesn't exist. A single ungated `git fetch` over SSH against
+// an unreachable remote was previously blocking requests for 30+ seconds
+// (long enough for the desktop client to declare the server offline).
+process.env.GIT_TERMINAL_PROMPT = process.env.GIT_TERMINAL_PROMPT ?? "0"
+if (!process.env.GIT_SSH_COMMAND) {
+  process.env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5"
+}
+
 const PORT_FILE = path.join(os.homedir(), "huxflux", isDev ? "server-dev.port" : "server.port")
 import { runMigrations } from "./db/index.js"
 import { domainPlugins } from "./domains/index.js"
@@ -170,6 +180,17 @@ resetStreamingFlags()
 import { initializeReserves } from "./domains/git/pool.js"
 initializeReserves().catch((err) => console.error("[reserve] initialization failed:", err))
 
+// Pre-resolve provider availability so the first GET /api/providers request
+// doesn't trigger a 30+ second blocking `npx <pkg> --help` download inside
+// `isAvailable()`. Fire-and-forget — each warm is async and caches in the
+// underlying resolver. Without this, the first provider check would freeze
+// every other HTTP/WS handler (including the user's terminal PTY upgrade).
+import { warmAllProviders } from "./domains/providers/registry.js"
+const providerWarmStart = Date.now()
+warmAllProviders()
+  .then(() => console.info(`[providers] warm complete in ${Date.now() - providerWarmStart}ms`))
+  .catch((err) => console.error("[providers] warm failed:", err))
+
 
 // Re-attach file watchers and do an initial scan for all active agents
 {
@@ -238,20 +259,47 @@ async function cleanupOnShutdown() {
   cleanupPortFile()
   try {
     const allAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
-    for (const agent of allAgents) {
-      if (!agent.repoId) continue
+    // Per-agent kill in parallel — each `lsof` already has a 3s timeout, so
+    // total cleanup is bounded by the slowest single agent, not the sum.
+    await Promise.all(allAgents.map(async (agent) => {
+      if (!agent.repoId) return
       const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-      if (!repo) continue
+      if (!repo) return
       const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
       await killWorktreeProcesses(worktreePath).catch(() => {})
       clearAgentPorts(agent.id)
-    }
+    }))
   } catch { /* best effort */ }
 }
 
+// Belt-and-suspenders shutdown:
+//   1. Hard timeout — if cleanup hangs (lsof stuck, db locked, whatever), the
+//      process exits anyway. Without this, Ctrl+C looks like nothing happened.
+//   2. Second-signal escape hatch — if the user hits Ctrl+C twice, exit
+//      immediately without waiting on anything.
+const SHUTDOWN_TIMEOUT_MS = 2000
+let shuttingDown = false
+function shutdown(signal: string) {
+  if (shuttingDown) {
+    console.warn(`[server] received second ${signal}; forcing exit`)
+    process.exit(1)
+  }
+  shuttingDown = true
+  const force = setTimeout(() => {
+    console.warn(`[server] cleanup did not complete in ${SHUTDOWN_TIMEOUT_MS}ms; forcing exit`)
+    process.exit(1)
+  }, SHUTDOWN_TIMEOUT_MS)
+  // Don't let the timer itself hold the loop open if cleanup finishes fast.
+  force.unref()
+  void cleanupOnShutdown().finally(() => {
+    clearTimeout(force)
+    process.exit(0)
+  })
+}
+
 process.on("exit", cleanupPortFile)
-process.on("SIGTERM", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
-process.on("SIGINT", () => { void cleanupOnShutdown().finally(() => process.exit(0)) })
+process.on("SIGTERM", () => shutdown("SIGTERM"))
+process.on("SIGINT", () => shutdown("SIGINT"))
 
 startJobs()
 if (!process.env.HUXFLUX_SSH_USER) {

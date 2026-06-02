@@ -43,12 +43,19 @@ export function useAgent(id: string | null) {
 
   // Streaming state: initialized from server data, then driven by WS events.
   // message:start → true, message:done → false.
-  // The DB flag (agent.streaming) is only used for the initial value on page load.
+  // The DB flag (agent.streaming) is only used for the initial value on page
+  // load and on reconnect (in case any WS events were missed while offline).
   const [isStreaming, setIsStreaming] = useState(() => !!query.data?.streaming)
 
-  // Sync initial value when query data arrives (first load or reconnect)
+  // Sync initial value when query data arrives (first load or reconnect).
+  // The proper long-term fix is to make `streaming` a derived value off
+  // `query.data.streaming` with WS handlers writing through the query cache
+  // via `queryClient.setQueryData`, eliminating the need for local state at
+  // all. Out of scope for this PR; tracked separately.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (query.data) setIsStreaming(!!query.data.streaming)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data?.streaming])
 
   const onEvent = useCallback(

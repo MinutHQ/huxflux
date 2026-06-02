@@ -71,7 +71,9 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
 
     // If a repo is linked and not sharing an existing worktree, create a git worktree
     if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
+      const t0 = Date.now()
       const setupResult = await setupRepoWorktree({ app, id, agentRepoId, agentLocation, branch, baseBranch })
+      console.info(`[create] setupRepoWorktree ${Date.now() - t0}ms (agent ${id.slice(0, 8)})`)
       if (!setupResult.ok) return reply.code(setupResult.status).send({ error: setupResult.error })
       agentLocation = setupResult.location
     }

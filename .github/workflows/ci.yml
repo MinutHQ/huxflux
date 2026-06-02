@@ -1,7 +1,10 @@
 name: CI
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [beta, main]
+  pull_request:
+    branches: [beta, main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

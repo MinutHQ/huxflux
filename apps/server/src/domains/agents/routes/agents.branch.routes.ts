@@ -51,19 +51,13 @@ export const agentsBranchRoutes: FastifyPluginAsyncZod = async (app) => {
     return updated
   })
 
-  // POST /api/agents/:id/stop — kill the running Claude process
+  // POST /api/agents/:id/stop — kill the running Claude process.
+  // The kill triggers proc.on("close") which calls finalize(), clearing streaming.
   app.post("/api/agents/:id/stop", {
     schema: { params: idParamsSchema },
   }, async (req, reply) => {
-    const { id } = req.params
-    const killed = stopAgent(id)
+    const killed = stopAgent(req.params.id)
     if (!killed) return reply.code(404).send({ error: "No running process for this agent" })
-
-    // Clear streaming flag immediately (finalize won't run for killed processes)
-    db.update(agents).set({ streaming: 0, updatedAt: new Date().toISOString() }).where(eq(agents.id, id)).run()
-    const updated = db.select().from(agents).where(eq(agents.id, id)).get()
-    if (updated) agentsWs.agentUpdated(updated as unknown as AgentSummary)
-
     return { stopped: true }
   })
 

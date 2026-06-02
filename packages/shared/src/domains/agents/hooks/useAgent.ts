@@ -1,7 +1,6 @@
-import { useCallback } from "react"
+import { useCallback, useState, useEffect } from "react"
 import type { ServerEvent } from "../../../ws.js"
 import { useAgentEvents } from "../../../ws.js"
-import { isAgentStreaming } from "../agents.state.js"
 import { useAgentQuery } from "./useAgentQuery.js"
 import { useAgentPagination } from "./useAgentPagination.js"
 import { useAgentMessageStream } from "./useAgentMessageStream.js"
@@ -42,16 +41,32 @@ export function useAgent(id: string | null) {
   const { pendingQuestion, clearPendingQuestion, handleEvent: handlePendingQuestionEvent } = useAgentPendingQuestion()
   const { handleEvent: handleLifecycleEvent } = useAgentLifecycle(id)
 
+  // Streaming state: initialized from server data, then driven by WS events.
+  // message:start → true, message:done → false.
+  // The DB flag (agent.streaming) is only used for the initial value on page load.
+  const [isStreaming, setIsStreaming] = useState(() => !!query.data?.streaming)
+
+  // Sync initial value when query data arrives (first load or reconnect)
+  useEffect(() => {
+    if (query.data) setIsStreaming(!!query.data.streaming)
+  }, [query.data?.streaming])
+
   const onEvent = useCallback(
     (event: ServerEvent) => {
       switch (event.type) {
-        case "message:user":
         case "message:start":
+          setIsStreaming(true)
+          handleMessageStreamEvent(event)
+          return
+        case "message:done":
+          setIsStreaming(false)
+          handleMessageStreamEvent(event)
+          return
+        case "message:user":
         case "message:chunk":
         case "message:thinking":
         case "tool:call":
         case "tool:result":
-        case "message:done":
         case "subagent:event":
           handleMessageStreamEvent(event)
           return
@@ -65,6 +80,12 @@ export function useAgent(id: string | null) {
           handlePendingQuestionEvent(event)
           return
         case "agent:updated":
+          // Sync streaming from server broadcast (covers stop, crash, queue drain)
+          if ("agent" in event && event.agent) {
+            setIsStreaming(!!event.agent.streaming)
+          }
+          handleLifecycleEvent(event)
+          return
         case "ws:reconnected":
         case "error":
           handleLifecycleEvent(event)
@@ -75,8 +96,6 @@ export function useAgent(id: string | null) {
   )
 
   useAgentEvents(id, onEvent)
-
-  const isStreaming = query.data ? isAgentStreaming(query.data) : false
 
   return {
     ...query,

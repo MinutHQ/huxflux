@@ -728,15 +728,15 @@ function cmdOpen(host?: string) {
 
 function cmdUpdate() {
   console.info(`\nUpdating huxflux (current: ${VERSION})...\n`)
-  let result = spawnSync("npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
+  let result = spawnSync("npm install -g @minuthq/huxflux@latest", [], { stdio: "inherit", shell: true })
   if (result.status !== 0) {
     console.info("\nRetrying with sudo...")
-    result = spawnSync("sudo npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
+    result = spawnSync("sudo npm install -g @minuthq/huxflux@latest", [], { stdio: "inherit", shell: true })
   }
   if (result.status !== 0) {
     console.error("\nUpdate failed. Run manually:")
-    console.error("  npm install -g @alexmartosp/huxflux@latest")
-    console.error("  # or: sudo npm install -g @alexmartosp/huxflux@latest\n")
+    console.error("  npm install -g @minuthq/huxflux@latest")
+    console.error("  # or: sudo npm install -g @minuthq/huxflux@latest\n")
     process.exit(result.status ?? 1)
   }
   console.info(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)
@@ -1411,7 +1411,7 @@ async function cmdUninstall() {
 
   // Uninstall npm package
   p.log.step("To complete the uninstall, run:")
-  p.log.message("\n    npm uninstall -g @alexmartosp/huxflux\n")
+  p.log.message("\n    npm uninstall -g @minuthq/huxflux\n")
   p.outro("Huxflux has been uninstalled.")
 }
 

@@ -5,7 +5,7 @@ import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
 
-const NPM_PACKAGE = "@alexmartosp/huxflux"
+const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
 
 let latestVersion: string | null = null

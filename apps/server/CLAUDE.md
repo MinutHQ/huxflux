@@ -238,7 +238,7 @@ Adding a new event is one entry in the config — the derived `<Name>ServerEvent
 
 ## Testing
 
-Vitest. Tests collocated next to source (`foo.ts` and `foo.test.ts`). Run via `pnpm test` (whole workspace) or `pnpm --filter @alexmartosp/huxflux test` (server only). The `gate-test` agent picks targeted files automatically.
+Vitest. Tests collocated next to source (`foo.ts` and `foo.test.ts`). Run via `pnpm test` (whole workspace) or `pnpm --filter @minuthq/huxflux test` (server only). The `gate-test` agent picks targeted files automatically.
 
 ### The harness
 

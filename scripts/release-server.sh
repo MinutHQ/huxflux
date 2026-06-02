@@ -124,12 +124,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
   npm pack --dry-run 2>&1 | tail -10
 else
   # Check if this version already exists
-  PUBLISHED="$(npm view @alexmartosp/huxflux version 2>/dev/null || echo "none")"
+  PUBLISHED="$(npm view @minuthq/huxflux version 2>/dev/null || echo "none")"
   if [[ "$PUBLISHED" == "$VERSION" ]]; then
     echo -e "  ${YELLOW}!${RESET}  v${VERSION} already published, skipping"
   else
     npm publish --access public 2>&1
-    ok "Published @alexmartosp/huxflux@${VERSION}"
+    ok "Published @minuthq/huxflux@${VERSION}"
   fi
 fi
 
@@ -172,7 +172,7 @@ echo -e "  ${GREEN}${BOLD}✓ Server v${VERSION} released${RESET}"
 echo ""
 echo "  Users can update with:"
 echo "    huxflux update"
-echo "    npm install -g @alexmartosp/huxflux@latest"
+echo "    npm install -g @minuthq/huxflux@latest"
 echo ""
 echo "  New users:"
 echo "    curl -fsSL https://raw.githubusercontent.com/${RELEASES_REPO}/main/install.sh | bash"

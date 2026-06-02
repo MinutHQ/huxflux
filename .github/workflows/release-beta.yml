@@ -82,7 +82,7 @@ jobs:
           git push origin "v${VERSION}"
 
       - name: Build server
-        run: pnpm --filter @alexmartosp/huxflux build
+        run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
         run: |
@@ -111,9 +111,9 @@ jobs:
           VERSION="${{ steps.bump.outputs.version }}"
           echo "## Beta Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published \`@alexmartosp/huxflux@${VERSION}\` to npm with \`beta\` tag." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published \`@minuthq/huxflux@${VERSION}\` to npm with \`beta\` tag." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Install: \`npm install -g @alexmartosp/huxflux@beta\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install: \`npm install -g @minuthq/huxflux@beta\`" >> "$GITHUB_STEP_SUMMARY"
 
   desktop-macos:
     name: Build desktop (macOS)
@@ -354,6 +354,6 @@ jobs:
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --title "Huxflux ${TAG} (beta)" \
-            --notes "Beta release. Install with: \`npm install -g @alexmartosp/huxflux@beta\`" \
+            --notes "Beta release. Install with: \`npm install -g @minuthq/huxflux@beta\`" \
             --prerelease \
             $FILES $SIG_FILES latest-beta.json

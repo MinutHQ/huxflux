@@ -27,7 +27,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   fi
 
   # Remove npm package
-  npm uninstall -g @alexmartosp/huxflux 2>/dev/null || true
+  npm uninstall -g @minuthq/huxflux 2>/dev/null || true
 
   # Remove data
   rm -rf "$HOME/huxflux"
@@ -129,11 +129,11 @@ fi
 step "② Installing Huxflux"
 echo ""
 
-if ! $PM_GLOBAL @alexmartosp/huxflux@latest 2>&1; then
+if ! $PM_GLOBAL @minuthq/huxflux@latest 2>&1; then
   echo ""
   if [ "$PM" = "npm" ]; then
     warn "Global install failed. Trying with sudo..."
-    if ! sudo npm install -g @alexmartosp/huxflux@latest 2>&1; then
+    if ! sudo npm install -g @minuthq/huxflux@latest 2>&1; then
       fail "Installation failed. Try using nvm for a user-level Node.js install."
     fi
   else

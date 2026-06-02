@@ -33,7 +33,7 @@ jobs:
             echo "version=$PROD_VERSION" >> "$GITHUB_OUTPUT"
           else
             # Check if this version is already on npm
-            PUBLISHED=$(npm view @alexmartosp/huxflux@latest version 2>/dev/null || echo "none")
+            PUBLISHED=$(npm view @minuthq/huxflux@latest version 2>/dev/null || echo "none")
             if [ "$PUBLISHED" != "$VERSION" ]; then
               echo "should_release=true" >> "$GITHUB_OUTPUT"
               echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -95,7 +95,7 @@ jobs:
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build server
-        run: pnpm --filter @alexmartosp/huxflux build
+        run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
         run: |
@@ -134,7 +134,7 @@ jobs:
           VERSION="${{ needs.check.outputs.version }}"
           echo "## Production Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published \`@alexmartosp/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published \`@minuthq/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
 
   desktop-macos:
     name: Build desktop (macOS)

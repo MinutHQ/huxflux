@@ -84,6 +84,7 @@ function attachClientHandlers(socket: WebSocket, entry: PtyEntry, key: string): 
 
 export function registerPtySocket(socket: WebSocket, agentId: string, terminalId: string, fresh: boolean) {
   const key = `${agentId}:${terminalId}`
+  const t0 = Date.now()
 
   // Reconnect to an existing PTY process
   const existing = globalPtyMap.get(key)
@@ -97,6 +98,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     }
     existing.clients.add(socket)
     attachClientHandlers(socket, existing, key)
+    console.info(`[pty] attached existing ${key} in ${Date.now() - t0}ms`)
     return
   }
 
@@ -138,6 +140,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     cwd,
     env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: cwd, HUXFLUX_REPO: repo?.path ?? "", HUXFLUX_AGENT_ID: agentId } as Record<string, string>,
   })
+  console.info(`[pty] spawned ${key} (shell=${shell}, cwd=${cwd}) in ${Date.now() - t0}ms`)
 
   const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }
   globalPtyMap.set(key, entry)

@@ -21,6 +21,7 @@ import {
   useDraftAutosave,
   useFlushDraftOnSwitch,
   useInitialMessage,
+  useInitialDraft,
   useResetOnAgentSwitch,
 } from "../hooks/useChatViewEffects"
 import { hasExitPlanModeUnapproved, claudeInPlanMode, extractPlanContent } from "../extract/planMode"
@@ -84,6 +85,7 @@ export function ChatView(props: ChatViewProps) {
     onTabTitleChange, pendingComments = [], onAddComment, onOpenDiffFile, onRemoveComment,
     onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion,
     hideChrome = false, hideHeader = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage,
+    initialDraft, onConsumeInitialDraft,
   } = props
 
   const { data: allAgents = [] } = useAgents()
@@ -108,6 +110,7 @@ export function ChatView(props: ChatViewProps) {
   useDraftAutosave(agent.id, input)
   useFlushDraftOnSwitch(agent, prevAgentIdRef, inputRef)
   useInitialMessage(initialMessage, onConsumeInitialMessage, chatSend.sendContent)
+  useInitialDraft(initialDraft, onConsumeInitialDraft, setInput)
   useResetOnAgentSwitch(agent.id, setActiveTab, setIsAtBottom, bottomRef)
 
   useEffect(() => {

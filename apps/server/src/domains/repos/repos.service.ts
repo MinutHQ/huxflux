@@ -48,22 +48,18 @@ export async function detectBranchFrom(repoPath: string): Promise<string> {
 }
 
 /**
- * Keeps the hidden reserve worktree in sync with a setup-script change. When
- * a repo gains a setup script (or its existing script body changes), the old
- * reserve becomes stale (it was built without running the new script) so we
- * drain it and rebuild. When the script is removed, we just drain.
+ * Keeps the hidden reserve worktree in sync with a setup-script change. The
+ * existing reserve is stale either way (it was built with — or without — the
+ * old script), so drain and rebuild. Reserves now exist for repos without a
+ * setup script too, so removing the script no longer means dropping the
+ * reserve entirely.
  *
  * Fire-and-forget — the PATCH handler returns immediately, the reserve
  * refresh runs in the background. Errors are logged and swallowed since the
  * update itself has already succeeded.
  */
-export function maintainReserveOnSetupScriptChange(repoId: string, newScript: string | null | undefined): void {
-  if (newScript) {
-    // Drain stale reserve (script may have changed) and recreate
-    drainReserves(repoId)
-      .then(() => ensureReserve(repoId))
-      .catch((err) => console.error(`[reserve] refresh failed:`, err))
-  } else {
-    drainReserves(repoId).catch((err) => console.error(`[reserve] drain failed:`, err))
-  }
+export function maintainReserveOnSetupScriptChange(repoId: string, _newScript: string | null | undefined): void {
+  drainReserves(repoId)
+    .then(() => ensureReserve(repoId))
+    .catch((err) => console.error(`[reserve] refresh failed:`, err))
 }

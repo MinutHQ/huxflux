@@ -39,7 +39,18 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
     await git.fetch(["--no-tags", "origin", remote]).catch(() => {})
   }
 
-  const branches = await git.branch(["-a"])
+  // The branch listing and the two rev-parse probes are all read-only and
+  // independent — run them concurrently to shave a few hundred ms off the
+  // cold path on slow disks / large repos.
+  const originCandidate = startPoint
+    ? (startPoint.startsWith("origin/") ? startPoint : `origin/${startPoint}`)
+    : undefined
+  const localCandidate = startPoint && !startPoint.startsWith("origin/") ? startPoint : undefined
+  const [branches, hasOriginRef, hasLocalRef] = await Promise.all([
+    git.branch(["-a"]),
+    originCandidate ? refExists(git, originCandidate) : Promise.resolve(false),
+    localCandidate ? refExists(git, localCandidate) : Promise.resolve(false),
+  ])
 
   // Check if a LOCAL branch with this name already exists
   const localBranchExists = branches.all.some((b) => {
@@ -51,17 +62,8 @@ export async function createWorktree(repoPath: string, branch: string, worktreeP
   // worktree always starts from the latest remote state, not a stale local branch.
   let effectiveStart: string | undefined
   if (startPoint) {
-    if (startPoint.startsWith("origin/") && await refExists(git, startPoint)) {
-      effectiveStart = startPoint
-    } else {
-      // Try origin/<startPoint> first (freshly fetched), fall back to local
-      const originRef = `origin/${startPoint}`
-      if (await refExists(git, originRef)) {
-        effectiveStart = originRef
-      } else if (await refExists(git, startPoint)) {
-        effectiveStart = startPoint
-      }
-    }
+    if (hasOriginRef) effectiveStart = originCandidate
+    else if (hasLocalRef) effectiveStart = localCandidate
   }
 
   async function doAdd(): Promise<void> {

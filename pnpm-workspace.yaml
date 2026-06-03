@@ -4,6 +4,7 @@ packages:
 
 allowBuilds:
   '@homebridge/node-pty-prebuilt-multiarch': true
+  claude-p: true
   esbuild: true
   msw: false
   node-pty: true

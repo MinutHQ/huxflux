@@ -136,17 +136,27 @@ function StepTerminal({ repoName, visibleSteps, completedSteps, progress }: { re
 interface SetupInputProps {
   queuedMessage?: string | null
   onQueueMessage: (msg: string) => void
+  draft: string
+  onDraftChange: (next: string) => void
 }
 
-function SetupInput({ queuedMessage, onQueueMessage }: SetupInputProps) {
-  const [setupInput, setSetupInput] = useState("")
+function SetupInput({ queuedMessage, onQueueMessage, draft, onDraftChange }: SetupInputProps) {
   const setupTextareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Sync the textarea height with the (workspace-owned) draft so it auto-grows
+  // both on keystrokes and when the route re-mounts with an existing draft.
+  useEffect(() => {
+    const el = setupTextareaRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = Math.min(el.scrollHeight, 120) + "px"
+  }, [draft])
+
   function submit() {
-    const text = setupInput.trim()
+    const text = draft.trim()
     if (text) {
       onQueueMessage(text)
-      setSetupInput("")
+      onDraftChange("")
     }
   }
 
@@ -161,12 +171,8 @@ function SetupInput({ queuedMessage, onQueueMessage }: SetupInputProps) {
         <div className="rounded-xl border border-border/60 bg-card/80 backdrop-blur-sm overflow-hidden focus-within:border-amber-400/30 transition-colors">
           <textarea
             ref={setupTextareaRef}
-            value={setupInput}
-            onChange={(e) => {
-              setSetupInput(e.target.value)
-              e.target.style.height = "auto"
-              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"
-            }}
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
@@ -182,10 +188,10 @@ function SetupInput({ queuedMessage, onQueueMessage }: SetupInputProps) {
             <span className="text-[10px] text-muted-foreground/30">Message will be sent once agent is ready</span>
             <button
               onClick={submit}
-              disabled={!setupInput.trim()}
+              disabled={!draft.trim()}
               className={cn(
                 "p-1.5 rounded-lg transition-colors",
-                setupInput.trim() ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-muted text-muted-foreground/30"
+                draft.trim() ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-muted text-muted-foreground/30"
               )}
             >
               <IconSend size={13} />
@@ -201,9 +207,11 @@ interface SetupViewProps {
   pending: PendingAgentInfo
   onQueueMessage?: (msg: string) => void
   queuedMessage?: string | null
+  draft?: string
+  onDraftChange?: (next: string) => void
 }
 
-export function SetupView({ pending, onQueueMessage, queuedMessage }: SetupViewProps) {
+export function SetupView({ pending, onQueueMessage, queuedMessage, draft, onDraftChange }: SetupViewProps) {
   const typedTitle = useTypewriter(pending.title, 50)
   const { visibleSteps, completedSteps } = useSetupStepProgress(pending.estimatedMs)
   const progress = Math.min(((completedSteps + 0.5) / SETUP_STEPS.length) * 100, 95)
@@ -249,7 +257,14 @@ export function SetupView({ pending, onQueueMessage, queuedMessage }: SetupViewP
 
       <StepTerminal repoName={pending.repoName} visibleSteps={visibleSteps} completedSteps={completedSteps} progress={progress} />
 
-      {onQueueMessage && <SetupInput queuedMessage={queuedMessage} onQueueMessage={onQueueMessage} />}
+      {onQueueMessage && onDraftChange && (
+        <SetupInput
+          queuedMessage={queuedMessage}
+          onQueueMessage={onQueueMessage}
+          draft={draft ?? ""}
+          onDraftChange={onDraftChange}
+        />
+      )}
     </div>
   )
 }

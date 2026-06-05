@@ -10,6 +10,11 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
 
 let latestVersion: string | null = null
 
+function getNpmTag(): string {
+  const settings = getSettings()
+  return settings.updateChannel === "beta" ? "beta" : "latest"
+}
+
 export function getVersionInfo() {
   return {
     current: SERVER_VERSION,
@@ -32,7 +37,8 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(`https://registry.npmjs.org/${NPM_PACKAGE}/latest`, {
+    const tag = getNpmTag()
+    const res = await fetch(`https://registry.npmjs.org/${NPM_PACKAGE}/${tag}`, {
       signal: controller.signal,
       headers: { Accept: "application/json" },
     })
@@ -63,7 +69,8 @@ const UPDATE_EXIT_CODE = 42
 
 export function triggerServerUpdate(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
-    const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@latest`], {
+    const tag = getNpmTag()
+    const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@${tag}`], {
       stdio: ["ignore", "pipe", "pipe"],
       shell: true,
     })

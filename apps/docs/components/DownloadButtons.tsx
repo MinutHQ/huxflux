@@ -1,6 +1,6 @@
 "use client"
 
-const RELEASES_PAGE = "https://github.com/AlexMartosP/huxflux-releases/releases/latest"
+const RELEASES_PAGE = "https://github.com/MinutHQ/huxflux/releases/latest"
 
 export function DownloadButtons() {
   return (

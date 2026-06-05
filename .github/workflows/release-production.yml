@@ -101,7 +101,6 @@ jobs:
           fi
 
       - name: Set production version
-        if: steps.changes.outputs.server_changed == 'true'
         id: version
         run: |
           VERSION="${{ needs.check.outputs.version }}"

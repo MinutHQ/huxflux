@@ -23,14 +23,19 @@ export function getVersionInfo() {
   }
 }
 
+function parseSemver(v: string): { major: number; minor: number; patch: number; pre: number } {
+  const [base, preStr] = v.split("-beta.")
+  const [major, minor, patch] = base.split(".").map(Number)
+  return { major, minor, patch, pre: preStr ? Number(preStr) : Infinity }
+}
+
 function isNewer(a: string, b: string): boolean {
-  const pa = a.split(".").map(Number)
-  const pb = b.split(".").map(Number)
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false
-  }
-  return false
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (pa.major !== pb.major) return pa.major > pb.major
+  if (pa.minor !== pb.minor) return pa.minor > pb.minor
+  if (pa.patch !== pb.patch) return pa.patch > pb.patch
+  return pa.pre > pb.pre
 }
 
 export async function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {

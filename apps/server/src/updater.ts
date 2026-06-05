@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as path from "node:path"
 import { SERVER_VERSION } from "./version.js"
 import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
@@ -43,14 +46,23 @@ export async function checkForUpdate(): Promise<{ current: string; latest: strin
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10_000)
     const tag = getNpmTag()
-    const res = await fetch(`https://registry.npmjs.org/${NPM_PACKAGE}/${tag}`, {
+    const endpoint = tag === "beta"
+      ? "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=5"
+      : "https://api.github.com/repos/MinutHQ/huxflux/releases/latest"
+    const res = await fetch(endpoint, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/vnd.github+json" },
     })
     clearTimeout(timer)
     if (res.ok) {
-      const data = await res.json() as { version: string }
-      latestVersion = data.version
+      if (tag === "beta") {
+        const releases = await res.json() as Array<{ prerelease: boolean; tag_name: string }>
+        const beta = releases.find(r => r.prerelease)
+        if (beta) latestVersion = beta.tag_name.replace(/^v/, "")
+      } else {
+        const release = await res.json() as { tag_name: string }
+        latestVersion = release.tag_name.replace(/^v/, "")
+      }
     }
   } catch {
     // Offline or registry down, keep previous value
@@ -72,8 +84,19 @@ function isIdle(): boolean {
 // Exit code 42 tells the supervisor this is a planned restart (not a crash)
 const UPDATE_EXIT_CODE = 42
 
+function ensureNpmRegistry() {
+  const npmrc = path.join(os.homedir(), ".npmrc")
+  try {
+    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
+    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
+      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
+    }
+  } catch { /* best-effort */ }
+}
+
 export function triggerServerUpdate(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
+    ensureNpmRegistry()
     const tag = getNpmTag()
     const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@${tag}`], {
       stdio: ["ignore", "pipe", "pipe"],

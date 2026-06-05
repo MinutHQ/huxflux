@@ -153,6 +153,13 @@ if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
   fi
 fi
 
+# ── Configure npm registry ───────────────────────────────────────────────────
+# GitHub Packages requires the scope registry to be set
+NPMRC="$HOME/.npmrc"
+if ! grep -q "@minuthq:registry=https://npm.pkg.github.com" "$NPMRC" 2>/dev/null; then
+  echo "@minuthq:registry=https://npm.pkg.github.com" >> "$NPMRC"
+fi
+
 # ── Install ──────────────────────────────────────────────────────────────────
 step "② Installing Huxflux"
 echo ""

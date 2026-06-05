@@ -735,7 +735,18 @@ function getUpdateChannel(): string {
   return "latest"
 }
 
+function ensureNpmRegistry() {
+  const npmrc = path.join(os.homedir(), ".npmrc")
+  try {
+    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
+    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
+      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
+    }
+  } catch { /* best-effort */ }
+}
+
 function cmdUpdate() {
+  ensureNpmRegistry()
   const tag = getUpdateChannel()
   const label = tag === "beta" ? " (beta channel)" : ""
   console.info(`\nUpdating huxflux${label} (current: ${VERSION})...\n`)

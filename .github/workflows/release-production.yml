@@ -70,7 +70,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -137,7 +137,8 @@ jobs:
       - name: Publish to npm (latest tag)
         if: steps.changes.outputs.server_changed == 'true'
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > apps/server/.npmrc
+          echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
           cd apps/server
           npm publish --access public --tag latest
         env:

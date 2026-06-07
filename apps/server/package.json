@@ -1,6 +1,6 @@
 {
   "name": "@minuthq/huxflux",
-  "version": "0.3.15",
+  "version": "0.3.15-beta.8",
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {

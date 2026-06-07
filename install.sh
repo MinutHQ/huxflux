@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # Huxflux installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s
+# Usage: curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | bash
+#        curl -fsSL ... | bash -s -- --beta
 #        curl -fsSL ... | bash -s -- --uninstall
 set -euo pipefail
+
+CHANNEL="latest"
+for arg in "$@"; do
+  case "$arg" in
+    --beta) CHANNEL="beta" ;;
+  esac
+done
 
 # ── Uninstall mode ──────────────────────────────────────────────────────────
 if [ "${1:-}" = "--uninstall" ]; then
@@ -27,7 +35,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   fi
 
   # Remove npm package
-  npm uninstall -g @alexmartosp/huxflux 2>/dev/null || true
+  npm uninstall -g @minuthq/huxflux 2>/dev/null || true
 
   # Remove data
   rm -rf "$HOME/huxflux"
@@ -125,15 +133,46 @@ if command -v huxflux >/dev/null 2>&1; then
   info "Huxflux ${CURRENT} is already installed, upgrading..."
 fi
 
+# ── Channel selection ────────────────────────────────────────────────────────
+# If --beta was passed, skip the prompt. Otherwise ask the user.
+if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
+  echo ""
+  echo -e "  ${BOLD}Which release channel?${RESET}"
+  echo ""
+  echo -e "    ${GREEN}1)${RESET} Stable  ${DIM}(recommended, tested releases)${RESET}"
+  echo -e "    ${YELLOW}2)${RESET} Beta    ${DIM}(early features, may have bugs)${RESET}"
+  echo ""
+  printf "  Select [1/2, default=1]: "
+  if [ -t 0 ]; then
+    read -r CHANNEL_CHOICE
+  else
+    read -r CHANNEL_CHOICE </dev/tty
+  fi
+  if [ "${CHANNEL_CHOICE:-1}" = "2" ]; then
+    CHANNEL="beta"
+  fi
+fi
+
+# ── Configure npm registry ───────────────────────────────────────────────────
+# GitHub Packages requires the scope registry to be set
+NPMRC="$HOME/.npmrc"
+if ! grep -q "@minuthq:registry=https://npm.pkg.github.com" "$NPMRC" 2>/dev/null; then
+  echo "@minuthq:registry=https://npm.pkg.github.com" >> "$NPMRC"
+fi
+
 # ── Install ──────────────────────────────────────────────────────────────────
 step "② Installing Huxflux"
 echo ""
 
-if ! $PM_GLOBAL @alexmartosp/huxflux@latest 2>&1; then
+if [ "$CHANNEL" = "beta" ]; then
+  info "Installing beta channel"
+fi
+
+if ! $PM_GLOBAL "@minuthq/huxflux@${CHANNEL}" 2>&1; then
   echo ""
   if [ "$PM" = "npm" ]; then
     warn "Global install failed. Trying with sudo..."
-    if ! sudo npm install -g @alexmartosp/huxflux@latest 2>&1; then
+    if ! sudo npm install -g "@minuthq/huxflux@${CHANNEL}" 2>&1; then
       fail "Installation failed. Try using nvm for a user-level Node.js install."
     fi
   else
@@ -214,6 +253,28 @@ fi
 
 HUXFLUX_VER=$(huxflux --version 2>/dev/null || echo "installed")
 ok "Huxflux ${HUXFLUX_VER}"
+
+# ── Save channel preference ──────────────────────────────────────────────────
+if [ "$CHANNEL" = "beta" ]; then
+  HUXFLUX_DIR="$HOME/huxflux"
+  SETTINGS_FILE="$HUXFLUX_DIR/settings.json"
+  mkdir -p "$HUXFLUX_DIR"
+
+  if [ -f "$SETTINGS_FILE" ]; then
+    # Merge updateChannel into existing settings (simple sed, avoids jq dependency)
+    if grep -q '"updateChannel"' "$SETTINGS_FILE" 2>/dev/null; then
+      sed -i.bak 's/"updateChannel"[[:space:]]*:[[:space:]]*"[^"]*"/"updateChannel": "beta"/' "$SETTINGS_FILE"
+      rm -f "${SETTINGS_FILE}.bak"
+    else
+      # Insert updateChannel before the closing brace
+      sed -i.bak 's/}$/,"updateChannel": "beta"}/' "$SETTINGS_FILE"
+      rm -f "${SETTINGS_FILE}.bak"
+    fi
+  else
+    echo '{"updateChannel":"beta"}' > "$SETTINGS_FILE"
+  fi
+  ok "Update channel set to beta"
+fi
 
 # ── Launch setup wizard ───────────────────────────────────────────────────────
 step "③ Running setup"

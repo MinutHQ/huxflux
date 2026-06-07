@@ -8,14 +8,23 @@ description: Install Huxflux on your machine.
 The fastest way to get started. Installs the server, sets up your environment, and optionally installs the desktop app.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | bash
 ```
 
 The installer will:
 1. Check that Node.js 22.6+ is installed
-2. Install the `huxflux` CLI via npm
-3. Fix your PATH if needed (asks permission)
-4. Launch the setup wizard
+2. Ask which release channel (stable or beta)
+3. Install the `huxflux` CLI via npm
+4. Fix your PATH if needed (asks permission)
+5. Launch the setup wizard
+
+To install the beta channel directly without the prompt:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | bash -s -- --beta
+```
+
+Switch channels later with `huxflux config channel beta` or `huxflux config channel stable`.
 
 ### Setup wizard
 
@@ -30,7 +39,7 @@ The desktop app auto-connects to your local server on first launch.
 ### Uninstall
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | bash -s -- --uninstall
 ```
 
 This removes the server, desktop app, system service, and all data.
@@ -41,7 +50,7 @@ This removes the server, desktop app, system service, and all data.
 
 Download the desktop app directly if you already have a server running.
 
-[Download on GitHub](https://github.com/AlexMartosP/huxflux-releases/releases/latest)
+[Download on GitHub](https://github.com/MinutHQ/huxflux/releases/latest)
 
 Available as `.dmg` (macOS), `.AppImage` (Linux), and `.deb` (Linux).
 
@@ -78,7 +87,8 @@ If you prefer to install the server manually without the setup wizard:
 ### Install globally
 
 ```sh
-npm install -g @alexmartosp/huxflux
+echo "@minuthq:registry=https://npm.pkg.github.com" >> ~/.npmrc
+npm install -g @minuthq/huxflux
 ```
 
 </Step>

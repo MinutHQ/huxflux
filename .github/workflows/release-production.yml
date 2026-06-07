@@ -1,7 +1,8 @@
 name: Release Production
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
 
 concurrency:
   group: release-production
@@ -31,28 +32,31 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "version=$PROD_VERSION" >> "$GITHUB_OUTPUT"
           else
-            # Check if this version is already on npm
-            PUBLISHED=$(npm view @alexmartosp/huxflux@latest version 2>/dev/null || echo "none")
-            if [ "$PUBLISHED" != "$VERSION" ]; then
-              echo "should_release=true" >> "$GITHUB_OUTPUT"
-              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            else
+            # Check if this version was already released (git tag exists)
+            if git tag -l "v${VERSION}" | grep -q .; then
               echo "should_release=false" >> "$GITHUB_OUTPUT"
-              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
             fi
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           fi
 
   release:
-    name: Release server (production)
+    name: Release (production)
     runs-on: ubuntu-latest
     needs: check
     if: needs.check.outputs.should_release == 'true'
+    outputs:
+      desktop_changed: ${{ steps.changes.outputs.desktop_changed }}
+      server_changed: ${{ steps.changes.outputs.server_changed }}
     permissions:
       contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup pnpm
@@ -65,10 +69,35 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Detect changes since last production tag
+        id: changes
+        run: |
+          LAST_TAG=$(git tag --sort=-v:refname | grep -v "beta" | head -1 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "server_changed=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
+          DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
+
+          if [ -n "$SERVER_CHANGED" ]; then
+            echo "server_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$DESKTOP_CHANGED" ]; then
+            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set production version
         id: version
@@ -94,52 +123,46 @@ jobs:
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build server
-        run: pnpm --filter @alexmartosp/huxflux build
+        if: steps.changes.outputs.server_changed == 'true'
+        run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           pnpm --filter huxflux-web build
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 
       - name: Publish to npm (latest tag)
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
+          echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
           cd apps/server
           npm publish --access public --tag latest
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Sync install script
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-        run: |
-          RELEASES_REPO="AlexMartosP/huxflux-releases"
-          RELEASES_DIR="/tmp/huxflux-releases"
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${RELEASES_REPO}.git" "$RELEASES_DIR"
-          cp install.sh "$RELEASES_DIR/install.sh"
-          chmod +x "$RELEASES_DIR/install.sh"
-          cd "$RELEASES_DIR"
-          if ! git diff --quiet install.sh 2>/dev/null; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add install.sh
-            git commit -m "chore: update install script (server v${{ needs.check.outputs.version }})"
-            git push
-          fi
-          rm -rf "$RELEASES_DIR"
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
           VERSION="${{ needs.check.outputs.version }}"
           echo "## Production Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published \`@alexmartosp/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.changes.outputs.server_changed }}" = "true" ]; then
+            echo "Published \`@minuthq/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Server publish skipped (no server changes since last production tag)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.changes.outputs.desktop_changed }}" != "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Desktop build skipped (no desktop/web changes since last production tag)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   desktop-macos:
     name: Build desktop (macOS)
     runs-on: macos-latest
     needs: [check, release]
-    if: needs.check.outputs.should_release == 'true'
+    if: needs.check.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true'
     permissions:
       contents: write
     steps:
@@ -219,7 +242,7 @@ jobs:
     name: Build desktop (Linux)
     runs-on: ubuntu-latest
     needs: [check, release]
-    if: needs.check.outputs.should_release == 'true'
+    if: needs.check.outputs.should_release == 'true' && needs.release.outputs.desktop_changed == 'true'
     permissions:
       contents: write
     steps:
@@ -287,8 +310,8 @@ jobs:
   publish-release:
     name: Publish GitHub release
     runs-on: ubuntu-latest
-    needs: [check, desktop-macos, desktop-linux]
-    if: needs.check.outputs.should_release == 'true'
+    if: always() && needs.check.outputs.should_release == 'true' && needs.release.result == 'success'
+    needs: [check, release, desktop-macos, desktop-linux]
     permissions:
       contents: write
     steps:
@@ -298,6 +321,7 @@ jobs:
           ref: main
 
       - name: Download all artifacts
+        if: needs.desktop-macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -308,48 +332,40 @@ jobs:
         run: |
           VERSION="${{ needs.check.outputs.version }}"
           TAG="v${VERSION}"
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          ARM_SIG=$(cat artifacts/macos-artifacts/*.aarch64.app.tar.gz.sig 2>/dev/null || echo "")
-          X64_SIG=$(cat artifacts/macos-artifacts/*.x64.app.tar.gz.sig 2>/dev/null || echo "")
-          LINUX_SIG=$(cat artifacts/linux-artifacts/*.AppImage.tar.gz.sig 2>/dev/null || echo "")
+          if [ -d "artifacts" ]; then
+            BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+            PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          cat > latest.json <<JSON
-          {
-            "version": "${VERSION}",
-            "notes": "",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "darwin-aarch64": { "signature": "${ARM_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_aarch64.app.tar.gz" },
-              "darwin-x86_64": { "signature": "${X64_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x64.app.tar.gz" },
-              "linux-x86_64": { "signature": "${LINUX_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x86_64.AppImage.tar.gz" }
+            ARM_SIG=$(cat artifacts/macos-artifacts/*.aarch64.app.tar.gz.sig 2>/dev/null || echo "")
+            X64_SIG=$(cat artifacts/macos-artifacts/*.x64.app.tar.gz.sig 2>/dev/null || echo "")
+            LINUX_SIG=$(cat artifacts/linux-artifacts/*.AppImage.tar.gz.sig 2>/dev/null || echo "")
+
+            cat > latest.json <<JSON
+            {
+              "version": "${VERSION}",
+              "notes": "",
+              "pub_date": "${PUB_DATE}",
+              "platforms": {
+                "darwin-aarch64": { "signature": "${ARM_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_aarch64.app.tar.gz" },
+                "darwin-x86_64": { "signature": "${X64_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x64.app.tar.gz" },
+                "linux-x86_64": { "signature": "${LINUX_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x86_64.AppImage.tar.gz" }
+              }
             }
-          }
-          JSON
+            JSON
 
-          FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
-          SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
+            FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
+            SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
 
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "Huxflux ${TAG}" \
-            --notes "The macOS app is unsigned. Right-click the .dmg and select Open to bypass Gatekeeper." \
-            $FILES $SIG_FILES latest.json
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Huxflux ${TAG}" \
+              --notes "The macOS app is unsigned. Right-click the .dmg and select Open to bypass Gatekeeper." \
+              $FILES $SIG_FILES latest.json
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Huxflux ${TAG}" \
+              --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`"
+          fi
 
-      - name: Also update releases repo latest.json
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-        run: |
-          VERSION="${{ needs.check.outputs.version }}"
-          RELEASES_REPO="AlexMartosP/huxflux-releases"
-          TAG="v${VERSION}"
-
-          # Upload latest.json to the releases repo release too
-          gh release upload "$TAG" latest.json \
-            --repo "$RELEASES_REPO" \
-            --clobber 2>/dev/null || \
-          gh release create "$TAG" latest.json \
-            --repo "$RELEASES_REPO" \
-            --title "Huxflux ${TAG}" \
-            --notes "Production release."

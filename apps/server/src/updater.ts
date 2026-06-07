@@ -1,14 +1,22 @@
 import { spawn } from "node:child_process"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as path from "node:path"
 import { SERVER_VERSION } from "./version.js"
 import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
 
-const NPM_PACKAGE = "@alexmartosp/huxflux"
+const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
 
 let latestVersion: string | null = null
+
+function getNpmTag(): string {
+  const settings = getSettings()
+  return settings.updateChannel === "beta" ? "beta" : "latest"
+}
 
 export function getVersionInfo() {
   return {
@@ -18,28 +26,43 @@ export function getVersionInfo() {
   }
 }
 
+function parseSemver(v: string): { major: number; minor: number; patch: number; pre: number } {
+  const [base, preStr] = v.split("-beta.")
+  const [major, minor, patch] = base.split(".").map(Number)
+  return { major, minor, patch, pre: preStr ? Number(preStr) : Infinity }
+}
+
 function isNewer(a: string, b: string): boolean {
-  const pa = a.split(".").map(Number)
-  const pb = b.split(".").map(Number)
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false
-  }
-  return false
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (pa.major !== pb.major) return pa.major > pb.major
+  if (pa.minor !== pb.minor) return pa.minor > pb.minor
+  if (pa.patch !== pb.patch) return pa.patch > pb.patch
+  return pa.pre > pb.pre
 }
 
 export async function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(`https://registry.npmjs.org/${NPM_PACKAGE}/latest`, {
+    const tag = getNpmTag()
+    const endpoint = tag === "beta"
+      ? "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=5"
+      : "https://api.github.com/repos/MinutHQ/huxflux/releases/latest"
+    const res = await fetch(endpoint, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/vnd.github+json" },
     })
     clearTimeout(timer)
     if (res.ok) {
-      const data = await res.json() as { version: string }
-      latestVersion = data.version
+      if (tag === "beta") {
+        const releases = await res.json() as Array<{ prerelease: boolean; tag_name: string }>
+        const beta = releases.find(r => r.prerelease)
+        if (beta) latestVersion = beta.tag_name.replace(/^v/, "")
+      } else {
+        const release = await res.json() as { tag_name: string }
+        latestVersion = release.tag_name.replace(/^v/, "")
+      }
     }
   } catch {
     // Offline or registry down, keep previous value
@@ -61,9 +84,21 @@ function isIdle(): boolean {
 // Exit code 42 tells the supervisor this is a planned restart (not a crash)
 const UPDATE_EXIT_CODE = 42
 
+function ensureNpmRegistry() {
+  const npmrc = path.join(os.homedir(), ".npmrc")
+  try {
+    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
+    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
+      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
+    }
+  } catch { /* best-effort */ }
+}
+
 export function triggerServerUpdate(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
-    const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@latest`], {
+    ensureNpmRegistry()
+    const tag = getNpmTag()
+    const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@${tag}`], {
       stdio: ["ignore", "pipe", "pipe"],
       shell: true,
     })

@@ -199,6 +199,17 @@ export const settingsSchema = {
   },
 
   // ── Updates ──────────────────────────────────────────────────────────
+  updateChannel: {
+    type: "select",
+    default: "stable",
+    section: "updates",
+    label: "Update channel",
+    description: "Stable receives tested releases. Beta gets new features early but may have bugs.",
+    options: [
+      { value: "stable", label: "Stable" },
+      { value: "beta", label: "Beta" },
+    ],
+  },
   autoUpdateServer: {
     type: "boolean",
     default: true,

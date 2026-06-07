@@ -726,17 +726,39 @@ function cmdOpen(host?: string) {
   spawnSync(opener, [url], { stdio: "inherit", shell: true })
 }
 
+function getUpdateChannel(): string {
+  const settingsFile = path.join(DATA_DIR, "settings.json")
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
+    if (settings.updateChannel === "beta") return "beta"
+  } catch { /* missing or malformed */ }
+  return "latest"
+}
+
+function ensureNpmRegistry() {
+  const npmrc = path.join(os.homedir(), ".npmrc")
+  try {
+    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
+    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
+      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
+    }
+  } catch { /* best-effort */ }
+}
+
 function cmdUpdate() {
-  console.info(`\nUpdating huxflux (current: ${VERSION})...\n`)
-  let result = spawnSync("npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
+  ensureNpmRegistry()
+  const tag = getUpdateChannel()
+  const label = tag === "beta" ? " (beta channel)" : ""
+  console.info(`\nUpdating huxflux${label} (current: ${VERSION})...\n`)
+  let result = spawnSync(`npm install -g @minuthq/huxflux@${tag}`, [], { stdio: "inherit", shell: true })
   if (result.status !== 0) {
     console.info("\nRetrying with sudo...")
-    result = spawnSync("sudo npm install -g @alexmartosp/huxflux@latest", [], { stdio: "inherit", shell: true })
+    result = spawnSync(`sudo npm install -g @minuthq/huxflux@${tag}`, [], { stdio: "inherit", shell: true })
   }
   if (result.status !== 0) {
     console.error("\nUpdate failed. Run manually:")
-    console.error("  npm install -g @alexmartosp/huxflux@latest")
-    console.error("  # or: sudo npm install -g @alexmartosp/huxflux@latest\n")
+    console.error(`  npm install -g @minuthq/huxflux@${tag}`)
+    console.error(`  # or: sudo npm install -g @minuthq/huxflux@${tag}\n`)
     process.exit(result.status ?? 1)
   }
   console.info(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)
@@ -935,9 +957,25 @@ async function cmdSetup() {
     s.start("Fetching latest desktop release...")
 
     try {
-      const releaseUrl = "https://github.com/AlexMartosP/huxflux-releases/releases/latest/download/latest.json"
-      const res = await fetch(releaseUrl)
-      const release = await res.json() as { version: string; platforms: Record<string, { url: string }> }
+      const channel = getUpdateChannel()
+      const releaseUrl = channel === "beta"
+        ? "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=5"
+        : "https://github.com/MinutHQ/huxflux/releases/latest/download/latest.json"
+
+      let release: { version: string; platforms: Record<string, { url: string }> }
+      if (channel === "beta") {
+        const releasesRes = await fetch(releaseUrl, { headers: { Accept: "application/vnd.github+json" } })
+        const releases = await releasesRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }>
+        const betaRelease = releases.find(r => r.prerelease)
+        if (!betaRelease) throw new Error("No beta release found")
+        const manifestAsset = betaRelease.assets.find(a => a.name === "latest-beta.json")
+        if (!manifestAsset) throw new Error("No updater manifest in beta release")
+        const manifestRes = await fetch(manifestAsset.browser_download_url)
+        release = await manifestRes.json() as typeof release
+      } else {
+        const res = await fetch(releaseUrl)
+        release = await res.json() as typeof release
+      }
 
       const platformKey = platform === "darwin"
         ? (arch === "arm64" ? "darwin-aarch64" : "darwin-x86_64")
@@ -945,7 +983,7 @@ async function cmdSetup() {
 
       // Use stable DMG/AppImage/deb URLs for fresh install (not the updater tarballs)
       const tag = `v${release.version}`
-      const baseUrl = `https://github.com/AlexMartosP/huxflux-releases/releases/download/${tag}`
+      const baseUrl = `https://github.com/MinutHQ/huxflux/releases/download/${tag}`
       const installUrls: Record<string, string> = {
         "darwin-aarch64": `${baseUrl}/Huxflux-macos-arm.dmg`,
         "darwin-x86_64": `${baseUrl}/Huxflux-macos-intel.dmg`,
@@ -1082,7 +1120,7 @@ Terminal=false
       }
     } catch {
       s.stop("Could not fetch release info")
-      p.log.error("Check: https://github.com/AlexMartosP/huxflux-releases/releases")
+      p.log.error("Check: https://github.com/MinutHQ/huxflux/releases")
     }
   }
 
@@ -1411,19 +1449,18 @@ async function cmdUninstall() {
 
   // Uninstall npm package
   p.log.step("To complete the uninstall, run:")
-  p.log.message("\n    npm uninstall -g @alexmartosp/huxflux\n")
+  p.log.message("\n    npm uninstall -g @minuthq/huxflux\n")
   p.outro("Huxflux has been uninstalled.")
 }
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
 function cmdConfig(key?: string, value?: string) {
-  if (key === "auto-update") {
-    // Read/write auto-update setting from settings.json (same file the server uses)
-    const settingsFile = path.join(DATA_DIR, "settings.json")
-    let settings: Record<string, unknown> = {}
-    try { settings = JSON.parse(fs.readFileSync(settingsFile, "utf8")) } catch { /* file missing or malformed */ }
+  const settingsFile = path.join(DATA_DIR, "settings.json")
+  let settings: Record<string, unknown> = {}
+  try { settings = JSON.parse(fs.readFileSync(settingsFile, "utf8")) } catch { /* file missing or malformed */ }
 
+  if (key === "auto-update") {
     if (value === undefined) {
       console.info(`auto-update server: ${settings.autoUpdateServer ? "on" : "off"}`)
       return
@@ -1444,11 +1481,32 @@ function cmdConfig(key?: string, value?: string) {
     return
   }
 
+  if (key === "channel") {
+    if (value === undefined) {
+      console.info(`update channel: ${settings.updateChannel === "beta" ? "beta" : "stable"}`)
+      return
+    }
+
+    if (value === "stable" || value === "beta") {
+      settings.updateChannel = value
+    } else {
+      console.error(`Invalid value: ${value}. Use 'stable' or 'beta'.`)
+      process.exit(1)
+    }
+
+    ensureDataDir()
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
+    console.info(`update channel: ${value}`)
+    return
+  }
+
   // No key or unknown key: show all config
   console.info(`
 huxflux config — View and modify settings
 
 Usage:
+  huxflux config channel              Show update channel (stable or beta)
+  huxflux config channel stable|beta  Switch update channel
   huxflux config auto-update          Show auto-update status
   huxflux config auto-update on|off   Enable/disable server auto-updates
 `)
@@ -1478,7 +1536,8 @@ Usage:
   huxflux restore 2      Restore DB from older backup (.bak2)
   huxflux reset          ⚠️  Erase all data and start fresh (3 confirmations required)
   huxflux update         Update huxflux to the latest version
-  huxflux config auto-update [on|off]  View or set server auto-update
+  huxflux config channel [stable|beta]  View or switch update channel
+  huxflux config auto-update [on|off]   View or set server auto-update
   huxflux data copy dev-to-prod    Copy dev database to production
   huxflux data copy prod-to-dev    Copy production database to dev
   huxflux uninstall      Remove Huxflux (server, desktop, data)

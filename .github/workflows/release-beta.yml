@@ -10,11 +10,15 @@ concurrency:
 
 jobs:
   release:
-    name: Release server (beta)
+    name: Release (beta)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/beta'
+    outputs:
+      desktop_changed: ${{ steps.changes.outputs.desktop_changed }}
+      server_changed: ${{ steps.changes.outputs.server_changed }}
     permissions:
       contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,10 +36,35 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Detect changes since last tag
+        id: changes
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "server_changed=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
+          DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
+
+          if [ -n "$SERVER_CHANGED" ]; then
+            echo "server_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "server_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -n "$DESKTOP_CHANGED" ]; then
+            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Bump beta version
         id: bump
@@ -43,22 +72,11 @@ jobs:
           CURRENT=$(node -p "require('./apps/server/package.json').version")
 
           if [[ "$CURRENT" == *"-beta."* ]]; then
-            # Already a beta version, increment beta number
             BASE="${CURRENT%-beta.*}"
             BETA_NUM="${CURRENT##*-beta.}"
             NEXT_BETA=$((BETA_NUM + 1))
             VERSION="${BASE}-beta.${NEXT_BETA}"
           else
-            # First beta after a production release
-            # Scan commits since last tag for feat: to decide patch vs minor
-            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-            if [ -n "$LAST_TAG" ]; then
-              RANGE="${LAST_TAG}..HEAD"
-            else
-              RANGE="HEAD"
-            fi
-
-            # Sub-v1: always patch unless explicitly overridden
             IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
             NEXT_PATCH=$((PATCH + 1))
             VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-beta.1"
@@ -67,28 +85,31 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Bumping to $VERSION"
 
-          # Update package.json
           cd apps/server
           npm version "$VERSION" --no-git-tag-version
           cd ../..
 
-          # Commit the version bump
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/server/package.json
           git commit -m "chore: bump server to $VERSION"
+          git tag "v${VERSION}"
           git push
+          git push origin "v${VERSION}"
 
       - name: Build server
-        run: pnpm --filter @alexmartosp/huxflux build
+        if: steps.changes.outputs.server_changed == 'true'
+        run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           pnpm --filter huxflux-web build
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 
       - name: Verify build
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
           CLI_VERSION=$(node apps/server/dist/cli.js --version)
@@ -98,25 +119,33 @@ jobs:
           fi
 
       - name: Publish to npm (beta tag)
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
+          echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
           cd apps/server
           npm publish --access public --tag beta
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
-          VERSION="${{ steps.bump.outputs.version }}"
           echo "## Beta Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Published \`@alexmartosp/huxflux@${VERSION}\` to npm with \`beta\` tag." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Install: \`npm install -g @alexmartosp/huxflux@beta\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.changes.outputs.server_changed }}" = "true" ]; then
+            echo "Published \`@minuthq/huxflux@${{ steps.bump.outputs.version }}\` to npm with \`beta\` tag." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Server publish skipped (no server changes since last tag)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.changes.outputs.desktop_changed }}" != "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Desktop build skipped (no desktop/web changes since last tag)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   desktop-macos:
     name: Build desktop (macOS)
     runs-on: macos-latest
-    if: github.ref == 'refs/heads/beta'
+    if: github.ref == 'refs/heads/beta' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -148,6 +177,11 @@ jobs:
       - name: Get version
         id: version
         run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Set beta updater endpoint
+        run: |
+          cd apps/desktop/src-tauri
+          sed -i 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json
 
       - name: Build macOS ARM
         run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
@@ -212,7 +246,7 @@ jobs:
   desktop-linux:
     name: Build desktop (Linux)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/beta'
+    if: github.ref == 'refs/heads/beta' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -247,6 +281,11 @@ jobs:
       - name: Get version
         id: version
         run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Set beta updater endpoint
+        run: |
+          cd apps/desktop/src-tauri
+          sed -i 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json
 
       - name: Build Linux
         run: cd apps/desktop && pnpm tauri build
@@ -292,7 +331,8 @@ jobs:
   publish-release:
     name: Publish GitHub pre-release
     runs-on: ubuntu-latest
-    needs: [desktop-macos, desktop-linux]
+    if: always() && needs.release.result == 'success'
+    needs: [release, desktop-macos, desktop-linux]
     permissions:
       contents: write
     steps:
@@ -307,13 +347,16 @@ jobs:
           VERSION=$(node -p "require('./apps/server/package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "has_desktop=${{ needs.desktop-macos.result == 'success' }}" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
+        if: needs.desktop-macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Generate latest-beta.json
+        if: needs.desktop-macos.result == 'success'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
@@ -343,15 +386,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
+          NOTES="Beta release. Install with: \`npm install -g @minuthq/huxflux@beta\`"
 
-          # Collect all artifact files
-          FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
-          SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
-
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "Huxflux ${TAG} (beta)" \
-            --notes "Beta release. Install with: \`npm install -g @alexmartosp/huxflux@beta\`" \
-            --prerelease \
-            $FILES $SIG_FILES latest-beta.json
+          if [ -d "artifacts" ]; then
+            FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
+            SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Huxflux ${TAG} (beta)" \
+              --notes "$NOTES" \
+              --prerelease \
+              $FILES $SIG_FILES latest-beta.json
+          else
+            NOTES="$NOTES"$'\n\n'"Server-only release (no desktop changes)."
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Huxflux ${TAG} (beta)" \
+              --notes "$NOTES" \
+              --prerelease
+          fi

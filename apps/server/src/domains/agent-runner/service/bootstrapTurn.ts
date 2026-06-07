@@ -55,19 +55,21 @@ export async function bootstrapTurn(
 
   await persistUserMessage(userContent, opts, now)
 
-  // Mark agent as in-progress unless already in-review (don't downgrade)
+  // Mark agent as in-progress + streaming in one update, broadcast once.
+  // Previously this was two separate updates with two broadcasts, causing a
+  // race where the client could see streaming=0 from the first broadcast.
   const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
   const preRunStatus = currentAgent?.status ?? "in-progress"
   const newStatus = preRunStatus === "in-review" ? "in-review" : "in-progress"
   await db.update(agentsTable)
-    .set({ status: newStatus, updatedAt: now })
+    .set({ status: newStatus, streaming: 1, updatedAt: now })
     .where(eq(agentsTable.id, agentId))
 
   const agentRow = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
   const repoRow = agentRow?.repoId
     ? db.select().from(reposTable).where(eq(reposTable.id, agentRow.repoId)).get() ?? null
     : null
-  if (agentRow) agentsWs.agentUpdatedTo(agentId, agentRow as unknown as AgentSummary)
+  if (agentRow) agentsWs.agentUpdated(agentRow as unknown as AgentSummary)
 
   // Insert skeleton assistant message immediately so it survives page reloads
   const skeletonCreatedAt = new Date().toISOString()
@@ -84,11 +86,6 @@ export async function bootstrapTurn(
   if (!provider.capabilities.sessionResume && existingSessionId) {
     db.update(agentsTable).set({ sessionId: null }).where(eq(agentsTable.id, agentId)).run()
   }
-
-  // Mark agent as streaming so all connected clients know immediately
-  await db.update(agentsTable).set({ streaming: 1 }).where(eq(agentsTable.id, agentId))
-  const streamingAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-  if (streamingAgent) agentsWs.agentUpdated(streamingAgent as unknown as AgentSummary)
 
   agentsWs.messageStart(agentId, messageId)
 

@@ -33,6 +33,24 @@ export function getInstalledProviders(): ProviderAdapter[] {
 }
 
 /**
+ * Kick off `warmAvailability()` for every registered provider in parallel.
+ * Fire-and-forget — meant to be called from the server entrypoint at boot
+ * so subsequent calls to `isAvailable()` from request handlers are O(1) and
+ * never block the event loop on `npx` / `which` subprocesses.
+ *
+ * Returns a promise that resolves when ALL warms complete, in case a caller
+ * (e.g. a startup gate or a test) wants to await it. Individual warm errors
+ * are swallowed by the underlying resolver; this just resolves once they're
+ * all done.
+ */
+export function warmAllProviders(): Promise<void> {
+  const tasks = Object.values(providers)
+    .filter((p): p is ProviderAdapter & { warmAvailability: () => Promise<void> } => typeof p.warmAvailability === "function")
+    .map((p) => p.warmAvailability().catch(() => { /* underlying resolver already caches "false"; nothing else to do */ }))
+  return Promise.all(tasks).then(() => undefined)
+}
+
+/**
  * Register an extra provider adapter under the given id. Test-only seam: lets
  * the runner E2E install a fake provider that points at the fake-claude binary
  * without modifying any built-in. Throws if `id` is already taken so a typo

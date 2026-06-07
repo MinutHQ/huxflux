@@ -94,12 +94,18 @@ function AgentRoute() {
   }, [activePendingQuestion?.toolUseId])
 
   const terminalAgentId = workspace.rootAgentId
-  const { data: terminalAgentData } = useHuxfluxQuery({
+  // When the root agent IS the active agent (the common case, including a
+  // freshly created agent), skip the separate query — `activeAgent` already
+  // holds the same cache entry, and gating the terminal/files panels on a
+  // second async result was causing a visible post-navigation lag.
+  const sameAsActive = !!terminalAgentId && !!activeAgent && terminalAgentId === activeAgent.id
+  const { data: terminalAgentQueryData } = useHuxfluxQuery({
     queryKey: queryKeys.agents.detail(terminalAgentId),
     queryFn: () => api.agents.get(terminalAgentId!),
-    enabled: !!terminalAgentId,
+    enabled: !!terminalAgentId && !sameAsActive,
     staleTime: 10_000,
   })
+  const terminalAgentData = sameAsActive ? activeAgent : terminalAgentQueryData
 
   if (!activeAgent) return <HomeView />
 
@@ -291,6 +297,8 @@ function AgentRoute() {
                   hideHeader
                   initialMessage={workspace.queuedSetupMessage}
                   onConsumeInitialMessage={() => workspace.setQueuedSetupMessage(null)}
+                  initialDraft={workspace.setupDraft || null}
+                  onConsumeInitialDraft={() => workspace.setSetupDraft("")}
                 />
               </div>
             </ResizablePanel>}

@@ -1,6 +1,43 @@
 import { execFileSync } from "node:child_process"
+import { createRequire } from "node:module"
+import * as path from "node:path"
+import { existsSync } from "node:fs"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
-import { createBinaryResolver } from "./binary.js"
+
+const requireFromHere = createRequire(import.meta.url)
+
+/**
+ * Resolve the `claude-p` binary in priority order:
+ *   1. `CLAUDE_P_BIN` env override (absolute path or PATH name)
+ *   2. The bundled dependency in node_modules — returned as the .js entry so
+ *      we can spawn it with `process.execPath` and skip the .bin shell shim
+ *   3. A globally-installed `claude-p` on PATH
+ *   4. As an absolute last resort, the bare string `"npx"`; the spawn path
+ *      below tags `--prefer-offline --yes` onto it so that doesn't repeatedly
+ *      re-download. The previous design always reached here, and the per-turn
+ *      `npx claude-p` was the load-bearing cause of the multi-second agent-
+ *      start lag the user was seeing.
+ */
+function resolveClaudePBin(): string {
+  const override = process.env.CLAUDE_P_BIN
+  if (override) return override
+  try {
+    const pkgPath = requireFromHere.resolve("claude-p/package.json")
+    const binJs = path.resolve(path.dirname(pkgPath), "bin", "claude-p.js")
+    if (existsSync(binJs)) return binJs
+  } catch { /* not bundled — fall through */ }
+  try {
+    return execFileSync("which", ["claude-p"], { encoding: "utf8" }).trim()
+  } catch { /* not on PATH — fall through */ }
+  return "npx"
+}
+
+let cachedBin: string | null = null
+function getBin(): string {
+  if (cachedBin) return cachedBin
+  cachedBin = resolveClaudePBin()
+  return cachedBin
+}
 
 interface ClaudeRawBlock {
   type?: string
@@ -53,19 +90,11 @@ const MODELS = [
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", api: "claude-haiku-4-5-20251001" },
 ]
 
-const binary = createBinaryResolver({
-  defaultBin: "claude-p",
-  envVar: "CLAUDE_P_BIN",
-  fallbackBin: "npx",
-  extraAvailabilityCheck: () => {
-    try {
-      execFileSync("npx", ["claude-p", "--help"], { encoding: "utf8", timeout: 10_000 })
-      return true
-    } catch {
-      return false
-    }
-  },
-})
+// Always-true availability check: `claude-p` is now a hard dependency of the
+// server package, so the install will surface a problem long before runtime.
+// If for some reason the bundled binary isn't present, we still fall back to
+// `which` or `npx` at spawn time (see `resolveClaudePBin`).
+const isAvailable = (): boolean => true
 
 export const claudeInteractiveProvider: ProviderAdapter = {
   id: "claude-interactive",
@@ -85,8 +114,8 @@ export const claudeInteractiveProvider: ProviderAdapter = {
     effortLevels: ["low", "medium", "high", "max"],
   } satisfies ProviderCapabilities,
 
-  resolveBinary: binary.resolve,
-  isAvailable: binary.isAvailable,
+  resolveBinary: getBin,
+  isAvailable,
 
   buildSpawnArgs(opts: SpawnOptions): SpawnResult {
     const bin = this.resolveBinary()
@@ -113,10 +142,21 @@ export const claudeInteractiveProvider: ProviderAdapter = {
       opts.prompt,
     ]
 
-    // If using npx, prepend claude-p
-    const args = bin === "npx" ? ["claude-p", ...coreArgs] : coreArgs
-
-    return { bin, args }
+    // Three spawn shapes depending on how `claude-p` was found:
+    //   - Bundled (absolute .js path): exec node directly, pass the script as
+    //     argv[1]. Fastest path; no shell shim, no npx network round-trip.
+    //   - Global on PATH (any non-.js absolute path or bare name): spawn it
+    //     directly.
+    //   - `npx` last-resort fallback: tag `--yes --prefer-offline` so npx
+    //     uses the cache and never asks for confirmation. Still slower than
+    //     the bundled path because npx has its own overhead.
+    if (bin.endsWith(".js")) {
+      return { bin: process.execPath, args: [bin, ...coreArgs] }
+    }
+    if (bin === "npx") {
+      return { bin: "npx", args: ["--yes", "--prefer-offline", "claude-p", ...coreArgs] }
+    }
+    return { bin, args: coreArgs }
   },
 
   // Output format is identical to claude -p stream-json, so reuse Claude's parser

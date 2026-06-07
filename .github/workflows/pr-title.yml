@@ -1,7 +1,9 @@
 name: PR Title Check
 
 on:
-  workflow_dispatch:
+  pull_request:
+    types: [opened, edited, synchronize]
+    branches: [beta, main]
 
 jobs:
   check:

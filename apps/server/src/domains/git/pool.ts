@@ -7,9 +7,13 @@ import { eq } from "drizzle-orm"
 import { createWorktree, removeWorktree } from "./worktrees.js"
 
 /**
- * The "reserve" is a single hidden worktree per repo that has its setup
- * script pre-run, so creating a new agent feels instant. Storage still
- * lives in the legacy `worktree_pool` table — at most one row per repo.
+ * The "reserve" is a single hidden worktree per repo. When the repo has a
+ * setup script, the script is run ahead of time so claiming the reserve
+ * skips the install. When the repo has no setup script, the reserve still
+ * exists — claiming it saves the cold-path `git fetch` + `worktree add`,
+ * which is the largest single cost on a fresh `createAgent` for any
+ * non-trivial repo. Storage lives in the legacy `worktree_pool` table — at
+ * most one row per repo.
  */
 
 function reserveLocation(): string {
@@ -26,17 +30,26 @@ async function fetchBase(repoPath: string, branchFrom: string | null | undefined
   try {
     await simpleGit(repoPath).fetch(["--no-tags", "origin", remote])
   } catch (err) {
-    console.warn(`[reserve] fetch failed: ${(err as Error).message}`)
+    // First line only — git/SSH error output (host-key art etc.) is noisy.
+    const msg = String((err as Error).message ?? err).split("\n")[0]
+    console.warn(`[reserve] fetch skipped: ${msg}`)
   }
 }
 
 /**
  * Ensure a single hidden reserve worktree exists for this repo.
- * No-op if no setup script is configured or a reserve already exists.
+ * No-op if a reserve already exists, or if the repo is folder-typed (no
+ * git remote, no worktree concept). Builds the worktree regardless of
+ * whether the repo has a setup script — the cold-path git work is the
+ * dominant cost on a fresh agent create, so warming it ahead of time helps
+ * every repo. The setup script, if any, runs after the worktree exists.
  */
 export async function ensureReserve(repoId: string): Promise<void> {
   const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
-  if (!repo || !repo.setupScript) return
+  if (!repo) return
+  // Folder-typed repos do not have a git remote and cannot host a worktree.
+  // Reserves are inherently git-only.
+  if (repo.type === "folder") return
   if (getReserveCount(repoId) >= 1) return
 
   await fetchBase(repo.path, repo.branchFrom)
@@ -50,16 +63,18 @@ export async function ensureReserve(repoId: string): Promise<void> {
   try {
     await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
 
-    const { spawn } = await import("node:child_process")
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn("sh", ["-c", repo.setupScript!], {
-        cwd: worktreePath,
-        stdio: "ignore",
-        env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: worktreePath, HUXFLUX_REPO: repo.path },
+    if (repo.setupScript) {
+      const { spawn } = await import("node:child_process")
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn("sh", ["-c", repo.setupScript!], {
+          cwd: worktreePath,
+          stdio: "ignore",
+          env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: worktreePath, HUXFLUX_REPO: repo.path },
+        })
+        proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
+        proc.on("error", reject)
       })
-      proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`exit ${code}`)))
-      proc.on("error", reject)
-    })
+    }
 
     db.insert(worktreePool).values({ id, repoId, location, branch, createdAt: now }).run()
     console.info(`[reserve] created ${location} for repo ${repo.name}`)
@@ -134,24 +149,16 @@ export async function drainReserves(repoId: string): Promise<void> {
 }
 
 /**
- * On server startup: drain any stale entries from earlier pool-size > 1
- * configurations or repos that no longer have a setup script, then ensure
- * one reserve exists everywhere it should.
+ * On server startup: drain any stale extras from earlier pool-size > 1
+ * configurations, then ensure exactly one reserve exists for every repo.
+ * Reserves are built regardless of whether the repo has a setup script,
+ * since the cold-path git fetch + worktree add is what dominates the
+ * agent-create response time.
  */
 export async function initializeReserves(): Promise<void> {
   const allRepos = db.select().from(repos).all()
   for (const repo of allRepos) {
     const entries = db.select().from(worktreePool).where(eq(worktreePool.repoId, repo.id)).all()
-
-    if (!repo.setupScript) {
-      // No setup script → no reserve should exist
-      for (const entry of entries) {
-        const worktreePath = path.join(repo.workspacesPath, entry.location)
-        try { await removeWorktree(repo.path, worktreePath) } catch { /* gone */ }
-        db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
-      }
-      continue
-    }
 
     // Trim to a single reserve
     const extras = entries.slice(1)

@@ -53,6 +53,7 @@ export const codexProvider: ProviderAdapter = {
 
   resolveBinary: binary.resolve,
   isAvailable: binary.isAvailable,
+  warmAvailability: binary.warmAvailability,
 
   buildSpawnArgs(opts: SpawnOptions): SpawnResult {
     const bin = this.resolveBinary()

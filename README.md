@@ -7,7 +7,7 @@ Huxflux is a self-hosted orchestrator for AI coding agents. Spawn Claude Code, C
 The fastest way to get going is the one-line installer. It installs the server, runs the setup wizard, and optionally installs the desktop app.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AlexMartosP/huxflux-releases/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | bash
 ```
 
 The desktop app auto-connects to your local server on first launch. For manual installation, remote-access setup (Tailscale, nginx), and provider configuration see the [installation guide](https://huxflux.dev/docs/getting-started/installation).

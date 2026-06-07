@@ -24,13 +24,18 @@ export function stopAgent(agentId: string): boolean {
     // Fallback to direct kill
     try { proc.kill("SIGTERM") } catch { /* dead */ }
   }
-  // Force kill after 3s if still alive
+  // Force kill after 3s if still alive. Also clear streaming flag as a safety
+  // net in case the close event never fires (zombie process).
   setTimeout(() => {
     try {
       if (proc.pid) process.kill(-proc.pid, "SIGKILL")
     } catch { /* dead */ }
     try { proc.kill("SIGKILL") } catch { /* dead */ }
-    runningProcesses.delete(agentId)
+    if (runningProcesses.has(agentId)) {
+      runningProcesses.delete(agentId)
+      // Finalize didn't run (close event never fired). Clear streaming directly.
+      db.update(agentsTable).set({ streaming: 0 }).where(eq(agentsTable.id, agentId)).run()
+    }
   }, 3000)
   return true
 }

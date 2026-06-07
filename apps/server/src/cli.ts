@@ -1018,11 +1018,12 @@ async function cmdSetup() {
               const dlRes = await fetch(downloadUrl, { redirect: "follow" })
               if (!dlRes.ok) throw new Error(`Download failed: HTTP ${dlRes.status}`)
               const buffer = Buffer.from(await dlRes.arrayBuffer())
-              if (buffer.length < 1000) throw new Error(`Download too small (${buffer.length} bytes), likely not a valid file`)
+              if (buffer.length < 100_000) throw new Error(`Download too small (${buffer.length} bytes), likely not a valid DMG`)
               fs.writeFileSync(dmgPath, buffer)
+              ds.message(`Downloaded ${(buffer.length / 1024 / 1024).toFixed(1)} MB, mounting...`)
 
-              // Remove quarantine from downloaded DMG so hdiutil can mount it
-              spawnSync("xattr", ["-rd", "com.apple.quarantine", dmgPath], { stdio: "pipe" })
+              // Clear all extended attributes so macOS doesn't block the DMG
+              spawnSync("xattr", ["-c", dmgPath], { stdio: "pipe" })
 
               // Detach any stale Huxflux volumes from previous attempts
               try {
@@ -1030,7 +1031,7 @@ async function cmdSetup() {
                 for (const v of volumes) spawnSync("hdiutil", ["detach", `/Volumes/${v}`, "-quiet", "-force"], { stdio: "pipe" })
               } catch { /* best-effort detach */ }
 
-              const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse", "-quiet"], { encoding: "utf-8", stdio: "pipe" })
+              const mountResult = spawnSync("hdiutil", ["attach", dmgPath, "-nobrowse"], { encoding: "utf-8", stdio: "pipe" })
               const mountLine = (mountResult.stdout || "").split("\n").find((l: string) => l.includes("/Volumes/"))
               const mountPoint = mountLine?.trim().split("\t").pop()?.trim()
 
@@ -1060,8 +1061,9 @@ async function cmdSetup() {
                 ds.stop("Mount failed")
                 const mountErr = (mountResult.stderr || "").trim()
                 p.log.warning(`Could not mount DMG${mountErr ? `: ${mountErr}` : ""}`)
-                p.log.info(`DMG path: ${dmgPath}`)
+                p.log.info(`DMG saved at: ${dmgPath} (${(buffer.length / 1024 / 1024).toFixed(1)} MB)`)
                 p.log.info("Try manually: hdiutil attach " + dmgPath)
+                return
               }
 
               try { fs.rmSync(tmpDir, { recursive: true }) } catch { /* tmp cleanup is best-effort */ }

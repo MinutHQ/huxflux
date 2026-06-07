@@ -1005,8 +1005,10 @@ async function cmdSetup() {
               fs.mkdirSync(tmpDir, { recursive: true })
               const dmgPath = path.join(tmpDir, "Huxflux.dmg")
 
-              const dlRes = await fetch(downloadUrl)
+              const dlRes = await fetch(downloadUrl, { redirect: "follow" })
+              if (!dlRes.ok) throw new Error(`Download failed: HTTP ${dlRes.status}`)
               const buffer = Buffer.from(await dlRes.arrayBuffer())
+              if (buffer.length < 1000) throw new Error(`Download too small (${buffer.length} bytes), likely not a valid file`)
               fs.writeFileSync(dmgPath, buffer)
 
               // Remove quarantine from downloaded DMG so hdiutil can mount it

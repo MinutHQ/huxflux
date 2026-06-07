@@ -139,16 +139,17 @@ if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
   echo ""
   echo -e "  ${BOLD}Which release channel?${RESET}"
   echo ""
-  echo -e "    ${GREEN}1)${RESET} Stable  ${DIM}(recommended, tested releases)${RESET}"
-  echo -e "    ${YELLOW}2)${RESET} Beta    ${DIM}(early features, may have bugs)${RESET}"
+  echo -e "    ${GREEN}▸ stable${RESET}  ${DIM}(recommended, tested releases)${RESET}"
+  echo -e "    ${YELLOW}▸ beta${RESET}    ${DIM}(early features, may have bugs)${RESET}"
   echo ""
-  printf "  Select [1/2, default=1]: "
+  printf "  Channel [stable/beta, default=stable]: "
   if [ -t 0 ]; then
     read -r CHANNEL_CHOICE
   else
     read -r CHANNEL_CHOICE </dev/tty
   fi
-  if [ "${CHANNEL_CHOICE:-1}" = "2" ]; then
+  CHANNEL_CHOICE=$(echo "${CHANNEL_CHOICE:-stable}" | tr '[:upper:]' '[:lower:]')
+  if [ "$CHANNEL_CHOICE" = "beta" ]; then
     CHANNEL="beta"
   fi
 fi

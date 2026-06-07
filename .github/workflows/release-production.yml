@@ -205,7 +205,7 @@ jobs:
       - name: Prepare and upload artifacts
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          TARGET="apps/desktop/src-tauri/target"
+          TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
 
           ARM_DMG=$(find "$TARGET/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
           X64_DMG=$(find "$TARGET/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
@@ -282,7 +282,7 @@ jobs:
       - name: Prepare artifacts
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          TARGET="apps/desktop/src-tauri/target"
+          TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
           APPIMAGE=$(find "$TARGET/release/bundle/appimage" -name "*.AppImage" | head -1)
           DEB=$(find "$TARGET/release/bundle/deb" -name "*.deb" | head -1)
           cp "$APPIMAGE" "/tmp/Huxflux-linux-x86_64.AppImage"

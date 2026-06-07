@@ -200,16 +200,14 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="v${VERSION}"
-          TARGET="apps/desktop/src-tauri/target"
+          TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
 
           ARM_DMG=$(find "$TARGET/aarch64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
           X64_DMG=$(find "$TARGET/x86_64-apple-darwin/release/bundle/dmg" -name "*.dmg" | head -1)
 
-          # Stable names for downloads
           cp "$ARM_DMG" "/tmp/Huxflux-macos-arm.dmg"
           cp "$X64_DMG" "/tmp/Huxflux-macos-intel.dmg"
 
-          # Updater tarballs
           ARM_BUNDLE="$TARGET/aarch64-apple-darwin/release/bundle/macos"
           X64_BUNDLE="$TARGET/x86_64-apple-darwin/release/bundle/macos"
           ARM_TAR="${ARM_BUNDLE}/Huxflux_${VERSION}_aarch64.app.tar.gz"
@@ -297,7 +295,7 @@ jobs:
         id: artifacts
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          TARGET="apps/desktop/src-tauri/target"
+          TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
           APPIMAGE=$(find "$TARGET/release/bundle/appimage" -name "*.AppImage" | head -1)
           DEB=$(find "$TARGET/release/bundle/deb" -name "*.deb" | head -1)
 

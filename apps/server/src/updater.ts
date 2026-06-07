@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -43,27 +43,15 @@ function isNewer(a: string, b: string): boolean {
 
 export async function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 10_000)
     const tag = getNpmTag()
-    const endpoint = tag === "beta"
-      ? "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=5"
-      : "https://api.github.com/repos/MinutHQ/huxflux/releases/latest"
-    const res = await fetch(endpoint, {
-      signal: controller.signal,
-      headers: { Accept: "application/vnd.github+json" },
+    const result = spawnSync("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
+      encoding: "utf-8",
+      timeout: 15_000,
+      stdio: "pipe",
+      shell: true,
     })
-    clearTimeout(timer)
-    if (res.ok) {
-      if (tag === "beta") {
-        const releases = await res.json() as Array<{ prerelease: boolean; tag_name: string }>
-        const beta = releases.find(r => r.prerelease)
-        if (beta) latestVersion = beta.tag_name.replace(/^v/, "")
-      } else {
-        const release = await res.json() as { tag_name: string }
-        latestVersion = release.tag_name.replace(/^v/, "")
-      }
-    }
+    const version = result.stdout?.trim()
+    if (result.status === 0 && version) latestVersion = version
   } catch {
     // Offline or registry down, keep previous value
   }

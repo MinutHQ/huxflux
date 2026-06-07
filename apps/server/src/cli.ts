@@ -1277,7 +1277,7 @@ function installSystemService() {
     fs.mkdirSync(plistDir, { recursive: true })
 
     // Write a launcher script that sources nvm before running huxflux
-    const launcherPath = path.join(DATA_DIR, "launch-service.sh")
+    const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
       `export NVM_DIR="${nvmDir}"`,
@@ -1327,7 +1327,7 @@ function installSystemService() {
     fs.mkdirSync(serviceDir, { recursive: true })
 
     // Write launcher script that sources nvm
-    const launcherPath = path.join(DATA_DIR, "launch-service.sh")
+    const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
       `export NVM_DIR="${nvmDir}"`,

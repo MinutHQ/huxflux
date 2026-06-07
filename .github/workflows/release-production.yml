@@ -333,6 +333,17 @@ jobs:
           VERSION="${{ needs.check.outputs.version }}"
           TAG="v${VERSION}"
 
+          # Carry forward latest-beta.json so /releases/latest/download/ works for beta channel too
+          EXTRA_FILES=""
+          for PTAG in $(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease) | .tagName'); do
+            BETA_MANIFEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
+            if [ -n "$BETA_MANIFEST" ]; then
+              echo "$BETA_MANIFEST" > latest-beta.json
+              EXTRA_FILES="latest-beta.json"
+              break
+            fi
+          done
+
           if [ -d "artifacts" ]; then
             BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
             PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -354,11 +365,26 @@ jobs:
               --repo "${{ github.repository }}" \
               --title "Huxflux ${TAG}" \
               --notes "The macOS app is unsigned. Right-click the .dmg and select Open to bypass Gatekeeper." \
-              $FILES $SIG_FILES latest.json
+              $FILES $SIG_FILES latest.json $EXTRA_FILES
           else
-            gh release create "$TAG" \
-              --repo "${{ github.repository }}" \
-              --title "Huxflux ${TAG}" \
-              --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`"
+            # Server-only: carry forward latest.json from previous stable release
+            PREV_STABLE=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/latest.json" 2>/dev/null || echo "")
+            if [ -n "$PREV_STABLE" ]; then
+              echo "$PREV_STABLE" > latest.json
+              EXTRA_FILES="latest.json $EXTRA_FILES"
+            fi
+
+            if [ -n "$EXTRA_FILES" ]; then
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "Huxflux ${TAG}" \
+                --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`" \
+                $EXTRA_FILES
+            else
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "Huxflux ${TAG}" \
+                --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`"
+            fi
           fi
 

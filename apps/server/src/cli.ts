@@ -966,13 +966,15 @@ async function cmdSetup() {
       let desktopVersion: string | null = null
 
       const manifestName = channel === "beta" ? "latest-beta.json" : "latest.json"
+
+      // Both manifests are carried forward on every stable release, so /releases/latest/download/ works
+      // for both channels. Fall back to the GitHub API if the direct URL fails.
       const manifestUrl = `https://github.com/${repo}/releases/latest/download/${manifestName}`
       const manifestRes = await fetch(manifestUrl, { redirect: "follow" })
       if (manifestRes.ok) {
         const manifest = await manifestRes.json() as { version: string }
         desktopVersion = manifest.version
       } else {
-        // Latest release has no desktop artifacts. Try the GitHub API to find one that does.
         const apiUrl = `https://api.github.com/repos/${repo}/releases?per_page=10`
         const apiRes = await fetch(apiUrl, { headers: { Accept: "application/vnd.github+json" } })
         if (apiRes.ok) {

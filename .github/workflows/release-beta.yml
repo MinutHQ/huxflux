@@ -390,9 +390,26 @@ jobs:
               $FILES $SIG_FILES latest-beta.json
           else
             NOTES="$NOTES"$'\n\n'"Server-only release (no desktop changes)."
-            gh release create "$TAG" \
-              --repo "${{ github.repository }}" \
-              --title "Huxflux ${TAG} (beta)" \
-              --notes "$NOTES" \
-              --prerelease
+            # Carry forward latest-beta.json from a previous beta prerelease
+            # /releases/latest/ points to stable, not prerelease, so we search explicitly
+            PREV_LATEST=""
+            for PTAG in $(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease) | .tagName'); do
+              PREV_LATEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
+              [ -n "$PREV_LATEST" ] && break
+            done
+            if [ -n "$PREV_LATEST" ]; then
+              echo "$PREV_LATEST" > latest-beta.json
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "Huxflux ${TAG} (beta)" \
+                --notes "$NOTES" \
+                --prerelease \
+                latest-beta.json
+            else
+              gh release create "$TAG" \
+                --repo "${{ github.repository }}" \
+                --title "Huxflux ${TAG} (beta)" \
+                --notes "$NOTES" \
+                --prerelease
+            fi
           fi

@@ -958,43 +958,52 @@ async function cmdSetup() {
 
     try {
       const channel = getUpdateChannel()
-      const releaseUrl = channel === "beta"
-        ? "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=5"
-        : "https://github.com/MinutHQ/huxflux/releases/latest/download/latest.json"
+      const repo = "MinutHQ/huxflux"
 
-      let release: { version: string; platforms: Record<string, { url: string }> }
-      const ghReleasesUrl = "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=10"
-      const releasesRes = await fetch(ghReleasesUrl, { headers: { Accept: "application/vnd.github+json" } })
-      if (!releasesRes.ok) throw new Error(`GitHub API returned ${releasesRes.status}: ${await releasesRes.text()}`)
-      const releases = await releasesRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }>
+      // Find the latest release with desktop artifacts by checking direct download URLs.
+      // This avoids the GitHub API (which has rate limits for unauthenticated requests).
+      // Strategy: try the updater manifest from the latest release, fall back to GitHub API.
+      let desktopVersion: string | null = null
+
       const manifestName = channel === "beta" ? "latest-beta.json" : "latest.json"
-      const targetRelease = channel === "beta"
-        ? releases.find(r => r.prerelease && r.assets.some(a => a.name === manifestName))
-        : releases.find(r => !r.prerelease && r.assets.some(a => a.name === manifestName))
-      if (!targetRelease) throw new Error("No release with desktop artifacts found")
-      const manifestAsset = targetRelease.assets.find(a => a.name === manifestName)!
-      const manifestRes = await fetch(manifestAsset.browser_download_url)
-      release = await manifestRes.json() as typeof release
+      const manifestUrl = `https://github.com/${repo}/releases/latest/download/${manifestName}`
+      const manifestRes = await fetch(manifestUrl, { redirect: "follow" })
+      if (manifestRes.ok) {
+        const manifest = await manifestRes.json() as { version: string }
+        desktopVersion = manifest.version
+      } else {
+        // Latest release has no desktop artifacts. Try the GitHub API to find one that does.
+        const apiUrl = `https://api.github.com/repos/${repo}/releases?per_page=10`
+        const apiRes = await fetch(apiUrl, { headers: { Accept: "application/vnd.github+json" } })
+        if (apiRes.ok) {
+          const releases = await apiRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string }> }>
+          const match = channel === "beta"
+            ? releases.find(r => r.prerelease && r.assets.some(a => a.name === manifestName))
+            : releases.find(r => !r.prerelease && r.assets.some(a => a.name === manifestName))
+          if (match) desktopVersion = match.tag_name.replace(/^v/, "")
+        }
+      }
+
+      if (!desktopVersion) throw new Error("No desktop release found")
 
       const platformKey = platform === "darwin"
         ? (arch === "arm64" ? "darwin-aarch64" : "darwin-x86_64")
         : platform === "linux" ? "linux-x86_64" : null
 
-      // Use stable DMG/AppImage/deb URLs for fresh install (not the updater tarballs)
-      const tag = `v${release.version}`
-      const baseUrl = `https://github.com/MinutHQ/huxflux/releases/download/${tag}`
+      const tag = `v${desktopVersion}`
+      const baseUrl = `https://github.com/${repo}/releases/download/${tag}`
       const installUrls: Record<string, string> = {
         "darwin-aarch64": `${baseUrl}/Huxflux-macos-arm.dmg`,
         "darwin-x86_64": `${baseUrl}/Huxflux-macos-intel.dmg`,
         "linux-x86_64": `${baseUrl}/Huxflux-linux-x86_64.AppImage`,
       }
 
-      if (platformKey && (release.platforms[platformKey] || installUrls[platformKey])) {
-        const downloadUrl = installUrls[platformKey] ?? release.platforms[platformKey].url
-        s.stop(`Found desktop v${release.version}`)
+      if (platformKey && installUrls[platformKey]) {
+        const downloadUrl = installUrls[platformKey]
+        s.stop(`Found desktop v${desktopVersion}`)
 
         if (platform === "darwin") {
-          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${release.version}?` })
+          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${desktopVersion}?` })
           if (!p.isCancel(installDesktop) && installDesktop) {
             const ds = p.spinner()
             ds.start("Downloading...")
@@ -1061,7 +1070,7 @@ async function cmdSetup() {
             }
           }
         } else if (platform === "linux") {
-          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${release.version}?` })
+          const installDesktop = await p.confirm({ message: `Install Huxflux Desktop v${desktopVersion}?` })
           if (!p.isCancel(installDesktop) && installDesktop) {
             const ds = p.spinner()
             ds.start("Downloading...")

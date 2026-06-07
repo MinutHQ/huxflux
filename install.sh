@@ -139,17 +139,41 @@ if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
   echo ""
   echo -e "  ${BOLD}Which release channel?${RESET}"
   echo ""
-  echo -e "    ${GREEN}▸ stable${RESET}  ${DIM}(recommended, tested releases)${RESET}"
-  echo -e "    ${YELLOW}▸ beta${RESET}    ${DIM}(early features, may have bugs)${RESET}"
-  echo ""
-  printf "  Channel [stable/beta, default=stable]: "
-  if [ -t 0 ]; then
-    read -r CHANNEL_CHOICE
-  else
-    read -r CHANNEL_CHOICE </dev/tty
-  fi
-  CHANNEL_CHOICE=$(echo "${CHANNEL_CHOICE:-stable}" | tr '[:upper:]' '[:lower:]')
-  if [ "$CHANNEL_CHOICE" = "beta" ]; then
+
+  SEL=0
+  OPTIONS=("stable" "beta")
+  DESCS=("recommended, tested releases" "early features, may have bugs")
+  COLORS=("$GREEN" "$YELLOW")
+
+  render_menu() {
+    for i in 0 1; do
+      if [ "$SEL" -eq "$i" ]; then
+        echo -e "    ${COLORS[$i]}▸ ${OPTIONS[$i]}${RESET}  ${DIM}(${DESCS[$i]})${RESET}"
+      else
+        echo -e "    ${DIM}  ${OPTIONS[$i]}  (${DESCS[$i]})${RESET}"
+      fi
+    done
+  }
+
+  render_menu
+
+  TTY_IN="/dev/tty"
+  while true; do
+    IFS= read -rsn1 key <"$TTY_IN"
+    if [ "$key" = $'\x1b' ]; then
+      read -rsn2 rest <"$TTY_IN"
+      case "$rest" in
+        '[A') SEL=$(( SEL == 0 ? 1 : 0 )) ;;  # up
+        '[B') SEL=$(( SEL == 0 ? 1 : 0 )) ;;  # down
+      esac
+      printf "\033[2A\r"
+      render_menu
+    elif [ "$key" = "" ]; then
+      break
+    fi
+  done
+
+  if [ "$SEL" -eq 1 ]; then
     CHANNEL="beta"
   fi
 fi
@@ -165,8 +189,12 @@ fi
 step "② Installing Huxflux"
 echo ""
 
-if [ "$CHANNEL" = "beta" ]; then
-  info "Installing beta channel"
+# Fetch the version we're about to install
+INSTALL_VER=$(npm view "@minuthq/huxflux@${CHANNEL}" version 2>/dev/null || echo "")
+if [ -n "$INSTALL_VER" ]; then
+  info "Installing @minuthq/huxflux@${INSTALL_VER} (${CHANNEL})"
+else
+  info "Installing @minuthq/huxflux@${CHANNEL}"
 fi
 
 if ! $PM_GLOBAL "@minuthq/huxflux@${CHANNEL}" 2>&1; then

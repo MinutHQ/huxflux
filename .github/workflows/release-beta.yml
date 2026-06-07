@@ -368,18 +368,11 @@ jobs:
           X64_SIG=$(cat artifacts/macos-artifacts/*.x64.app.tar.gz.sig 2>/dev/null || echo "")
           LINUX_SIG=$(cat artifacts/linux-artifacts/*.AppImage.tar.gz.sig 2>/dev/null || echo "")
 
-          cat > latest-beta.json <<JSON
-          {
-            "version": "${VERSION}",
-            "notes": "",
-            "pub_date": "${PUB_DATE}",
-            "platforms": {
-              "darwin-aarch64": { "signature": "${ARM_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_aarch64.app.tar.gz" },
-              "darwin-x86_64": { "signature": "${X64_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x64.app.tar.gz" },
-              "linux-x86_64": { "signature": "${LINUX_SIG}", "url": "${BASE_URL}/Huxflux_${VERSION}_x86_64.AppImage.tar.gz" }
-            }
-          }
-          JSON
+          printf '{"version":"%s","notes":"","pub_date":"%s","platforms":{"darwin-aarch64":{"signature":"%s","url":"%s/Huxflux_%s_aarch64.app.tar.gz"},"darwin-x86_64":{"signature":"%s","url":"%s/Huxflux_%s_x64.app.tar.gz"},"linux-x86_64":{"signature":"%s","url":"%s/Huxflux_%s_x86_64.AppImage.tar.gz"}}}\n' \
+            "$VERSION" "$PUB_DATE" \
+            "$ARM_SIG" "$BASE_URL" "$VERSION" \
+            "$X64_SIG" "$BASE_URL" "$VERSION" \
+            "$LINUX_SIG" "$BASE_URL" "$VERSION" > latest-beta.json
 
       - name: Create GitHub pre-release
         env:

@@ -40,6 +40,11 @@ if [ "${1:-}" = "--uninstall" ]; then
   # Remove data
   rm -rf "$HOME/huxflux"
 
+  # Detach any mounted Huxflux DMG volumes
+  for vol in /Volumes/Huxflux*; do
+    [ -d "$vol" ] && hdiutil detach "$vol" -quiet -force 2>/dev/null || true
+  done
+
   # Remove desktop app
   rm -f "$HOME/.local/bin/Huxflux.AppImage"
   rm -f "$HOME/.local/share/applications/huxflux.desktop"
@@ -48,6 +53,7 @@ if [ "${1:-}" = "--uninstall" ]; then
 
   # Remove temp attachments
   rm -rf "/tmp/huxflux-attachments" 2>/dev/null || true
+  rm -rf /tmp/huxflux-desktop-* 2>/dev/null || true
 
   echo "  ✓ Huxflux removed."
   echo ""

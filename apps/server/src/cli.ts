@@ -963,19 +963,17 @@ async function cmdSetup() {
         : "https://github.com/MinutHQ/huxflux/releases/latest/download/latest.json"
 
       let release: { version: string; platforms: Record<string, { url: string }> }
-      if (channel === "beta") {
-        const releasesRes = await fetch(releaseUrl, { headers: { Accept: "application/vnd.github+json" } })
-        const releases = await releasesRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }>
-        const betaRelease = releases.find(r => r.prerelease)
-        if (!betaRelease) throw new Error("No beta release found")
-        const manifestAsset = betaRelease.assets.find(a => a.name === "latest-beta.json")
-        if (!manifestAsset) throw new Error("No updater manifest in beta release")
-        const manifestRes = await fetch(manifestAsset.browser_download_url)
-        release = await manifestRes.json() as typeof release
-      } else {
-        const res = await fetch(releaseUrl)
-        release = await res.json() as typeof release
-      }
+      const ghReleasesUrl = "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=10"
+      const releasesRes = await fetch(ghReleasesUrl, { headers: { Accept: "application/vnd.github+json" } })
+      const releases = await releasesRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }>
+      const manifestName = channel === "beta" ? "latest-beta.json" : "latest.json"
+      const targetRelease = channel === "beta"
+        ? releases.find(r => r.prerelease && r.assets.some(a => a.name === manifestName))
+        : releases.find(r => !r.prerelease && r.assets.some(a => a.name === manifestName))
+      if (!targetRelease) throw new Error("No release with desktop artifacts found")
+      const manifestAsset = targetRelease.assets.find(a => a.name === manifestName)!
+      const manifestRes = await fetch(manifestAsset.browser_download_url)
+      release = await manifestRes.json() as typeof release
 
       const platformKey = platform === "darwin"
         ? (arch === "arm64" ? "darwin-aarch64" : "darwin-x86_64")

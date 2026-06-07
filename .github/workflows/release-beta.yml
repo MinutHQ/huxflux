@@ -181,7 +181,7 @@ jobs:
       - name: Set beta updater endpoint
         run: |
           cd apps/desktop/src-tauri
-          sed -i 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json
+          sed -i.bak 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json && rm tauri.conf.json.bak
 
       - name: Build macOS ARM
         run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
@@ -285,7 +285,7 @@ jobs:
       - name: Set beta updater endpoint
         run: |
           cd apps/desktop/src-tauri
-          sed -i 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json
+          sed -i.bak 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json && rm tauri.conf.json.bak
 
       - name: Build Linux
         run: cd apps/desktop && pnpm tauri build

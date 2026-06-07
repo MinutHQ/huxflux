@@ -1,6 +1,6 @@
 [package]
 name = "huxflux-desktop"
-version = "0.0.1"
+version = "0.3.15"
 description = "Huxflux desktop client"
 authors = []
 edition = "2021"

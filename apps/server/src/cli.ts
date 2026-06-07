@@ -965,6 +965,7 @@ async function cmdSetup() {
       let release: { version: string; platforms: Record<string, { url: string }> }
       const ghReleasesUrl = "https://api.github.com/repos/MinutHQ/huxflux/releases?per_page=10"
       const releasesRes = await fetch(ghReleasesUrl, { headers: { Accept: "application/vnd.github+json" } })
+      if (!releasesRes.ok) throw new Error(`GitHub API returned ${releasesRes.status}: ${await releasesRes.text()}`)
       const releases = await releasesRes.json() as Array<{ prerelease: boolean; tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }>
       const manifestName = channel === "beta" ? "latest-beta.json" : "latest.json"
       const targetRelease = channel === "beta"
@@ -1118,9 +1119,10 @@ Terminal=false
         s.stop("No desktop build for this platform")
         p.log.info("Use the web UI instead: open the server URL in your browser")
       }
-    } catch {
+    } catch (err) {
       s.stop("Could not fetch release info")
-      p.log.error("Check: https://github.com/MinutHQ/huxflux/releases")
+      p.log.error((err as Error).message)
+      p.log.info("Check: https://github.com/MinutHQ/huxflux/releases")
     }
   }
 

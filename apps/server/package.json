@@ -1,6 +1,6 @@
 {
   "name": "@minuthq/huxflux",
-  "version": "0.3.21-beta.3",
+  "version": "0.3.21-beta.4",
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {
@@ -45,6 +45,7 @@
     "drizzle-orm": "^0.44.2",
     "fastify": "^5.3.2",
     "fastify-type-provider-zod": "^5.0.3",
+    "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "simple-git": "^3.27.0",
     "uuid": "^11.1.0",

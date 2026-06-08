@@ -496,3 +496,22 @@ jobs:
                 --prerelease
             fi
           fi
+
+      - name: Update stable release with latest-beta.json
+        if: always() && steps.version.outputs.has_desktop == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f latest-beta.json ]; then
+            echo "No latest-beta.json to upload"
+            exit 0
+          fi
+
+          STABLE_TAG=$(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease | not) | .tagName' | head -1)
+          if [ -z "$STABLE_TAG" ]; then
+            echo "No stable release found, skipping"
+            exit 0
+          fi
+
+          echo "Updating $STABLE_TAG with latest-beta.json"
+          gh release upload "$STABLE_TAG" latest-beta.json --repo "${{ github.repository }}" --clobber

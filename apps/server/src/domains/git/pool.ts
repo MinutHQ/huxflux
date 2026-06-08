@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid"
 import * as path from "node:path"
+import * as fs from "node:fs"
 import { simpleGit } from "simple-git"
 import { db } from "../../db/index.js"
 import { repos, worktreePool } from "../../db/schema.js"
@@ -47,9 +48,8 @@ async function fetchBase(repoPath: string, branchFrom: string | null | undefined
 export async function ensureReserve(repoId: string): Promise<void> {
   const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
   if (!repo) return
-  // Folder-typed repos do not have a git remote and cannot host a worktree.
-  // Reserves are inherently git-only.
   if (repo.type === "folder") return
+  if (!fs.existsSync(repo.path)) return
   if (getReserveCount(repoId) >= 1) return
 
   await fetchBase(repo.path, repo.branchFrom)

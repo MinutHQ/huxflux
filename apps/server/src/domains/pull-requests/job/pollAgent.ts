@@ -5,6 +5,7 @@ import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { taskAgents, tasks } from "../../../db/schema.js"
 import { getPRStatus, findPRForBranch, prStatusToAgentStatus } from "../prStatus.js"
+import { getPRDetails } from "../service/prDetails.js"
 import { getRemoteUrl } from "../../git/worktrees.js"
 import { agentsWs } from "../../agents/agents.ws.js"
 import { tasksWs } from "../../tasks/tasks.ws.js"
@@ -79,8 +80,10 @@ async function runMonitors(agent: AgentRow, repoUrl: string, pr: PRStatus): Prom
   const s = getSettings()
   const prCommentsEnabled = agent.prCommentMonitoring != null ? agent.prCommentMonitoring === 1 : (s.prCommentMonitoring ?? true)
   const ciEnabled = agent.ciMonitoring != null ? agent.ciMonitoring === 1 : (s.ciMonitoring ?? true)
-  if (prCommentsEnabled) await monitorPRComments(agent, repoUrl, pr.number)
-  if (ciEnabled) await monitorCI(agent, repoUrl, pr.number)
+  const needsDetails = prCommentsEnabled || ciEnabled
+  const details = needsDetails ? await getPRDetails(repoUrl, pr.number).catch(() => null) : null
+  if (prCommentsEnabled && details) await monitorPRComments(agent, details)
+  if (ciEnabled && details) await monitorCI(agent, details)
   await monitorMergeConflicts(agent, pr)
 }
 

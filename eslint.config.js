@@ -344,7 +344,7 @@ export default defineConfig([
   // eslint-disable with justification.
   {
     files: ['apps/server/src/**/*.ts'],
-    ignores: ['apps/server/src/cli.ts', 'apps/server/test/**'],
+    ignores: ['apps/server/src/cli.ts', 'apps/server/test/**', 'apps/server/src/**/*.test.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

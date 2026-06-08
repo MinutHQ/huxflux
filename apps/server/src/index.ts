@@ -62,8 +62,22 @@ if (isDev) {
 const app = Fastify({
   logger: isDev && hasPinoPretty
     ? { transport: { target: "pino-pretty", options: { colorize: true, translateTime: "HH:MM:ss", ignore: "pid,hostname,reqId", singleLine: true } } }
-    : true,
+    : { level: "warn" },
+  disableRequestLogging: !isDev,
 }).withTypeProvider<ZodTypeProvider>()
+
+if (!isDev) {
+  const SLOW_MS = 3000
+  app.addHook("onResponse", (req, reply, done) => {
+    const ms = reply.elapsedTime
+    if (reply.statusCode >= 500) {
+      console.error(`[server] ${req.method} ${req.url} ${reply.statusCode} (${Math.round(ms)}ms)`)
+    } else if (ms > SLOW_MS) {
+      console.warn(`[server] ${req.method} ${req.url} ${reply.statusCode} slow (${Math.round(ms)}ms)`)
+    }
+    done()
+  })
+}
 
 // Zod-based request validation + response serialization. Routes that pass a
 // `schema` option to Fastify now get auto-validated bodies / querystrings /

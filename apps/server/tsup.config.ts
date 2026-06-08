@@ -15,6 +15,8 @@ const sharedExternal = [
   "dotenv",
   /^drizzle-orm/,
   "@octokit/rest",
+  "pino",
+  "pino-pretty",
   "simple-git",
   "uuid",
 ]

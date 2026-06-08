@@ -1,44 +1,82 @@
-const COLORS: Record<string, string> = {
-  runner:      "\x1b[36m",  // cyan
-  poller:      "\x1b[35m",  // magenta
-  watcher:     "\x1b[33m",  // yellow
-  pty:         "\x1b[32m",  // green
-  reserve:     "\x1b[34m",  // blue
-  db:          "\x1b[90m",  // gray
-  ws:          "\x1b[94m",  // bright blue
-  server:      "\x1b[97m",  // bright white
-  supervisor:  "\x1b[93m",  // bright yellow
-  updater:     "\x1b[95m",  // bright magenta
-  automation:  "\x1b[96m",  // bright cyan
-  automations: "\x1b[96m",
-  tasks:       "\x1b[92m",  // bright green
-  providers:   "\x1b[90m",
-  github:      "\x1b[37m",  // white
-  tags:        "\x1b[90m",
-  job:         "\x1b[35m",
+import pino from "pino"
+
+const isDev = (process.env.NODE_ENV ?? "development") !== "production"
+
+let transport: pino.TransportSingleOptions | undefined
+if (isDev) {
+  try {
+    await import("pino-pretty")
+    transport = {
+      target: "pino-pretty",
+      options: {
+        colorize: true,
+        translateTime: "HH:MM:ss",
+        ignore: "pid,hostname",
+        singleLine: true,
+        messageFormat: "{if domain}[{domain}] {end}{msg}",
+      },
+    }
+  } catch { /* pino-pretty not available in production installs */ }
 }
 
-const RESET = "\x1b[0m"
-const DIM = "\x1b[2m"
-const RED = "\x1b[31m"
-const YELLOW = "\x1b[33m"
+export const rootLogger = pino({ level: "info", ...(transport ? { transport } : {}) })
 
-const BRACKET_RE = /^\[([^\]]+)\]/
+const BRACKET_RE = /^\[([^\]]+)\]\s*/
 
-function colorizePrefix(args: unknown[]): unknown[] {
-  if (args.length === 0 || typeof args[0] !== "string") return args
+function parsePrefix(args: unknown[]): { domain: string | undefined; msg: string; rest: unknown[] } {
+  if (args.length === 0 || typeof args[0] !== "string") return { domain: undefined, msg: String(args[0] ?? ""), rest: args.slice(1) }
   const match = args[0].match(BRACKET_RE)
-  if (!match) return args
-  const tag = match[1]
-  const color = COLORS[tag] ?? DIM
-  const rest = args[0].slice(match[0].length)
-  return [`${color}[${tag}]${RESET}${rest}`, ...args.slice(1)]
+  if (match) return { domain: match[1], msg: args[0].slice(match[0].length), rest: args.slice(1) }
+  return { domain: undefined, msg: args[0], rest: args.slice(1) }
+}
+
+function buildMsg(msg: string, rest: unknown[]): string {
+  if (rest.length === 0) return msg
+  const parts = rest.filter((r) => !(r instanceof Error))
+  if (parts.length === 0) return msg
+  return `${msg} ${parts.map(String).join(" ")}`
+}
+
+function findError(rest: unknown[]): Error | undefined {
+  return rest.find((r) => r instanceof Error) as Error | undefined
+}
+
+const cache = new Map<string, pino.Logger>()
+function getLogger(domain: string | undefined): pino.Logger {
+  if (!domain) return rootLogger
+  let logger = cache.get(domain)
+  if (!logger) {
+    logger = rootLogger.child({ domain })
+    cache.set(domain, logger)
+  }
+  return logger
 }
 
 const originalInfo = console.info.bind(console)
 const originalWarn = console.warn.bind(console)
 const originalError = console.error.bind(console)
 
-console.info = (...args: unknown[]) => originalInfo(...colorizePrefix(args))
-console.warn = (...args: unknown[]) => originalWarn(`${YELLOW}⚠${RESET}`, ...colorizePrefix(args))
-console.error = (...args: unknown[]) => originalError(`${RED}✖${RESET}`, ...colorizePrefix(args))
+console.info = (...args: unknown[]) => {
+  const { domain, msg, rest } = parsePrefix(args)
+  getLogger(domain).info(buildMsg(msg, rest))
+}
+
+console.warn = (...args: unknown[]) => {
+  const { domain, msg, rest } = parsePrefix(args)
+  const err = findError(rest)
+  if (err) getLogger(domain).warn(err, buildMsg(msg, rest))
+  else getLogger(domain).warn(buildMsg(msg, rest))
+}
+
+console.error = (...args: unknown[]) => {
+  const { domain, msg, rest } = parsePrefix(args)
+  const err = findError(rest)
+  if (err) getLogger(domain).error(err, buildMsg(msg, rest))
+  else getLogger(domain).error(buildMsg(msg, rest))
+}
+
+export { originalInfo, originalWarn, originalError }
+
+export function createLogger(domain: string): pino.Logger {
+  return getLogger(domain)
+}

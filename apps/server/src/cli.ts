@@ -1344,6 +1344,11 @@ function installSystemService() {
     const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
+      `# Pick up the user's live PATH from their login shell so tools installed`,
+      `# after service setup (homebrew packages, npm globals) are found on restart.`,
+      `# grep filters out shell banner/MOTD noise; only keep colon-separated path lines.`,
+      `LIVE_PATH="$(/bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
+      `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
       `export NVM_DIR="${nvmDir}"`,
       `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
       `NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"`,
@@ -1392,10 +1397,12 @@ function installSystemService() {
     const serviceDir = path.join(os.homedir(), ".config", "systemd", "user")
     fs.mkdirSync(serviceDir, { recursive: true })
 
-    // Write launcher script that sources nvm
+    // Write launcher script that sources the user's live PATH + nvm
     const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
+      `LIVE_PATH="$(/bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
+      `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
       `export NVM_DIR="${nvmDir}"`,
       `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
       `NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"`,

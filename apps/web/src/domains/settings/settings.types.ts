@@ -1,7 +1,6 @@
 export type Section =
   | "general"
   | "models"
-  | "providers"
   | "appearance"
   | "git"
   | "review"

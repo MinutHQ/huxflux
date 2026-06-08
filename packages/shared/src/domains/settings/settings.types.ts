@@ -48,7 +48,7 @@ export const providerInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
   available: z.boolean(),
-  capabilities: z.record(z.string(), z.boolean()),
+  capabilities: z.record(z.string(), z.union([z.boolean(), z.array(z.string())])),
   models: z.array(z.object({
     id: z.string(),
     label: z.string(),

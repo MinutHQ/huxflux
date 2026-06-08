@@ -1,6 +1,6 @@
 {
   "name": "@minuthq/huxflux",
-  "version": "0.3.21-beta.5",
+  "version": "0.3.21-beta.6",
   "description": "Huxflux server — run Claude agents on any machine",
   "type": "module",
   "engines": {
@@ -28,7 +28,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "start:dev": "NODE_ENV=development node dist/index.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "postinstall": "node dist/cli.js _postinstall 2>/dev/null || true"
   },
   "dependencies": {
     "@clack/prompts": "^1.4.0",

@@ -14,6 +14,7 @@ import { jiraTransitionIssue } from "../../tasks/jiraClient.js"
 import type { PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
 import { sendToAgent } from "./sendToAgent.js"
+import { markRateLimited, isRateLimited } from "../pull-requests.job.js"
 
 type AgentRow = typeof agents.$inferSelect
 
@@ -96,14 +97,21 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
   const repoUrl = await getRemoteUrl(repo.path, repo.remote)
   if (!repoUrl) return
 
+  if (isRateLimited()) return
+
   try {
     const pr = agent.prNumber ? await getPRStatus(repoUrl, agent.prNumber) : await findPRForBranch(repoUrl, agent.branch)
     if (!pr) return
     await applyPRStatusUpdate(agent, pr)
     await runMonitors(agent, repoUrl, pr)
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
+    const status = (err as { status?: number }).status
+    if (status === 403 || status === 429) {
+      const retryAfter = (err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"]
+      markRateLimited(retryAfter ? parseInt(retryAfter, 10) : 60)
+      console.warn(`[poller] GitHub rate-limited (${status}), pausing all polling`)
+      return
     }
+    console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
   }
 }

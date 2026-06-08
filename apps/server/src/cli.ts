@@ -1315,18 +1315,24 @@ function installSystemService() {
   const huxfluxBin = spawnSync("which", ["huxflux"], { encoding: "utf-8", stdio: "pipe" }).stdout.trim()
     || path.join(path.dirname(process.execPath), "huxflux")
 
-  // Build a PATH that includes nvm shims, homebrew, and standard dirs
+  // Build a PATH that includes nvm shims, homebrew, and standard dirs.
+  // Capture the user's current PATH at install time so the service inherits
+  // all tool locations (homebrew, fnm, mise, custom prefixes, etc.).
   const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), ".nvm")
   const currentNodeBin = path.dirname(process.execPath)
-  const servicePath = [
+  const knownPaths = [
     currentNodeBin,
     `${nvmDir}/current/bin`,
     `${os.homedir()}/.volta/bin`,
     `${os.homedir()}/.local/bin`,
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
     "/usr/local/bin",
     "/usr/bin",
     "/bin",
-  ].join(":")
+  ]
+  const currentPath = (process.env.PATH ?? "").split(":").filter(Boolean)
+  const servicePath = [...new Set([...knownPaths, ...currentPath])].join(":")
 
   if (platform === "darwin") {
     // macOS: LaunchAgent (runs as current user, starts on login)

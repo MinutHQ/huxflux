@@ -76,7 +76,6 @@ export type SettingDef =
 export type SettingsSection =
   | "general"
   | "models"
-  | "providers"
   | "appearance"
   | "git"
   | "review"

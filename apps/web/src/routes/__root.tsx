@@ -34,7 +34,7 @@ function RootComponent() {
   const [cmdkOpen, setCmdkOpen] = useState(false)
   const { data: agents = [] } = useAgents()
   const { servers, activeId, refresh: refreshServers } = useServers()
-  const { update, isInstalling, progress, needsManualRestart, downloadAndInstall } = useUpdater()
+  const { update, isInstalling, progress, needsManualRestart, serverUpdating: _serverUpdating, downloadAndInstall } = useUpdater()
   const navigate = Route.useNavigate()
 
   // Global keyboard shortcuts

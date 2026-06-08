@@ -2,12 +2,16 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater"
 import { isTauri } from "@/lib/platform"
+import { api } from "@huxflux/shared"
+
+const PENDING_SERVER_UPDATE_KEY = "huxflux:pending-server-update"
 
 interface UpdaterState {
   update: Update | null
   isInstalling: boolean
   progress: number | null  // 0–100
   needsManualRestart: boolean
+  serverUpdating: boolean
   downloadAndInstall: () => Promise<void>
 }
 
@@ -16,6 +20,7 @@ export function useUpdater(): UpdaterState {
   const [isInstalling, setIsInstalling] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [needsManualRestart, setNeedsManualRestart] = useState(false)
+  const [serverUpdating, setServerUpdating] = useState(false)
 
   useEffect(() => {
     if (!isTauri) return
@@ -31,8 +36,37 @@ export function useUpdater(): UpdaterState {
     }
 
     doCheck()
-    const interval = setInterval(doCheck, 60 * 60 * 1000) // re-check every hour
+    const interval = setInterval(doCheck, 60 * 60 * 1000)
     return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  // After a desktop update + relaunch, trigger the server update too
+  useEffect(() => {
+    if (!isTauri) return
+    const pending = localStorage.getItem(PENDING_SERVER_UPDATE_KEY)
+    if (!pending) return
+    localStorage.removeItem(PENDING_SERVER_UPDATE_KEY)
+
+    setServerUpdating(true)
+    // eslint-disable-next-line no-restricted-syntax -- fire-and-forget; intentional
+    api.settings.checkUpdate()
+      .then((info) => {
+        if (!info.updateAvailable) {
+          setServerUpdating(false)
+          return
+        }
+        // eslint-disable-next-line no-restricted-syntax -- fire-and-forget; intentional
+        return api.settings.triggerUpdate()
+          .then(() => {
+            toast.info("Server updating", { description: "The server is restarting with the new version." })
+            setServerUpdating(false)
+          })
+          .catch(() => {
+            toast.error("Server update failed", { description: "You can update manually from Settings." })
+            setServerUpdating(false)
+          })
+      })
+      .catch(() => { setServerUpdating(false) })
   }, [])
 
   async function downloadAndInstall() {
@@ -52,12 +86,13 @@ export function useUpdater(): UpdaterState {
           setProgress(100)
         }
       })
-      // Update installed — try to relaunch
       console.info("[updater] download+install complete, attempting relaunch")
       try {
+        localStorage.setItem(PENDING_SERVER_UPDATE_KEY, "1")
         const { relaunch } = await import("@tauri-apps/plugin-process")
         await relaunch()
       } catch (err) {
+        localStorage.removeItem(PENDING_SERVER_UPDATE_KEY)
         console.error("[updater] relaunch failed:", err)
         toast.error("Relaunch failed", { description: `${err}. Quit and reopen manually.`, duration: 10000 })
         setNeedsManualRestart(true)
@@ -71,5 +106,5 @@ export function useUpdater(): UpdaterState {
     }
   }
 
-  return { update, isInstalling, progress, needsManualRestart, downloadAndInstall }
+  return { update, isInstalling, progress, needsManualRestart, serverUpdating, downloadAndInstall }
 }

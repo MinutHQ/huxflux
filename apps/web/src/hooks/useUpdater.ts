@@ -48,14 +48,12 @@ export function useUpdater(): UpdaterState {
     localStorage.removeItem(PENDING_SERVER_UPDATE_KEY)
 
     setServerUpdating(true)
-    // eslint-disable-next-line no-restricted-syntax -- fire-and-forget; intentional
     api.settings.checkUpdate()
       .then((info) => {
         if (!info.updateAvailable) {
           setServerUpdating(false)
           return
         }
-        // eslint-disable-next-line no-restricted-syntax -- fire-and-forget; intentional
         return api.settings.triggerUpdate()
           .then(() => {
             toast.info("Server updating", { description: "The server is restarting with the new version." })

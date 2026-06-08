@@ -23,11 +23,14 @@ type PtyMessage =
   | { type: "kill" }
 
 const OUTPUT_BUF_SIZE = 100_000 // ~100KB
+const PORT_SCAN_INTERVAL_MS = 500
 
 interface PtyEntry {
   process: ReturnType<NonNullable<typeof pty>["spawn"]>
   outputBuf: string
   clients: Set<WebSocket>
+  portScanBuf: string
+  portScanTimer: ReturnType<typeof setTimeout> | null
 }
 
 // Key: `${agentId}:${terminalId}` — persists across WS reconnects
@@ -38,6 +41,7 @@ export function killTerminal(key: string): void {
   const entry = globalPtyMap.get(key)
   if (!entry) return
   globalPtyMap.delete(key)
+  if (entry.portScanTimer) clearTimeout(entry.portScanTimer)
   for (const ws of entry.clients) {
     try { ws.close() } catch { /* ignore */ }
   }
@@ -142,7 +146,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
   })
   console.info(`[pty] spawned ${key} (shell=${shell}, cwd=${cwd}) in ${Date.now() - t0}ms`)
 
-  const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }
+  const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]), portScanBuf: "", portScanTimer: null }
   globalPtyMap.set(key, entry)
 
   ptyProcess.onData((data) => {
@@ -153,17 +157,27 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
-    // Detect ports from terminal output
-    try {
-      const port = scanForPort(data)
-      if (port) registerPort(agentId, port)
-    } catch { /* port scanning is best-effort */ }
+    // Debounced port scanning: buffer output and scan periodically instead of
+    // per-event, keeping the hot path free of regex + DB work.
+    e.portScanBuf += data
+    if (!e.portScanTimer) {
+      e.portScanTimer = setTimeout(() => {
+        const buf = e.portScanBuf
+        e.portScanBuf = ""
+        e.portScanTimer = null
+        try {
+          const port = scanForPort(buf)
+          if (port) registerPort(agentId, port)
+        } catch { /* port scanning is best-effort */ }
+      }, PORT_SCAN_INTERVAL_MS)
+    }
   })
 
   ptyProcess.onExit(({ exitCode }) => {
     const e = globalPtyMap.get(key)
     globalPtyMap.delete(key)
     if (!e) return
+    if (e.portScanTimer) clearTimeout(e.portScanTimer)
     const msg = JSON.stringify({ type: "exit", exitCode })
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)

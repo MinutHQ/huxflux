@@ -1,6 +1,6 @@
 import type { agents } from "../../agents/agents.db.js"
+import type { PRDetails } from "../../../types.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
-import { getPRDetails } from "../service/prDetails.js"
 import { sendToAgent } from "./sendToAgent.js"
 
 // Per-agent state for the PR/CI/merge monitors. Keyed by agent id so multiple
@@ -22,7 +22,7 @@ interface NewComment {
 
 function collectNewComments(
   agent: AgentRow,
-  details: Awaited<ReturnType<typeof getPRDetails>>,
+  details: PRDetails,
 ): NewComment[] | "seeded" {
   let seen = lastSeenCommentIds.get(agent.id)
   if (!seen) {
@@ -64,10 +64,9 @@ function formatCommentsMessage(comments: NewComment[]): string {
   return `New PR review comment${comments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${comments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, then reply on GitHub using:\n  <huxflux:pr.reply commentId="COMMENT_ID">your reply</huxflux:pr.reply>`
 }
 
-export async function monitorPRComments(agent: AgentRow, repoUrl: string, prNumber: number): Promise<void> {
+export async function monitorPRComments(agent: AgentRow, details: PRDetails): Promise<void> {
   if (isAgentRunning(agent.id)) return
   try {
-    const details = await getPRDetails(repoUrl, prNumber)
     const result = collectNewComments(agent, details)
     if (result === "seeded" || result.length === 0) return
     console.info(`[poller] ${agent.id}: sending ${result.length} new PR comment(s) to agent`)
@@ -77,10 +76,9 @@ export async function monitorPRComments(agent: AgentRow, repoUrl: string, prNumb
   }
 }
 
-export async function monitorCI(agent: AgentRow, repoUrl: string, prNumber: number): Promise<void> {
+export async function monitorCI(agent: AgentRow, details: PRDetails): Promise<void> {
   if (isAgentRunning(agent.id)) return
   try {
-    const details = await getPRDetails(repoUrl, prNumber)
     if (details.checks.length === 0) return
     const allCompleted = details.checks.every((c) => c.status === "completed")
     if (!allCompleted) return

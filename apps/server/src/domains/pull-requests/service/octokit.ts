@@ -1,9 +1,18 @@
 import { Octokit } from "@octokit/rest"
 import { config } from "../../../config.js"
 
-/** Build a fresh Octokit instance using the configured GitHub token. */
+let cachedOctokit: Octokit | null = null
+let cachedToken: string | undefined
+
 export function getOctokit(): Octokit {
-  return new Octokit({ auth: config.githubToken || undefined })
+  const token = config.githubToken || undefined
+  if (cachedOctokit && cachedToken === token) return cachedOctokit
+  cachedToken = token
+  cachedOctokit = new Octokit({
+    auth: token,
+    request: { timeout: 15_000 },
+  })
+  return cachedOctokit
 }
 
 /** Parse owner/repo from a remote URL (HTTPS, SSH with host alias, or owner/repo shorthand). */

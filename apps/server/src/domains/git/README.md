@@ -37,7 +37,7 @@ The server-side surface for everything that happens against a local git reposito
 - `scanForPort`: strip ANSI from a terminal chunk and match it against three port patterns; returns the port number or null
 - `registerPort`: persist a detected `(agentId, port)` pair (deduped) and broadcast `ports:changed`
 - `unregisterPort`: drop one `(agentId, port)` row and rebroadcast
-- `clearAgentPorts`: drop every port for an agent (used by the PTY exit hook and the agent-archive route)
+- `clearAgentPorts`: drop every port for an agent (used by agent shutdown in `index.ts` and the agent-archive route)
 - `getAllPortsFromDB`: read every recorded port, drop rows whose `lsof` says the listener is gone, return a `{ agentId, agentTitle, port }[]`; broadcasts a refreshed list if any rows were pruned
 - `getAgentPortsFromDB`: read the ports for a single agent (no liveness check)
 - `killWorktreeProcesses`: `lsof -d cwd` to find processes whose working directory is the worktree, then `SIGTERM` them and return `{ killed }`
@@ -65,5 +65,4 @@ None.
 - `watcher.ts` emits `agentsWs.fileChanged` and `agentsWs.agentUpdated` directly. That cross-domain coupling is intentional (the watcher is owned by this domain, but the events belong to agents), and is the reason `git` depends on `agents/ws.ts`.
 - `processes.ts` reads and writes the `agentPorts` Drizzle table even though it is declared in the agents domain. The table is morally agent-owned, but the helpers live here because they are paired with the worktree process lifecycle (PTY scanning, shutdown cleanup, dead-port pruning).
 - The branch-sync in `watcher.ts` writes directly to the `agents` Drizzle row when chokidar detects that the worktree's HEAD branch changed (e.g. Claude pushed a PR and renamed the branch). This is the only place outside the agents domain that mutates `agents.branch`.
-- `apps/server/src/domains/ws/pty.ts` imports `scanForPort` / `registerPort` / `clearAgentPorts` from this domain at the top of the file. The call sites are inside chokidar event callbacks, but a top-level import works fine because the git domain does not import from `domains/ws/`.
 - `getAllPortsFromDB` has a side effect (it prunes dead ports and re-broadcasts) even though its name reads like a pure read. That behaviour is preserved verbatim from the original; the dead-port cleanup poller in `agents/poller.ts` relies on it as the cleanup trigger.

@@ -23,7 +23,6 @@ Top-level `.ts` files in this domain are public; subfolders (none today) are pri
 - `@huxflux/shared` — `clientEventSchema` (envelope validation).
 - `@fastify/websocket` — the underlying `WebSocket` type.
 - `../agents/ws.js`, `../automations/ws.js`, `../tasks/ws.js` — domain event unions composed into `ServerEvent`.
-- `../git/processes.js` — `scanForPort`, `registerPort`, `clearAgentPorts` (PTY output is scanned for dev-server port boots).
 - `../../db/index.js`, `../../db/schema.js` — agent + repo lookups in the PTY spawn path.
 - `@homebridge/node-pty-prebuilt-multiarch` — PTY spawn.
 

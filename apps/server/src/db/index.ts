@@ -101,6 +101,7 @@ const dialect = new SQLiteSyncDialect({})
 export function createDbFromRaw(rawDb: DatabaseSync): { db: any; sqlite: any; raw: DatabaseSync } {
   const sqlite = buildSqliteShim(rawDb)
   sqlite.pragma("journal_mode = WAL")
+  sqlite.pragma("busy_timeout = 5000")
   sqlite.pragma("foreign_keys = ON")
   const session = new BetterSQLiteSession(sqlite, dialect, schemaConfig, {})
   const drizzleDb = new BaseSQLiteDatabase("sync", dialect, session, schemaConfig) as any

@@ -15,7 +15,6 @@ import type { WebSocket } from "@fastify/websocket"
 import { db } from "../../db/index.js"
 import { agents, repos } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
-import { scanForPort, registerPort, clearAgentPorts } from "../git/processes.js"
 
 type PtyMessage =
   | { type: "input"; data: string }
@@ -153,11 +152,6 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
-    // Detect ports from terminal output
-    try {
-      const port = scanForPort(data)
-      if (port) registerPort(agentId, port)
-    } catch { /* port scanning is best-effort */ }
   })
 
   ptyProcess.onExit(({ exitCode }) => {
@@ -168,10 +162,6 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     for (const ws of e.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
-    // Clear ports when terminal exits
-    try {
-      clearAgentPorts(agentId)
-    } catch { /* port cleanup is best-effort */ }
   })
 
   attachClientHandlers(socket, entry, key)

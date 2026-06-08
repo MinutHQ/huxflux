@@ -10,12 +10,69 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── workflow_dispatch: create a version bump PR ─────────────────────────
+  bump:
+    name: Create version bump PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next version
+        id: next
+        run: |
+          CURRENT=$(node -p "require('./apps/server/package.json').version")
+          BASE=$(echo "$CURRENT" | sed 's/-beta\.[0-9]*//')
+
+          BETA_NUM=1
+          while git tag -l "v${BASE}-beta.${BETA_NUM}" | grep -q .; do
+            BETA_NUM=$((BETA_NUM + 1))
+          done
+          VERSION="${BASE}-beta.${BETA_NUM}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create bump PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.next.outputs.version }}"
+          BRANCH="release/v${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./apps/server/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('./apps/server/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          git add apps/server/package.json
+          git commit -m "chore: release ${VERSION}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --base beta \
+            --head "$BRANCH" \
+            --title "chore: release ${VERSION}" \
+            --body "Auto-generated version bump. Merging this PR triggers the beta release pipeline."
+
+  # ── push to beta: release if version tag is new ─────────────────────────
   release:
     name: Release (beta)
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/beta'
+    if: github.event_name == 'push'
     outputs:
       version: ${{ steps.version.outputs.version }}
+      skip: ${{ steps.version.outputs.skip }}
       desktop_changed: ${{ steps.changes.outputs.desktop_changed }}
       server_changed: ${{ steps.changes.outputs.server_changed }}
     permissions:
@@ -27,45 +84,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine release version
+      - name: Read version from package.json
         id: version
         run: |
-          CURRENT=$(node -p "require('./apps/server/package.json').version")
-          BASE=$(echo "$CURRENT" | sed 's/-beta\.[0-9]*//')
-
-          # Find the next available beta number (never conflicts with existing tags)
-          BETA_NUM=1
-          while git tag -l "v${BASE}-beta.${BETA_NUM}" | grep -q .; do
-            BETA_NUM=$((BETA_NUM + 1))
-          done
-          VERSION="${BASE}-beta.${BETA_NUM}"
-
+          VERSION=$(node -p "require('./apps/server/package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing: $VERSION (base: $BASE)"
+          echo "Version: $VERSION"
 
-          # Update package.json and commit the version bump
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./apps/server/package.json', 'utf8'));
-            pkg.version = '${VERSION}';
-            fs.writeFileSync('./apps/server/package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add apps/server/package.json
-          git diff --cached --quiet || {
-            git commit -m "chore: release ${VERSION} [skip ci]"
-            git push origin HEAD:beta
-          }
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          if git tag -l "v${VERSION}" | grep -q .; then
+            echo "Tag v${VERSION} already exists, skipping release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup pnpm
+        if: steps.version.outputs.skip != 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 11.3.0
 
       - name: Setup Node
+        if: steps.version.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -73,20 +113,20 @@ jobs:
           registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
+        if: steps.version.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Detect changes since last tag
         id: changes
+        if: steps.version.outputs.skip != 'true'
         run: |
-          # Compare against the tag BEFORE this release (skip our own tag)
-          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "v${{ steps.version.outputs.version }}" | head -1)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "server_changed=true" >> "$GITHUB_OUTPUT"
             echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Comparing against: $LAST_TAG"
           SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
           DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
 
@@ -102,19 +142,28 @@ jobs:
             echo "desktop_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Create git tag
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
       - name: Build server
-        if: steps.changes.outputs.server_changed == 'true'
+        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
         run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
-        if: steps.changes.outputs.server_changed == 'true'
+        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
         run: |
           pnpm --filter huxflux-web build
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 
       - name: Verify build
-        if: steps.changes.outputs.server_changed == 'true'
+        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           CLI_VERSION=$(node apps/server/dist/cli.js --version)
@@ -124,7 +173,7 @@ jobs:
           fi
 
       - name: Publish to npm (beta tag)
-        if: steps.changes.outputs.server_changed == 'true'
+        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
         run: |
           echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
@@ -134,6 +183,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
+        if: steps.version.outputs.skip != 'true'
         run: |
           echo "## Beta Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -150,7 +200,7 @@ jobs:
   desktop-macos:
     name: Build desktop (macOS)
     runs-on: macos-latest
-    if: needs.release.outputs.desktop_changed == 'true'
+    if: needs.release.outputs.skip != 'true' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -249,7 +299,7 @@ jobs:
   desktop-linux:
     name: Build desktop (Linux)
     runs-on: ubuntu-latest
-    if: needs.release.outputs.desktop_changed == 'true'
+    if: needs.release.outputs.skip != 'true' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -334,7 +384,7 @@ jobs:
   publish-release:
     name: Publish GitHub pre-release
     runs-on: ubuntu-latest
-    if: always() && needs.release.result == 'success'
+    if: always() && needs.release.result == 'success' && needs.release.outputs.skip != 'true'
     needs: [release, desktop-macos, desktop-linux]
     permissions:
       contents: write

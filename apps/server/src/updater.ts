@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -41,21 +41,27 @@ function isNewer(a: string, b: string): boolean {
   return pa.pre > pb.pre
 }
 
-export async function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
-  try {
-    const tag = getNpmTag()
-    const result = spawnSync("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
-      encoding: "utf-8",
-      timeout: 15_000,
-      stdio: "pipe",
-      shell: true,
-    })
-    const version = result.stdout?.trim()
-    if (result.status === 0 && version) latestVersion = version
-  } catch {
-    // Offline or registry down, keep previous value
-  }
-  return getVersionInfo()
+export function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
+  return new Promise((resolve) => {
+    try {
+      const tag = getNpmTag()
+      const child = spawn("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: true,
+        timeout: 15_000,
+      })
+      let stdout = ""
+      child.stdout?.on("data", (d) => { stdout += d })
+      child.on("close", (code) => {
+        const version = stdout.trim()
+        if (code === 0 && version) latestVersion = version
+        resolve(getVersionInfo())
+      })
+      child.on("error", () => resolve(getVersionInfo()))
+    } catch {
+      resolve(getVersionInfo())
+    }
+  })
 }
 
 function isIdle(): boolean {

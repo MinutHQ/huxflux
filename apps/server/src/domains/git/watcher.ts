@@ -17,14 +17,13 @@ const watchers = new Map<string, WatchEntry>()
 
 const DEBOUNCE_MS = 250
 
-// Chokidar 5 dropped its fsevents path; the "native" mode just uses
-// `fs.watch`, which opens one file descriptor per watched directory. With
-// several agents and their nested worktrees that blows past the macOS
-// default `ulimit -n` and starts throwing EMFILE (which in turn cascades to
-// `spawn EBADF` everywhere else in the process). Polling is the only safe
-// option here, but the old 1500ms interval + 600ms debounce was the reason
-// the files panel felt slow after agent creation. 400ms polling + 250ms
-// debounce keeps perceived latency under a second without melting the CPU.
+// On macOS, chokidar 5's native mode (`fs.watch`) opens one fd per watched
+// directory, which blows past the default `ulimit -n` with several agent
+// worktrees and cascades to `spawn EBADF`. Polling is the only safe option
+// there. On Linux, inotify is fd-efficient, so native mode avoids the CPU
+// cost of stat-polling every 400ms (which starves the event loop when many
+// worktrees are active).
+const IS_MACOS = process.platform === "darwin"
 const POLL_INTERVAL_MS = 400
 const POLL_BINARY_INTERVAL_MS = 1000
 
@@ -80,9 +79,9 @@ export function watchWorktree(agentId: string, worktreePath: string, branchFrom:
     ignored: /(^|[/\\])(\.(git)|node_modules|\.next|\.nuxt|dist|build|\.cache|__pycache__|\.venv|venv|target)([/\\]|$)/,
     ignoreInitial: true,
     persistent: true,
-    usePolling: true,
-    interval: POLL_INTERVAL_MS,
-    binaryInterval: POLL_BINARY_INTERVAL_MS,
+    ...(IS_MACOS
+      ? { usePolling: true, interval: POLL_INTERVAL_MS, binaryInterval: POLL_BINARY_INTERVAL_MS }
+      : { usePolling: false }),
   })
 
   const entry: WatchEntry = { watcher, timer: null }

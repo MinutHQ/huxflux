@@ -18,6 +18,7 @@
  *   - node_modules symlinks: may fail if they resolve outside whitelist
  */
 
+// eslint-disable-next-line no-restricted-imports -- one-shot per agent spawn, not periodic
 import { execFileSync } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"

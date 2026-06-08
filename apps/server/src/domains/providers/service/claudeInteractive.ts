@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- cached one-shot: which claude-p runs once then caches
 import { execFileSync } from "node:child_process"
 import { createRequire } from "node:module"
 import * as path from "node:path"

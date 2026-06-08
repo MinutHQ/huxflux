@@ -1,4 +1,8 @@
-import { execFileSync } from "node:child_process"
+// eslint-disable-next-line no-restricted-imports -- cached one-shot: resolve() and isAvailable() cold path run once then cache
+import { execFile, execFileSync } from "node:child_process"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
 
 /**
  * Factory for the per-provider binary discovery pattern.
@@ -82,10 +86,8 @@ export function createBinaryResolver(opts: BinaryResolverOptions): BinaryResolve
   function warmAvailability(): Promise<void> {
     if (warmPromise) return warmPromise
     warmPromise = (async () => {
-      // Fast `which` probe first — settles the answer for providers whose
-      // binary is on PATH, no slow async work needed.
       try {
-        execFileSync("which", [opts.defaultBin], { encoding: "utf8" })
+        await execFileAsync("which", [opts.defaultBin], { encoding: "utf8" })
         availabilityCached = true
         return
       } catch { /* fall through to extra check */ }

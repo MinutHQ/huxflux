@@ -337,6 +337,37 @@ export default defineConfig([
     },
   },
 
+  // Ban sync subprocess calls in long-running server code. execSync, spawnSync,
+  // and execFileSync block the Node event loop and freeze all HTTP/WS handlers.
+  // cli.ts is excluded because it runs as a one-shot CLI process.
+  // Existing one-shot cached uses (binary resolution at startup) get an inline
+  // eslint-disable with justification.
+  {
+    files: ['apps/server/src/**/*.ts'],
+    ignores: ['apps/server/src/cli.ts', 'apps/server/test/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'node:child_process',
+              importNames: ['execSync', 'spawnSync', 'execFileSync'],
+              message:
+                'Sync subprocess calls block the event loop. Use async variants (execFile, spawn, exec) with promisify. One-shot cached uses need an eslint-disable with justification.',
+            },
+            {
+              name: 'child_process',
+              importNames: ['execSync', 'spawnSync', 'execFileSync'],
+              message:
+                'Sync subprocess calls block the event loop. Use async variants (execFile, spawn, exec) with promisify. One-shot cached uses need an eslint-disable with justification.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Routes legitimately export both `Route` and a component (TanStack Router
   // convention). Placed AFTER PERMANENT_EXCEPTIONS so the disable wins; the
   // PERMANENT_EXCEPTIONS block above includes `apps/web/src/routes/**` and

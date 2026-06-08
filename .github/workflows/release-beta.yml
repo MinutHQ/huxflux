@@ -379,6 +379,14 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           NOTES="Beta release. Install with: \`npm install -g @minuthq/huxflux@beta\`"
 
+          # Always carry forward latest.json from the latest stable release
+          EXTRA_FILES=""
+          STABLE_MANIFEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/latest.json" 2>/dev/null || echo "")
+          if [ -n "$STABLE_MANIFEST" ]; then
+            echo "$STABLE_MANIFEST" > latest.json
+            EXTRA_FILES="latest.json"
+          fi
+
           if [ -d "artifacts" ]; then
             FILES=$(find artifacts -type f -not -name "*.sig" | tr '\n' ' ')
             SIG_FILES=$(find artifacts -name "*.sig" | tr '\n' ' ')
@@ -387,24 +395,27 @@ jobs:
               --title "Huxflux ${TAG} (beta)" \
               --notes "$NOTES" \
               --prerelease \
-              $FILES $SIG_FILES latest-beta.json
+              $FILES $SIG_FILES latest-beta.json $EXTRA_FILES
           else
             NOTES="$NOTES"$'\n\n'"Server-only release (no desktop changes)."
             # Carry forward latest-beta.json from a previous beta prerelease
             # /releases/latest/ points to stable, not prerelease, so we search explicitly
-            PREV_LATEST=""
             for PTAG in $(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease) | .tagName'); do
-              PREV_LATEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
-              [ -n "$PREV_LATEST" ] && break
+              PREV_BETA=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
+              if [ -n "$PREV_BETA" ]; then
+                echo "$PREV_BETA" > latest-beta.json
+                EXTRA_FILES="latest-beta.json ${EXTRA_FILES}"
+                break
+              fi
             done
-            if [ -n "$PREV_LATEST" ]; then
-              echo "$PREV_LATEST" > latest-beta.json
+
+            if [ -n "$EXTRA_FILES" ]; then
               gh release create "$TAG" \
                 --repo "${{ github.repository }}" \
                 --title "Huxflux ${TAG} (beta)" \
                 --notes "$NOTES" \
                 --prerelease \
-                latest-beta.json
+                $EXTRA_FILES
             else
               gh release create "$TAG" \
                 --repo "${{ github.repository }}" \

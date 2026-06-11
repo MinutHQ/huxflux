@@ -24,6 +24,7 @@ import {
 } from "./runnerTags.js"
 import { agentTitleHandler } from "../agents/runnerTags.js"
 import type { Automation, AutomationRun } from "./automations.types.js"
+import { logger } from "../../logger.js"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -184,7 +185,7 @@ async function spawnBuilderAgent(automation: AutomationRow, content: string): Pr
       ],
     })
   } catch (err) {
-    console.error("[automation] failed to start builder:", err)
+    logger.error({ err }, "[automation] failed to start builder")
   }
 
   return agentId

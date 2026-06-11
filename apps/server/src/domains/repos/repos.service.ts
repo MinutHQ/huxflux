@@ -3,6 +3,7 @@ import * as os from "node:os"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { ensureReserve, drainReserves } from "../git/pool.js"
+import { logger } from "../../logger.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -61,5 +62,5 @@ export async function detectBranchFrom(repoPath: string): Promise<string> {
 export function maintainReserveOnSetupScriptChange(repoId: string, _newScript: string | null | undefined): void {
   drainReserves(repoId)
     .then(() => ensureReserve(repoId))
-    .catch((err) => console.error(`[reserve] refresh failed:`, err))
+    .catch((err) => logger.error({ err }, `[reserve] refresh failed`))
 }

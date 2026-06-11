@@ -1,5 +1,11 @@
 import * as path from "node:path"
 import * as fs from "node:fs"
+import type { WebSocket } from "@fastify/websocket"
+import { db } from "../../db/index.js"
+import { agents, repos } from "../../db/schema.js"
+import { eq } from "drizzle-orm"
+import { scanForPort, registerPort, clearAgentPorts } from "../git/processes.js"
+import { logger } from "../../logger.js"
 
 // @lydell/node-pty ships prebuilt binaries for all platforms as optional deps
 // (same pattern as esbuild). No compilation needed anywhere.
@@ -8,14 +14,8 @@ let pty: typeof import("@lydell/node-pty") | null = null
 try {
   pty = await import("@lydell/node-pty")
 } catch {
-  console.warn("[pty] node-pty not available. Terminal feature disabled.")
+  logger.warn("[pty] node-pty not available. Terminal feature disabled.")
 }
-
-import type { WebSocket } from "@fastify/websocket"
-import { db } from "../../db/index.js"
-import { agents, repos } from "../../db/schema.js"
-import { eq } from "drizzle-orm"
-import { scanForPort, registerPort, clearAgentPorts } from "../git/processes.js"
 
 type PtyMessage =
   | { type: "input"; data: string }
@@ -98,7 +98,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     }
     existing.clients.add(socket)
     attachClientHandlers(socket, existing, key)
-    console.info(`[pty] attached existing ${key} in ${Date.now() - t0}ms`)
+    logger.info(`[pty] attached existing ${key} in ${Date.now() - t0}ms`)
     return
   }
 
@@ -140,7 +140,7 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     cwd,
     env: { ...process.env, NODE_ENV: "development", HUXFLUX_WORKTREE: cwd, HUXFLUX_REPO: repo?.path ?? "", HUXFLUX_AGENT_ID: agentId } as Record<string, string>,
   })
-  console.info(`[pty] spawned ${key} (shell=${shell}, cwd=${cwd}) in ${Date.now() - t0}ms`)
+  logger.info(`[pty] spawned ${key} (shell=${shell}, cwd=${cwd}) in ${Date.now() - t0}ms`)
 
   const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }
   globalPtyMap.set(key, entry)

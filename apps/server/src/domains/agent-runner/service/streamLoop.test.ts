@@ -80,6 +80,8 @@ function spawnFixture(ctx: Ctx, fixtureName: string) {
     state: ctx.state,
     agentId: ctx.agentId,
     messageId: ctx.messageId,
+    repo: "test-repo",
+    branch: "test-branch",
     scheduleFlush: ctx.scheduleFlush,
     bufferRef: ctx.bufferRef,
   })

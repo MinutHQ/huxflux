@@ -1,9 +1,34 @@
 import { Octokit } from "@octokit/rest"
+import { throttling } from "@octokit/plugin-throttling"
+import { retry } from "@octokit/plugin-retry"
 import { config } from "../../../config.js"
 
-/** Build a fresh Octokit instance using the configured GitHub token. */
+// One shared, throttled, auto-retrying client for the whole process. The poller
+// fans out dozens of GitHub calls per cycle; a single instance lets undici reuse
+// connections, the throttling plugin paces against primary/secondary rate limits,
+// and the retry plugin transparently re-attempts transient failures (the connect
+// timeouts that otherwise surface as "[poller] Connect Timeout Error").
+const ThrottledOctokit = Octokit.plugin(throttling, retry)
+
+let shared: Octokit | undefined
+
+/** The shared Octokit instance, configured with the GitHub token, throttling and retry. */
 export function getOctokit(): Octokit {
-  return new Octokit({ auth: config.githubToken || undefined })
+  if (shared) return shared
+  shared = new ThrottledOctokit({
+    auth: config.githubToken || undefined,
+    throttle: {
+      onRateLimit: (retryAfter, options, octokit, retryCount) => {
+        octokit.log.warn(`[octokit] rate limit for ${options.method} ${options.url}; retry #${retryCount} in ${retryAfter}s`)
+        return retryCount < 3
+      },
+      onSecondaryRateLimit: (retryAfter, options, octokit, retryCount) => {
+        octokit.log.warn(`[octokit] secondary rate limit for ${options.method} ${options.url}; retry #${retryCount} in ${retryAfter}s`)
+        return retryCount < 3
+      },
+    },
+  })
+  return shared
 }
 
 /** Parse owner/repo from a remote URL (HTTPS, SSH with host alias, or owner/repo shorthand). */

@@ -5,11 +5,14 @@ import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { taskAgents, tasks } from "../../../db/schema.js"
 import { getPRStatus, findPRForBranch, prStatusToAgentStatus } from "../prStatus.js"
+import { getPRDetails } from "../service/prDetails.js"
+import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { getRemoteUrl } from "../../git/worktrees.js"
 import { agentsWs } from "../../agents/agents.ws.js"
 import { tasksWs } from "../../tasks/tasks.ws.js"
 import { getSettings } from "../../settings/settings.service.js"
 import { jiraTransitionIssue } from "../../tasks/jiraClient.js"
+import { logger } from "../../../logger.js"
 import type { PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
 import { sendToAgent } from "./sendToAgent.js"
@@ -27,7 +30,7 @@ async function syncBranchFromGit(agent: AgentRow): Promise<AgentRow> {
       db.update(agents).set({ branch: actualBranch, updatedAt: new Date().toISOString() }).where(eq(agents.id, agent.id)).run()
       const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
       if (updated) agentsWs.agentUpdated(updated as never)
-      console.info(`[poller] ${agent.id}: branch synced to ${actualBranch}`)
+      logger.info({ agentId: agent.id, branch: actualBranch }, "[poller] branch synced")
       return { ...agent, branch: actualBranch }
     }
   } catch { /* worktree may not exist */ }
@@ -68,7 +71,7 @@ async function autoCompleteLinkedTasks(agentId: string, now: string): Promise<vo
     if (!task || task.status === "done") continue
     db.update(tasks).set({ status: "done", updatedAt: now }).where(eq(tasks.id, link.taskId)).run()
     tasksWs.taskUpdated(link.taskId)
-    console.info(`[poller] ${agentId}: task ${link.taskId} auto-completed (PR merged)`)
+    logger.info({ agentId, taskId: link.taskId }, "[poller] task auto-completed (PR merged)")
     if (task.jiraKey) await jiraTransitionIssue(task.jiraKey, "done").catch(() => {})
   }
 }
@@ -79,8 +82,19 @@ async function runMonitors(agent: AgentRow, repoUrl: string, pr: PRStatus): Prom
   const s = getSettings()
   const prCommentsEnabled = agent.prCommentMonitoring != null ? agent.prCommentMonitoring === 1 : (s.prCommentMonitoring ?? true)
   const ciEnabled = agent.ciMonitoring != null ? agent.ciMonitoring === 1 : (s.ciMonitoring ?? true)
-  if (prCommentsEnabled) await monitorPRComments(agent, repoUrl, pr.number)
-  if (ciEnabled) await monitorCI(agent, repoUrl, pr.number)
+
+  // The comment and CI monitors both read the same PR details. Fetch once and
+  // share it. Skip the round-trip entirely while the agent is mid-turn (both
+  // monitors no-op in that case anyway).
+  if ((prCommentsEnabled || ciEnabled) && !isAgentRunning(agent.id)) {
+    try {
+      const details = await getPRDetails(repoUrl, pr.number)
+      if (prCommentsEnabled) await monitorPRComments(agent, details)
+      if (ciEnabled) await monitorCI(agent, details)
+    } catch (err) {
+      logger.warn({ err, agentId: agent.id }, "[poller] monitor fetch failed")
+    }
+  }
   await monitorMergeConflicts(agent, pr)
 }
 
@@ -100,7 +114,7 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
     await runMonitors(agent, repoUrl, pr)
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn(`[poller] ${agent.id}: ${(err as Error).message}`)
+      logger.warn({ err, agentId: agent.id }, "[poller] poll failed")
     }
   }
 }

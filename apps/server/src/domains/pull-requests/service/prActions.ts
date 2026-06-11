@@ -1,4 +1,5 @@
 import { getOctokit, parseRepo } from "./octokit.js"
+import { logger } from "../../../logger.js"
 
 /** Create a PR on a remote. Used by the agent "create PR" route. */
 export async function createPR(params: {
@@ -82,7 +83,7 @@ export async function rerequestReview(repoUrl: string, prNumber: number): Promis
     .filter((r) => r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED")
     .map((r) => r.login)
 
-  console.info(`[github] re-request review on PR #${prNumber}: reviewers=${JSON.stringify(reviewers)}`)
+  logger.info(`[github] re-request review on PR #${prNumber}: reviewers=${JSON.stringify(reviewers)}`)
 
   if (reviewers.length === 0) {
     throw new Error("No reviewers with changes requested found")
@@ -91,7 +92,7 @@ export async function rerequestReview(repoUrl: string, prNumber: number): Promis
   try {
     await octokit.pulls.requestReviewers({ owner, repo, pull_number: prNumber, reviewers })
   } catch (err) {
-    console.error(`[github] requestReviewers failed:`, err)
+    logger.error({ err }, `[github] requestReviewers failed`)
     throw err
   }
 }

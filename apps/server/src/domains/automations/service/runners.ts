@@ -1,6 +1,7 @@
 import type { AutomationStep } from "../automations.types.js"
 import { getSettings } from "../../settings/settings.service.js"
 import { automationsWs } from "../automations.ws.js"
+import { logger } from "../../../logger.js"
 
 interface StepContext {
   automationId: string
@@ -78,7 +79,7 @@ export async function executeFlow(
       }
     } catch (err) {
       const msg = errorMessage(err)
-      console.error(`[automation] step ${step.id} (${step.type}) failed:`, msg)
+      logger.error({ err: msg }, `[automation] step ${step.id} (${step.type}) failed`)
       throw new Error(`Step "${step.label}" failed: ${msg}`)
     }
   }
@@ -278,7 +279,7 @@ async function sendEmail(opts: { to: string; subject: string; body: string }) {
   const smtp = settings.smtp as SmtpSettings | undefined
 
   if (!smtp?.host) {
-    console.warn("[automation] SMTP not configured, skipping email")
+    logger.warn("[automation] SMTP not configured, skipping email")
     return
   }
 
@@ -300,9 +301,9 @@ async function sendEmail(opts: { to: string; subject: string; body: string }) {
       text: opts.body,
     })
 
-    console.info(`[automation] email sent to ${opts.to}: ${opts.subject}`)
+    logger.info(`[automation] email sent to ${opts.to}: ${opts.subject}`)
   } catch (err) {
-    console.error(`[automation] email failed:`, errorMessage(err))
+    logger.error({ err: errorMessage(err) }, `[automation] email failed`)
   }
 }
 

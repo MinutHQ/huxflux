@@ -1,15 +1,16 @@
-import chokidar, { type FSWatcher } from "chokidar"
 import { simpleGit } from "simple-git"
 import * as fs from "node:fs"
+import * as path from "node:path"
 import { getFileChanges } from "./worktrees.js"
 import { agentsWs } from "../agents/agents.ws.js"
 import { db } from "../../db/index.js"
-import { fileChanges as fileChangesTable, agents as agentsTable } from "../../db/schema.js"
+import { fileChanges as fileChangesTable, agents as agentsTable, repos as reposTable } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { AgentSummary } from "../../types.js"
+import { logger } from "../../logger.js"
 
 interface WatchEntry {
-  watcher: FSWatcher
+  watcher: fs.FSWatcher
   timer: ReturnType<typeof setTimeout> | null
 }
 
@@ -17,21 +18,18 @@ const watchers = new Map<string, WatchEntry>()
 
 const DEBOUNCE_MS = 250
 
-// On macOS, chokidar 5's native mode (`fs.watch`) opens one fd per watched
-// directory, which blows past the default `ulimit -n` with several agent
-// worktrees and cascades to `spawn EBADF`. Polling is the only safe option
-// there. On Linux, inotify is fd-efficient, so native mode avoids the CPU
-// cost of stat-polling every 400ms (which starves the event loop when many
-// worktrees are active).
-const IS_MACOS = process.platform === "darwin"
-const POLL_INTERVAL_MS = 400
-const POLL_BINARY_INTERVAL_MS = 1000
+// Paths whose changes we don't care about — matched against the watch-relative
+// path `fs.watch` reports (platform separator, hence `[/\\]`).
+const IGNORED = /(^|[/\\])(\.git|node_modules|\.next|\.nuxt|dist|build|\.cache|__pycache__|\.venv|venv|target)([/\\]|$)/
 
-async function refresh(agentId: string, worktreePath: string, branchFrom: string) {
+async function refresh(agentId: string, worktreePath: string, branchFrom: string, owner?: WatchEntry) {
   try {
-    // Worktree may have been deleted (child agent removed) — stop watching
+    // Worktree may have been deleted (child agent removed) — stop watching.
+    // Only tear down if the watcher that scheduled this refresh is still the
+    // active one. A stale in-flight refresh must not close a watcher that was
+    // detached and freshly re-attached (unsubscribe → re-subscribe) while it ran.
     if (!fs.existsSync(worktreePath)) {
-      unwatchWorktree(agentId)
+      if (!owner || watchers.get(agentId) === owner) unwatchWorktree(agentId)
       return
     }
 
@@ -68,43 +66,70 @@ async function refresh(agentId: string, worktreePath: string, branchFrom: string
     }
     agentsWs.fileChanged(agentId, files.sort((a, b) => a.path.localeCompare(b.path)))
   } catch (err) {
-    console.error(`[watcher] refresh failed for agent ${agentId}:`, err)
+    logger.error({ err }, `[watcher] refresh failed for agent ${agentId}`)
   }
 }
 
 export function watchWorktree(agentId: string, worktreePath: string, branchFrom: string) {
   if (watchers.has(agentId)) return
 
-  const watcher = chokidar.watch(worktreePath, {
-    ignored: /(^|[/\\])(\.(git)|node_modules|\.next|\.nuxt|dist|build|\.cache|__pycache__|\.venv|venv|target)([/\\]|$)/,
-    ignoreInitial: true,
-    persistent: true,
-    ...(IS_MACOS
-      ? { usePolling: true, interval: POLL_INTERVAL_MS, binaryInterval: POLL_BINARY_INTERVAL_MS }
-      : { usePolling: false }),
-  })
-
-  const entry: WatchEntry = { watcher, timer: null }
-  watchers.set(agentId, entry)
+  const entry: WatchEntry = { watcher: null as unknown as fs.FSWatcher, timer: null }
 
   const schedule = () => {
     if (entry.timer) clearTimeout(entry.timer)
     entry.timer = setTimeout(() => {
       entry.timer = null
-      void refresh(agentId, worktreePath, branchFrom)
+      void refresh(agentId, worktreePath, branchFrom, entry)
     }, DEBOUNCE_MS)
   }
 
-  watcher.on("add", schedule)
-  watcher.on("change", schedule)
-  watcher.on("unlink", schedule)
+  // Native recursive watch. On macOS this is one FSEvents source for the whole
+  // tree (no per-file polling, no per-directory file descriptor); on Linux it
+  // is recursive inotify (Node 20+). Watching only the currently-open agent
+  // (see `watchAgent`) keeps the watch count low enough that the per-directory
+  // fd cost that used to force polling is no longer a concern.
+  let watcher: fs.FSWatcher
+  try {
+    watcher = fs.watch(worktreePath, { recursive: true, persistent: true }, (_event, filename) => {
+      if (filename && IGNORED.test(filename.toString())) return
+      schedule()
+    })
+  } catch (err) {
+    logger.error({ err, agentId }, "[watcher] failed to start fs.watch")
+    return
+  }
+  watcher.on("error", (err) => logger.warn({ err, agentId }, "[watcher] fs.watch error"))
+
+  entry.watcher = watcher
+  watchers.set(agentId, entry)
+}
+
+/**
+ * Resolve an agent's worktree from the DB and start watching it, then populate
+ * its file changes once. Used to attach a watcher lazily when a client opens an
+ * agent (see the subscription hook in the server entrypoint) rather than
+ * watching every agent on boot. No-op if already watching, if the agent has no
+ * worktree, or if the worktree path no longer exists on disk.
+ */
+export function watchAgent(agentId: string): void {
+  if (watchers.has(agentId)) return
+  const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+  if (!agent || !agent.repoId || agent.noWorktree) return
+  const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
+  if (!repo) return
+  const worktreePath = path.join(repo.workspacesPath, agent.location)
+  if (!fs.existsSync(worktreePath)) return
+  const branchFrom = agent.baseBranch ?? repo.branchFrom
+  watchWorktree(agentId, worktreePath, branchFrom)
+  // Scope the initial refresh's teardown to this watcher generation (see refresh).
+  void refresh(agentId, worktreePath, branchFrom, watchers.get(agentId)).catch(() => {})
 }
 
 export function unwatchWorktree(agentId: string) {
   const entry = watchers.get(agentId)
   if (!entry) return
   if (entry.timer) clearTimeout(entry.timer)
-  entry.watcher.close().catch(() => {})
+  try { entry.watcher.close() } catch { /* already closed */ }
   watchers.delete(agentId)
 }
 

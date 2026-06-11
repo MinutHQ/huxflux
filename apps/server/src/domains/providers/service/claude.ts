@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
+import { logger } from "../../../logger.js"
 
 interface ClaudeRawBlock {
   type?: string
@@ -204,7 +205,7 @@ export const claudeProvider: ProviderAdapter = {
         await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
       }
     } catch (hookErr) {
-      console.error(`[claude] Failed to install AskUserQuestion hook:`, (hookErr as Error).message)
+      logger.error({ err: (hookErr as Error).message }, `[claude] Failed to install AskUserQuestion hook`)
     }
   },
 }

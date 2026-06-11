@@ -26,6 +26,9 @@ const SRC_ENTRY = path.resolve(__dirname, "../src/index.ts")
 const DEV_ENV = {
   ...process.env,
   NODE_ENV: "development",
+  // Match the server's runtime: a roomy libuv threadpool so concurrent DNS/fs
+  // work (the GitHub poller) doesn't starve getaddrinfo into connect timeouts.
+  UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "64",
   PORT: "3002",
   DB_PATH: path.join(DATA_DIR, "huxflux-dev.db"),
   WORKSPACES_BASE: path.join(DATA_DIR, "workspaces-dev"),

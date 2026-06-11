@@ -7,6 +7,7 @@ import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
+import { logger } from "./logger.js"
 
 const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
@@ -120,7 +121,7 @@ export function startUpdateChecker() {
   setTimeout(() => {
     checkForUpdate().then((info) => {
       if (info.updateAvailable) {
-        console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
+        logger.info(`[updater] Update available: ${info.current} → ${info.latest}`)
         maybeAutoUpdate()
       }
     })
@@ -129,7 +130,7 @@ export function startUpdateChecker() {
   checkInterval = setInterval(async () => {
     const info = await checkForUpdate()
     if (info.updateAvailable) {
-      console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
+      logger.info(`[updater] Update available: ${info.current} → ${info.latest}`)
       maybeAutoUpdate()
     }
   }, CHECK_INTERVAL_MS)
@@ -139,13 +140,13 @@ async function maybeAutoUpdate() {
   const settings = getSettings()
   if (!settings.autoUpdateServer) return
   if (!isIdle()) {
-    console.info("[updater] Auto-update deferred: agents are active")
+    logger.info("[updater] Auto-update deferred: agents are active")
     return
   }
-  console.info("[updater] Auto-updating server...")
+  logger.info("[updater] Auto-updating server...")
   const result = await triggerServerUpdate()
   if (!result.success) {
-    console.error("[updater] Auto-update failed:", result.error)
+    logger.error({ err: result.error }, "[updater] Auto-update failed")
   }
 }
 

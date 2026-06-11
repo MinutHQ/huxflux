@@ -7,6 +7,7 @@ import { db } from "../../../db/index.js"
 import { tasks, taskAgents } from "../../../db/schema.js"
 import { config } from "../../../config.js"
 import { loadAllTasks } from "../service/loadTasks.js"
+import { logger } from "../../../logger.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -94,7 +95,7 @@ async function maybeAutoStartWork(id: string) {
       body: JSON.stringify({}),
     })
   } catch (err) {
-    console.error(`[tasks] auto-start failed for ${id}:`, err)
+    logger.error({ err }, `[tasks] auto-start failed for ${id}`)
   }
 }
 

@@ -9,6 +9,7 @@ import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.j
 import { runningProcesses } from "./processRegistry.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
+import { logger } from "../../../logger.js"
 
 interface StreamLoopArgs {
   bin: string
@@ -19,13 +20,15 @@ interface StreamLoopArgs {
   state: StreamState
   agentId: string
   messageId: string
+  repo: string
+  branch: string
   scheduleFlush: () => void
   bufferRef: { current: string }
 }
 
 /** Spawn the CLI process and wire stdout/stderr into the streaming pipeline. */
 export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
-  const { bin, args: cliArgs, cwd, env, provider, state, agentId, messageId, scheduleFlush, bufferRef } = args
+  const { bin, args: cliArgs, cwd, env, provider, state, agentId, messageId, repo, branch, scheduleFlush, bufferRef } = args
 
   const proc = spawn(bin, cliArgs, {
     cwd,
@@ -35,7 +38,10 @@ export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
 
   runningProcesses.set(agentId, proc)
 
-  console.info(`[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${cliArgs.slice(0, 5).join(" ")}...`)
+  logger.info(
+    { repo, branch, pid: proc.pid },
+    `[runner] spawned ${provider.id} (${bin}) pid=${proc.pid} args=${cliArgs.slice(0, 5).join(" ")}...`,
+  )
 
   proc.stdout?.on("data", (chunk: Buffer) => {
     processStdoutChunk(chunk, provider, bufferRef, state, agentId, messageId, scheduleFlush)
@@ -64,7 +70,7 @@ function processStdoutChunk(
 ): void {
   const isClaudeFormat = provider.id === "claude" || provider.id === "claude-interactive"
   if (provider.id === "claude-interactive" || provider.id === "gemini") {
-    console.info(`[runner:${provider.id}] stdout chunk (${chunk.length}b): ${chunk.toString().slice(0, 200)}`)
+    logger.info(`[runner:${provider.id}] stdout chunk (${chunk.length}b): ${chunk.toString().slice(0, 200)}`)
   }
   bufferRef.current += chunk.toString()
 
@@ -86,7 +92,7 @@ function processStdoutChunk(
       } catch { /* non-JSON */ }
     } else {
       const event = provider.parseStreamLine(line) as NormalizedStreamEvent | null
-      console.info(`[runner:${provider.id}] parsed line → ${event?.type ?? "null"} | line: ${line.slice(0, 100)}`)
+      logger.info(`[runner:${provider.id}] parsed line → ${event?.type ?? "null"} | line: ${line.slice(0, 100)}`)
       if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
     }
   }

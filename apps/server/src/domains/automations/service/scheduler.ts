@@ -4,6 +4,7 @@ import { db } from "../../../db/index.js"
 import { automations, automationRuns } from "../automations.db.js"
 import { automationsWs } from "../automations.ws.js"
 import { executeFlow } from "./runners.js"
+import { logger } from "../../../logger.js"
 
 // In-memory timer registry. One setInterval per active+scheduled automation.
 const scheduledTimers = new Map<string, ReturnType<typeof setInterval>>()
@@ -27,7 +28,7 @@ export function scheduleAutomation(id: string, schedule: string) {
   unscheduleAutomation(id)
   const ms = parseScheduleMs(schedule)
   if (!ms) return
-  console.info(`[automations] scheduling ${id} every ${ms}ms`)
+  logger.info(`[automations] scheduling ${id} every ${ms}ms`)
   const timer = setInterval(() => void executeAutomation(id), ms)
   scheduledTimers.set(id, timer)
 }
@@ -106,7 +107,7 @@ export async function executeAutomation(automationId: string) {
     }).where(eq(automations.id, automationId)).run()
 
     automationsWs.runCompleted(automationId, runId, "failure")
-    console.error(`[automations] ${automationId} failed:`, message)
+    logger.error({ err: message }, `[automations] ${automationId} failed`)
   }
 }
 
@@ -116,5 +117,5 @@ export function startScheduler() {
   for (const a of active) {
     if (a.schedule) scheduleAutomation(a.id, a.schedule)
   }
-  console.info(`[automations] started ${active.length} scheduled automation(s)`)
+  logger.info(`[automations] started ${active.length} scheduled automation(s)`)
 }

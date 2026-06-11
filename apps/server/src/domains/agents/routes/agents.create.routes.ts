@@ -17,6 +17,7 @@ import type { AgentSummary } from "../../../types.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
 import { simpleGit } from "simple-git"
+import { logger } from "../../../logger.js"
 
 export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
   // POST /api/agents — create agent + worktree
@@ -73,7 +74,7 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
     if (agentRepoId && !skipWorktreeCreation && !noWorktree) {
       const t0 = Date.now()
       const setupResult = await setupRepoWorktree({ app, id, agentRepoId, agentLocation, branch, baseBranch })
-      console.info(`[create] setupRepoWorktree ${Date.now() - t0}ms (agent ${id.slice(0, 8)})`)
+      logger.info(`[create] setupRepoWorktree ${Date.now() - t0}ms (agent ${id.slice(0, 8)})`)
       if (!setupResult.ok) return reply.code(setupResult.status).send({ error: setupResult.error })
       agentLocation = setupResult.location
     }

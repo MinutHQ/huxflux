@@ -11,6 +11,7 @@ import { createWorktree } from "../../git/worktrees.js"
 import { applyBranchRename } from "../rename.js"
 import type { AgentSummary } from "../../../types.js"
 import { defineTagHandler, type TagHandler } from "../../agent-runner/agent-runner.types.js"
+import { logger } from "../../../logger.js"
 
 // Each factory returns a TagHandler that the agent-runner can dispatch when
 // the matching `<huxflux:agents.*>` directive appears in an assistant
@@ -61,7 +62,7 @@ export function agentBranchHandler(agentId: string, branchFrom?: string): TagHan
       const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
       if (repo?.type === "folder") return
       const result = await applyBranchRename(agentId, raw, { branchFrom: branchFrom ?? "HEAD" })
-      if (!result.ok) console.error(`[tags] agents.branch rename failed:`, result.reason)
+      if (!result.ok) logger.error({ err: result.reason }, `[tags] agents.branch rename failed`)
     },
   })
 }
@@ -83,7 +84,7 @@ export function agentDelegateHandler(agentId: string): TagHandler {
       if (!target || !task) return
       const sourceTitle = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()?.title ?? "Another agent"
       const payload = JSON.stringify({ content: task, sender: sourceTitle, delegateFrom: agentId })
-      console.info(`[tags] agents.delegate: ${agentId} → ${target}`)
+      logger.info(`[tags] agents.delegate: ${agentId} → ${target}`)
       fetch(`http://localhost:${config.boundPort}/api/agents/${target}/messages`, {
         method: "POST",
         headers: {
@@ -91,7 +92,7 @@ export function agentDelegateHandler(agentId: string): TagHandler {
           ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
         },
         body: payload,
-      }).catch((err) => console.error(`[tags] agents.delegate POST failed for ${target}:`, err))
+      }).catch((err) => logger.error({ err }, `[tags] agents.delegate POST failed for ${target}`))
     },
   })
 }
@@ -120,7 +121,7 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
     const allRepos = db.select().from(reposTable).all()
     const repo = allRepos.find((r) => r.name === repoName || r.name.endsWith(`/${repoName}`))
     if (!repo) {
-      console.error(`[tags] agents.spawn: repo "${repoName}" not found`)
+      logger.error(`[tags] agents.spawn: repo "${repoName}" not found`)
       return
     }
     const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
@@ -138,7 +139,7 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
     try {
       await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
     } catch (err) {
-      console.error(`[tags] agents.spawn: failed to create worktree for ${repoName}:`, err)
+      logger.error({ err }, `[tags] agents.spawn: failed to create worktree for ${repoName}`)
       return
     }
     await runSetupScript(repo, worktreePath)
@@ -158,9 +159,9 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
     const created = db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
     if (created) agentsWs.agentUpdated(created as unknown as AgentSummary)
     sendInitialSpawnMessage(id, parentAgent, parentAgentId, taskDescription)
-    console.info(`[tags] agents.spawn: created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
+    logger.info(`[tags] agents.spawn: created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
   } catch (err) {
-    console.error(`[tags] agents.spawn failed:`, err)
+    logger.error({ err }, `[tags] agents.spawn failed`)
   }
 }
 
@@ -206,5 +207,5 @@ function sendInitialSpawnMessage(
       ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
     },
     body,
-  }).catch((err) => console.error(`[tags] agents.spawn initial message failed:`, err))
+  }).catch((err) => logger.error({ err }, `[tags] agents.spawn initial message failed`))
 }

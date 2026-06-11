@@ -12,6 +12,7 @@ import { getPRDetails } from "../service/prDetails.js"
 import { getPRStatus, prStatusToAgentStatus } from "../service/prStatus.js"
 import { createPR, markPRReady, mergePR, rerequestReview } from "../service/prActions.js"
 import type { AgentSummary, PRStatus } from "../../../types.js"
+import { logger } from "../../../logger.js"
 
 // Typed instance shape that carries the Zod type provider into the per-route
 // helpers below, so they see typed `req.body`/`req.params` from the `schema`
@@ -134,21 +135,21 @@ function registerRerequestRoute(app: ZodApp): void {
   }, async (req, reply) => {
     const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
     if (!agent) return reply.code(404).send({ error: "Not found" })
-    if (!agent.prNumber) { console.info("[rerequest] no prNumber on agent", agent.id); return reply.code(400).send({ error: "No PR on this agent" }) }
-    if (!agent.repoId) { console.info("[rerequest] no repoId on agent", agent.id); return reply.code(400).send({ error: "Agent has no repo" }) }
+    if (!agent.prNumber) { logger.info(`[rerequest] no prNumber on agent ${agent.id}`); return reply.code(400).send({ error: "No PR on this agent" }) }
+    if (!agent.repoId) { logger.info(`[rerequest] no repoId on agent ${agent.id}`); return reply.code(400).send({ error: "Agent has no repo" }) }
 
     const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
     if (!repo) return reply.code(404).send({ error: "Repo not found" })
 
     const repoUrl = await getRemoteUrl(repo.path, repo.remote)
-    console.info("[rerequest] repoUrl=", repoUrl, "prNumber=", agent.prNumber)
+    logger.info(`[rerequest] repoUrl=${repoUrl} prNumber=${agent.prNumber}`)
     if (!repoUrl) return reply.code(400).send({ error: "Cannot resolve remote URL" })
 
     try {
       await rerequestReview(repoUrl, agent.prNumber)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error("[rerequest] error:", msg)
+      logger.error({ err: msg }, "[rerequest] error")
       return reply.code(400).send({ error: msg })
     }
 

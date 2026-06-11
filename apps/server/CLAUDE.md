@@ -231,10 +231,11 @@ Adding a new event is one entry in the config — the derived `<Name>ServerEvent
 
 ## Logging
 
-- Pino is preferred for anything where structured fields would help an operator (request handlers, server lifecycle hooks). Always include enough context to navigate from log to source.
-- For tracing and ad-hoc diagnostics (runner stages, poller progress, migration steps), use `console.info`. For non-fatal failures and unexpected fallbacks, use `console.warn`. For real errors, use `console.error`.
-- The lint rule (`no-console`) disallows bare `console.log`. The three allowed methods (`info`, `warn`, `error`) cover every case.
-- Structured fields preferred over string interpolation when using Pino.
+- All server-runtime logging goes through the one shared pino logger in `src/logger.ts` (`import { logger } from ".../logger.js"`). Fastify is wired to the same instance, so request-lifecycle logs and operational logs share one stream and one format: human-readable (pino-pretty) in dev, structured JSON in prod. This covers everything — jobs, poller, runner, git, db, ws, automations, request handlers, lifecycle hooks.
+- Use `logger.info` for tracing/diagnostics, `logger.warn` for non-fatal failures and unexpected fallbacks, `logger.error` for real errors. Prefer structured fields over string interpolation: `logger.info({ agentId, count }, "message")`, and pass errors under the `err` key (`logger.error({ err }, "what failed")`) so pino's serializer formats them.
+- `console.*` is reserved for genuine terminal presentation, NOT logging: the CLI (`cli.ts`, interactive prompts/status/connection strings) and the server startup banner in `index.ts` (the "running on" line, connect string, QR code, AUTH_TOKEN setup notice). Everything else uses `logger`.
+- The lint rule (`no-console`) disallows bare `console.log`; `info`/`warn`/`error` remain allowed for the presentation cases above.
+- `pino` and `pino-pretty` are kept external in `tsup.config.ts` (they do dynamic `require()` of node builtins and break if bundled into ESM). `pino-pretty` is a devDependency, so production installs fall back to JSON, which is intended.
 
 ## Testing
 

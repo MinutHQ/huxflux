@@ -95,6 +95,11 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
   return {
     ...process.env,
     NODE_ENV: "production",
+    // libuv's threadpool (default 4) backs async DNS, fs and crypto. The poller
+    // fans out many GitHub calls while git/fs work runs concurrently; with only
+    // 4 threads, getaddrinfo for api.github.com queues behind that work and blows
+    // past undici's 10s connect timeout ("Connect Timeout Error"). Give it room.
+    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "64",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
     HUXFLUX_DIR: DATA_DIR,

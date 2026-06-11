@@ -1,5 +1,6 @@
 import "./log.js"
 import Fastify from "fastify"
+import type { FastifyBaseLogger } from "fastify"
 import fastifyCors from "@fastify/cors"
 import fastifyWebsocket from "@fastify/websocket"
 import fastifySwagger from "@fastify/swagger"
@@ -15,6 +16,7 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { fileURLToPath } from "node:url"
 import { config, isDev } from "./config.js"
+import { logger } from "./logger.js"
 import { toString as qrToString } from "qrcode"
 
 import { SERVER_VERSION } from "./version.js"
@@ -41,20 +43,28 @@ import { domainPlugins } from "./domains/index.js"
 import { fsRoutes } from "./fs-routes.js"
 import { systemRoutes } from "./system-routes.js"
 import { startScheduler } from "./domains/automations/scheduler.js"
-import { registerSocket } from "./domains/ws/handler.js"
+import { registerSocket, onAgentSubscription } from "./domains/ws/handler.js"
 import { registerPtySocket } from "./domains/ws/pty.js"
 import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { registerErrorHandler } from "./errorHandler.js"
 import { startJobs } from "./jobs.js"
 import { resetStreamingFlags } from "./domains/agent-runner/agent-runner.service.js"
-import { watchWorktree, refreshWorktree } from "./domains/git/watcher.js"
+import { watchAgent, unwatchWorktree } from "./domains/git/watcher.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { isNull, eq } from "drizzle-orm"
 
+// Fastify shares the one server-wide logger (pretty in dev, JSON in prod). See
+// src/logger.ts. Request-lifecycle logs and operational logs go through the
+// same instance and format.
 const app = Fastify({
-  logger: isDev ? { level: "info" } : { level: "silent" },
+  // Cast to Fastify's own logger type: passing a concrete pino instance would
+  // otherwise narrow Fastify's logger generic to pino's `Logger`, which clashes
+  // with the `FastifyBaseLogger` its route/type-provider machinery expects.
+  loggerInstance: logger as FastifyBaseLogger,
+  // Operational logs flow through the shared logger, but skip Fastify's
+  // per-request HTTP log in prod (the slow-response hook below covers prod).
   disableRequestLogging: !isDev,
 }).withTypeProvider<ZodTypeProvider>()
 
@@ -185,7 +195,7 @@ resetStreamingFlags()
 
 // Ensure each repo with a setup script has one hidden reserve worktree
 import { initializeReserves } from "./domains/git/pool.js"
-initializeReserves().catch((err) => console.error("[reserve] initialization failed:", err))
+initializeReserves().catch((err) => logger.error({ err }, "[reserve] initialization failed"))
 
 // Pre-resolve provider availability so the first GET /api/providers request
 // doesn't trigger a 30+ second blocking `npx <pkg> --help` download inside
@@ -195,27 +205,19 @@ initializeReserves().catch((err) => console.error("[reserve] initialization fail
 import { warmAllProviders } from "./domains/providers/registry.js"
 const providerWarmStart = Date.now()
 warmAllProviders()
-  .then(() => console.info(`[providers] warm complete in ${Date.now() - providerWarmStart}ms`))
-  .catch((err) => console.error("[providers] warm failed:", err))
+  .then(() => logger.info(`[providers] warm complete in ${Date.now() - providerWarmStart}ms`))
+  .catch((err) => logger.error({ err }, "[providers] warm failed"))
 
 
-// Re-attach file watchers and do an initial scan for all active agents
-{
-  const activeAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
-  void (async () => {
-    for (const agent of activeAgents) {
-      if (!agent.repoId || agent.noWorktree) continue
-      const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-      if (!repo) continue
-      const worktreePath = path.join(repo.workspacesPath, agent.location)
-      if (!fs.existsSync(worktreePath)) continue
-      const effectiveBase = agent.baseBranch ?? repo.branchFrom
-      watchWorktree(agent.id, worktreePath, effectiveBase)
-      // Populate file changes so they show up without needing a new agent run
-      await refreshWorktree(agent.id, worktreePath, effectiveBase).catch(() => {})
-    }
-  })()
-}
+// Attach git file watchers lazily: watch an agent's worktree only while a
+// client has it open (first WS subscriber → watch, last unsubscribe → unwatch).
+// Watching every agent on boot meant dozens of recursive polling watchers
+// stat-ing thousands of files each, starving the event loop. The file-changes
+// panel populates on subscribe via watchAgent's initial refresh.
+onAgentSubscription((agentId, active) => {
+  if (active) watchAgent(agentId)
+  else unwatchWorktree(agentId)
+})
 
 let boundPort: number | null = null
 for (let attempt = 0; attempt < 10; attempt++) {
@@ -227,7 +229,7 @@ for (let attempt = 0; attempt < 10; attempt++) {
     break
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "EADDRINUSE") {
-      console.warn(`[server] Port ${port} in use, trying ${port + 1}…`)
+      logger.warn(`[server] Port ${port} in use, trying ${port + 1}…`)
     } else {
       app.log.error(err)
       process.exit(1)
@@ -236,7 +238,7 @@ for (let attempt = 0; attempt < 10; attempt++) {
 }
 
 if (!boundPort) {
-  console.error(`[server] Could not bind to any port in range ${config.port}–${config.port + 9}`)
+  logger.error(`[server] Could not bind to any port in range ${config.port}–${config.port + 9}`)
   process.exit(1)
 }
 
@@ -288,12 +290,12 @@ const SHUTDOWN_TIMEOUT_MS = 2000
 let shuttingDown = false
 function shutdown(signal: string) {
   if (shuttingDown) {
-    console.warn(`[server] received second ${signal}; forcing exit`)
+    logger.warn(`[server] received second ${signal}; forcing exit`)
     process.exit(1)
   }
   shuttingDown = true
   const force = setTimeout(() => {
-    console.warn(`[server] cleanup did not complete in ${SHUTDOWN_TIMEOUT_MS}ms; forcing exit`)
+    logger.warn(`[server] cleanup did not complete in ${SHUTDOWN_TIMEOUT_MS}ms; forcing exit`)
     process.exit(1)
   }, SHUTDOWN_TIMEOUT_MS)
   // Don't let the timer itself hold the loop open if cleanup finishes fast.

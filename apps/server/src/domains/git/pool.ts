@@ -6,6 +6,7 @@ import { db } from "../../db/index.js"
 import { repos, worktreePool } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
 import { createWorktree, removeWorktree } from "./worktrees.js"
+import { logger } from "../../logger.js"
 
 /**
  * The "reserve" is a single hidden worktree per repo. When the repo has a
@@ -33,7 +34,7 @@ async function fetchBase(repoPath: string, branchFrom: string | null | undefined
   } catch (err) {
     // First line only — git/SSH error output (host-key art etc.) is noisy.
     const msg = String((err as Error).message ?? err).split("\n")[0]
-    console.warn(`[reserve] fetch skipped: ${msg}`)
+    logger.warn(`[reserve] fetch skipped: ${msg}`)
   }
 }
 
@@ -77,9 +78,9 @@ export async function ensureReserve(repoId: string): Promise<void> {
     }
 
     db.insert(worktreePool).values({ id, repoId, location, branch, createdAt: now }).run()
-    console.info(`[reserve] created ${location} for repo ${repo.name}`)
+    logger.info(`[reserve] created ${location} for repo ${repo.name}`)
   } catch (err) {
-    console.error(`[reserve] failed to create worktree:`, err)
+    logger.error({ err }, `[reserve] failed to create worktree`)
   }
 }
 
@@ -113,7 +114,7 @@ export async function claimReserve(
       await git.raw(["reset", "--hard", base])
     } catch { /* base might not exist, worktree is already at the right point */ }
   } catch (err) {
-    console.error(`[reserve] failed to claim ${entry.location}:`, err)
+    logger.error({ err }, `[reserve] failed to claim ${entry.location}`)
     db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
     return null
   }
@@ -122,10 +123,10 @@ export async function claimReserve(
 
   // Refill in the background
   ensureReserve(repoId).catch((err) =>
-    console.error(`[reserve] refill after claim failed:`, err)
+    logger.error({ err }, `[reserve] refill after claim failed`)
   )
 
-  console.info(`[reserve] claimed ${entry.location} for branch ${agentBranch}`)
+  logger.info(`[reserve] claimed ${entry.location} for branch ${agentBranch}`)
   return { location: entry.location }
 }
 
@@ -144,7 +145,7 @@ export async function drainReserves(repoId: string): Promise<void> {
       await removeWorktree(repo.path, worktreePath)
     } catch { /* already gone */ }
     db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
-    console.info(`[reserve] removed ${entry.location} for repo ${repo.name}`)
+    logger.info(`[reserve] removed ${entry.location} for repo ${repo.name}`)
   }
 }
 
@@ -169,7 +170,7 @@ export async function initializeReserves(): Promise<void> {
     }
 
     await ensureReserve(repo.id).catch((err) =>
-      console.error(`[reserve] init failed for ${repo.name}:`, err)
+      logger.error({ err }, `[reserve] init failed for ${repo.name}`)
     )
   }
 }

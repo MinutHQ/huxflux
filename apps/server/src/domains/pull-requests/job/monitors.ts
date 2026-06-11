@@ -1,6 +1,7 @@
 import type { agents } from "../../agents/agents.db.js"
 import type { PRDetails } from "../../../types.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
+import { logger } from "../../../logger.js"
 import { sendToAgent } from "./sendToAgent.js"
 
 // Per-agent state for the PR/CI/merge monitors. Keyed by agent id so multiple
@@ -69,10 +70,10 @@ export async function monitorPRComments(agent: AgentRow, details: PRDetails): Pr
   try {
     const result = collectNewComments(agent, details)
     if (result === "seeded" || result.length === 0) return
-    console.info(`[poller] ${agent.id}: sending ${result.length} new PR comment(s) to agent`)
+    logger.info({ agentId: agent.id, commentCount: result.length }, "[poller] sending new PR comment(s) to agent")
     await sendToAgent(agent.id, formatCommentsMessage(result), "PR Review")
   } catch (err) {
-    console.warn(`[poller] PR comment monitor failed for ${agent.id}: ${(err as Error).message}`)
+    logger.warn({ err, agentId: agent.id }, "[poller] PR comment monitor failed")
   }
 }
 
@@ -95,10 +96,10 @@ export async function monitorCI(agent: AgentRow, details: PRDetails): Promise<vo
 
     const failedNames = failed.map((c) => `- **${c.name}**${c.url ? ` ([view](${c.url}))` : ""}`).join("\n")
     const message = `CI checks failed on your PR:\n\n${failedNames}\n\nPlease investigate and fix the failing checks. If the failure is not related to your changes, explain why.`
-    console.info(`[poller] ${agent.id}: CI failure detected, notifying agent`)
+    logger.info({ agentId: agent.id, failedChecks: failed.map((c) => c.name) }, "[poller] CI failure detected, notifying agent")
     await sendToAgent(agent.id, message, "CI Monitor")
   } catch (err) {
-    console.warn(`[poller] CI monitor failed for ${agent.id}: ${(err as Error).message}`)
+    logger.warn({ err, agentId: agent.id }, "[poller] CI monitor failed")
   }
 }
 
@@ -114,6 +115,6 @@ export async function monitorMergeConflicts(
   if (!lastState) return
   if (state !== "dirty" || lastState === "dirty") return
   const message = `Your PR has merge conflicts. The base branch has changed since your last push.\n\nPlease resolve the conflicts:\n1. Rebase your branch onto the latest base branch: \`git fetch origin && git rebase origin/<base-branch>\`\n2. Fix any conflicts\n3. Force push: \`git push --force-with-lease\`\n\nIf the conflicts are complex, explain what files conflict and ask for guidance.`
-  console.info(`[poller] ${agent.id}: merge conflict detected on PR #${pr.number}`)
+  logger.info({ agentId: agent.id, prNumber: pr.number }, "[poller] merge conflict detected")
   await sendToAgent(agent.id, message, "Merge Conflict")
 }

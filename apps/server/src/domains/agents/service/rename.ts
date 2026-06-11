@@ -9,6 +9,7 @@ import { unwatchWorktree, watchWorktree } from "../../git/watcher.js"
 import { hasActivePty } from "../../ws/pty.js"
 import { agentsWs } from "../agents.ws.js"
 import type { AgentSummary } from "../../../types.js"
+import { logger } from "../../../logger.js"
 
 /**
  * Claude Code stores per-conversation history under
@@ -30,14 +31,14 @@ function moveClaudeSessionDir(oldCwd: string, newCwd: string): void {
   const newDir = path.join(projectsRoot, newKey)
   if (!existsSync(oldDir)) return
   if (existsSync(newDir)) {
-    console.warn(`[rename] claude session dir already exists at "${newDir}" — leaving "${oldDir}" in place`)
+    logger.warn(`[rename] claude session dir already exists at "${newDir}" — leaving "${oldDir}" in place`)
     return
   }
   try {
     renameSync(oldDir, newDir)
-    console.info(`[rename] claude session dir moved: "${oldKey}" → "${newKey}"`)
+    logger.info(`[rename] claude session dir moved: "${oldKey}" → "${newKey}"`)
   } catch (err) {
-    console.warn(`[rename] claude session dir move failed (will fall back to conversation context):`, err)
+    logger.warn({ err }, `[rename] claude session dir move failed (will fall back to conversation context)`)
   }
 }
 
@@ -127,7 +128,7 @@ export async function reconcileWorktreeLocation(
     moveClaudeSessionDir(oldPath, newPath)
     const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
     if (updated) agentsWs.agentUpdated(updated as unknown as AgentSummary)
-    console.info(`[reconcile] worktree moved: "${agent.location}" → "${slug}"`)
+    logger.info(`[reconcile] worktree moved: "${agent.location}" → "${slug}"`)
     return { ok: true, branch, location: slug, worktreePath: newPath }
   } catch (err) {
     if (existsSync(newPath) && !existsSync(oldPath)) {
@@ -243,11 +244,11 @@ async function maybeRelocateWorktree(args: RelocateArgs): Promise<{ location: st
     ))
     .all()
   if (sharing.length > 0) {
-    console.info(`[rename] worktree move skipped: ${sharing.length} other agent(s) share this worktree`)
+    logger.info(`[rename] worktree move skipped: ${sharing.length} other agent(s) share this worktree`)
     return { location: oldLocation, worktreePath }
   }
   if (hasActivePty(agentId)) {
-    console.info(`[rename] worktree move skipped: PTY active for agent ${agentId}`)
+    logger.info(`[rename] worktree move skipped: PTY active for agent ${agentId}`)
     return { location: oldLocation, worktreePath }
   }
   const slug = slugForLocation(newBranch, prefix)
@@ -260,7 +261,7 @@ async function maybeRelocateWorktree(args: RelocateArgs): Promise<{ location: st
     .get()
   const takenOnDisk = existsSync(newPath)
   if (takenInDb || takenOnDisk) {
-    console.info(`[rename] worktree move skipped: target "${slug}" already in use`)
+    logger.info(`[rename] worktree move skipped: target "${slug}" already in use`)
     return { location: oldLocation, worktreePath }
   }
   return performWorktreeMove(args, newPath, slug)
@@ -283,10 +284,10 @@ async function performWorktreeMove(
       .run()
     watchWorktree(agentId, newPath, branchFrom)
     moveClaudeSessionDir(worktreePath, newPath)
-    console.info(`[rename] worktree moved: "${oldLocation}" → "${slug}"`)
+    logger.info(`[rename] worktree moved: "${oldLocation}" → "${slug}"`)
     return { location: slug, worktreePath: newPath }
   } catch (err) {
-    console.error(`[rename] worktree move failed:`, err)
+    logger.error({ err }, `[rename] worktree move failed`)
     return reconcileFailedMove(agentId, slug, worktreePath, newPath, branchFrom)
   }
 }
@@ -308,13 +309,13 @@ function reconcileFailedMove(
       .run()
     watchWorktree(agentId, newPath, branchFrom)
     moveClaudeSessionDir(worktreePath, newPath)
-    console.info(`[rename] worktree move reconciled at "${newPath}"`)
+    logger.info(`[rename] worktree move reconciled at "${newPath}"`)
     return { location: slug, worktreePath: newPath }
   }
   if (existsSync(worktreePath)) {
     watchWorktree(agentId, worktreePath, branchFrom)
   } else {
-    console.error(`[rename] agent ${agentId} left with no usable path`)
+    logger.error(`[rename] agent ${agentId} left with no usable path`)
   }
   // Fall back to the original location — caller already read it from the DB row.
   const current = db.select({ location: agentsTable.location }).from(agentsTable)

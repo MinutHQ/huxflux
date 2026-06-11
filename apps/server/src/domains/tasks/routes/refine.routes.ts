@@ -14,6 +14,7 @@ import {
   taskStatusHandler,
   taskDependencyHandler,
 } from "../runnerTags.js"
+import { logger } from "../../../logger.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -51,7 +52,7 @@ export const refineRoutes: FastifyPluginAsyncZod = async (app) => {
       ],
     }).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[task:refine] runAgent failed:`, message)
+      logger.error({ err: message }, `[task:refine] runAgent failed`)
     })
 
     return { agentId, tasks: await loadAllTasks() }

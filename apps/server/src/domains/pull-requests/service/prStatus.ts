@@ -1,11 +1,11 @@
-import type { PRStatus } from "../../../types.js"
+import type { AgentStatus, PRStatus } from "../../../types.js"
 import { getOctokit, parseRepo } from "./octokit.js"
 
 /** Derive agent status from PR state. Shared between poller and PR routes. */
-export function prStatusToAgentStatus(pr: PRStatus): string {
+export function prStatusToAgentStatus(pr: PRStatus): AgentStatus {
   if (pr.merged) return "done"
   if (pr.state === "closed") return "cancelled"
-  if (pr.draft) return "in-progress"
+  if (pr.draft) return "draft-pr"
   return "in-review"
 }
 

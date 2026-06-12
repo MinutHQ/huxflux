@@ -58,6 +58,7 @@ export function ThreadAgentsBar({ agentId }: { agentId: string }) {
               <div className={cn(
                 "w-2 h-2 rounded-full shrink-0",
                 child.status === "in-progress" ? "bg-amber-400" :
+                child.status === "draft-pr" ? "bg-violet-400" :
                 child.status === "in-review" ? "bg-blue-400" : "bg-muted-foreground/40"
               )} />
             )}

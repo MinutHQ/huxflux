@@ -117,12 +117,14 @@ function sendDelegateReply(args: FinalizeArgs): void {
 
 async function restoreStatusAndStreaming(args: FinalizeArgs): Promise<void> {
   // Restore the pre-run status and clear streaming regardless of what
-  // happened above. B2: don't downgrade "in-review".
+  // happened above. B2: don't downgrade "in-review" or "draft-pr" — the PR
+  // still exists, so the status should keep reflecting it.
   try {
     const doneAt = new Date().toISOString()
+    const keepStatus = args.preRunStatus === "in-review" || args.preRunStatus === "draft-pr"
     await db.update(agentsTable)
       .set({
-        status: args.preRunStatus === "in-review" ? "in-review" : "in-progress",
+        status: keepStatus ? args.preRunStatus : "in-progress",
         streaming: 0,
         unread: sql`unread + 1`,
         updatedAt: doneAt,

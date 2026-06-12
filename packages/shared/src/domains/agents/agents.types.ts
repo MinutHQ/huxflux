@@ -19,6 +19,7 @@ import { prStatusSchema, type PRStatus } from "../pull-requests/pull-requests.ty
 export const agentStatusSchema = z.enum([
   "done",
   "in-review",
+  "draft-pr",
   "in-progress",
   "backlog",
   "cancelled",
@@ -422,12 +423,13 @@ function sc(key: keyof typeof statusColors, label: string) {
 export const statusConfig: Record<AgentStatus, { label: string; color: string; dotColor: string; hex: string }> = {
   done:          sc("done",         "Done"),
   "in-review":   sc("in-review",    "In review"),
+  "draft-pr":    sc("draft-pr",     "Draft PR"),
   "in-progress": sc("in-progress",  "In progress"),
   backlog:       sc("backlog",      "Backlog"),
   cancelled:     sc("cancelled",    "Canceled"),
 }
 
-export const statusOrder: AgentStatus[] = ["in-progress", "in-review", "backlog", "done", "cancelled"]
+export const statusOrder: AgentStatus[] = ["in-progress", "draft-pr", "in-review", "backlog", "done", "cancelled"]
 
 // ── WebSocket events emitted by the agents domain ────────────────────────────
 // Composed into the top-level `ServerEvent` union in `../../ws.ts`.

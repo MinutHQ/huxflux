@@ -4,7 +4,7 @@ import { c, statusColors } from "@/theme"
 import { useStagger } from "../../hooks/dashboardAnimations"
 import { AnimatedBar } from "./AnimatedBar"
 
-const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
+const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "draft-pr", "in-progress", "backlog", "cancelled"]
 
 export function StatusPanel({ agents }: { agents: AgentSummary[] }) {
   const total = agents.length || 1

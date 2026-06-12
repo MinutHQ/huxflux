@@ -61,7 +61,7 @@ export async function bootstrapTurn(
   // race where the client could see streaming=0 from the first broadcast.
   const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
   const preRunStatus = currentAgent?.status ?? "in-progress"
-  const newStatus = preRunStatus === "in-review" ? "in-review" : "in-progress"
+  const newStatus = preRunStatus === "in-review" || preRunStatus === "draft-pr" ? preRunStatus : "in-progress"
   await db.update(agentsTable)
     .set({ status: newStatus, streaming: 1, updatedAt: now })
     .where(eq(agentsTable.id, agentId))

@@ -109,6 +109,15 @@ describe("makeFinalize", () => {
     expect(row.streaming).toBe(0)
   })
 
+  it("preserves draft-pr status across finalization", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "draft-pr" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const finalize = makeFinalize(buildArgs(ctx, {}, "draft-pr"))
+    await finalize()
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("draft-pr")
+    expect(row.streaming).toBe(0)
+  })
+
   it("is idempotent: calling twice does not double-bump unread", async () => {
     const finalize = makeFinalize(buildArgs(ctx))
     await finalize()

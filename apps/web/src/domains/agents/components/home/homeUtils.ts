@@ -4,7 +4,7 @@
 
 import type { AgentStatus } from "@huxflux/shared"
 
-export const homeVisibleStatuses: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
+export const homeVisibleStatuses: AgentStatus[] = ["done", "in-review", "draft-pr", "in-progress", "backlog", "cancelled"]
 
 /** Compact integer formatting (1.2k, 3.4M) for big stats. */
 export function formatNum(n: number): string {

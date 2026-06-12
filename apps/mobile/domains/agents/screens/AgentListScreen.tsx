@@ -15,7 +15,7 @@ import { UnauthorizedBanner, DisconnectedBanner, GroupByToggle } from "../compon
 import { useAgentListPrefs } from "../hooks/useAgentListPrefs"
 
 // Match the desktop sidebar order
-const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "in-progress", "backlog", "cancelled"]
+const SIDEBAR_STATUS_ORDER: AgentStatus[] = ["done", "in-review", "draft-pr", "in-progress", "backlog", "cancelled"]
 
 type ListItem =
   | { kind: "status-header"; status: AgentStatus; count: number }

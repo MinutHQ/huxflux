@@ -112,4 +112,12 @@ describe("bootstrapTurn", () => {
     const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
     expect(row.status).toBe("in-review")
   })
+
+  it("does not downgrade a draft-pr agent during bootstrap", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "draft-pr" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const result = await bootstrapTurn("hi", buildOpts(ctx), fakeProvider())
+    expect(result.preRunStatus).toBe("draft-pr")
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("draft-pr")
+  })
 })

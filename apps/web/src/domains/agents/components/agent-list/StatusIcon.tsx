@@ -27,6 +27,14 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
           <path d={`M ${cx} ${cy} L ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 1 1 ${cx - (r - 0.6)} ${cy} Z`} fill={color} />
         </svg>
       )
+    case "draft-pr":
+      // 3/4 pie inside a dashed ring — a PR exists but is still a draft
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.3" strokeDasharray="1.8 1.6" />
+          <path d={`M ${cx} ${cy} L ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 1 1 ${cx - (r - 0.6)} ${cy} Z`} fill={color} />
+        </svg>
+      )
     case "in-progress":
       // half pie inside a ring
       return (

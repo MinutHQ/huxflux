@@ -122,6 +122,7 @@ export function AgentPopover({ agent, y, port, containerRef }: AgentPopoverProps
       <div className={cn(
         "w-full flex items-center justify-center px-3 py-1.5 rounded-lg text-[12px] font-medium border",
         agent.status === "in-progress" && "bg-amber-500/10 border-amber-500/25 text-amber-400",
+        agent.status === "draft-pr"    && "bg-violet-500/10 border-violet-500/25 text-violet-400",
         agent.status === "in-review"   && "bg-blue-500/10 border-blue-500/25 text-blue-400",
         agent.status === "done"        && "bg-emerald-500/10 border-emerald-500/25 text-emerald-400",
         // Swapped zinc → muted/border/muted-foreground for the warm-taupe palette.

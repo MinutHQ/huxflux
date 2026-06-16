@@ -350,14 +350,10 @@ async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
     return { pid: existing, port, cfg }
   }
 
-  // If the service was unloaded (by `huxflux stop`), re-load it so it starts again
+  // If the service was unloaded (by `huxflux stop`), regenerate the launcher
+  // script + plist so they reflect the current CLI version, then re-load.
   if (isServiceInstalled()) {
-    const plat = os.platform()
-    if (plat === "darwin") {
-      spawnSync("launchctl", ["load", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
-    } else if (plat === "linux") {
-      spawnSync("systemctl", ["--user", "start", "huxflux"], { stdio: "pipe" })
-    }
+    installSystemService()
     const cfg = loadConfig()
     const serviceDeadline = Date.now() + 8000
     while (!getRunningPid() && Date.now() < serviceDeadline) {
@@ -1314,11 +1310,11 @@ Usage:
 function installSystemService() {
   const platform = os.platform()
   const cfg = loadConfig()
-  const cliEntry = fileURLToPath(import.meta.url)
 
-  // Find the huxflux binary path (works across nvm switches)
-  const huxfluxBin = spawnSync("which", ["huxflux"], { encoding: "utf-8", stdio: "pipe" }).stdout.trim()
-    || path.join(path.dirname(process.execPath), "huxflux")
+  // Derive the huxflux binary from the running Node's bin dir. Using `which`
+  // would resolve to whatever nvm version is active in the caller's shell,
+  // which may differ from the Node that actually has huxflux installed.
+  const huxfluxBin = path.join(path.dirname(process.execPath), "huxflux")
 
   // Build a PATH that includes nvm shims, homebrew, and standard dirs.
   // Capture the user's current PATH at install time so the service inherits
@@ -1354,10 +1350,6 @@ function installSystemService() {
       `# grep filters out shell banner/MOTD noise; only keep colon-separated path lines.`,
       `LIVE_PATH="$(/bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
       `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
-      `export NVM_DIR="${nvmDir}"`,
-      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
-      `NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"`,
-      `[ -d "$NPM_BIN" ] && export PATH="$NPM_BIN:$PATH"`,
       `export NODE_ENV=production`,
       `export AUTH_TOKEN="${cfg.token}"`,
       `export PORT="${cfg.port}"`,
@@ -1408,10 +1400,6 @@ function installSystemService() {
       `#!/bin/bash`,
       `LIVE_PATH="$(/bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
       `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
-      `export NVM_DIR="${nvmDir}"`,
-      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
-      `NPM_BIN="$(npm config get prefix 2>/dev/null)/bin"`,
-      `[ -d "$NPM_BIN" ] && export PATH="$NPM_BIN:$PATH"`,
       `export NODE_ENV=production`,
       `export AUTH_TOKEN="${cfg.token}"`,
       `export PORT="${cfg.port}"`,

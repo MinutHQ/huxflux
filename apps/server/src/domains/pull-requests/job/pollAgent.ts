@@ -16,6 +16,7 @@ import { logger } from "../../../logger.js"
 import type { PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
 import { sendToAgent } from "./sendToAgent.js"
+import { markRateLimited, isRateLimited } from "./rateLimitState.js"
 
 type AgentRow = typeof agents.$inferSelect
 
@@ -83,9 +84,6 @@ async function runMonitors(agent: AgentRow, repoUrl: string, pr: PRStatus): Prom
   const prCommentsEnabled = agent.prCommentMonitoring != null ? agent.prCommentMonitoring === 1 : (s.prCommentMonitoring ?? true)
   const ciEnabled = agent.ciMonitoring != null ? agent.ciMonitoring === 1 : (s.ciMonitoring ?? true)
 
-  // The comment and CI monitors both read the same PR details. Fetch once and
-  // share it. Skip the round-trip entirely while the agent is mid-turn (both
-  // monitors no-op in that case anyway).
   if ((prCommentsEnabled || ciEnabled) && !isAgentRunning(agent.id)) {
     try {
       const details = await getPRDetails(repoUrl, pr.number)
@@ -107,14 +105,21 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
   const repoUrl = await getRemoteUrl(repo.path, repo.remote)
   if (!repoUrl) return
 
+  if (isRateLimited()) return
+
   try {
     const pr = agent.prNumber ? await getPRStatus(repoUrl, agent.prNumber) : await findPRForBranch(repoUrl, agent.branch)
     if (!pr) return
     await applyPRStatusUpdate(agent, pr)
     await runMonitors(agent, repoUrl, pr)
   } catch (err) {
-    if (process.env.NODE_ENV !== "production") {
-      logger.warn({ err, agentId: agent.id }, "[poller] poll failed")
+    const status = (err as { status?: number }).status
+    if (status === 403 || status === 429) {
+      const retryAfter = (err as { response?: { headers?: Record<string, string> } }).response?.headers?.["retry-after"]
+      markRateLimited(retryAfter ? parseInt(retryAfter, 10) : 60)
+      logger.warn({ status }, "[poller] GitHub rate-limited, pausing all polling")
+      return
     }
+    logger.warn({ err, agentId: agent.id }, "[poller] poll failed")
   }
 }

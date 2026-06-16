@@ -238,11 +238,6 @@ jobs:
         id: version
         run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Set beta updater endpoint
-        run: |
-          cd apps/desktop/src-tauri
-          sed -i.bak 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json && rm tauri.conf.json.bak
-
       - name: Build macOS ARM
         run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
         env:
@@ -339,11 +334,6 @@ jobs:
       - name: Get version
         id: version
         run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Set beta updater endpoint
-        run: |
-          cd apps/desktop/src-tauri
-          sed -i.bak 's|/latest/download/latest.json|/latest/download/latest-beta.json|' tauri.conf.json && rm tauri.conf.json.bak
 
       - name: Build Linux
         run: cd apps/desktop && pnpm tauri build

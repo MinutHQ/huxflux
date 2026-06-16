@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react"
-import { Button } from "@huxflux/ui"
-import * as TablerIcons from "@tabler/icons-react"
+import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@huxflux/ui"
+import { IconRefresh, IconDownload } from "@tabler/icons-react"
+import { api } from "@huxflux/shared"
 import { isTauri } from "@/lib/platform"
+
+const PENDING_SERVER_UPDATE_KEY = "huxflux:pending-server-update"
 
 export function UpdatesSettings() {
   const [checking, setChecking] = useState(false)
@@ -10,6 +13,17 @@ export function UpdatesSettings() {
   const [installing, setInstalling] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [channel, setChannel] = useState<string>("stable")
+  const [autoUpdate, setAutoUpdate] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    api.settings.current().then((s) => {
+      setChannel(s.updateChannel ?? "stable")
+      setAutoUpdate(s.autoUpdateServer ?? true)
+      setLoaded(true)
+    }).catch(() => { setLoaded(true) })
+  }, [])
 
   useEffect(() => {
     if (!isTauri) return
@@ -18,16 +32,27 @@ export function UpdatesSettings() {
     })
   }, [])
 
+  function handleChannelChange(value: string) {
+    setChannel(value)
+    setResult(null)
+    api.settings.update({ updateChannel: value as "stable" | "beta" })
+  }
+
+  function handleAutoUpdateChange(value: boolean) {
+    setAutoUpdate(value)
+    api.settings.update({ autoUpdateServer: value })
+  }
+
   async function checkNow() {
     if (!isTauri) return
     setChecking(true)
     setResult(null)
     try {
-      const { check } = await import("@tauri-apps/plugin-updater")
-      const update = await check()
-      if (update?.available) {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const info = await invoke<{ available: boolean; version: string }>("check_update")
+      if (info.available) {
         setResult("available")
-        setUpdateInfo({ version: update.version })
+        setUpdateInfo({ version: info.version })
       } else {
         setResult("none")
       }
@@ -44,23 +69,14 @@ export function UpdatesSettings() {
     setInstalling(true)
     setProgress(0)
     try {
-      const { check } = await import("@tauri-apps/plugin-updater")
-      const update = await check()
-      if (!update?.available) return
-      let downloaded = 0
-      let total = 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await update.downloadAndInstall((event: any) => {
-        if (event.event === "Started") total = event.data.contentLength ?? 0
-        else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength
-          if (total > 0) setProgress(Math.round((downloaded / total) * 100))
-        }
-        else if (event.event === "Finished") setProgress(100)
-      })
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("download_and_install_update")
+      setProgress(100)
+      localStorage.setItem(PENDING_SERVER_UPDATE_KEY, "1")
       const { relaunch } = await import("@tauri-apps/plugin-process")
       await relaunch()
     } catch {
+      localStorage.removeItem(PENDING_SERVER_UPDATE_KEY)
       setInstalling(false)
       setProgress(null)
     }
@@ -68,22 +84,30 @@ export function UpdatesSettings() {
 
   if (!isTauri) {
     return (
-      <div className="space-y-4">
-        <p className="text-[13px] text-muted-foreground">Auto-updates are only available in the desktop app.</p>
+      <div className="space-y-6">
+        <ChannelPicker channel={channel} loaded={loaded} onChange={handleChannelChange} />
+        <AutoUpdateToggle autoUpdate={autoUpdate} loaded={loaded} onChange={handleAutoUpdateChange} />
+        <p className="text-[13px] text-muted-foreground">
+          Desktop update checks are only available in the desktop app. The server updates via <code className="text-[12px] bg-secondary px-1 py-0.5 rounded">huxflux config channel</code>.
+        </p>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
+      <ChannelPicker channel={channel} loaded={loaded} onChange={handleChannelChange} />
+
       <div className="space-y-1">
         <div className="text-[13px] text-muted-foreground">Current version</div>
         <div className="text-[14px] font-mono text-foreground">{appVersion ?? "…"}</div>
       </div>
 
+      <AutoUpdateToggle autoUpdate={autoUpdate} loaded={loaded} onChange={handleAutoUpdateChange} />
+
       <div className="space-y-3">
         <Button onClick={checkNow} disabled={checking || installing} variant="outline" size="sm" className="gap-2">
-          <TablerIcons.IconRefresh size={14} className={checking ? "animate-spin" : ""} />
+          <IconRefresh size={14} className={checking ? "animate-spin" : ""} />
           {checking ? "Checking…" : "Check for updates"}
         </Button>
 
@@ -107,7 +131,7 @@ export function UpdatesSettings() {
               </div>
             ) : (
               <Button onClick={installUpdate} size="sm" className="gap-2">
-                <TablerIcons.IconDownload size={14} />
+                <IconDownload size={14} />
                 Download &amp; install
               </Button>
             )}
@@ -116,8 +140,40 @@ export function UpdatesSettings() {
       </div>
 
       <p className="text-[11px] text-muted-foreground/50">
-        Updates are checked automatically every hour while the app is running.
+        The desktop checks for updates using the channel selected above. Changing the channel takes effect on the next update check.
       </p>
+    </div>
+  )
+}
+
+function ChannelPicker({ channel, loaded, onChange }: { channel: string; loaded: boolean; onChange: (v: string) => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="space-y-0.5">
+        <div className="text-[13px] text-foreground">Update channel</div>
+        <div className="text-[12px] text-muted-foreground">Stable receives tested releases. Beta gets new features early but may have bugs.</div>
+      </div>
+      <Select disabled={!loaded} value={channel} onValueChange={onChange}>
+        <SelectTrigger className="w-28">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="stable">Stable</SelectItem>
+          <SelectItem value="beta">Beta</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function AutoUpdateToggle({ autoUpdate, loaded, onChange }: { autoUpdate: boolean; loaded: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="space-y-0.5">
+        <div className="text-[13px] text-foreground">Auto-update server</div>
+        <div className="text-[12px] text-muted-foreground">Automatically update when a new version is available and no agents are running.</div>
+      </div>
+      <Switch disabled={!loaded} checked={autoUpdate} onCheckedChange={onChange} />
     </div>
   )
 }

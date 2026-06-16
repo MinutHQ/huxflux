@@ -14,9 +14,12 @@ curl -fsSL https://raw.githubusercontent.com/MinutHQ/huxflux/main/install.sh | b
 The installer will:
 1. Check that Node.js 22.6+ is installed
 2. Ask which release channel (stable or beta)
-3. Install the `huxflux` CLI via npm
-4. Fix your PATH if needed (asks permission)
-5. Launch the setup wizard
+3. Configure GitHub Packages authentication (prompts for a token if not already set)
+4. Install the `huxflux` CLI via npm
+5. Fix your PATH if needed (asks permission)
+6. Launch the setup wizard
+
+You'll need a GitHub personal access token with `read:packages` scope. [Create one here](https://github.com/settings/tokens/new?scopes=read:packages).
 
 To install the beta channel directly without the prompt:
 
@@ -79,6 +82,18 @@ If you prefer to install the server manually without the setup wizard:
 ### Requirements
 
 - **Node.js** 22.6 or later
+- **GitHub personal access token** with `read:packages` scope ([create one here](https://github.com/settings/tokens/new?scopes=read:packages))
+
+### Configure npm for GitHub Packages
+
+Huxflux is published to GitHub Packages, which requires authentication. Add your registry and token to `~/.npmrc`:
+
+```sh
+echo "@minuthq:registry=https://npm.pkg.github.com" >> ~/.npmrc
+echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
+```
+
+Replace `YOUR_GITHUB_TOKEN` with your personal access token. The one-line installer handles this automatically.
 
 <Steps>
 
@@ -87,7 +102,6 @@ If you prefer to install the server manually without the setup wizard:
 ### Install globally
 
 ```sh
-echo "@minuthq:registry=https://npm.pkg.github.com" >> ~/.npmrc
 npm install -g @minuthq/huxflux
 ```
 

@@ -185,10 +185,29 @@ if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
 fi
 
 # ── Configure npm registry ───────────────────────────────────────────────────
-# GitHub Packages requires the scope registry to be set
+# GitHub Packages requires the scope registry and an auth token
 NPMRC="$HOME/.npmrc"
 if ! grep -q "@minuthq:registry=https://npm.pkg.github.com" "$NPMRC" 2>/dev/null; then
   echo "@minuthq:registry=https://npm.pkg.github.com" >> "$NPMRC"
+fi
+
+if ! grep -q '//npm.pkg.github.com/:_authToken=.' "$NPMRC" 2>/dev/null; then
+  echo ""
+  warn "GitHub Packages requires a personal access token with ${BOLD}read:packages${RESET} scope."
+  echo -e "     Create one at: ${DIM}https://github.com/settings/tokens/new?scopes=read:packages${RESET}"
+  echo ""
+  if [ -t 0 ] || [ -e /dev/tty ]; then
+    printf "  Paste your GitHub token: "
+    read -rs GH_TOKEN </dev/tty
+    echo ""
+    if [ -z "$GH_TOKEN" ]; then
+      fail "No token provided. Add it manually to ~/.npmrc:\n\n     //npm.pkg.github.com/:_authToken=YOUR_TOKEN\n"
+    fi
+    printf '//npm.pkg.github.com/:_authToken=%s\n' "${GH_TOKEN}" >> "$NPMRC"
+    ok "Token saved to ~/.npmrc"
+  else
+    fail "No GitHub token configured and no TTY available for prompt.\n\n     Add it manually to ~/.npmrc:\n\n     //npm.pkg.github.com/:_authToken=YOUR_TOKEN\n"
+  fi
 fi
 
 # ── Install ──────────────────────────────────────────────────────────────────

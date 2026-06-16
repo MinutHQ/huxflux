@@ -5,25 +5,14 @@ import { getSettings } from "../settings/settings.service.js"
 import { logger } from "../../logger.js"
 import type { Job } from "../../jobTypes.js"
 import { pollAgent } from "./job/pollAgent.js"
+import { isRateLimited, rateLimitWaitSec } from "./job/rateLimitState.js"
 
-const POLL_STATUSES = ["in-progress", "in-review"]
+const POLL_STATUSES = ["in-progress", "in-review", "draft-pr"]
 const CONCURRENCY = 3
-
-let rateLimitedUntil = 0
-
-export function markRateLimited(retryAfterSec = 60): void {
-  const until = Date.now() + retryAfterSec * 1000
-  if (until > rateLimitedUntil) rateLimitedUntil = until
-}
-
-export function isRateLimited(): boolean {
-  return Date.now() < rateLimitedUntil
-}
 
 async function runCycle(): Promise<void> {
   if (isRateLimited()) {
-    const waitSec = Math.ceil((rateLimitedUntil - Date.now()) / 1000)
-    logger.info({ waitSec }, "[job] GitHub rate-limited, skipping cycle")
+    logger.info({ waitSec: rateLimitWaitSec() }, "[job] GitHub rate-limited, skipping cycle")
     return
   }
 

@@ -16,7 +16,7 @@ import { logger } from "../../../logger.js"
 import type { PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
 import { sendToAgent } from "./sendToAgent.js"
-import { markRateLimited, isRateLimited } from "../pull-requests.job.js"
+import { markRateLimited, isRateLimited } from "./rateLimitState.js"
 
 type AgentRow = typeof agents.$inferSelect
 

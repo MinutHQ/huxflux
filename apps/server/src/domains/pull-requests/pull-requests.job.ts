@@ -1,14 +1,46 @@
-import { and, inArray, isNull, isNotNull } from "drizzle-orm"
+import { and, eq, inArray, isNull, isNotNull } from "drizzle-orm"
 import { db } from "../../db/index.js"
 import { agents } from "../../db/schema.js"
 import { getSettings } from "../settings/settings.service.js"
 import { logger } from "../../logger.js"
+import { agentsWs } from "../agents/agents.ws.js"
+import { isAgentRunning } from "../agent-runner/agent-runner.service.js"
 import type { Job } from "../../jobTypes.js"
 import { pollAgent } from "./job/pollAgent.js"
 import { isRateLimited, rateLimitWaitSec } from "./job/rateLimitState.js"
 
 const POLL_STATUSES = ["in-progress", "in-review", "draft-pr"]
+const TERMINAL_STATUSES = ["done", "cancelled"]
 const CONCURRENCY = 3
+
+type AgentRow = typeof agents.$inferSelect
+
+function retireOrphanedThreadAgents(rows: AgentRow[]): AgentRow[] {
+  const threadAgents = rows.filter((a) => a.threadParentId)
+  if (threadAgents.length === 0) return rows
+
+  const parentIds = [...new Set(threadAgents.map((a) => a.threadParentId!))]
+  const parents: AgentRow[] = db.select().from(agents).where(inArray(agents.id, parentIds)).all()
+  const parentById = new Map<string, AgentRow>(parents.map((p) => [p.id, p]))
+
+  const now = new Date().toISOString()
+  const retired = new Set<string>()
+  for (const thread of threadAgents) {
+    const parent = parentById.get(thread.threadParentId!)
+    const parentGone = !parent || parent.deletedAt
+    const parentDone = parent && TERMINAL_STATUSES.includes(parent.status)
+    if ((parentGone || parentDone) && !thread.prNumber && !thread.streaming && !isAgentRunning(thread.id)) {
+      const status = parent?.status ?? "done"
+      db.update(agents).set({ status, updatedAt: now }).where(eq(agents.id, thread.id)).run()
+      const updated = db.select().from(agents).where(eq(agents.id, thread.id)).get()
+      if (updated) agentsWs.agentUpdated(updated as never)
+      retired.add(thread.id)
+      logger.info({ agentId: thread.id, reason: parentGone ? "orphaned" : "parent-done" }, "[job] retired thread agent")
+    }
+  }
+
+  return retired.size > 0 ? rows.filter((a) => !retired.has(a.id)) : rows
+}
 
 async function runCycle(): Promise<void> {
   if (isRateLimited()) {
@@ -17,7 +49,7 @@ async function runCycle(): Promise<void> {
   }
 
   const startedAt = Date.now()
-  const rows = db.select().from(agents)
+  let rows = db.select().from(agents)
     .where(and(
       inArray(agents.status, POLL_STATUSES),
       isNotNull(agents.repoId),
@@ -25,6 +57,9 @@ async function runCycle(): Promise<void> {
     ))
     .all()
 
+  if (rows.length === 0) return
+
+  rows = retireOrphanedThreadAgents(rows)
   if (rows.length === 0) return
 
   logger.info(

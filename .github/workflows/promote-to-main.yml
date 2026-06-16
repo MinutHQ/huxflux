@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/beta'
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     steps:
       - name: Checkout
@@ -23,28 +23,35 @@ jobs:
           VERSION=$(node -p "require('./apps/server/package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create PR
+      - name: Create sync branch and PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="promote/v${VERSION}"
 
-          # Check if an open beta→main PR already exists
-          EXISTING=$(gh pr list --head beta --base main --state open --json number -q '.[0].number')
+          # Check if an open promote PR already exists
+          EXISTING=$(gh pr list --base main --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("promote/")) | .number')
           if [ -n "$EXISTING" ]; then
             echo "PR #${EXISTING} already open — skipping creation"
             echo "https://github.com/${{ github.repository }}/pull/${EXISTING}"
             exit 0
           fi
 
+          # Create a branch that exactly mirrors beta's content
+          git checkout -b "$BRANCH" origin/beta
+          git push origin "$BRANCH"
+
           gh pr create \
-            --head beta \
+            --head "$BRANCH" \
             --base main \
             --title "chore: release v${VERSION}" \
-            --body "$(cat <<'EOF'
-          ## Summary
-          Promote beta to production. Merging triggers the production release workflow.
+            --body "$(cat <<EOF
+## Summary
+Promote beta to production. Merging triggers the production release workflow.
 
-          **Server version:** ${{ steps.version.outputs.version }}
-          EOF
+**Server version:** ${VERSION}
+
+This branch is an exact copy of \`beta\` at the time of promotion, so it will always merge cleanly into \`main\`.
+EOF
           )"

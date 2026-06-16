@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- cached one-shot: which claude runs once then caches
 import { execFileSync, spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { db } from "../../../db/index.js"

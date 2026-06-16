@@ -5,6 +5,7 @@ import { agentsWs } from "../../agents/agents.ws.js"
 import type { AgentSummary } from "../../../types.js"
 import { applyBranchRename, isPlaceholderName, reconcileWorktreeLocation } from "../../agents/rename.js"
 import { generateTitle, deriveTitle, titleToBranchSlug } from "../../agents/title.js"
+import { logger } from "../../../logger.js"
 
 /**
  * If the agent still carries the random-bee placeholder title/branch after a
@@ -66,14 +67,14 @@ export async function tryAutoRename(agentId: string, branchFrom: string): Promis
       .run()
     const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
     if (updated) agentsWs.agentUpdated(updated as unknown as AgentSummary)
-    console.info(`[auto-rename] title: "${agent.title}" → "${synthesizedTitle}"`)
+    logger.info(`[auto-rename] title: "${agent.title}" → "${synthesizedTitle}"`)
   }
 
   if (branchNeedsFix) {
     const slug = titleToBranchSlug(synthesizedTitle)
     if (slug) {
       const result = await applyBranchRename(agentId, slug, { branchFrom })
-      if (!result.ok) console.error(`[auto-rename] branch rename failed:`, result.reason)
+      if (!result.ok) logger.error({ err: result.reason }, `[auto-rename] branch rename failed`)
     }
   }
 }

@@ -109,15 +109,12 @@ jobs:
             cd apps/server
             npm version "$VERSION" --no-git-tag-version
             cd ../..
-
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add apps/server/package.json
-            git commit -m "chore: release server $VERSION"
-            git tag -f "v${VERSION}"
-            git push
-            git push origin "v${VERSION}" --force
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "v${VERSION}"
+          git push origin "v${VERSION}" --force
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -348,9 +345,12 @@ jobs:
             BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
             PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-            ARM_SIG=$(cat artifacts/macos-artifacts/*.aarch64.app.tar.gz.sig 2>/dev/null || echo "")
-            X64_SIG=$(cat artifacts/macos-artifacts/*.x64.app.tar.gz.sig 2>/dev/null || echo "")
-            LINUX_SIG=$(cat artifacts/linux-artifacts/*.AppImage.tar.gz.sig 2>/dev/null || echo "")
+            ARM_SIG_FILE=$(find artifacts/macos-artifacts -name "*aarch64.app.tar.gz.sig" 2>/dev/null | head -1)
+            X64_SIG_FILE=$(find artifacts/macos-artifacts -name "*x64.app.tar.gz.sig" 2>/dev/null | head -1)
+            LINUX_SIG_FILE=$(find artifacts/linux-artifacts -name "*AppImage.tar.gz.sig" 2>/dev/null | head -1)
+            ARM_SIG=$([ -f "$ARM_SIG_FILE" ] && cat "$ARM_SIG_FILE" | tr -d '\n' || echo "")
+            X64_SIG=$([ -f "$X64_SIG_FILE" ] && cat "$X64_SIG_FILE" | tr -d '\n' || echo "")
+            LINUX_SIG=$([ -f "$LINUX_SIG_FILE" ] && cat "$LINUX_SIG_FILE" | tr -d '\n' || echo "")
 
             printf '{"version":"%s","notes":"","pub_date":"%s","platforms":{"darwin-aarch64":{"signature":"%s","url":"%s/Huxflux_%s_aarch64.app.tar.gz"},"darwin-x86_64":{"signature":"%s","url":"%s/Huxflux_%s_x64.app.tar.gz"},"linux-x86_64":{"signature":"%s","url":"%s/Huxflux_%s_x86_64.AppImage.tar.gz"}}}\n' \
               "$VERSION" "$PUB_DATE" \

@@ -7,6 +7,7 @@
 // the only place that understands the wire format.
 
 import type { ParsedTag, TagHandler } from "../agent-runner.types.js"
+import { logger } from "../../../logger.js"
 
 // Matches a paired tag with a body:
 //   <huxflux:foo.bar attr1="v1" attr2="v2">body</huxflux:foo.bar>
@@ -82,13 +83,13 @@ export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]):
     if (!handler) continue
     const result = handler.args.safeParse(tag.attrs)
     if (!result.success) {
-      console.warn(`[tags] dropped <huxflux:${tag.id}>: invalid attrs ${result.error.message}`)
+      logger.warn(`[tags] dropped <huxflux:${tag.id}>: invalid attrs ${result.error.message}`)
       continue
     }
     try {
       await handler.onTag({ args: result.data, body: tag.body })
     } catch (err) {
-      console.error(`[tags] handler for <huxflux:${tag.id}> threw:`, err)
+      logger.error({ err }, `[tags] handler for <huxflux:${tag.id}> threw`)
     }
   }
 }

@@ -10,6 +10,7 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
   const icon: keyof typeof Ionicons.glyphMap =
       status === "done"        ? "checkmark-circle"
     : status === "in-review"   ? "git-pull-request"
+    : status === "draft-pr"    ? "git-pull-request-outline"
     : status === "in-progress" ? "time"
     : status === "backlog"     ? "ellipse-outline"
     :                            "close-circle"

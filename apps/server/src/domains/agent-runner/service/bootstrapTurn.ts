@@ -11,6 +11,7 @@ import type { AgentSummary } from "../../../types.js"
 import type { RunnerOptions } from "../../agents/agents.types.js"
 import { isPlaceholderName } from "../../agents/rename.js"
 import { tryAutoRename } from "./autoRename.js"
+import { logger } from "../../../logger.js"
 
 export interface BootstrapResult {
   messageId: string
@@ -60,7 +61,7 @@ export async function bootstrapTurn(
   // race where the client could see streaming=0 from the first broadcast.
   const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
   const preRunStatus = currentAgent?.status ?? "in-progress"
-  const newStatus = preRunStatus === "in-review" ? "in-review" : "in-progress"
+  const newStatus = preRunStatus === "in-review" || preRunStatus === "draft-pr" ? preRunStatus : "in-progress"
   await db.update(agentsTable)
     .set({ status: newStatus, streaming: 1, updatedAt: now })
     .where(eq(agentsTable.id, agentId))
@@ -183,7 +184,7 @@ async function resolveCwdAndSession(args: ResolveCwdArgs): Promise<{
     try {
       await fs.access(sessionFile)
     } catch {
-      console.warn(`[runner] session file missing for ${agentId} at ${sessionFile} — falling back to conversation context`)
+      logger.warn(`[runner] session file missing for ${agentId} at ${sessionFile} — falling back to conversation context`)
       existingSessionId = null
       db.update(agentsTable).set({ sessionId: null }).where(eq(agentsTable.id, agentId)).run()
     }
@@ -225,7 +226,7 @@ async function preSpawnAutoRename(
       return refreshed.noWorktree ? repoRow.path : path.join(repoRow.workspacesPath, refreshed.location)
     }
   } catch (err) {
-    console.error(`[pre-rename] failed for ${agentId}:`, err)
+    logger.error({ err }, `[pre-rename] failed for ${agentId}`)
   }
   return worktreePath
 }

@@ -95,6 +95,11 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
   return {
     ...process.env,
     NODE_ENV: "production",
+    // libuv's threadpool (default 4) backs async DNS, fs and crypto. The poller
+    // fans out many GitHub calls while git/fs work runs concurrently; with only
+    // 4 threads, getaddrinfo for api.github.com queues behind that work and blows
+    // past undici's 10s connect timeout ("Connect Timeout Error"). Give it room.
+    UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "64",
     AUTH_TOKEN: cfg.token,
     PORT: String(cfg.port),
     HUXFLUX_DIR: DATA_DIR,
@@ -345,18 +350,12 @@ async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
     return { pid: existing, port, cfg }
   }
 
-  // If the service was unloaded (by `huxflux stop`), re-load it so it starts again
+  // If the service was unloaded (by `huxflux stop`), regenerate the launcher
+  // script + plist so they reflect the current CLI version, then re-load.
   if (isServiceInstalled()) {
-    // Service plist/unit file exists but process isn't running, re-activate it
-    const plat = os.platform()
-    if (plat === "darwin") {
-      spawnSync("launchctl", ["load", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
-    } else if (plat === "linux") {
-      spawnSync("systemctl", ["--user", "start", "huxflux"], { stdio: "pipe" })
-    }
-    // Wait for the service to write a PID file
+    installSystemService()
     const cfg = loadConfig()
-    const serviceDeadline = Date.now() + 5000
+    const serviceDeadline = Date.now() + 8000
     while (!getRunningPid() && Date.now() < serviceDeadline) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
     }
@@ -365,7 +364,13 @@ async function startServer(opts?: { silent?: boolean }): Promise<StartResult> {
       const port = getActualPort(cfg.port)
       return { pid, port, cfg }
     }
-    // Service didn't start in time, fall through to manual start
+    // Service is installed but failed to start. Do NOT fall through to manual
+    // spawn, which would create a duplicate process when launchd eventually
+    // brings the service up.
+    console.error("Service is installed but did not start in time.")
+    console.error("Check logs: huxflux logs")
+    console.error("Or disable the service and start manually: huxflux service disable && huxflux start")
+    process.exit(1)
   }
 
   const cfg = loadConfig()
@@ -429,12 +434,16 @@ async function cmdStart() {
 function runSupervisor() {
   // Write our PID so `huxflux stop` can find us (covers both cmdStart and service launch)
   ensureDataDir()
+  killStaleProcesses(process.pid)
   fs.writeFileSync(PID_FILE, String(process.pid))
 
   const MAX_RESTARTS = 5
   const RESTART_WINDOW_MS = 60_000
   const RESTART_DELAY_MS = 2_000
   const restartTimes: number[] = []
+  let activeChild: ReturnType<typeof spawn> | null = null
+  let binaryUpdated = false
+
   function logCrash(code: number | null, signal: string | null) {
     const timestamp = new Date().toISOString()
     const reason = signal ? `signal ${signal}` : `exit code ${code}`
@@ -442,20 +451,52 @@ function runSupervisor() {
     fs.appendFileSync(CRASH_LOG, line)
   }
 
+  // Watch for binary replacement (npm update with ignore-scripts).
+  // Poll SERVER_ENTRY mtime every 30s. If it changes, SIGTERM the child
+  // so it exits cleanly, then restart with the new code.
+  let lastBinaryMtime = 0
+  try { lastBinaryMtime = fs.statSync(SERVER_ENTRY).mtimeMs } catch { /* ignore */ }
+  const BINARY_POLL_MS = 30_000
+  const binaryWatcher = setInterval(() => {
+    try {
+      const mtime = fs.statSync(SERVER_ENTRY).mtimeMs
+      if (lastBinaryMtime > 0 && mtime !== lastBinaryMtime) {
+        console.info("[supervisor] Binary updated on disk, restarting...")
+        lastBinaryMtime = mtime
+        binaryUpdated = true
+        if (activeChild) activeChild.kill("SIGTERM")
+      }
+    } catch { /* file temporarily missing during npm install */ }
+  }, BINARY_POLL_MS)
+  binaryWatcher.unref()
+
   function startServer() {
     // Clean up stale port file so the new instance can bind
     if (fs.existsSync(PORT_FILE)) {
       try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
     }
+    // Re-read mtime so a restart doesn't immediately trigger another
+    try { lastBinaryMtime = fs.statSync(SERVER_ENTRY).mtimeMs } catch { /* ignore */ }
 
     const child = spawn(process.execPath, [SERVER_ENTRY], {
       stdio: "inherit",
       env: process.env,
     })
+    activeChild = child
 
     child.on("exit", (code, signal) => {
-      // Clean exit (SIGTERM from `huxflux stop`, or code 0) — don't restart
+      activeChild = null
+
+      // Clean exit (SIGTERM from `huxflux stop`, or code 0).
+      // If binaryUpdated is set, the SIGTERM came from our file watcher,
+      // not from `huxflux stop`, so restart instead of exiting.
       if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
+        if (binaryUpdated) {
+          binaryUpdated = false
+          console.info("[supervisor] Restarting with updated binary...")
+          setTimeout(startServer, 1000)
+          return
+        }
         process.exit(0)
       }
 
@@ -506,32 +547,49 @@ function isServiceInstalled(): boolean {
   return false
 }
 
-function cmdStop() {
-  const pid = getRunningPid()
-  if (!pid) {
-    // Check if a service is installed but PID file is missing
-    if (isServiceInstalled()) {
-      console.info("Stopping via system service...")
-      const plat = os.platform()
-      if (plat === "darwin") {
-        // Unload stops the process and prevents KeepAlive from restarting it
-        spawnSync("launchctl", ["unload", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
-      } else if (plat === "linux") {
-        spawnSync("systemctl", ["--user", "stop", "huxflux"], { stdio: "pipe" })
-      }
-      if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* best-effort cleanup */ }
-      if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* best-effort cleanup */ }
-      console.info("huxflux stopped")
-      console.info("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
-      return
+function unloadService() {
+  if (!isServiceInstalled()) return false
+  const plat = os.platform()
+  if (plat === "darwin") {
+    spawnSync("launchctl", ["unload", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
+  } else if (plat === "linux") {
+    spawnSync("systemctl", ["--user", "stop", "huxflux"], { stdio: "pipe" })
+  }
+  return true
+}
+
+function killStaleProcesses(excludePid?: number) {
+  try {
+    const result = spawnSync("pgrep", ["-f", "huxflux/dist/(index|cli)"], { encoding: "utf8", stdio: "pipe" })
+    if (result.status !== 0 || !result.stdout) return
+    for (const line of result.stdout.trim().split("\n")) {
+      const pid = parseInt(line, 10)
+      if (isNaN(pid) || pid === process.pid || pid === excludePid) continue
+      try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
     }
+  } catch { /* pgrep not available, skip */ }
+}
+
+function cmdStop() {
+  const serviceUnloaded = unloadService()
+  const pid = getRunningPid()
+  if (pid) {
+    try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
+  }
+  killStaleProcesses()
+  if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* ignore */ }
+  if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+  if (pid) {
+    console.info(`huxflux stopped  (PID ${pid})`)
+  } else if (serviceUnloaded) {
+    console.info("huxflux stopped")
+  } else {
     console.info("huxflux is not running")
     process.exit(0)
   }
-  try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
-  if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE)
-  if (fs.existsSync(PORT_FILE)) fs.unlinkSync(PORT_FILE)
-  console.info(`huxflux stopped  (PID ${pid})`)
+  if (serviceUnloaded) {
+    console.info("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
+  }
 }
 
 async function cmdStatus() {
@@ -761,7 +819,7 @@ function cmdUpdate() {
     console.error(`  # or: sudo npm install -g @minuthq/huxflux@${tag}\n`)
     process.exit(result.status ?? 1)
   }
-  console.info(`\nUpdate complete. Restart to apply: huxflux stop && huxflux start\n`)
+  console.info(`\nUpdate complete. Server will restart automatically.\n`)
 }
 
 function cmdRun() {
@@ -1252,23 +1310,30 @@ Usage:
 function installSystemService() {
   const platform = os.platform()
   const cfg = loadConfig()
-  const cliEntry = fileURLToPath(import.meta.url)
 
-  // Find the huxflux binary path (works across nvm switches)
-  const huxfluxBin = spawnSync("which", ["huxflux"], { encoding: "utf-8", stdio: "pipe" }).stdout.trim()
-    || path.join(path.dirname(process.execPath), "huxflux")
+  // Derive the huxflux binary from the running Node's bin dir. Using `which`
+  // would resolve to whatever nvm version is active in the caller's shell,
+  // which may differ from the Node that actually has huxflux installed.
+  const huxfluxBin = path.join(path.dirname(process.execPath), "huxflux")
 
-  // Build a PATH that includes nvm shims, homebrew, and standard dirs
+  // Build a PATH that includes nvm shims, homebrew, and standard dirs.
+  // Capture the user's current PATH at install time so the service inherits
+  // all tool locations (homebrew, fnm, mise, custom prefixes, etc.).
   const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), ".nvm")
   const currentNodeBin = path.dirname(process.execPath)
-  const servicePath = [
+  const knownPaths = [
     currentNodeBin,
     `${nvmDir}/current/bin`,
+    `${os.homedir()}/.volta/bin`,
     `${os.homedir()}/.local/bin`,
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
     "/usr/local/bin",
     "/usr/bin",
     "/bin",
-  ].join(":")
+  ]
+  const currentPath = (process.env.PATH ?? "").split(":").filter(Boolean)
+  const servicePath = [...new Set([...knownPaths, ...currentPath])].join(":")
 
   if (platform === "darwin") {
     // macOS: LaunchAgent (runs as current user, starts on login)
@@ -1280,8 +1345,11 @@ function installSystemService() {
     const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
-      `export NVM_DIR="${nvmDir}"`,
-      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
+      `# Pick up the user's live PATH from their login shell so tools installed`,
+      `# after service setup (homebrew packages, npm globals) are found on restart.`,
+      `# grep filters out shell banner/MOTD noise; only keep colon-separated path lines.`,
+      `LIVE_PATH="$(/bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
+      `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
       `export NODE_ENV=production`,
       `export AUTH_TOKEN="${cfg.token}"`,
       `export PORT="${cfg.port}"`,
@@ -1326,12 +1394,12 @@ function installSystemService() {
     const serviceDir = path.join(os.homedir(), ".config", "systemd", "user")
     fs.mkdirSync(serviceDir, { recursive: true })
 
-    // Write launcher script that sources nvm
+    // Write launcher script that sources the user's live PATH + nvm
     const launcherPath = path.join(DATA_DIR, "huxflux-server.sh")
     const launcherContent = [
       `#!/bin/bash`,
-      `export NVM_DIR="${nvmDir}"`,
-      `[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"`,
+      `LIVE_PATH="$(/bin/bash -l -c 'printf "%s" "$PATH"' 2>/dev/null || /bin/zsh -l -c 'printf "%s" "$PATH"' 2>/dev/null)"`,
+      `[ -n "$LIVE_PATH" ] && export PATH="$LIVE_PATH:$PATH"`,
       `export NODE_ENV=production`,
       `export AUTH_TOKEN="${cfg.token}"`,
       `export PORT="${cfg.port}"`,
@@ -1383,6 +1451,91 @@ function removeSystemService() {
     const servicePath = path.join(os.homedir(), ".config", "systemd", "user", "huxflux.service")
     if (fs.existsSync(servicePath)) fs.unlinkSync(servicePath)
     spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "pipe" })
+  }
+}
+
+// ── Service management ───────────────────────────────────────────────────────
+
+function cmdService(sub?: string) {
+  if (sub === "enable") {
+    if (isServiceInstalled()) {
+      console.info("Auto-start is already enabled.")
+      return
+    }
+    const wasRunning = getRunningPid()
+    if (wasRunning) {
+      console.info("Stopping current server to switch to service mode...")
+      try { process.kill(wasRunning, "SIGTERM") } catch { /* gone */ }
+      killStaleProcesses()
+      if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* ignore */ }
+      if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)
+    }
+    installSystemService()
+    const deadline = Date.now() + 8000
+    while (!getRunningPid() && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    }
+    const pid = getRunningPid()
+    if (pid) {
+      console.info(`Auto-start enabled. Server running (PID ${pid}).`)
+    } else {
+      console.info("Auto-start enabled. Server is starting...")
+    }
+  } else if (sub === "disable") {
+    if (!isServiceInstalled()) {
+      console.info("Auto-start is not enabled.")
+      return
+    }
+    removeSystemService()
+    if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* ignore */ }
+    if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+    console.info("Auto-start disabled. Server stopped.")
+    console.info("Run 'huxflux start' to start manually.")
+  } else if (sub === "status") {
+    console.info(isServiceInstalled() ? "Auto-start: enabled" : "Auto-start: disabled")
+  } else {
+    console.info("Usage:")
+    console.info("  huxflux service enable   — start on login")
+    console.info("  huxflux service disable  — manual start only")
+    console.info("  huxflux service status   — check current mode")
+  }
+}
+
+// ── Post-install restart ────────────────────────────────────────────────────
+
+function cmdPostinstall() {
+  const pid = getRunningPid()
+  if (!pid) return
+  console.info(`Restarting server after update (PID ${pid})...`)
+  try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
+  killStaleProcesses()
+  if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* ignore */ }
+  if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500)
+  if (isServiceInstalled()) {
+    const plat = os.platform()
+    if (plat === "darwin") {
+      spawnSync("launchctl", ["unload", path.join(os.homedir(), "Library", "LaunchAgents", "com.huxflux.server.plist")], { stdio: "pipe" })
+      installSystemService()
+    } else if (plat === "linux") {
+      spawnSync("systemctl", ["--user", "restart", "huxflux"], { stdio: "pipe" })
+    }
+    console.info("Service restarted with new version.")
+  } else {
+    const cfg = loadConfig()
+    const logFd = fs.openSync(LOG_FILE, "a")
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "_supervisor"], {
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      env: serverEnv(cfg),
+    })
+    child.unref()
+    fs.closeSync(logFd)
+    if (child.pid) {
+      fs.writeFileSync(PID_FILE, String(child.pid))
+      console.info(`Server restarted (PID ${child.pid}).`)
+    }
   }
 }
 
@@ -1542,6 +1695,7 @@ Usage:
   huxflux logs      Tail the server log (Ctrl+C to exit)
   huxflux crashes   Tail the crash log
   huxflux run       Run in the foreground (process managers / debug)
+  huxflux service [enable|disable|status]   Manage auto-start on login
   huxflux sandbox [add|remove|enable|disable|setup]   Manage sandboxing
   huxflux security  Show security recommendations
   huxflux token          Print the auth token
@@ -1589,6 +1743,8 @@ switch (cmd) {
   case "data":      cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
   case "uninstall": cmdUninstall().catch(console.error); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break
+  case "service":  cmdService(cmdArgs[0]); break
+  case "_postinstall": cmdPostinstall(); break
   case "security": printDisclaimer(); break
   case "--version":
   case "-v":       console.info(VERSION); break

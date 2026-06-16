@@ -6,6 +6,7 @@ import { getTableColumns, getTableName } from "drizzle-orm"
 import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs"
 import { dirname } from "node:path"
 import { config } from "../config.js"
+import { logger } from "../logger.js"
 import * as schema from "./schema.js"
 
 mkdirSync(dirname(config.dbPath), { recursive: true })
@@ -101,6 +102,7 @@ const dialect = new SQLiteSyncDialect({})
 export function createDbFromRaw(rawDb: DatabaseSync): { db: any; sqlite: any; raw: DatabaseSync } {
   const sqlite = buildSqliteShim(rawDb)
   sqlite.pragma("journal_mode = WAL")
+  sqlite.pragma("busy_timeout = 5000")
   sqlite.pragma("foreign_keys = ON")
   const session = new BetterSQLiteSession(sqlite, dialect, schemaConfig, {})
   const drizzleDb = new BaseSQLiteDatabase("sync", dialect, session, schemaConfig) as any
@@ -535,9 +537,9 @@ export function runMigrations() {
 
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion)
   if (pending.length === 0) {
-    console.info(`[db] schema up to date (v${currentVersion})`)
+    logger.info(`[db] schema up to date (v${currentVersion})`)
   } else {
-    console.info(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
+    logger.info(`[db] running ${pending.length} migration(s) from v${currentVersion}...`)
     for (const migration of pending) {
       // Run DDL outside transactions — node:sqlite's shim silently swallows
       // ALTER TABLE and other DDL inside transaction wrappers.
@@ -547,12 +549,12 @@ export function runMigrations() {
         const msg = (err as Error).message ?? ""
         // Ignore "duplicate column" errors — column may have been added manually
         if (!msg.includes("duplicate column")) throw err
-        console.info(`[db] migration v${migration.version}: column already exists, skipping`)
+        logger.info(`[db] migration v${migration.version}: column already exists, skipping`)
       }
       _activeRaw.prepare("UPDATE schema_version SET version = ?").run(migration.version)
-      console.info(`[db] applied migration v${migration.version}`)
+      logger.info(`[db] applied migration v${migration.version}`)
     }
-    console.info(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
+    logger.info(`[db] migrations complete (now v${pending[pending.length - 1].version})`)
   }
 
   repairSchema()
@@ -581,7 +583,7 @@ function repairSchema() {
     for (const col of Object.values(columns)) {
       if (!existing.has(col.name)) {
         _activeSqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.getSQLType()}`)
-        console.info(`[db] repaired: added missing ${tableName}.${col.name}`)
+        logger.info(`[db] repaired: added missing ${tableName}.${col.name}`)
       }
     }
   }

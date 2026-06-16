@@ -1,0 +1,50 @@
+name: Promote Beta to Production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  promote:
+    name: Create beta → main PR
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/beta'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./apps/server/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Check if an open beta→main PR already exists
+          EXISTING=$(gh pr list --head beta --base main --state open --json number -q '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "PR #${EXISTING} already open — skipping creation"
+            echo "https://github.com/${{ github.repository }}/pull/${EXISTING}"
+            exit 0
+          fi
+
+          gh pr create \
+            --head beta \
+            --base main \
+            --title "chore: release v${VERSION}" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          Promote beta to production. Merging triggers the production release workflow.
+
+          **Server version:** ${{ steps.version.outputs.version }}
+          EOF
+          )"

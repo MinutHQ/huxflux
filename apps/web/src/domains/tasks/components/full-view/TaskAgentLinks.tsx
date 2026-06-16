@@ -13,9 +13,11 @@ function agentDotClass(status: TaskItem["agents"][number]["agentStatus"]) {
     ? "bg-emerald-500"
     : status === "in-review"
       ? "bg-blue-400"
-      : status === "in-progress"
-        ? "bg-amber-400"
-        : "bg-muted-foreground/40"
+      : status === "draft-pr"
+        ? "bg-violet-400"
+        : status === "in-progress"
+          ? "bg-amber-400"
+          : "bg-muted-foreground/40"
 }
 
 /** Clickable list of linked agents that navigates into the agent route. */

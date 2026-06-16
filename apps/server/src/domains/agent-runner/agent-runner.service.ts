@@ -12,6 +12,7 @@ import { bootstrapTurn, type BootstrapResult } from "./service/bootstrapTurn.js"
 import { buildSystemPrompt } from "./service/systemPrompt.js"
 import { spawnAndStream, makeScheduleFlush, buildSpawnEnv } from "./service/streamLoop.js"
 import { makeFinalize } from "./service/finalize.js"
+import { logger } from "../../logger.js"
 
 export {
   runningProcesses,
@@ -75,6 +76,8 @@ interface SpawnAndAwaitArgs {
 function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
   const { userContent, opts, provider, model, apiBase, bootstrap, state, startedAt } = args
   const { agentId } = opts
+  const repo = bootstrap.repoRow?.name ?? "unknown"
+  const branch = bootstrap.liveAgentRow?.branch ?? bootstrap.agentRow?.branch ?? "unknown"
   return new Promise((resolve, reject) => {
     const { bin, args: cliArgs, env: providerEnv } = resolveSpawnCommand({ userContent, opts, provider, model, bootstrap })
     const spawnEnv = buildSpawnEnv({
@@ -92,7 +95,7 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
 
     const proc = spawnAndStream({
       bin, args: cliArgs, cwd: bootstrap.cwd, env: spawnEnv,
-      provider, state, agentId, messageId: bootstrap.messageId, scheduleFlush, bufferRef,
+      provider, state, agentId, messageId: bootstrap.messageId, repo, branch, scheduleFlush, bufferRef,
     })
 
     const finalize = makeFinalize({
@@ -104,7 +107,10 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
     })
 
     proc.on("close", async (code) => {
-      console.info(`[runner] ${provider.id} exited code=${code} fullContent=${state.fullContent.length}bytes pendingText=${state.pendingText.length}bytes`)
+      logger.info(
+        { repo, branch, code, fullContentBytes: state.fullContent.length, pendingTextBytes: state.pendingText.length },
+        `[runner] ${provider.id} exited code=${code} fullContent=${state.fullContent.length}bytes pendingText=${state.pendingText.length}bytes`,
+      )
       await finalize()
       resolve()
     })

@@ -1,6 +1,7 @@
 import type { agents } from "../../agents/agents.db.js"
+import type { PRDetails } from "../../../types.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
-import { getPRDetails } from "../service/prDetails.js"
+import { logger } from "../../../logger.js"
 import { sendToAgent } from "./sendToAgent.js"
 
 // Per-agent state for the PR/CI/merge monitors. Keyed by agent id so multiple
@@ -22,7 +23,7 @@ interface NewComment {
 
 function collectNewComments(
   agent: AgentRow,
-  details: Awaited<ReturnType<typeof getPRDetails>>,
+  details: PRDetails,
 ): NewComment[] | "seeded" {
   let seen = lastSeenCommentIds.get(agent.id)
   if (!seen) {
@@ -64,23 +65,21 @@ function formatCommentsMessage(comments: NewComment[]): string {
   return `New PR review comment${comments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${comments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, then reply on GitHub using:\n  <huxflux:pr.reply commentId="COMMENT_ID">your reply</huxflux:pr.reply>`
 }
 
-export async function monitorPRComments(agent: AgentRow, repoUrl: string, prNumber: number): Promise<void> {
+export async function monitorPRComments(agent: AgentRow, details: PRDetails): Promise<void> {
   if (isAgentRunning(agent.id)) return
   try {
-    const details = await getPRDetails(repoUrl, prNumber)
     const result = collectNewComments(agent, details)
     if (result === "seeded" || result.length === 0) return
-    console.info(`[poller] ${agent.id}: sending ${result.length} new PR comment(s) to agent`)
+    logger.info({ agentId: agent.id, commentCount: result.length }, "[poller] sending new PR comment(s) to agent")
     await sendToAgent(agent.id, formatCommentsMessage(result), "PR Review")
   } catch (err) {
-    console.warn(`[poller] PR comment monitor failed for ${agent.id}: ${(err as Error).message}`)
+    logger.warn({ err, agentId: agent.id }, "[poller] PR comment monitor failed")
   }
 }
 
-export async function monitorCI(agent: AgentRow, repoUrl: string, prNumber: number): Promise<void> {
+export async function monitorCI(agent: AgentRow, details: PRDetails): Promise<void> {
   if (isAgentRunning(agent.id)) return
   try {
-    const details = await getPRDetails(repoUrl, prNumber)
     if (details.checks.length === 0) return
     const allCompleted = details.checks.every((c) => c.status === "completed")
     if (!allCompleted) return
@@ -97,10 +96,10 @@ export async function monitorCI(agent: AgentRow, repoUrl: string, prNumber: numb
 
     const failedNames = failed.map((c) => `- **${c.name}**${c.url ? ` ([view](${c.url}))` : ""}`).join("\n")
     const message = `CI checks failed on your PR:\n\n${failedNames}\n\nPlease investigate and fix the failing checks. If the failure is not related to your changes, explain why.`
-    console.info(`[poller] ${agent.id}: CI failure detected, notifying agent`)
+    logger.info({ agentId: agent.id, failedChecks: failed.map((c) => c.name) }, "[poller] CI failure detected, notifying agent")
     await sendToAgent(agent.id, message, "CI Monitor")
   } catch (err) {
-    console.warn(`[poller] CI monitor failed for ${agent.id}: ${(err as Error).message}`)
+    logger.warn({ err, agentId: agent.id }, "[poller] CI monitor failed")
   }
 }
 
@@ -116,6 +115,6 @@ export async function monitorMergeConflicts(
   if (!lastState) return
   if (state !== "dirty" || lastState === "dirty") return
   const message = `Your PR has merge conflicts. The base branch has changed since your last push.\n\nPlease resolve the conflicts:\n1. Rebase your branch onto the latest base branch: \`git fetch origin && git rebase origin/<base-branch>\`\n2. Fix any conflicts\n3. Force push: \`git push --force-with-lease\`\n\nIf the conflicts are complex, explain what files conflict and ask for guidance.`
-  console.info(`[poller] ${agent.id}: merge conflict detected on PR #${pr.number}`)
+  logger.info({ agentId: agent.id, prNumber: pr.number }, "[poller] merge conflict detected")
   await sendToAgent(agent.id, message, "Merge Conflict")
 }

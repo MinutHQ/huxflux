@@ -7,7 +7,7 @@ import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { StreamingDots } from "./StreamingDots"
 
-const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "in-review", "done", "backlog", "cancelled"]
+const STATUS_OPTIONS: AgentStatus[] = ["in-progress", "draft-pr", "in-review", "done", "backlog", "cancelled"]
 
 export function AgentRow({ agent, isStreaming, repoName }: {
   agent: AgentSummary

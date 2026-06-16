@@ -1,6 +1,6 @@
 // Mirrors apps/web/src/data/mock.ts — shared contract between server and web client
 
-export type AgentStatus = "done" | "in-review" | "in-progress" | "backlog" | "cancelled"
+export type AgentStatus = "done" | "in-review" | "draft-pr" | "in-progress" | "backlog" | "cancelled"
 
 export interface PRStatus {
   number: number

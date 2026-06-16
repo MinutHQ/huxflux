@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -7,6 +7,7 @@ import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
+import { logger } from "./logger.js"
 
 const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
@@ -41,21 +42,27 @@ function isNewer(a: string, b: string): boolean {
   return pa.pre > pb.pre
 }
 
-export async function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
-  try {
-    const tag = getNpmTag()
-    const result = spawnSync("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
-      encoding: "utf-8",
-      timeout: 15_000,
-      stdio: "pipe",
-      shell: true,
-    })
-    const version = result.stdout?.trim()
-    if (result.status === 0 && version) latestVersion = version
-  } catch {
-    // Offline or registry down, keep previous value
-  }
-  return getVersionInfo()
+export function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
+  return new Promise((resolve) => {
+    try {
+      const tag = getNpmTag()
+      const child = spawn("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: true,
+        timeout: 15_000,
+      })
+      let stdout = ""
+      child.stdout?.on("data", (d) => { stdout += d })
+      child.on("close", (code) => {
+        const version = stdout.trim()
+        if (code === 0 && version) latestVersion = version
+        resolve(getVersionInfo())
+      })
+      child.on("error", () => resolve(getVersionInfo()))
+    } catch {
+      resolve(getVersionInfo())
+    }
+  })
 }
 
 function isIdle(): boolean {
@@ -114,7 +121,7 @@ export function startUpdateChecker() {
   setTimeout(() => {
     checkForUpdate().then((info) => {
       if (info.updateAvailable) {
-        console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
+        logger.info(`[updater] Update available: ${info.current} → ${info.latest}`)
         maybeAutoUpdate()
       }
     })
@@ -123,7 +130,7 @@ export function startUpdateChecker() {
   checkInterval = setInterval(async () => {
     const info = await checkForUpdate()
     if (info.updateAvailable) {
-      console.info(`[updater] Update available: ${info.current} → ${info.latest}`)
+      logger.info(`[updater] Update available: ${info.current} → ${info.latest}`)
       maybeAutoUpdate()
     }
   }, CHECK_INTERVAL_MS)
@@ -133,13 +140,13 @@ async function maybeAutoUpdate() {
   const settings = getSettings()
   if (!settings.autoUpdateServer) return
   if (!isIdle()) {
-    console.info("[updater] Auto-update deferred: agents are active")
+    logger.info("[updater] Auto-update deferred: agents are active")
     return
   }
-  console.info("[updater] Auto-updating server...")
+  logger.info("[updater] Auto-updating server...")
   const result = await triggerServerUpdate()
   if (!result.success) {
-    console.error("[updater] Auto-update failed:", result.error)
+    logger.error({ err: result.error }, "[updater] Auto-update failed")
   }
 }
 

@@ -11,6 +11,7 @@ import { runningProcesses } from "./processRegistry.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { persistAssistantMessage } from "./persistMessage.js"
+import { logger } from "../../../logger.js"
 
 interface FinalizeArgs {
   state: StreamState
@@ -90,7 +91,7 @@ async function persistOrFallback(args: FinalizeArgs): Promise<void> {
       onAssistantMessage: args.opts.onAssistantMessage,
     })
   } catch (err) {
-    console.error(`[runner] persistAssistantMessage failed for ${args.agentId}:`, err)
+    logger.error({ err }, `[runner] persistAssistantMessage failed for ${args.agentId}`)
     // Still emit a done signal with whatever we have so the client unsticks.
     agentsWs.messageDone(args.agentId, args.messageId, {
       id: args.messageId,
@@ -111,17 +112,19 @@ function sendDelegateReply(args: FinalizeArgs): void {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
     body: JSON.stringify({ content: args.state.fullContent.trim(), sender: agentTitle }),
-  }).catch((err) => console.error(`[delegate] Failed to reply to ${args.opts.delegateFrom}:`, err))
+  }).catch((err) => logger.error({ err }, `[delegate] Failed to reply to ${args.opts.delegateFrom}`))
 }
 
 async function restoreStatusAndStreaming(args: FinalizeArgs): Promise<void> {
   // Restore the pre-run status and clear streaming regardless of what
-  // happened above. B2: don't downgrade "in-review".
+  // happened above. B2: don't downgrade "in-review" or "draft-pr" — the PR
+  // still exists, so the status should keep reflecting it.
   try {
     const doneAt = new Date().toISOString()
+    const keepStatus = args.preRunStatus === "in-review" || args.preRunStatus === "draft-pr"
     await db.update(agentsTable)
       .set({
-        status: args.preRunStatus === "in-review" ? "in-review" : "in-progress",
+        status: keepStatus ? args.preRunStatus : "in-progress",
         streaming: 0,
         unread: sql`unread + 1`,
         updatedAt: doneAt,
@@ -131,6 +134,6 @@ async function restoreStatusAndStreaming(args: FinalizeArgs): Promise<void> {
     const finalAgent = db.select().from(agentsTable).where(eq(agentsTable.id, args.agentId)).get()
     if (finalAgent) agentsWs.agentUpdated(finalAgent as unknown as AgentSummary)
   } catch (err) {
-    console.error(`[runner] failed to clear streaming flag for ${args.agentId}:`, err)
+    logger.error({ err }, `[runner] failed to clear streaming flag for ${args.agentId}`)
   }
 }

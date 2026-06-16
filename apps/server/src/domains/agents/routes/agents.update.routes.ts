@@ -1,14 +1,16 @@
 import type { FastifyInstance } from "fastify"
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { z } from "zod/v4"
-import { eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 import { updateAgentBodySchema, type UpdateAgentBody } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { refreshWorktree } from "../../git/watcher.js"
 import { killWorktreeProcesses, clearAgentPorts } from "../../git/processes.js"
+import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { agentsWs } from "../agents.ws.js"
 import { getSettings } from "../../settings/settings.service.js"
+import { logger } from "../../../logger.js"
 import type { AgentSummary } from "../../../types.js"
 import * as path from "node:path"
 import { simpleGit } from "simple-git"
@@ -44,6 +46,10 @@ export const agentsUpdateRoutes: FastifyPluginAsyncZod = async (app) => {
     // Auto-kill processes when agent moves to done/cancelled
     if (body.status && (body.status === "done" || body.status === "cancelled") && updated.repoId) {
       await autoKillProcesses(app, id, updated)
+    }
+
+    if (body.status && (body.status === "done" || body.status === "cancelled")) {
+      retireThreadChildren(id, body.status, now)
     }
 
     agentsWs.agentUpdated(updated as unknown as AgentSummary)
@@ -134,5 +140,21 @@ async function autoKillProcesses(
     }
   } catch (err) {
     app.log.warn(`[auto-kill] failed for ${updated.location}: ${err}`)
+  }
+}
+
+function retireThreadChildren(parentId: string, parentStatus: string, now: string): void {
+  const children = db.select().from(agents)
+    .where(and(eq(agents.threadParentId, parentId), isNull(agents.deletedAt)))
+    .all()
+  const terminal = ["done", "cancelled"]
+  for (const child of children) {
+    if (terminal.includes(child.status)) continue
+    if (child.prNumber) continue
+    if (child.streaming || isAgentRunning(child.id)) continue
+    db.update(agents).set({ status: parentStatus, updatedAt: now }).where(eq(agents.id, child.id)).run()
+    const updated = db.select().from(agents).where(eq(agents.id, child.id)).get()
+    if (updated) agentsWs.agentUpdated(updated as never)
+    logger.info({ agentId: child.id, parentId }, "[agents] retired thread agent (parent completed)")
   }
 }

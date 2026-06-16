@@ -14,6 +14,7 @@ import type { TagHandler } from "../agent-runner.types.js"
 import { tryAutoRename } from "./autoRename.js"
 import { refreshFileChanges } from "./fileChanges.js"
 import { parseTagsFromText, dispatchTags, stripTagsFromBody } from "./tagParser.js"
+import { logger } from "../../../logger.js"
 
 interface PersistArgs {
   state: StreamState
@@ -76,7 +77,7 @@ export async function persistAssistantMessage(args: PersistArgs): Promise<void> 
     try {
       await onAssistantMessage({ content: finalContent })
     } catch (err) {
-      console.error(`[runner] onAssistantMessage hook failed for ${agentId}:`, err)
+      logger.error({ err }, `[runner] onAssistantMessage hook failed for ${agentId}`)
     }
   }
 

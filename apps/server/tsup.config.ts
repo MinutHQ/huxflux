@@ -15,8 +15,19 @@ const sharedExternal = [
   "dotenv",
   /^drizzle-orm/,
   "@octokit/rest",
+  "pino",
+  "pino-pretty",
   "simple-git",
   "uuid",
+  // pino (and thread-stream beneath it) does dynamic require() of node builtins
+  // and worker threads; like pino-pretty it must not be bundled into ESM.
+  "pino",
+  // pino-pretty does dynamic require() of node builtins; bundling it into ESM
+  // throws "Dynamic require of 'tty' is not supported" at load time. Keep it
+  // external so it's loaded from node_modules (a working CJS package) in dev.
+  // It's a devDependency, so prod installs simply won't have it → JSON logs,
+  // which is the intended production behavior.
+  "pino-pretty",
 ]
 
 // Inject version at build time so --version never drifts from package.json

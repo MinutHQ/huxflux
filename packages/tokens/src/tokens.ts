@@ -70,6 +70,12 @@ export const statusColors = {
     border: 'rgba(251, 191, 36, 0.25)',
     tw: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/25', dot: 'bg-amber-400' },
   },
+  'draft-pr': {
+    color:  '#a78bfa',
+    bg:     'rgba(167, 139, 250, 0.10)',
+    border: 'rgba(167, 139, 250, 0.25)',
+    tw: { color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/25', dot: 'bg-violet-400' },
+  },
   'in-review': {
     color:  '#60a5fa',
     bg:     'rgba(96, 165, 250, 0.10)',

@@ -3,7 +3,6 @@ import type { Section } from "../settings.types"
 import { sectionTitles } from "../nav"
 import { GeneralSettings } from "../sections/GeneralSettings"
 import { ModelsSettings } from "../sections/ModelsSettings"
-import { ProvidersSettings } from "../sections/ProvidersSettings"
 import { AppearanceSettings } from "../sections/AppearanceSettings"
 import { GitSettings } from "../sections/GitSettings"
 import { ReviewSettings } from "../sections/ReviewSettings"
@@ -41,7 +40,6 @@ function SectionView({ section }: { section: Section }) {
   switch (section) {
     case "general": return <GeneralSettings />
     case "models": return <ModelsSettings />
-    case "providers": return <ProvidersSettings />
     case "appearance": return <AppearanceSettings />
     case "git": return <GitSettings />
     case "review": return <ReviewSettings />

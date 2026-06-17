@@ -19,7 +19,10 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 19, "y": 24 },
+        "trafficLightPosition": {
+          "x": 19,
+          "y": 24
+        },
         "backgroundColor": "#1c1917",
         "dragDropEnabled": false
       }
@@ -41,9 +44,18 @@
     ],
     "macOS": {
       "dmg": {
-        "appPosition": { "x": 180, "y": 170 },
-        "applicationFolderPosition": { "x": 480, "y": 170 },
-        "windowSize": { "width": 660, "height": 400 }
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
       }
     }
   },

@@ -470,12 +470,23 @@ function runSupervisor() {
   }, BINARY_POLL_MS)
   binaryWatcher.unref()
 
-  function startServer() {
-    // Clean up stale port file so the new instance can bind
+  let stopping = false
+
+  function shutdown() {
+    if (stopping) return
+    stopping = true
+    if (activeChild) activeChild.kill("SIGTERM")
+    clearInterval(binaryWatcher)
+    setTimeout(() => process.exit(0), 5000).unref()
+  }
+
+  process.on("SIGTERM", shutdown)
+  process.on("SIGINT", shutdown)
+
+  function startChild() {
     if (fs.existsSync(PORT_FILE)) {
       try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
     }
-    // Re-read mtime so a restart doesn't immediately trigger another
     try { lastBinaryMtime = fs.statSync(SERVER_ENTRY).mtimeMs } catch { /* ignore */ }
 
     const child = spawn(process.execPath, [SERVER_ENTRY], {
@@ -487,14 +498,16 @@ function runSupervisor() {
     child.on("exit", (code, signal) => {
       activeChild = null
 
-      // Clean exit (SIGTERM from `huxflux stop`, or code 0).
-      // If binaryUpdated is set, the SIGTERM came from our file watcher,
-      // not from `huxflux stop`, so restart instead of exiting.
+      if (stopping) {
+        process.exit(0)
+      }
+
+      // Clean exit or signal forwarded from us
       if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
         if (binaryUpdated) {
           binaryUpdated = false
           console.info("[supervisor] Restarting with updated binary...")
-          setTimeout(startServer, 1000)
+          setTimeout(startChild, 1000)
           return
         }
         process.exit(0)
@@ -503,17 +516,15 @@ function runSupervisor() {
       // Exit code 42 = planned restart after update (not a crash)
       if (code === 42) {
         console.info("[supervisor] Server updated, restarting with new version...")
-        setTimeout(startServer, 1000)
+        setTimeout(startChild, 1000)
         return
       }
 
       logCrash(code, signal)
       console.error(`[supervisor] Server crashed (${signal ?? `code ${code}`}), restarting...`)
 
-      // Rate-limit restarts to avoid tight crash loops
       const now = Date.now()
       restartTimes.push(now)
-      // Only keep restarts within the window
       while (restartTimes.length > 0 && restartTimes[0] < now - RESTART_WINDOW_MS) {
         restartTimes.shift()
       }
@@ -525,15 +536,11 @@ function runSupervisor() {
         process.exit(1)
       }
 
-      setTimeout(startServer, RESTART_DELAY_MS)
+      setTimeout(startChild, RESTART_DELAY_MS)
     })
-
-    // Forward SIGTERM/SIGINT to the child so `huxflux stop` works
-    process.on("SIGTERM", () => { child.kill("SIGTERM") })
-    process.on("SIGINT", () => { child.kill("SIGINT") })
   }
 
-  startServer()
+  startChild()
 }
 
 function isServiceInstalled(): boolean {

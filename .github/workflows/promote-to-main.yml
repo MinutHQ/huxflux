@@ -5,53 +5,40 @@ on:
 
 jobs:
   promote:
-    name: Create beta → main PR
+    name: Promote beta to main
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/beta'
     permissions:
       contents: write
-      pull-requests: write
     steps:
+      - name: Verify branch
+        if: github.ref != 'refs/heads/beta'
+        run: |
+          echo "::error::This workflow must be dispatched from the beta branch, not ${{ github.ref }}"
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.DEVOPS_PAT }}
 
-      - name: Get version
-        id: version
+      - name: Fast-forward main to match beta
         run: |
-          VERSION=$(node -p "require('./apps/server/package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          BETA_SHA=$(git rev-parse origin/beta)
+          MAIN_SHA=$(git rev-parse origin/main)
 
-      - name: Create sync branch and PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          BRANCH="promote/v${VERSION}"
-
-          # Check if an open promote PR already exists
-          EXISTING=$(gh pr list --base main --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("promote/")) | .number')
-          if [ -n "$EXISTING" ]; then
-            echo "PR #${EXISTING} already open — skipping creation"
-            echo "https://github.com/${{ github.repository }}/pull/${EXISTING}"
+          if [ "$BETA_SHA" = "$MAIN_SHA" ]; then
+            echo "main is already at beta ($BETA_SHA), nothing to do."
+            echo "## Already up to date" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          # Create a branch that exactly mirrors beta's content
-          git checkout -b "$BRANCH" origin/beta
-          git push origin "$BRANCH"
+          git push origin beta:main || {
+            echo "::error::Push rejected. main has diverged from beta and cannot be fast-forwarded."
+            exit 1
+          }
 
-          gh pr create \
-            --head "$BRANCH" \
-            --base main \
-            --title "chore: release v${VERSION}" \
-            --body "$(cat <<EOF
-## Summary
-Promote beta to production. Merging triggers the production release workflow.
-
-**Server version:** ${VERSION}
-
-This branch is an exact copy of \`beta\` at the time of promotion, so it will always merge cleanly into \`main\`.
-EOF
-          )"
+          VERSION=$(node -p "require('./apps/server/package.json').version")
+          echo "## Promoted to production" >> "$GITHUB_STEP_SUMMARY"
+          echo "Fast-forwarded \`main\` to \`beta\` at \`v${VERSION}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "The production release workflow will run automatically." >> "$GITHUB_STEP_SUMMARY"

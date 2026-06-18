@@ -152,6 +152,7 @@ async function printConnectInfo(cfg: Config, pid?: number) {
     console.info(qr)
   } catch { /* non-fatal */ }
   if (pid) console.info(`  PID:     ${pid}`)
+  console.info(`  Mode:    ${isServiceInstalled() ? "service" : "standalone"}`)
   console.info(`  Logs:    ${LOG_FILE}`)
   console.info(`  Sandbox: ${sandboxStatus(cfg.sandbox)}`)
 }

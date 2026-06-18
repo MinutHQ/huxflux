@@ -21,25 +21,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check version
+      - name: Determine version from tags
         id: check
         run: |
-          VERSION=$(node -p "require('./apps/server/package.json').version")
+          LATEST_BETA=$(git tag -l 'v*-beta.*' --merged HEAD | sort -V | tail -1 || echo "")
 
-          # Only release if version has a beta suffix (meaning it came from beta branch)
-          if [[ "$VERSION" == *"-beta."* ]]; then
-            PROD_VERSION="${VERSION%-beta.*}"
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "version=$PROD_VERSION" >> "$GITHUB_OUTPUT"
-          else
-            # Check if this version was already released (git tag exists)
-            if git tag -l "v${VERSION}" | grep -q .; then
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-            else
-              echo "should_release=true" >> "$GITHUB_OUTPUT"
-            fi
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -z "$LATEST_BETA" ]; then
+            echo "No beta tags found on HEAD, skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          VERSION=$(echo "$LATEST_BETA" | sed 's/^v//; s/-beta\.[0-9]*//')
+
+          if git tag -l "v${VERSION}" | grep -q .; then
+            echo "Production tag v${VERSION} already exists, skipping"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Will release v${VERSION} (from $LATEST_BETA)"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   release:
     name: Release (production)
@@ -77,7 +80,7 @@ jobs:
       - name: Detect changes since last production tag
         id: changes
         run: |
-          LAST_TAG=$(git tag --sort=-v:refname | grep -v "beta" | head -1 2>/dev/null || echo "")
+          LAST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '-' | sort -V | tail -1 || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "server_changed=true" >> "$GITHUB_OUTPUT"
             echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
@@ -87,32 +90,20 @@ jobs:
           SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
           DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
 
-          if [ -n "$SERVER_CHANGED" ]; then
-            echo "server_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "server_changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "server_changed=$( [ -n "$SERVER_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "desktop_changed=$( [ -n "$DESKTOP_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$DESKTOP_CHANGED" ]; then
-            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "desktop_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set production version
+      - name: Inject version and create tag
         id: version
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          CURRENT=$(node -p "require('./apps/server/package.json').version")
-
-          if [ "$CURRENT" != "$VERSION" ]; then
-            cd apps/server
-            npm version "$VERSION" --no-git-tag-version
-            cd ../..
-          fi
 
           node -e "
             const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./apps/server/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('./apps/server/package.json', JSON.stringify(pkg, null, 2) + '\n');
+
             const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
             tauriConf.version = '${VERSION}';
             fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
@@ -124,8 +115,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "v${VERSION}"
-          git push origin "v${VERSION}" --force
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -197,6 +188,20 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Inject version
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            tauriConf.version = '${VERSION}';
+            fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
+
+            const cargo = fs.readFileSync('./apps/desktop/src-tauri/Cargo.toml', 'utf8');
+            fs.writeFileSync('./apps/desktop/src-tauri/Cargo.toml',
+              cargo.replace(/^version = \".*\"/m, 'version = \"${VERSION}\"'));
+          "
 
       - name: Build macOS ARM
         run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
@@ -281,6 +286,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Inject version
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            tauriConf.version = '${VERSION}';
+            fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
+
+            const cargo = fs.readFileSync('./apps/desktop/src-tauri/Cargo.toml', 'utf8');
+            fs.writeFileSync('./apps/desktop/src-tauri/Cargo.toml',
+              cargo.replace(/^version = \".*\"/m, 'version = \"${VERSION}\"'));
+          "
+
       - name: Build Linux
         run: cd apps/desktop && pnpm tauri build
         env:
@@ -334,14 +353,13 @@ jobs:
         with:
           path: artifacts
 
-      - name: Generate latest.json and publish
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.check.outputs.version }}"
           TAG="v${VERSION}"
 
-          # Carry forward latest-beta.json so /releases/latest/download/ works for beta channel too
           EXTRA_FILES=""
           for PTAG in $(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease) | .tagName'); do
             BETA_MANIFEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
@@ -378,7 +396,6 @@ jobs:
               --notes "The macOS app is unsigned. Right-click the .dmg and select Open to bypass Gatekeeper." \
               $FILES $SIG_FILES latest.json $EXTRA_FILES
           else
-            # Server-only: carry forward latest.json from previous stable release
             PREV_STABLE=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/latest.json" 2>/dev/null || echo "")
             if [ -n "$PREV_STABLE" ]; then
               echo "$PREV_STABLE" > latest.json
@@ -398,4 +415,3 @@ jobs:
                 --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`"
             fi
           fi
-

@@ -1,8 +1,6 @@
 name: Release Beta
 
 on:
-  push:
-    branches: [beta]
   workflow_dispatch:
 
 concurrency:
@@ -10,131 +8,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── workflow_dispatch: create a version bump PR ─────────────────────────
-  bump:
-    name: Create version bump PR
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Determine next version
-        id: next
-        run: |
-          CURRENT=$(node -p "require('./apps/server/package.json').version")
-          BASE=$(echo "$CURRENT" | sed 's/-beta\.[0-9]*//')
-
-          BETA_NUM=1
-          while git tag -l "v${BASE}-beta.${BETA_NUM}" | grep -q .; do
-            BETA_NUM=$((BETA_NUM + 1))
-          done
-          VERSION="${BASE}-beta.${BETA_NUM}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Create bump PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.next.outputs.version }}"
-          BRANCH="release/v${VERSION}"
-
-          if git ls-remote --heads origin "$BRANCH" | grep -q .; then
-            echo "Branch $BRANCH already exists. A bump PR may already be open."
-            exit 1
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./apps/server/package.json', 'utf8'));
-            pkg.version = '${VERSION}';
-            fs.writeFileSync('./apps/server/package.json', JSON.stringify(pkg, null, 2) + '\n');
-
-            const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
-            tauriConf.version = '${VERSION}'.replace(/-beta\.\d+$/, '');
-            fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
-
-            const cargo = fs.readFileSync('./apps/desktop/src-tauri/Cargo.toml', 'utf8');
-            const desktopVersion = '${VERSION}'.replace(/-beta\.\d+$/, '');
-            fs.writeFileSync('./apps/desktop/src-tauri/Cargo.toml',
-              cargo.replace(/^version = \".*\"/m, 'version = \"' + desktopVersion + '\"'));
-          "
-
-          git add apps/server/package.json apps/desktop/src-tauri/tauri.conf.json apps/desktop/src-tauri/Cargo.toml
-          git commit -m "chore: release ${VERSION}"
-          git push origin "$BRANCH"
-
-          gh pr create \
-            --base beta \
-            --head "$BRANCH" \
-            --title "chore: release ${VERSION}" \
-            --body "Auto-generated version bump. Merging this PR triggers the beta release pipeline."
-
-  # ── push to beta: release if version tag is new ─────────────────────────
   release:
     name: Release (beta)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     outputs:
       version: ${{ steps.version.outputs.version }}
-      skip: ${{ steps.version.outputs.skip }}
       desktop_changed: ${{ steps.changes.outputs.desktop_changed }}
       server_changed: ${{ steps.changes.outputs.server_changed }}
     permissions:
       contents: write
       packages: write
+    if: github.ref == 'refs/heads/beta'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read version from package.json
+      - name: Compute next version
         id: version
         run: |
-          VERSION=$(node -p "require('./apps/server/package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Version: $VERSION"
+          LATEST_PROD=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '-' | sort -V | tail -1 || echo "")
+          LATEST_BETA=$(git tag -l 'v*-beta.*' | sort -V | tail -1 || echo "")
 
-          if git tag -l "v${VERSION}" | grep -q .; then
-            echo "Tag v${VERSION} already exists, skipping release"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          PROD_VER=$(echo "$LATEST_PROD" | sed 's/^v//')
+
+          if [ -z "$LATEST_PROD" ] && [ -z "$LATEST_BETA" ]; then
+            VERSION="0.1.0-beta.1"
+          elif [ -z "$LATEST_BETA" ]; then
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$PROD_VER"
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-beta.1"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            BETA_BASE=$(echo "$LATEST_BETA" | sed 's/^v//; s/-beta\.[0-9]*//')
+            BETA_NUM=$(echo "$LATEST_BETA" | sed 's/.*-beta\.//')
+
+            NEEDS_BUMP=false
+            if [ -n "$PROD_VER" ]; then
+              HIGHER=$(printf '%s\n%s' "$PROD_VER" "$BETA_BASE" | sort -V | tail -1)
+              if [ "$HIGHER" = "$PROD_VER" ] && [ "$PROD_VER" != "$BETA_BASE" ]; then
+                NEEDS_BUMP=true
+                BASE="$PROD_VER"
+              elif [ "$BETA_BASE" = "$PROD_VER" ]; then
+                NEEDS_BUMP=true
+                BASE="$PROD_VER"
+              fi
+            fi
+
+            if [ "$NEEDS_BUMP" = "true" ]; then
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+              VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-beta.1"
+            else
+              VERSION="${BETA_BASE}-beta.$((BETA_NUM + 1))"
+            fi
           fi
 
-      - name: Setup pnpm
-        if: steps.version.outputs.skip != 'true'
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.3.0
-
-      - name: Setup Node
-        if: steps.version.outputs.skip != 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          registry-url: https://npm.pkg.github.com
-
-      - name: Install dependencies
-        if: steps.version.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $VERSION"
 
       - name: Detect changes since last tag
         id: changes
-        if: steps.version.outputs.skip != 'true'
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          LAST_TAG=$(git tag -l 'v*' | sort -V | tail -1 || echo "")
           if [ -z "$LAST_TAG" ]; then
             echo "server_changed=true" >> "$GITHUB_OUTPUT"
             echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
@@ -144,40 +78,66 @@ jobs:
           SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
           DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
 
-          if [ -n "$SERVER_CHANGED" ]; then
-            echo "server_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "server_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ -n "$DESKTOP_CHANGED" ]; then
-            echo "desktop_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "desktop_changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "server_changed=$( [ -n "$SERVER_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "desktop_changed=$( [ -n "$DESKTOP_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
       - name: Create git tag
-        if: steps.version.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          TAG="v${VERSION}"
+
+          if git tag -l "$TAG" | grep -q .; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Setup pnpm
+        if: steps.changes.outputs.server_changed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - name: Setup Node
+        if: steps.changes.outputs.server_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+
+      - name: Install dependencies
+        if: steps.changes.outputs.server_changed == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Inject version
+        if: steps.changes.outputs.server_changed == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./apps/server/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('./apps/server/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
 
       - name: Build server
-        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
+        if: steps.changes.outputs.server_changed == 'true'
         run: pnpm --filter @minuthq/huxflux build
 
       - name: Build and bundle web UI into server
-        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           pnpm --filter huxflux-web build
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 
       - name: Verify build
-        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           CLI_VERSION=$(node apps/server/dist/cli.js --version)
@@ -187,7 +147,7 @@ jobs:
           fi
 
       - name: Publish to npm (beta tag)
-        if: steps.version.outputs.skip != 'true' && steps.changes.outputs.server_changed == 'true'
+        if: steps.changes.outputs.server_changed == 'true'
         run: |
           echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
@@ -197,7 +157,6 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
-        if: steps.version.outputs.skip != 'true'
         run: |
           echo "## Beta Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -214,7 +173,7 @@ jobs:
   desktop-macos:
     name: Build desktop (macOS)
     runs-on: macos-latest
-    if: needs.release.result == 'success' && needs.release.outputs.skip != 'true' && needs.release.outputs.desktop_changed == 'true'
+    if: needs.release.result == 'success' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -243,9 +202,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Get version
-        id: version
-        run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Inject version
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          DESKTOP_VERSION=$(echo "$VERSION" | sed 's/-beta\.[0-9]*//')
+          node -e "
+            const fs = require('fs');
+            const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            tauriConf.version = '${DESKTOP_VERSION}';
+            fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
+
+            const cargo = fs.readFileSync('./apps/desktop/src-tauri/Cargo.toml', 'utf8');
+            fs.writeFileSync('./apps/desktop/src-tauri/Cargo.toml',
+              cargo.replace(/^version = \".*\"/m, 'version = \"${DESKTOP_VERSION}\"'));
+          "
 
       - name: Build macOS ARM
         run: cd apps/desktop && pnpm tauri build --target aarch64-apple-darwin
@@ -262,7 +232,7 @@ jobs:
       - name: Prepare artifacts
         id: artifacts
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.release.outputs.version }}"
           TAG="v${VERSION}"
           TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
 
@@ -279,7 +249,6 @@ jobs:
           (cd "$ARM_BUNDLE" && COPYFILE_DISABLE=1 tar -czf "$ARM_TAR" "Huxflux.app")
           (cd "$X64_BUNDLE" && COPYFILE_DISABLE=1 tar -czf "$X64_TAR" "Huxflux.app")
 
-          # Sign tarballs
           cd apps/desktop
           pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$ARM_TAR"
           pnpm tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "$X64_TAR"
@@ -308,7 +277,7 @@ jobs:
   desktop-linux:
     name: Build desktop (Linux)
     runs-on: ubuntu-latest
-    if: needs.release.result == 'success' && needs.release.outputs.skip != 'true' && needs.release.outputs.desktop_changed == 'true'
+    if: needs.release.result == 'success' && needs.release.outputs.desktop_changed == 'true'
     needs: release
     permissions:
       contents: write
@@ -340,9 +309,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Get version
-        id: version
-        run: echo "version=$(node -p "require('./apps/server/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Inject version
+        run: |
+          VERSION="${{ needs.release.outputs.version }}"
+          DESKTOP_VERSION=$(echo "$VERSION" | sed 's/-beta\.[0-9]*//')
+          node -e "
+            const fs = require('fs');
+            const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
+            tauriConf.version = '${DESKTOP_VERSION}';
+            fs.writeFileSync('./apps/desktop/src-tauri/tauri.conf.json', JSON.stringify(tauriConf, null, 2) + '\n');
+
+            const cargo = fs.readFileSync('./apps/desktop/src-tauri/Cargo.toml', 'utf8');
+            fs.writeFileSync('./apps/desktop/src-tauri/Cargo.toml',
+              cargo.replace(/^version = \".*\"/m, 'version = \"${DESKTOP_VERSION}\"'));
+          "
 
       - name: Build Linux
         run: cd apps/desktop && pnpm tauri build
@@ -353,7 +333,7 @@ jobs:
       - name: Prepare artifacts
         id: artifacts
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.release.outputs.version }}"
           TARGET="$GITHUB_WORKSPACE/apps/desktop/src-tauri/target"
           APPIMAGE=$(find "$TARGET/release/bundle/appimage" -name "*.AppImage" | head -1)
           DEB=$(find "$TARGET/release/bundle/deb" -name "*.deb" | head -1)
@@ -361,7 +341,6 @@ jobs:
           cp "$APPIMAGE" "/tmp/Huxflux-linux-x86_64.AppImage"
           cp "$DEB" "/tmp/Huxflux-linux-amd64.deb"
 
-          # Updater tarball
           LINUX_TAR="/tmp/Huxflux_${VERSION}_x86_64.AppImage.tar.gz"
           (cd "$(dirname "$APPIMAGE")" && tar -czf "$LINUX_TAR" "$(basename "$APPIMAGE")")
 
@@ -388,7 +367,7 @@ jobs:
   publish-release:
     name: Publish GitHub pre-release
     runs-on: ubuntu-latest
-    if: always() && needs.release.result == 'success' && needs.release.outputs.skip != 'true'
+    if: always() && needs.release.result == 'success'
     needs: [release, desktop-macos, desktop-linux]
     permissions:
       contents: write
@@ -398,10 +377,10 @@ jobs:
         with:
           ref: beta
 
-      - name: Get version
+      - name: Set version
         id: version
         run: |
-          VERSION=$(node -p "require('./apps/server/package.json').version")
+          VERSION="${{ needs.release.outputs.version }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "has_desktop=${{ needs.desktop-macos.result == 'success' }}" >> "$GITHUB_OUTPUT"
@@ -420,12 +399,10 @@ jobs:
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Debug: show artifact structure so sig path issues are visible in logs
           echo "::group::Artifact structure"
           find artifacts -type f 2>/dev/null || echo "No artifacts directory"
           echo "::endgroup::"
 
-          # Read signatures (find recursively since download-artifact may nest paths)
           ARM_SIG_FILE=$(find artifacts/macos-artifacts -name "*aarch64.app.tar.gz.sig" 2>/dev/null | head -1)
           X64_SIG_FILE=$(find artifacts/macos-artifacts -name "*x64.app.tar.gz.sig" 2>/dev/null | head -1)
           LINUX_SIG_FILE=$(find artifacts/linux-artifacts -name "*AppImage.tar.gz.sig" 2>/dev/null | head -1)
@@ -450,7 +427,6 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           NOTES="Beta release. Install with: \`npm install -g @minuthq/huxflux@beta\`"
 
-          # Always carry forward latest.json from the latest stable release
           EXTRA_FILES=""
           STABLE_MANIFEST=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/latest.json" 2>/dev/null || echo "")
           if [ -n "$STABLE_MANIFEST" ]; then
@@ -469,8 +445,6 @@ jobs:
               $FILES $SIG_FILES latest-beta.json $EXTRA_FILES
           else
             NOTES="$NOTES"$'\n\n'"Server-only release (no desktop changes)."
-            # Carry forward latest-beta.json from a previous beta prerelease
-            # /releases/latest/ points to stable, not prerelease, so we search explicitly
             for PTAG in $(gh release list --repo "${{ github.repository }}" --limit 20 --json tagName,isPrerelease -q '.[] | select(.isPrerelease) | .tagName'); do
               PREV_BETA=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PTAG}/latest-beta.json" 2>/dev/null || echo "")
               if [ -n "$PREV_BETA" ]; then

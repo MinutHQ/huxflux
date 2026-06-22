@@ -1,14 +1,10 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
-import { partialHuxfluxSettingsSchema } from "@huxflux/shared"
+import { partialHuxfluxSettingsSchema, githubStatusSchema } from "@huxflux/shared"
+import type { GitHubStatus } from "@huxflux/shared"
 import { getSettings, saveSettings } from "./settings.service.js"
+import { getOctokit } from "../pull-requests/octokit.js"
+import { config } from "../../config.js"
 
-/**
- * Fastify plugin for the settings domain. Exposes the persisted
- * `HuxfluxSettings` blob (review/model defaults, polling toggles, Jira
- * credentials, etc.) via a GET + PATCH pair. The PATCH body is validated
- * against the shared Zod schema so the wire shape stays in lockstep with
- * the client.
- */
 export const settingsPlugin: FastifyPluginAsyncZod = async (app) => {
   app.get("/api/settings", async () => getSettings())
 
@@ -21,4 +17,36 @@ export const settingsPlugin: FastifyPluginAsyncZod = async (app) => {
     saveSettings(updated)
     return updated
   })
+
+  async function checkGithubStatus(): Promise<GitHubStatus> {
+    const empty: GitHubStatus = {
+      connected: false, login: null, name: null, avatarUrl: null,
+      scopes: [], rateLimitRemaining: null, rateLimitTotal: null, error: null,
+    }
+    if (!config.githubToken) {
+      return { ...empty, error: "No GitHub token configured (set GITHUB_TOKEN on the server)" }
+    }
+    try {
+      const octokit = getOctokit()
+      const { data, headers } = await octokit.users.getAuthenticated()
+      const scopes = (headers["x-oauth-scopes"] ?? "")
+        .split(",").map((s: string) => s.trim()).filter(Boolean)
+      return {
+        connected: true,
+        login: data.login,
+        name: data.name ?? null,
+        avatarUrl: data.avatar_url ?? null,
+        scopes,
+        rateLimitRemaining: headers["x-ratelimit-remaining"] ? Number(headers["x-ratelimit-remaining"]) : null,
+        rateLimitTotal: headers["x-ratelimit-limit"] ? Number(headers["x-ratelimit-limit"]) : null,
+        error: null,
+      }
+    } catch (err) {
+      return { ...empty, error: err instanceof Error ? err.message : "Unknown error" }
+    }
+  }
+
+  app.get("/api/github/status", {
+    schema: { response: { 200: githubStatusSchema } },
+  }, async () => checkGithubStatus())
 }

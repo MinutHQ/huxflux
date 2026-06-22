@@ -9,6 +9,7 @@ import {
   updateResultSchema,
   feedbackRequestSchema,
   feedbackResponseSchema,
+  githubStatusSchema,
   type HuxfluxSettings,
   type FeedbackRequest,
 } from "./settings.types.js"
@@ -41,4 +42,7 @@ export const settingsApi = {
       method: "POST",
       body: JSON.stringify(feedbackRequestSchema.parse(body)),
     }),
+
+  // GitHub integration status
+  githubStatus: () => reqValidated(githubStatusSchema, "/api/github/status"),
 }

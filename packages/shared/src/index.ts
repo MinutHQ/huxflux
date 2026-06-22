@@ -124,6 +124,7 @@ export {
   updateResultSchema,
   feedbackRequestSchema,
   feedbackResponseSchema,
+  githubStatusSchema,
 } from "./domains/settings/settings.types.js"
 export type {
   ProviderInfo,
@@ -132,6 +133,7 @@ export type {
   UpdateResult,
   FeedbackRequest,
   FeedbackResponse,
+  GitHubStatus,
 } from "./domains/settings/settings.types.js"
 
 // ── repos ────────────────────────────────────────────────────────────────────

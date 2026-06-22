@@ -131,9 +131,35 @@ fn read_update_channel() -> String {
     }
 }
 
-fn updater_endpoint(channel: &str) -> String {
-    let manifest = if channel == "beta" { "latest-beta.json" } else { "latest.json" };
-    format!("https://github.com/MinutHQ/huxflux/releases/latest/download/{}", manifest)
+const GITHUB_REPO: &str = "MinutHQ/huxflux";
+
+async fn updater_endpoint(channel: &str) -> String {
+    if channel != "beta" {
+        return format!("https://github.com/{}/releases/latest/download/latest.json", GITHUB_REPO);
+    }
+    match latest_beta_tag().await {
+        Some(tag) => format!("https://github.com/{}/releases/download/{}/latest-beta.json", GITHUB_REPO, tag),
+        None => format!("https://github.com/{}/releases/latest/download/latest.json", GITHUB_REPO),
+    }
+}
+
+async fn latest_beta_tag() -> Option<String> {
+    let url = format!("https://api.github.com/repos/{}/releases?per_page=15", GITHUB_REPO);
+    let resp: Value = reqwest::Client::new()
+        .get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "huxflux-desktop")
+        .send().await.ok()?
+        .json().await.ok()?;
+    let releases = resp.as_array()?;
+    for r in releases {
+        let is_prerelease = r.get("prerelease").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_draft = r.get("draft").and_then(|v| v.as_bool()).unwrap_or(true);
+        if is_prerelease && !is_draft {
+            return r.get("tag_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+        }
+    }
+    None
 }
 
 #[derive(Serialize, Clone)]
@@ -146,7 +172,7 @@ struct UpdateCheckResult {
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
     let channel = read_update_channel();
-    let endpoint = updater_endpoint(&channel);
+    let endpoint = updater_endpoint(&channel).await;
     let url: Url = endpoint.parse().map_err(|e: url::ParseError| e.to_string())?;
 
     let updater = app
@@ -174,7 +200,7 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateCheckResult, String
 #[tauri::command]
 async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String> {
     let channel = read_update_channel();
-    let endpoint = updater_endpoint(&channel);
+    let endpoint = updater_endpoint(&channel).await;
     let url: Url = endpoint.parse().map_err(|e: url::ParseError| e.to_string())?;
 
     let updater = app

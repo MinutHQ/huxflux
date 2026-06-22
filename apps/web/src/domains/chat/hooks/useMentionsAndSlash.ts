@@ -43,12 +43,50 @@ function useMentionDataQueries(agentId: string, slashQuery: string | null, menti
   return { filteredCommands, fileTree }
 }
 
+// Levenshtein substring distance: minimum edits to match query against any
+// substring of target. First DP row is zeroed so matching can start anywhere.
+function fuzzyDistance(query: string, target: string): number {
+  const m = query.length
+  const n = target.length
+  if (m === 0) return 0
+  if (n === 0) return m
+  let prev = new Array<number>(n + 1).fill(0)
+  let curr = new Array<number>(n + 1)
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i
+    for (let j = 1; j <= n; j++) {
+      if (query[i - 1] === target[j - 1]) {
+        curr[j] = prev[j - 1]
+      } else {
+        curr[j] = 1 + Math.min(prev[j - 1], prev[j], curr[j - 1])
+      }
+    }
+    ;[prev, curr] = [curr, new Array<number>(n + 1)]
+  }
+  let best = prev[1]
+  for (let j = 2; j <= n; j++) {
+    if (prev[j] < best) best = prev[j]
+  }
+  return best
+}
+
 function makeMentionOptions(fileTree: FileTreeNode[], mentionQuery: string | null): MentionOption[] {
   const q = mentionQuery ?? ""
   const files = flattenTree(fileTree)
-  const filtered = q === ""
-    ? files.slice(0, 20)
-    : files.filter((f) => f.path.toLowerCase().includes(q.toLowerCase())).slice(0, 20)
+  if (q === "") return [
+    { type: "terminal" as const, name: "Terminal output", path: "" },
+    ...files.slice(0, 20).map((f) => ({ type: "file" as const, name: f.name, path: f.path })),
+  ]
+  const ql = q.toLowerCase()
+  const useExact = ql.length <= 2
+  const maxDist = useExact ? 0 : Math.ceil(ql.length * 0.4)
+  const scored: { file: typeof files[0]; dist: number }[] = []
+  for (const f of files) {
+    const dist = fuzzyDistance(ql, f.path.toLowerCase())
+    if (dist <= maxDist) scored.push({ file: f, dist })
+  }
+  scored.sort((a, b) => a.dist - b.dist || a.file.name.length - b.file.name.length)
+  const filtered = scored.slice(0, 20).map((r) => r.file)
   return [
     { type: "terminal" as const, name: "Terminal output", path: "" },
     ...filtered.map((f) => ({ type: "file" as const, name: f.name, path: f.path })),

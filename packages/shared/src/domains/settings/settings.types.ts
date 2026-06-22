@@ -95,3 +95,18 @@ export const feedbackResponseSchema = z.object({
 })
 
 export type FeedbackResponse = z.infer<typeof feedbackResponseSchema>
+
+// ── GitHub status ───────────────────────────────────────────────────────────
+
+export const githubStatusSchema = z.object({
+  connected: z.boolean(),
+  login: z.string().nullable(),
+  name: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  scopes: z.array(z.string()),
+  rateLimitRemaining: z.number().nullable(),
+  rateLimitTotal: z.number().nullable(),
+  error: z.string().nullable(),
+})
+
+export type GitHubStatus = z.infer<typeof githubStatusSchema>

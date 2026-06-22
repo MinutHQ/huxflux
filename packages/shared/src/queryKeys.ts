@@ -69,6 +69,7 @@ export const queryKeys = {
     current: () => ["settings"] as const,
     providers: () => ["providers"] as const,
     serverConfig: () => ["server-config"] as const,
+    githubStatus: () => ["github-status"] as const,
   },
   repos: {
     all: ["repos"] as const,

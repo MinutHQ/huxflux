@@ -5,6 +5,7 @@ import { GeneralSettings } from "../sections/GeneralSettings"
 import { ModelsSettings } from "../sections/ModelsSettings"
 import { AppearanceSettings } from "../sections/AppearanceSettings"
 import { GitSettings } from "../sections/GitSettings"
+import { GitHubSettings } from "../sections/GitHubSettings"
 import { ReviewSettings } from "../sections/ReviewSettings"
 import { ServersSettings } from "../sections/ServersSettings"
 import { IntegrationsSettings } from "../sections/IntegrationsSettings"
@@ -42,6 +43,7 @@ function SectionView({ section }: { section: Section }) {
     case "models": return <ModelsSettings />
     case "appearance": return <AppearanceSettings />
     case "git": return <GitSettings />
+    case "github": return <GitHubSettings />
     case "review": return <ReviewSettings />
     case "servers": return <ServersSettings />
     case "integrations": return <IntegrationsSettings />

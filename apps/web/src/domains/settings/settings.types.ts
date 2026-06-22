@@ -3,6 +3,7 @@ export type Section =
   | "models"
   | "appearance"
   | "git"
+  | "github"
   | "review"
   | "servers"
   | "integrations"

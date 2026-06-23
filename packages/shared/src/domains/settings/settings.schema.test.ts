@@ -16,8 +16,8 @@ describe("settingsDefaults", () => {
     }
   })
 
-  it("has the expected default for defaultModel (Sonnet 4.6)", () => {
-    expect(settingsDefaults.defaultModel).toBe("Sonnet 4.6")
+  it("has the expected default for defaultModel (Opus 4.8)", () => {
+    expect(settingsDefaults.defaultModel).toBe("Opus 4.8")
   })
 
   it("has the expected default for defaultProvider (claude)", () => {

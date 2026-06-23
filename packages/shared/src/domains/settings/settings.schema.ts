@@ -173,7 +173,7 @@ export const settingsSchema = {
   // ── Models ────────────────────────────────────────────────────────────
   defaultModel: {
     type: "select",
-    default: "Sonnet 4.6",
+    default: "Opus 4.8",
     section: "models",
     label: "Default model",
     description: "Used for new agents unless overridden",

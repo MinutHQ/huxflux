@@ -176,7 +176,7 @@ export const CV_KEYFRAMES = `
   }
   @keyframes cv-spin-slow { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
   @keyframes cv-pulse-ring { 0% { transform: scale(1); opacity: 0.4 } 100% { transform: scale(2.5); opacity: 0 } }
-  @keyframes cv-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.08), 0 0 60px rgba(251,191,36,0.04) } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.15), 0 0 80px rgba(251,191,36,0.08) } }
+  @keyframes cv-glow { 0%, 100% { box-shadow: 0 0 20px hsl(var(--cv-hue) 90% 60% / 0.08), 0 0 60px hsl(var(--cv-hue) 90% 60% / 0.04) } 50% { box-shadow: 0 0 30px hsl(var(--cv-hue) 90% 60% / 0.15), 0 0 80px hsl(var(--cv-hue) 90% 60% / 0.08) } }
   @keyframes cv-shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
   @keyframes cv-fade-in { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
   @keyframes cv-hex-bob { 0%, 100% { transform: rotate(0deg) scale(1) } 25% { transform: rotate(3deg) scale(1.05) } 75% { transform: rotate(-3deg) scale(1.05) } }

@@ -4,6 +4,7 @@ import { IconHexagon, IconLoader2, IconSend } from "@tabler/icons-react"
 import { SETUP_STEPS } from "../config"
 import type { PendingAgentInfo, SetupStep } from "../chat.types"
 import { useTypewriter } from "./creationViewHooks"
+import { accentHueFromSeed } from "./accentHue"
 
 const SV_KEYFRAMES = `
   @keyframes sv-float { 0%, 100% { transform: translateY(0px) rotate(0deg) } 50% { transform: translateY(-8px) rotate(2deg) } }
@@ -12,7 +13,7 @@ const SV_KEYFRAMES = `
   @keyframes sv-check { from { stroke-dashoffset: 16 } to { stroke-dashoffset: 0 } }
   @keyframes sv-spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
   @keyframes sv-progress { from { width: 0% } to { width: var(--sv-progress) } }
-  @keyframes sv-glow { 0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.06), 0 0 60px rgba(251,191,36,0.03) } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.15), 0 0 80px rgba(251,191,36,0.08) } }
+  @keyframes sv-glow { 0%, 100% { box-shadow: 0 0 20px hsl(var(--sv-hue) 90% 60% / 0.06), 0 0 60px hsl(var(--sv-hue) 90% 60% / 0.03) } 50% { box-shadow: 0 0 30px hsl(var(--sv-hue) 90% 60% / 0.15), 0 0 80px hsl(var(--sv-hue) 90% 60% / 0.08) } }
   @keyframes sv-orbit { from { transform: rotate(0deg) translateX(36px) rotate(0deg) } to { transform: rotate(360deg) translateX(36px) rotate(-360deg) } }
   @keyframes sv-orbit2 { from { transform: rotate(120deg) translateX(28px) rotate(-120deg) } to { transform: rotate(480deg) translateX(28px) rotate(-480deg) } }
   @keyframes sv-hex-assemble { 0% { opacity: 0; transform: scale(0.3) rotate(-180deg) } 50% { opacity: 1; transform: scale(1.1) rotate(10deg) } 100% { opacity: 1; transform: scale(1) rotate(0deg) } }
@@ -58,26 +59,28 @@ function useSetupStepProgress(estimatedMs: number) {
   return { visibleSteps, completedSteps }
 }
 
-function HexHero() {
+function HexHero({ hue }: { hue: number }) {
+  // h: hue offset, l: lightness %, a: alpha — derives a tone from the mount's accent hue.
+  const tone = (h: number, l: number, a: number) => `hsl(${(hue + h) % 360} 90% ${l}% / ${a})`
   return (
     <div className="relative z-10" style={{ animation: "sv-float 3.5s ease-in-out infinite" }}>
-      <div className="absolute inset-0 rounded-2xl border-2 border-amber-400/25" style={{ animation: "sv-ring-expand 2.5s ease-out infinite" }} />
-      <div className="absolute inset-0 rounded-2xl border-2 border-blue-400/15" style={{ animation: "sv-ring-expand 2.5s ease-out 0.8s infinite" }} />
-      <div className="absolute inset-0 rounded-2xl border-2 border-violet-400/10" style={{ animation: "sv-ring-expand 2.5s ease-out 1.6s infinite" }} />
+      <div className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone(0, 60, 0.25), animation: "sv-ring-expand 2.5s ease-out infinite" }} />
+      <div className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone(40, 60, 0.15), animation: "sv-ring-expand 2.5s ease-out 0.8s infinite" }} />
+      <div className="absolute inset-0 rounded-2xl border-2" style={{ borderColor: tone(80, 65, 0.1), animation: "sv-ring-expand 2.5s ease-out 1.6s infinite" }} />
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div style={{ animation: "sv-orbit 4s linear infinite" }}>
-          <div className="w-1.5 h-1.5 rounded-full bg-amber-400/70" />
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tone(0, 62, 0.7) }} />
         </div>
       </div>
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div style={{ animation: "sv-orbit2 5s linear infinite" }}>
-          <div className="w-1 h-1 rounded-full bg-blue-400/50" />
+          <div className="w-1 h-1 rounded-full" style={{ backgroundColor: tone(40, 62, 0.5) }} />
         </div>
       </div>
-      <div className="w-16 h-16 rounded-2xl bg-card border border-amber-400/20 flex items-center justify-center relative overflow-hidden" style={{ animation: "sv-glow 2.5s ease-in-out infinite" }}>
-        <div className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" style={{ animation: "sv-scanner 2s ease-in-out infinite" }} />
+      <div className="w-16 h-16 rounded-2xl bg-card border flex items-center justify-center relative overflow-hidden" style={{ borderColor: tone(0, 60, 0.2), animation: "sv-glow 2.5s ease-in-out infinite" }}>
+        <div className="absolute left-0 right-0 h-[1px] pointer-events-none" style={{ backgroundImage: `linear-gradient(to right, transparent, ${tone(0, 60, 0.4)}, transparent)`, animation: "sv-scanner 2s ease-in-out infinite" }} />
         <div style={{ animation: "sv-hex-assemble 0.8s ease-out both" }}>
-          <IconHexagon size={32} className="text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]" />
+          <IconHexagon size={32} style={{ color: tone(0, 60, 1), filter: `drop-shadow(0 0 12px ${tone(0, 60, 0.6)})` }} />
         </div>
       </div>
     </div>
@@ -88,10 +91,13 @@ function StepRow({ step, isDone, isCurrent }: { step: SetupStep; isDone: boolean
   return (
     <div className="flex items-center gap-2 text-[11px] font-mono" style={{ animation: "sv-step-in 0.3s ease-out both" }}>
       <span className="text-muted-foreground/40 shrink-0">{step.icon}</span>
-      <span className={cn(
-        "flex-1 transition-colors duration-300",
-        isDone ? "text-muted-foreground/40" : isCurrent ? "text-amber-400/90" : "text-foreground/70"
-      )}>
+      <span
+        className={cn(
+          "flex-1 transition-colors duration-300",
+          isDone ? "text-muted-foreground/40" : isCurrent ? "" : "text-foreground/70"
+        )}
+        style={isCurrent && !isDone ? { color: "hsl(var(--sv-hue) 90% 65% / 0.9)" } : undefined}
+      >
         {step.label}
       </span>
       {isDone ? (
@@ -99,7 +105,7 @@ function StepRow({ step, isDone, isCurrent }: { step: SetupStep; isDone: boolean
           <path d="M3 6.5L5 8.5L9 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="16" style={{ animation: "sv-check 0.3s ease-out both" }} />
         </svg>
       ) : isCurrent ? (
-        <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-amber-400" style={{ animation: "sv-spin 1s linear infinite" }}>
+        <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0" style={{ color: "hsl(var(--sv-hue) 90% 60%)", animation: "sv-spin 1s linear infinite" }}>
           <circle cx="6" cy="6" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 15" strokeLinecap="round" />
         </svg>
       ) : null}
@@ -107,7 +113,8 @@ function StepRow({ step, isDone, isCurrent }: { step: SetupStep; isDone: boolean
   )
 }
 
-function StepTerminal({ repoName, visibleSteps, completedSteps, progress }: { repoName: string; visibleSteps: number; completedSteps: number; progress: number }) {
+function StepTerminal({ repoName, visibleSteps, completedSteps, progress, hue }: { repoName: string; visibleSteps: number; completedSteps: number; progress: number; hue: number }) {
+  const barGradient = `linear-gradient(to right, hsl(${hue} 90% 60% / 0.8), hsl(${hue} 90% 60%), hsl(${(hue + 20) % 360} 95% 70%))`
   return (
     <div className="w-full max-w-xs z-10 rounded-xl overflow-hidden border border-border/60 bg-card/80 backdrop-blur-sm" style={{ animation: "sv-fade-up 0.6s ease-out 0.5s both" }}>
       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-secondary/40">
@@ -124,8 +131,13 @@ function StepTerminal({ repoName, visibleSteps, completedSteps, progress }: { re
       <div className="px-3 pb-2.5">
         <div className="h-[3px] rounded-full bg-secondary overflow-hidden">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-amber-400/80 via-amber-400 to-yellow-300"
-            style={{ ["--sv-progress" as string]: `${progress}%`, width: `${progress}%`, transition: "width 0.6s ease-out" }}
+            className="h-full rounded-full"
+            style={{
+              backgroundImage: barGradient,
+              ["--sv-progress" as string]: `${progress}%`,
+              width: `${progress}%`,
+              transition: "width 0.6s ease-out",
+            }}
           />
         </div>
       </div>
@@ -215,47 +227,54 @@ export function SetupView({ pending, onQueueMessage, queuedMessage, draft, onDra
   const typedTitle = useTypewriter(pending.title, 50)
   const { visibleSteps, completedSteps } = useSetupStepProgress(pending.estimatedMs)
   const progress = Math.min(((completedSteps + 0.5) / SETUP_STEPS.length) * 100, 95)
+  const hue = accentHueFromSeed(pending.branch)
 
   return (
-    <div className="relative flex flex-col items-center justify-center h-full gap-5 px-8 overflow-hidden bg-background">
+    <div
+      className="relative flex flex-col items-center justify-center h-full gap-5 px-8 overflow-hidden bg-background"
+      style={{ ["--sv-hue" as string]: hue }}
+    >
       <style>{SV_KEYFRAMES}</style>
 
-      {SETUP_PARTICLES.map((p) => (
-        <div
-          key={p.id}
-          className="absolute rounded-full pointer-events-none"
-          style={{
-            left: `${p.x}%`,
-            top: `${p.y}%`,
-            width: p.size,
-            height: p.size,
-            backgroundColor: p.id % 3 === 0 ? "rgb(251,191,36)" : p.id % 3 === 1 ? "rgb(96,165,250)" : "rgb(167,139,250)",
-            ["--p-op" as string]: p.opacity,
-            opacity: p.opacity,
-            animation: `sv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
-          }}
-        />
-      ))}
+      {SETUP_PARTICLES.map((p) => {
+        const offset = p.id % 3 === 0 ? 0 : p.id % 3 === 1 ? 35 : 70
+        return (
+          <div
+            key={p.id}
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              width: p.size,
+              height: p.size,
+              backgroundColor: `hsl(${(hue + offset) % 360} 90% 65%)`,
+              ["--p-op" as string]: p.opacity,
+              opacity: p.opacity,
+              animation: `sv-particle ${p.duration}s ease-in-out ${p.delay}s infinite`,
+            }}
+          />
+        )
+      })}
 
-      <HexHero />
+      <HexHero hue={hue} />
 
       <div className="text-center z-10" style={{ animation: "sv-fade-up 0.6s ease-out 0.2s both" }}>
         <p
           className="text-sm font-semibold bg-clip-text text-transparent"
           style={{
-            backgroundImage: "linear-gradient(90deg, var(--foreground) 0%, var(--foreground) 35%, rgba(251,191,36,0.9) 50%, var(--foreground) 65%, var(--foreground) 100%)",
+            backgroundImage: "linear-gradient(90deg, var(--foreground) 0%, var(--foreground) 35%, hsl(var(--sv-hue) 90% 60% / 0.9) 50%, var(--foreground) 65%, var(--foreground) 100%)",
             backgroundSize: "200% 100%",
             animation: "sv-shimmer 3s ease-in-out infinite",
             WebkitBackgroundClip: "text",
           }}
         >
           {typedTitle}
-          <span className="inline-block w-[1px] h-[13px] bg-amber-400/70 ml-0.5 align-text-bottom animate-pulse" />
+          <span className="inline-block w-[1px] h-[13px] ml-0.5 align-text-bottom animate-pulse" style={{ backgroundColor: "hsl(var(--sv-hue) 90% 60% / 0.7)" }} />
         </p>
         <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">{pending.branch}</p>
       </div>
 
-      <StepTerminal repoName={pending.repoName} visibleSteps={visibleSteps} completedSteps={completedSteps} progress={progress} />
+      <StepTerminal repoName={pending.repoName} visibleSteps={visibleSteps} completedSteps={completedSteps} progress={progress} hue={hue} />
 
       {onQueueMessage && onDraftChange && (
         <SetupInput

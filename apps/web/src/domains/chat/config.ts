@@ -21,6 +21,7 @@ export const SSH_CAPABLE_EDITORS = ["vscode", "cursor"]
 
 // Fallback models when providers API hasn't loaded yet
 export const FALLBACK_MODELS = [
+  { id: "claude-opus-4-8",           label: "Opus 4.8",   provider: "claude" },
   { id: "claude-opus-4-7",           label: "Opus 4.7",   provider: "claude" },
   { id: "claude-opus-4-6",           label: "Opus 4.6",   provider: "claude" },
   { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", provider: "claude" },

@@ -144,13 +144,35 @@ async fn updater_endpoint(channel: &str) -> String {
 }
 
 async fn latest_beta_tag() -> Option<String> {
+    if let Some(tag) = latest_beta_tag_via_server().await {
+        return Some(tag);
+    }
+    latest_beta_tag_via_github().await
+}
+
+async fn latest_beta_tag_via_server() -> Option<String> {
+    let home = huxflux_dir()?;
+    let conn_path = std::path::Path::new(&home).join("huxflux").join("connection.json");
+    let content = std::fs::read_to_string(conn_path).ok()?;
+    let conn: Value = serde_json::from_str(&content).ok()?;
+    let base_url = conn.get("url").and_then(|v| v.as_str())?;
+    let token = conn.get("token").and_then(|v| v.as_str())?;
+    let url = format!("{}/api/system/latest-beta-tag", base_url);
+    let resp: Value = reqwest::Client::new()
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send().await.ok()?
+        .json().await.ok()?;
+    resp.get("tag").and_then(|v| v.as_str()).map(|s| s.to_string())
+}
+
+async fn latest_beta_tag_via_github() -> Option<String> {
     let url = format!("https://api.github.com/repos/{}/releases?per_page=15", GITHUB_REPO);
     let resp: Value = reqwest::Client::new()
         .get(&url)
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "huxflux-desktop")
-        .send().await.ok()?
-        .json().await.ok()?;
+        .send().await.ok()?.json().await.ok()?;
     let releases = resp.as_array()?;
     for r in releases {
         let is_prerelease = r.get("prerelease").and_then(|v| v.as_bool()).unwrap_or(false);

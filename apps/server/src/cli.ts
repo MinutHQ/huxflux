@@ -1364,6 +1364,7 @@ function installSystemService() {
       `export HUXFLUX_DIR="${DATA_DIR}"`,
       `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
       `exec "${huxfluxBin}" _supervisor`,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
@@ -1414,6 +1415,7 @@ function installSystemService() {
       `export HUXFLUX_DIR="${DATA_DIR}"`,
       `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
       `exec "${huxfluxBin}" _supervisor`,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })

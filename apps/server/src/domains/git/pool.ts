@@ -9,14 +9,34 @@ import { createWorktree, removeWorktree } from "./worktrees.js"
 import { logger } from "../../logger.js"
 
 /**
- * The "reserve" is a single hidden worktree per repo. When the repo has a
- * setup script, the script is run ahead of time so claiming the reserve
- * skips the install. When the repo has no setup script, the reserve still
- * exists — claiming it saves the cold-path `git fetch` + `worktree add`,
- * which is the largest single cost on a fresh `createAgent` for any
- * non-trivial repo. Storage lives in the legacy `worktree_pool` table — at
- * most one row per repo.
+ * The "reserve" is one or more hidden pre-warmed worktrees per repo. Claiming a
+ * reserve lets `createAgent` skip the cold-path `git fetch` + `worktree add`
+ * (and, when the repo has a setup script, the install/build that the script
+ * runs ahead of time) — which is the dominant cost on a fresh agent create for
+ * any non-trivial repo. Storage lives in the `worktree_pool` table.
+ *
+ * Depth is auto-derived from repo weight: a repo with a setup script rebuilds
+ * slowly (install + build per worktree), so we keep a deeper pool to absorb
+ * bursts of agent creation; everything else keeps a single reserve.
  */
+
+type RepoRow = typeof repos.$inferSelect
+
+/**
+ * How many reserves to keep warm for a "heavy" repo — one whose worktrees are
+ * expensive to create. The extra standing worktrees cost disk and build time,
+ * so they only pay off when creation is both slow and bursty. Lighter repos
+ * (no setup script) keep a single reserve.
+ */
+export const HEAVY_RESERVE_COUNT = 3
+
+/** Desired number of warm reserves for a repo, derived from its weight. */
+function reserveTarget(repo: RepoRow): number {
+  return repo.setupScript ? HEAVY_RESERVE_COUNT : 1
+}
+
+/** Repos currently being topped up, so concurrent calls don't over-build. */
+const ensuring = new Set<string>()
 
 function reserveLocation(): string {
   return `pool-${uuid().slice(0, 8)}`
@@ -38,23 +58,9 @@ async function fetchBase(repoPath: string, branchFrom: string | null | undefined
   }
 }
 
-/**
- * Ensure a single hidden reserve worktree exists for this repo.
- * No-op if a reserve already exists, or if the repo is folder-typed (no
- * git remote, no worktree concept). Builds the worktree regardless of
- * whether the repo has a setup script — the cold-path git work is the
- * dominant cost on a fresh agent create, so warming it ahead of time helps
- * every repo. The setup script, if any, runs after the worktree exists.
- */
-export async function ensureReserve(repoId: string): Promise<void> {
-  const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
-  if (!repo) return
-  if (repo.type === "folder") return
-  if (!fs.existsSync(repo.path)) return
-  if (getReserveCount(repoId) >= 1) return
-
-  await fetchBase(repo.path, repo.branchFrom)
-
+/** Build a single reserve worktree (and run the setup script, if any). Returns
+ * whether the reserve was created and recorded. */
+async function buildOneReserve(repo: RepoRow): Promise<boolean> {
   const id = uuid()
   const location = reserveLocation()
   const worktreePath = path.join(repo.workspacesPath, location)
@@ -77,18 +83,62 @@ export async function ensureReserve(repoId: string): Promise<void> {
       })
     }
 
-    db.insert(worktreePool).values({ id, repoId, location, branch, createdAt: now }).run()
+    db.insert(worktreePool).values({ id, repoId: repo.id, location, branch, createdAt: now }).run()
     logger.info(`[reserve] created ${location} for repo ${repo.name}`)
+    return true
   } catch (err) {
-    logger.error({ err }, `[reserve] failed to create worktree`)
+    // Roll back a partially-built reserve (e.g. worktree created but the setup
+    // script failed) so we don't leave an orphan on disk — orphan accumulation
+    // is exactly what this pool exists to avoid.
+    try {
+      await removeWorktree(repo.path, worktreePath)
+      await simpleGit(repo.path).raw(["branch", "-D", branch]).catch(() => {})
+    } catch { /* nothing to clean up */ }
+    logger.error({ err }, `[reserve] failed to build reserve ${location}`)
+    return false
   }
 }
 
 /**
- * Claim the hidden reserve for a new agent. Fetches the base branch first
- * so the agent starts from up-to-date code, renames the reserve branch to
- * the agent's branch, resets to the latest base, and triggers a background
- * refill. Returns null if no reserve is available.
+ * Ensure a repo has its target number of warm reserves. No-op for folder-typed
+ * repos (no git remote, no worktree concept) and for repos that already meet
+ * their target. Builds reserves one at a time, stopping early if a build fails
+ * so a persistently-failing repo does not spin. Concurrent calls for the same
+ * repo are coalesced via an in-flight guard.
+ */
+export async function ensureReserve(repoId: string): Promise<void> {
+  const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
+  if (!repo) return
+  if (repo.type === "folder") return
+  if (!fs.existsSync(repo.path)) return
+
+  if (getReserveCount(repoId) >= reserveTarget(repo)) return
+  if (ensuring.has(repoId)) return
+
+  ensuring.add(repoId)
+  try {
+    await fetchBase(repo.path, repo.branchFrom)
+    // Re-read the repo each iteration: a build is slow for heavy repos, and the
+    // setup script (and thus the target) can change mid-loop, or a concurrent
+    // drainReserves can lower the count. Building from a fresh snapshot keeps a
+    // stale-settings reserve from being persisted.
+    while (true) {
+      const current = db.select().from(repos).where(eq(repos.id, repoId)).get()
+      if (!current) break
+      if (getReserveCount(repoId) >= reserveTarget(current)) break
+      const built = await buildOneReserve(current)
+      if (!built) break
+    }
+  } finally {
+    ensuring.delete(repoId)
+  }
+}
+
+/**
+ * Claim a reserve for a new agent. Fetches the base branch first so the agent
+ * starts from up-to-date code, renames the reserve branch to the agent's
+ * branch, resets to the latest base, and triggers a background refill. Returns
+ * null if no reserve is available.
  */
 export async function claimReserve(
   repoId: string,
@@ -131,8 +181,8 @@ export async function claimReserve(
 }
 
 /**
- * Remove the reserve for a repo. Called when a repo loses its setup
- * script, so we don't keep a now-pointless worktree around.
+ * Remove every reserve for a repo. Called when the setup script changes (so the
+ * next reserve is rebuilt fresh) or when a repo is deleted.
  */
 export async function drainReserves(repoId: string): Promise<void> {
   const repo = db.select().from(repos).where(eq(repos.id, repoId)).get()
@@ -149,28 +199,99 @@ export async function drainReserves(repoId: string): Promise<void> {
   }
 }
 
+interface WorktreeEntry {
+  path: string
+  branch?: string
+}
+
+/** Parse `git worktree list --porcelain` into one entry per worktree. */
+function parseWorktreePorcelain(out: string): WorktreeEntry[] {
+  const entries: WorktreeEntry[] = []
+  let current: WorktreeEntry | null = null
+  for (const line of out.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      if (current) entries.push(current)
+      current = { path: line.slice("worktree ".length).trim() }
+    } else if (line.startsWith("branch ") && current) {
+      current.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "")
+    }
+  }
+  if (current) entries.push(current)
+  return entries
+}
+
 /**
- * On server startup: drain any stale extras from earlier pool-size > 1
- * configurations, then ensure exactly one reserve exists for every repo.
- * Reserves are built regardless of whether the repo has a setup script,
- * since the cold-path git fetch + worktree add is what dominates the
- * agent-create response time.
+ * Remove orphaned reserve worktrees: `pool/pool-*` branches that exist on disk
+ * but the DB no longer tracks. These are left behind when a reserve build is
+ * interrupted before its row is written (the worktree was created, the row
+ * never landed). Claimed reserves are safe — claiming renames the branch to the
+ * agent branch, so a still-`pool/pool-*` branch is always an unclaimed reserve.
+ */
+async function removeOrphanReserves(repo: RepoRow): Promise<void> {
+  const tracked = new Set(
+    db.select().from(worktreePool).where(eq(worktreePool.repoId, repo.id)).all().map((e) => e.location),
+  )
+
+  let porcelain: string
+  try {
+    porcelain = await simpleGit(repo.path).raw(["worktree", "list", "--porcelain"])
+  } catch {
+    return
+  }
+
+  for (const wt of parseWorktreePorcelain(porcelain)) {
+    if (!wt.branch?.startsWith("pool/pool-")) continue
+    // Reserve locations are flat single-segment names directly under
+    // workspacesPath (see buildOneReserve), so basename recovers the DB location.
+    const location = path.basename(wt.path)
+    if (tracked.has(location)) continue
+    try {
+      await removeWorktree(repo.path, wt.path)
+      await simpleGit(repo.path).raw(["branch", "-D", wt.branch]).catch(() => {})
+      logger.info(`[reserve] removed orphan ${location} for repo ${repo.name}`)
+    } catch (err) {
+      const msg = String((err as Error).message ?? err).split("\n")[0]
+      logger.warn(`[reserve] failed to remove orphan ${location}: ${msg}`)
+    }
+  }
+}
+
+/** Reconcile one repo's reserve pool: prune orphans and missing-dir rows, trim
+ * to the target depth, then top up to the target. */
+async function reconcileReservePool(repo: RepoRow): Promise<void> {
+  if (repo.type === "folder") return
+  if (!fs.existsSync(repo.path)) return
+
+  await removeOrphanReserves(repo)
+
+  // Drop tracked rows whose worktree directory is gone.
+  for (const entry of db.select().from(worktreePool).where(eq(worktreePool.repoId, repo.id)).all()) {
+    if (!fs.existsSync(path.join(repo.workspacesPath, entry.location))) {
+      db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
+    }
+  }
+
+  // Trim to the target depth (older configs may have left more than we want).
+  const target = reserveTarget(repo)
+  const live = db.select().from(worktreePool).where(eq(worktreePool.repoId, repo.id)).all()
+  for (const entry of live.slice(target)) {
+    try { await removeWorktree(repo.path, path.join(repo.workspacesPath, entry.location)) } catch { /* gone */ }
+    db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
+  }
+
+  await ensureReserve(repo.id)
+}
+
+/**
+ * On server startup: reconcile every repo's reserve pool — remove orphaned
+ * pool worktrees, trim to the per-repo target depth, then top each repo up to
+ * its target.
  */
 export async function initializeReserves(): Promise<void> {
   const allRepos = db.select().from(repos).all()
   for (const repo of allRepos) {
-    const entries = db.select().from(worktreePool).where(eq(worktreePool.repoId, repo.id)).all()
-
-    // Trim to a single reserve
-    const extras = entries.slice(1)
-    for (const entry of extras) {
-      const worktreePath = path.join(repo.workspacesPath, entry.location)
-      try { await removeWorktree(repo.path, worktreePath) } catch { /* gone */ }
-      db.delete(worktreePool).where(eq(worktreePool.id, entry.id)).run()
-    }
-
-    await ensureReserve(repo.id).catch((err) =>
-      logger.error({ err }, `[reserve] init failed for ${repo.name}`)
+    await reconcileReservePool(repo).catch((err) =>
+      logger.error({ err }, `[reserve] init failed for ${repo.name}`),
     )
   }
 }

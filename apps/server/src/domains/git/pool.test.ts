@@ -8,7 +8,8 @@ import {
   createTestDb, createGitTmpRepo, silenceLogs,
   type TestDb, type GitTmpRepo, type SilencedLogs,
 } from "../../../test/harness.js"
-import { ensureReserve, claimReserve, initializeReserves } from "./pool.js"
+import { createWorktree } from "./worktrees.js"
+import { ensureReserve, claimReserve, initializeReserves, HEAVY_RESERVE_COUNT } from "./pool.js"
 
 interface Ctx {
   testDb: TestDb
@@ -62,17 +63,36 @@ describe("ensureReserve", () => {
     expect(existsSync(path.join(ctx.workspacesPath, rows[0].location))).toBe(true)
   })
 
-  it("creates a reserve worktree for a repo with a setup script (and runs it)", async () => {
-    // A setup script that writes a marker file proves the spawn path still
-    // runs when `setupScript` is non-null.
+  it("builds the deeper pool for a repo with a setup script (and runs it in each)", async () => {
+    // A repo with a setup script is "heavy", so it gets HEAVY_RESERVE_COUNT
+    // reserves. The marker file proves the spawn path runs in every one.
     ctx = setup({ setupScript: "touch ./.setup-ran" })
 
     await ensureReserve(ctx.repoId)
 
     const rows = ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all()
-    expect(rows).toHaveLength(1)
-    const wtPath = path.join(ctx.workspacesPath, rows[0].location)
-    expect(existsSync(path.join(wtPath, ".setup-ran"))).toBe(true)
+    expect(rows).toHaveLength(HEAVY_RESERVE_COUNT)
+    for (const row of rows) {
+      expect(existsSync(path.join(ctx.workspacesPath, row.location, ".setup-ran"))).toBe(true)
+    }
+  })
+
+  it("tops up a partially-filled deeper pool to the target", async () => {
+    ctx = setup({ setupScript: "true" })
+
+    await ensureReserve(ctx.repoId)
+    expect(
+      ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all(),
+    ).toHaveLength(HEAVY_RESERVE_COUNT)
+
+    // Drop one row to simulate a claim, then ensure refills back to target.
+    const first = ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all()[0]
+    ctx.testDb.db.delete(worktreePool).where(eq(worktreePool.id, first.id)).run()
+
+    await ensureReserve(ctx.repoId)
+    expect(
+      ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all(),
+    ).toHaveLength(HEAVY_RESERVE_COUNT)
   })
 
   it("is a no-op for folder-typed repos (no git remote)", async () => {
@@ -111,6 +131,24 @@ describe("initializeReserves", () => {
 
     const rows = ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all()
     expect(rows).toHaveLength(1)
+  })
+
+  it("removes orphaned pool worktrees (pool/pool-* on disk, untracked in the DB) and rebuilds", async () => {
+    ctx = setup({ setupScript: null })
+
+    // An orphan: a reserve worktree on disk with no matching DB row, left
+    // behind when a reserve build is interrupted before recording its row.
+    const orphanPath = path.join(ctx.workspacesPath, "pool-orphan")
+    await createWorktree(ctx.repo.path, "pool/pool-orphan", orphanPath, "main")
+    expect(existsSync(orphanPath)).toBe(true)
+
+    await initializeReserves()
+
+    // The orphan is gone, and a fresh tracked reserve exists in its place.
+    expect(existsSync(orphanPath)).toBe(false)
+    const rows = ctx.testDb.db.select().from(worktreePool).where(eq(worktreePool.repoId, ctx.repoId)).all()
+    expect(rows).toHaveLength(1)
+    expect(rows.find((r) => r.location === "pool-orphan")).toBeUndefined()
   })
 })
 

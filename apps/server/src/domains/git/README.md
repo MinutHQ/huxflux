@@ -8,7 +8,7 @@ The server-side surface for everything that happens against a local git reposito
 - File diffing: `getFileChanges`, `getDiff`, `getDiffSummary`, `getBaseFileContent`
 - File read / write inside a worktree: `getFileContent`, `saveFileContent`, `getFileTree`
 - Git metadata: `getRemoteUrl`, `commitAndPush`
-- The worktree reservation pool (`pool.ts`): one hidden pre-warmed worktree per repo, so `createAgent` can claim it instead of paying the cold-path git work on every new agent. Reserves are built whether or not the repo has a setup script — the dominant cost on a fresh create is `git fetch` + `worktree add`, not the install. When a setup script is configured, it runs ahead of time too. `ensureReserve`, `claimReserve`, `drainReserves`, `initializeReserves`
+- The worktree reservation pool (`pool.ts`): one or more hidden pre-warmed worktrees per repo, so `createAgent` can claim one instead of paying the cold-path git work on every new agent. Reserves are built whether or not the repo has a setup script — the dominant cost on a fresh create is `git fetch` + `worktree add`, not the install. When a setup script is configured, it runs ahead of time too. Depth is auto-derived from repo weight: a repo with a setup script rebuilds slowly (install/build per worktree), so it keeps `HEAVY_RESERVE_COUNT` reserves to absorb bursty creation; everything else keeps one. `ensureReserve`, `claimReserve`, `drainReserves`, `initializeReserves`, `HEAVY_RESERVE_COUNT`
 - The file watcher (`watcher.ts`): per-agent native `fs.watch` (recursive) that debounces changes, refreshes `file_changes` rows in the DB, syncs the branch name when it drifts, and emits `agentsWs.fileChanged`. Attached lazily per open agent (see `watchAgent`). `watchWorktree`, `watchAgent`, `unwatchWorktree`, `refreshWorktree`
 - The agent port registry (`processes.ts`): scans terminal output for `localhost:NNNN` patterns, persists detected ports per agent, validates them with `lsof`, broadcasts `ports:changed`. Also `killWorktreeProcesses` (used at shutdown and on agent teardown) for killing processes whose cwd is inside a worktree
 
@@ -27,10 +27,11 @@ The server-side surface for everything that happens against a local git reposito
 - `saveFileContent`: write a file inside the worktree, creating parent directories as needed
 - `commitAndPush`: stage everything, commit with the given message, push with `--set-upstream`
 - `FileTreeEntry`: the recursive `{ name, path, type, children? }` shape returned by `getFileTree`
-- `ensureReserve`: create the single hidden reserve worktree for a repo if one does not already exist; runs the setup script (if any) before recording the row
+- `ensureReserve`: top a repo up to its target number of hidden reserve worktrees (auto-derived from repo weight); runs the setup script (if any) in each before recording its row. Coalesces concurrent calls per repo and stops early if a build fails
 - `claimReserve`: atomically rename the reserve branch to the agent's branch, hard-reset to the latest base, delete the pool row, and trigger a background refill; returns `{ location }` or null
 - `drainReserves`: remove every reserve worktree for a repo (used when the setup script changes so the next reserve can be rebuilt fresh, or when a repo is deleted)
-- `initializeReserves`: on startup, drop stale entries from old multi-reserve configurations, then ensure one reserve exists for every repo
+- `initializeReserves`: on startup, reconcile every repo's pool — remove orphaned `pool/pool-*` worktrees no longer tracked in the DB, drop rows whose directory is gone, trim to the target depth, then top up to target
+- `HEAVY_RESERVE_COUNT`: reserve depth kept for a "heavy" repo (one with a setup script); lighter repos keep a single reserve
 - `watchWorktree`: start a recursive `fs.watch` for an agent; debounced refresh persists `file_changes`, syncs the branch name if it drifts, and emits `file:changed`
 - `watchAgent`: resolve an agent's worktree from the DB and `watchWorktree` it, then refresh once. Called lazily when a client opens an agent (first WS subscriber) so only watched agents poll. No-op for unknown / no-worktree / missing-path agents
 - `unwatchWorktree`: stop watching and clear the pending debounce timer

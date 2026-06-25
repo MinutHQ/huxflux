@@ -7,6 +7,7 @@ import { wrappedPlugin } from "./wrapped/wrapped.routes.js"
 import { feedbackPlugin } from "./feedback/feedback.routes.js"
 import { pullRequestsPlugin } from "./pull-requests/pull-requests.routes.js"
 import { tasksPlugin } from "./tasks/tasks.routes.js"
+import { claudeUsagePlugin } from "./claude-usage/claude-usage.routes.js"
 
 // Future server domains append here as they extract. The server entrypoint
 // loops over this array, so adding a domain is a one-line change at this
@@ -25,4 +26,5 @@ export const domainPlugins: FastifyPluginAsync[] = [
   feedbackPlugin,
   pullRequestsPlugin,
   tasksPlugin,
+  claudeUsagePlugin,
 ]

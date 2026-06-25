@@ -91,4 +91,13 @@ export const queryKeys = {
   wrapped: {
     all: ["wrapped"] as const,
   },
+  claudeUsage: {
+    all: ["claude-usage"] as const,
+    // Keyed by the active server URL: usage is scoped to the machine the
+    // server runs on, so two backends must not share a cache entry.
+    current: (serverUrl?: string | null) =>
+      serverUrl == null
+        ? ["claude-usage"] as const
+        : ["claude-usage", serverUrl] as const,
+  },
 } as const

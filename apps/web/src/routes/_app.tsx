@@ -14,7 +14,7 @@ import { WorkspaceProvider } from "@/app-shell/workspace"
 import { getFlag } from "@/lib/flags"
 import { isTauri, isMacOS } from "@/lib/platform"
 import { tryAutoConnectSync } from "@/lib/autoConnect"
-import { IconLayoutSidebarLeftExpand, IconLayoutSidebarLeftCollapse } from "@tabler/icons-react"
+import { IconLayoutSidebarLeftExpand } from "@tabler/icons-react"
 import { Button } from "@huxflux/ui"
 import { loadRefineSessions, saveRefineSessions } from "@/domains/tasks/utils"
 import type { RefineSession } from "@/domains/tasks/tasks.types"
@@ -136,17 +136,22 @@ function AppLayout() {
     refineSessions,
     onNewRefine: handleNewRefine,
     feedbackEnabled,
+    sidebarCollapsed,
+    onToggleSidebar: toggleSidebar,
   }
 
   return (
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
         <div className="relative flex flex-1 min-h-0 w-full overflow-hidden">
-          {/* Sidebar toggle - fixed position, right of traffic lights, always visible */}
-          {isTauri && isMacOS && (
+          {/* Collapsed-only expand button - floats right of the traffic lights so
+              the sidebar can be reopened. Hidden while the floating overlay is
+              open (the overlay's own header carries the toggle). When expanded,
+              the toggle lives in the sidebar header instead. */}
+          {isTauri && isMacOS && sidebarCollapsed && !floatingSidebar && (
             <div className="absolute left-[84px] z-40" style={{ top: 14 }}>
-              <Button variant="ghost" size="icon-xs" onClick={toggleSidebar} title={sidebarCollapsed ? "Show sidebar (⌘B)" : "Hide sidebar (⌘B)"}>
-                {sidebarCollapsed ? <IconLayoutSidebarLeftExpand size={14} /> : <IconLayoutSidebarLeftCollapse size={14} />}
+              <Button variant="ghost" size="icon-xs" onClick={toggleSidebar} title="Show sidebar (⌘B)">
+                <IconLayoutSidebarLeftExpand size={14} />
               </Button>
             </div>
           )}

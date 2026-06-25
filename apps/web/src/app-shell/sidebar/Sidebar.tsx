@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import type { PullRequest, AgentSummary } from "@huxflux/shared"
-import { TitleBar } from "@/app-shell/TitleBar"
+import { SidebarHeader } from "./SidebarHeader"
 import { FeedbackDialog } from "@/app-shell/FeedbackDialog"
 import { AgentList } from "@/domains/agents/AgentList"
 import { ActiveProcesses } from "@/domains/agents/ActiveProcesses"
@@ -24,18 +24,22 @@ interface SidebarProps {
   refineSessions?: RefineSession[]
   onNewRefine?: (ticketId: string) => void
   feedbackEnabled?: boolean
+  sidebarCollapsed: boolean
+  onToggleSidebar: () => void
 }
 
 /**
- * The application sidebar: title bar, quick-nav buttons (Home/Tasks), an
+ * The application sidebar: header (usage readout + collapse toggle), quick-nav
+ * buttons (Home/Tasks), an
  * optional 3-way tab strip (Agents / Review / Refine, gated on flags), the
  * active pane, the active-processes panel, and the footer (server switcher +
  * help + settings).
  *
  * State ownership:
- *  - Collapsed/expanded panel state lives in the route (`_app.tsx`), which
- *    also owns the single top-of-sidebar collapse toggle. This component does
- *    not own the collapse control.
+ *  - Collapsed/expanded panel state lives in the route (`_app.tsx`). The
+ *    collapse toggle button is rendered in this sidebar's header (right edge),
+ *    driven by the `sidebarCollapsed` / `onToggleSidebar` props; the route
+ *    keeps a separate floating expand button for the collapsed state.
  *  - Tab choice and agent-list filters are persisted to localStorage by the
  *    individual panes / `SidebarTabs`.
  *  - Help / shortcuts dialog visibility is local to this component.
@@ -49,6 +53,8 @@ export function Sidebar({
   refineSessions = [],
   onNewRefine,
   feedbackEnabled = false,
+  sidebarCollapsed,
+  onToggleSidebar,
 }: SidebarProps) {
   const prReviewEnabled = getFlag("prReview")
   const refineEnabled = getFlag("refine")
@@ -81,7 +87,7 @@ export function Sidebar({
   return (
     <>
       <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
-        <TitleBar />
+        <SidebarHeader sidebarCollapsed={sidebarCollapsed} onToggleSidebar={onToggleSidebar} />
 
         <SidebarNav />
         <SidebarTabs

@@ -4,7 +4,7 @@ The application frame that hosts feature domains. Read the root `CLAUDE.md` and 
 
 ## What app-shell IS
 
-The chrome around the product: top-level layout, sidebar (nav + agent list + footer), title bar, error boundary, command palette, banners, onboarding flow, and global dialogs that any route can summon (feedback, keyboard shortcuts, help menu).
+The chrome around the product: top-level layout, sidebar (header + nav + agent list + footer), error boundary, command palette, banners, onboarding flow, and global dialogs that any route can summon (feedback, keyboard shortcuts, help menu).
 
 ## What app-shell is NOT
 
@@ -29,7 +29,6 @@ The chrome around the product: top-level layout, sidebar (nav + agent list + foo
 ```
 app-shell/
   CLAUDE.md
-  TitleBar.tsx              Tauri/macOS traffic-light spacer + drag region
   ErrorBoundary.tsx         Top-level React error boundary
   CommandPalette.tsx        Cmd-K agent picker
   FeedbackDialog.tsx        Global feedback modal (file an issue)
@@ -44,8 +43,10 @@ app-shell/
     AddServerForm.tsx       Inline new-server form
     StatusDot.tsx           Status indicator dot
     validateAuth.ts         /api/config probe helper
-  sidebar/                  Left nav: title bar, tabs, agent list, footer
+  sidebar/                  Left nav: header, tabs, agent list, footer
     Sidebar.tsx             Orchestrator
+    SidebarHeader.tsx       Top row: Claude usage readout + collapse toggle (macOS drag region)
+    ClaudeUsage.tsx         Session / weekly Claude plan-usage progress bars
     SidebarNav.tsx          Home / Tasks quick links
     SidebarTabs.tsx         Agents / Review / Refine tab strip
     SidebarFooter.tsx       Server switcher + help + settings + collapse

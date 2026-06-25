@@ -13,6 +13,7 @@ import { prsApi } from "./domains/pull-requests/pull-requests.api.js"
 import { tasksApi } from "./domains/tasks/tasks.api.js"
 import { wrappedApi } from "./domains/wrapped/wrapped.api.js"
 import { automationsApi } from "./domains/automations/automations.api.js"
+import { claudeUsageApi } from "./domains/claude-usage/claude-usage.api.js"
 
 export const api = {
   agents: agentsApi,
@@ -22,6 +23,7 @@ export const api = {
   tasks: tasksApi,
   wrapped: wrappedApi,
   automations: automationsApi,
+  claudeUsage: claudeUsageApi,
 }
 
 export { getApiBase } from "./apiBase.js"

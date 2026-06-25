@@ -2,6 +2,7 @@ export type SoundId =
   | "chime" | "pop" | "ping" | "bell" | "buzz" | "choo-choo"
   | "giggle" | "scream" | "whistle" | "clown-horn"
   | "sprinkles" | "sparkler" | "huxflux"
+  | "baby" | "michael-jackson-hehe"
   | "none"
 
 export const SOUNDS: { id: SoundId; label: string }[] = [
@@ -18,6 +19,8 @@ export const SOUNDS: { id: SoundId; label: string }[] = [
   { id: "scream",     label: "Scream" },
   { id: "whistle",    label: "Whistle" },
   { id: "clown-horn", label: "Clown horn" },
+  { id: "baby",       label: "Baby" },
+  { id: "michael-jackson-hehe", label: "Michael Jackson Hehe" },
   { id: "none",       label: "None" },
 ]
 
@@ -153,6 +156,8 @@ const players: Record<SoundId, (ac: AudioContext) => void> = {
   "sprinkles":  playFile("/sprinkles.mp3"),
   "sparkler":   playFile("/sparkler.mp3"),
   "huxflux":    playFile("/huxflux.mp3"),
+  "baby":       playFile("/baby.mp3"),
+  "michael-jackson-hehe": playFile("/michael-jackson-hehe.mp3"),
   none: () => {},
 }
 

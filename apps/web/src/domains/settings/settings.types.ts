@@ -1,5 +1,6 @@
 export type Section =
   | "general"
+  | "soundboard"
   | "models"
   | "appearance"
   | "git"

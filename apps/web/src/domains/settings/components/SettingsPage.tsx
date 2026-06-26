@@ -34,6 +34,7 @@ export function SettingsPage({
         section={section}
         activeRepo={activeRepo}
         onRepoRemove={() => setSelectedRepoId(null)}
+        onNavigate={setSection}
       />
       {showAddRepo && (
         <AddRepoDialog

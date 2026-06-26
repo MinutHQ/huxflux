@@ -2,6 +2,7 @@ import type { Repo } from "@huxflux/shared"
 import type { Section } from "../settings.types"
 import { sectionTitles } from "../nav"
 import { GeneralSettings } from "../sections/GeneralSettings"
+import { Soundboard } from "../sections/Soundboard"
 import { ModelsSettings } from "../sections/ModelsSettings"
 import { AppearanceSettings } from "../sections/AppearanceSettings"
 import { GitSettings } from "../sections/GitSettings"
@@ -18,9 +19,10 @@ interface SettingsContentProps {
   section: Section
   activeRepo: Repo | null
   onRepoRemove: () => void
+  onNavigate: (section: Section) => void
 }
 
-export function SettingsContent({ section, activeRepo, onRepoRemove }: SettingsContentProps) {
+export function SettingsContent({ section, activeRepo, onRepoRemove, onNavigate }: SettingsContentProps) {
   return (
     <div className="flex-1 min-w-0 overflow-y-auto">
       <div className="max-w-2xl mx-auto px-10 py-10">
@@ -29,7 +31,7 @@ export function SettingsContent({ section, activeRepo, onRepoRemove }: SettingsC
         ) : (
           <>
             <h1 className="text-2xl font-semibold text-foreground mb-8">{sectionTitles[section]}</h1>
-            <SectionView section={section} />
+            <SectionView section={section} onNavigate={onNavigate} />
           </>
         )}
       </div>
@@ -37,9 +39,10 @@ export function SettingsContent({ section, activeRepo, onRepoRemove }: SettingsC
   )
 }
 
-function SectionView({ section }: { section: Section }) {
+function SectionView({ section, onNavigate }: { section: Section; onNavigate: (section: Section) => void }) {
   switch (section) {
-    case "general": return <GeneralSettings />
+    case "general": return <GeneralSettings onOpenSoundboard={() => onNavigate("soundboard")} />
+    case "soundboard": return <Soundboard />
     case "models": return <ModelsSettings />
     case "appearance": return <AppearanceSettings />
     case "git": return <GitSettings />

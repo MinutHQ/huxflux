@@ -205,7 +205,7 @@ jobs:
       - name: Inject version
         run: |
           VERSION="${{ needs.release.outputs.version }}"
-          DESKTOP_VERSION=$(echo "$VERSION" | sed 's/-beta\.[0-9]*//')
+          DESKTOP_VERSION="$VERSION"
           node -e "
             const fs = require('fs');
             const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));
@@ -312,7 +312,7 @@ jobs:
       - name: Inject version
         run: |
           VERSION="${{ needs.release.outputs.version }}"
-          DESKTOP_VERSION=$(echo "$VERSION" | sed 's/-beta\.[0-9]*//')
+          DESKTOP_VERSION="$VERSION"
           node -e "
             const fs = require('fs');
             const tauriConf = JSON.parse(fs.readFileSync('./apps/desktop/src-tauri/tauri.conf.json', 'utf8'));

@@ -76,7 +76,7 @@ jobs:
           fi
 
           SERVER_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/server/ packages/ install.sh 2>/dev/null)
-          DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ 2>/dev/null)
+          DESKTOP_CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD -- apps/desktop/ apps/web/ packages/ .github/workflows/release-beta.yml 2>/dev/null)
 
           echo "server_changed=$( [ -n "$SERVER_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           echo "desktop_changed=$( [ -n "$DESKTOP_CHANGED" ] && echo true || echo false )" >> "$GITHUB_OUTPUT"

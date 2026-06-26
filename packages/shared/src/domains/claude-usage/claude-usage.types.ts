@@ -14,7 +14,8 @@ export const claudeUsageWindowSchema = z.object({
 })
 
 export const claudeUsageSchema = z.object({
-  // false when no OAuth token could be resolved or the request failed.
+  // false when no OAuth token could be resolved, on an auth failure, or on a
+  // request failure with no cached reading to fall back to.
   connected: z.boolean(),
   // The 5-hour rolling session window (Anthropic's `five_hour`).
   session: claudeUsageWindowSchema.nullable(),

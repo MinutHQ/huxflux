@@ -1,3 +1,4 @@
+import { keepPreviousData } from "@tanstack/react-query"
 import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsageWindow } from "@huxflux/shared"
 
 interface UsageRow extends ClaudeUsageWindow {
@@ -53,6 +54,10 @@ export function ClaudeUsage() {
     queryFn: () => api.claudeUsage.current(),
     staleTime: 60_000,
     refetchInterval: 60_000,
+    // Keep showing the last reading while a poll is in flight or comes back
+    // empty, so a single transient failure doesn't blank the bars for up to a
+    // minute until the next poll succeeds.
+    placeholderData: keepPreviousData,
   })
 
   if (!data?.connected) return null

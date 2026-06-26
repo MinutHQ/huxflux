@@ -38,6 +38,18 @@ function toWindow(raw: RawUsageWindow | null | undefined): ClaudeUsageWindow | n
   return { utilization: raw.utilization, resetsAt: raw.resets_at }
 }
 
+// Last successful usage reading. Anthropic's usage endpoint is occasionally
+// slow (we abort at 5s) or rate-limited; rather than collapsing the sidebar to
+// "disconnected" on a single transient failure, we keep serving the last good
+// reading as long as a token is still present. Cleared when the token vanishes
+// (sign-out) or on process restart.
+let lastGood: ClaudeUsage | null = null
+
+// Test-only: reset the cached reading so cases don't leak state into each other.
+export function _resetUsageCache(): void {
+  lastGood = null
+}
+
 // Pure mapping from the upstream payload to our normalized shape. Exported so
 // it can be tested against a recorded response without touching the network.
 export function mapUsageResponse(raw: RawUsageResponse): ClaudeUsage {
@@ -88,6 +100,9 @@ async function resolveAccessToken(): Promise<string | null> {
 export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
   const token = await resolveAccessToken()
   if (!token) {
+    // No account signed in — genuinely disconnected. Drop any stale reading so
+    // we don't keep showing usage for an account that's no longer present.
+    lastGood = null
     return disconnected("No Claude OAuth token found (sign in to a Claude subscription account)")
   }
 
@@ -105,13 +120,29 @@ export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
       signal: controller.signal,
     })
     if (!res.ok) {
-      return disconnected(`Usage request failed (${res.status})`)
+      // A 401/403 means the token itself is bad (expired/revoked), not a
+      // transient blip. Drop the cache and report disconnected so stale bars
+      // don't linger for an account that can no longer authenticate. Other
+      // statuses (429, 5xx) are transient — fall back to the last good reading.
+      if (res.status === 401 || res.status === 403) {
+        lastGood = null
+        return disconnected(`Usage request failed (${res.status})`)
+      }
+      return staleOr(disconnected(`Usage request failed (${res.status})`))
     }
-    return mapUsageResponse((await res.json()) as RawUsageResponse)
+    const usage = mapUsageResponse((await res.json()) as RawUsageResponse)
+    lastGood = usage
+    return usage
   } catch (err) {
     logger.warn({ err }, "[claude-usage] failed to fetch usage")
-    return disconnected(err instanceof Error ? err.message : "Unknown error")
+    return staleOr(disconnected(err instanceof Error ? err.message : "Unknown error"))
   } finally {
     clearTimeout(timer)
   }
+}
+
+// On a transient fetch failure, prefer the last good reading (a token is still
+// present, so the account is connected) over collapsing to disconnected.
+function staleOr(fallback: ClaudeUsage): ClaudeUsage {
+  return lastGood ?? fallback
 }

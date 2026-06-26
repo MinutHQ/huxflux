@@ -25,6 +25,6 @@ None.
 
 ## Quirks
 
-- The endpoint never throws: missing token, non-2xx upstream response, and network errors all resolve to `{ connected: false, error }` so the sidebar can degrade gracefully instead of surfacing a request failure.
+- The endpoint never throws. A missing token, a 401/403 (bad/revoked token), or any failure with no prior reading resolves to `{ connected: false, error }` so the sidebar degrades gracefully. Transient failures (timeout, 429, 5xx, network errors) return the last good reading while a token is still present — the service keeps a process-global last-good snapshot so a single flaky poll doesn't blank the bars. The cache is dropped on sign-out (no token) and on auth failure.
 - Token resolution is best-effort and platform-aware. The keychain branch only runs on macOS; everything else relies on the env var or the plaintext credentials file.
 - `utilization` is passed through as the upstream 0–100 percentage; no rescaling happens here.

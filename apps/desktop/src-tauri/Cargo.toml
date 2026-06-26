@@ -2,6 +2,7 @@
 name = "huxflux-desktop"
 version = "0.0.0-dev"
 description = "Huxflux desktop client"
+license = "MIT"
 authors = []
 edition = "2021"
 

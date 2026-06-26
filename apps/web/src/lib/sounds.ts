@@ -3,6 +3,8 @@ export type SoundId =
   | "giggle" | "scream" | "whistle" | "clown-horn"
   | "sprinkles" | "sparkler" | "huxflux"
   | "baby" | "michael-jackson-hehe"
+  | "ive-got-this" | "daddy-chill" | "yippee" | "a-few-moments-later"
+  | "apple-pay" | "windows-7-startup" | "viktor" | "succulent-chinese-meal"
   | "none"
 
 export const SOUNDS: { id: SoundId; label: string }[] = [
@@ -21,6 +23,14 @@ export const SOUNDS: { id: SoundId; label: string }[] = [
   { id: "clown-horn", label: "Clown horn" },
   { id: "baby",       label: "Baby" },
   { id: "michael-jackson-hehe", label: "Michael Jackson Hehe" },
+  { id: "ive-got-this", label: "I've got this" },
+  { id: "daddy-chill", label: "Daddy chill" },
+  { id: "yippee",     label: "Yippee" },
+  { id: "a-few-moments-later", label: "A few moments later" },
+  { id: "apple-pay",  label: "Apple Pay" },
+  { id: "windows-7-startup", label: "Windows 7 startup" },
+  { id: "viktor",     label: "Viktor" },
+  { id: "succulent-chinese-meal", label: "Succulent Chinese meal" },
   { id: "none",       label: "None" },
 ]
 
@@ -28,17 +38,20 @@ function ctx(): AudioContext {
   return new AudioContext()
 }
 
-function play(fn: (ac: AudioContext) => void) {
+type Player = (ac: AudioContext, onEnded?: () => void) => void
+
+function play(fn: Player, onEnded?: () => void) {
   try {
     const ac = ctx()
-    ac.resume().then(() => fn(ac)).catch(() => {})
+    ac.resume().then(() => fn(ac, onEnded)).catch(() => onEnded?.())
   } catch {
     // AudioContext unavailable — silent fail
+    onEnded?.()
   }
 }
 
-function playFile(file: string) {
-  return (ac: AudioContext) => {
+function playFile(file: string): Player {
+  return (ac, onEnded) => {
     fetch(file)
       .then((res) => res.arrayBuffer())
       .then((buf) => ac.decodeAudioData(buf))
@@ -46,9 +59,10 @@ function playFile(file: string) {
         const src = ac.createBufferSource()
         src.buffer = decoded
         src.connect(ac.destination)
+        if (onEnded) src.onended = () => onEnded()
         src.start(ac.currentTime)
       })
-      .catch(() => {})
+      .catch(() => onEnded?.())
   }
 }
 
@@ -142,7 +156,7 @@ function buzz(ac: AudioContext) {
   osc.stop(ac.currentTime + 0.56)
 }
 
-const players: Record<SoundId, (ac: AudioContext) => void> = {
+const players: Record<SoundId, Player> = {
   chime,
   pop,
   ping,
@@ -158,10 +172,23 @@ const players: Record<SoundId, (ac: AudioContext) => void> = {
   "huxflux":    playFile("/huxflux.mp3"),
   "baby":       playFile("/baby.mp3"),
   "michael-jackson-hehe": playFile("/michael-jackson-hehe.mp3"),
+  "ive-got-this": playFile("/ive-got-this.mp3"),
+  "daddy-chill": playFile("/daddy-chill.mp3"),
+  "yippee":     playFile("/yippee.mp3"),
+  "a-few-moments-later": playFile("/a-few-moments-later.mp3"),
+  "apple-pay":  playFile("/apple-pay.mp3"),
+  "windows-7-startup": playFile("/windows-7-startup.mp3"),
+  "viktor":     playFile("/viktor.mp3"),
+  "succulent-chinese-meal": playFile("/succulent-chinese-meal.mp3"),
   none: () => {},
 }
 
-export function playSound(id: SoundId) {
+// Synthesized players don't signal completion; their longest tail (bell) is ~1.2s.
+const synthIds: ReadonlySet<SoundId> = new Set(["chime", "pop", "ping", "bell", "buzz"])
+const synthEndedMs = 1300
+
+export function playSound(id: SoundId, onEnded?: () => void) {
   if (id === "none") return
-  play(players[id])
+  play(players[id], onEnded)
+  if (onEnded && synthIds.has(id)) setTimeout(onEnded, synthEndedMs)
 }

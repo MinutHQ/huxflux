@@ -1,11 +1,11 @@
 # settings
 
-User-facing settings page. Left nav with sections (General, Models, Providers, Appearance, Git, Review, Servers, Integrations, Experimental, Advanced, Updates) and per-repository settings. Also exposes the dialogs the sidebar uses for adding a new repository.
+User-facing settings page. Left nav with sections (General, Soundboard, Models, Providers, Appearance, Git, Review, Servers, Integrations, Experimental, Advanced, Updates) and per-repository settings. Also exposes the dialogs the sidebar uses for adding a new repository.
 
 ## Owns
 
 - The full-screen `/settings` page with left-nav + content layout
-- Per-section settings UIs (one component per section)
+- Per-section settings UIs (one component per section), including the Soundboard section for previewing notification sounds
 - Per-repository settings UI (icon, paths, branch, remote, scripts, preferences)
 - The "Add repository" / "Clone from URL" / "Quick start" dialogs (consumed by the app shell sidebar)
 - Settings nav config (section list, ordering, icons)

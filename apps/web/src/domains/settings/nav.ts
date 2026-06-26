@@ -1,5 +1,6 @@
 import {
   IconSettings,
+  IconMusic,
   IconBrain,
   IconPalette,
   IconGitBranch,
@@ -20,6 +21,7 @@ interface NavItem {
 
 export const navMain: NavItem[] = [
   { id: "general", label: "General", icon: IconSettings },
+  { id: "soundboard", label: "Soundboard", icon: IconMusic },
   { id: "models", label: "Models", icon: IconBrain },
   { id: "appearance", label: "Appearance", icon: IconPalette },
   { id: "git", label: "Git", icon: IconGitBranch },
@@ -36,6 +38,7 @@ export const navMore: NavItem[] = [
 
 export const sectionTitles: Record<Section, string> = {
   general: "General",
+  soundboard: "Soundboard",
   models: "Models",
   appearance: "Appearance",
   git: "Git",

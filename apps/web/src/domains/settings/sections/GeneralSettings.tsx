@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Switch, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
-import { IconVolume } from "@tabler/icons-react"
+import { IconVolume, IconMusic } from "@tabler/icons-react"
 import { isTauri } from "@/lib/platform"
 import { SOUNDS, playSound, type SoundId } from "@/lib/sounds"
 import {
@@ -13,7 +13,7 @@ import {
 import { SettingRow } from "../components/SettingRow"
 import { SettingInfo } from "../components/SettingInfo"
 
-export function GeneralSettings() {
+export function GeneralSettings({ onOpenSoundboard }: { onOpenSoundboard: () => void }) {
   const [notifications, setNotificationsState] = useState(getDesktopNotif)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission
@@ -110,6 +110,9 @@ export function GeneralSettings() {
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => playSound(sound)}>
             <IconVolume size={13} />
             Test
+          </Button>
+          <Button variant="outline" size="icon-sm" aria-label="Open soundboard" onClick={onOpenSoundboard}>
+            <IconMusic size={13} />
           </Button>
           <Switch checked={soundEnabled} onCheckedChange={handleSoundEnabledChange} />
         </div>

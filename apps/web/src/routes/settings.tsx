@@ -57,6 +57,7 @@ function sectionRoute(section: Section) {
   })
 }
 
+export const SettingsSoundboardRoute = sectionRoute("soundboard")
 export const SettingsModelsRoute = sectionRoute("models")
 export const SettingsAppearanceRoute = sectionRoute("appearance")
 export const SettingsGitRoute = sectionRoute("git")
@@ -82,6 +83,7 @@ export const SettingsRepoRoute = createRoute({
 export const settingsChildren = [
   SettingsIndexRoute,
   SettingsGeneralRoute,
+  SettingsSoundboardRoute,
   SettingsModelsRoute,
   SettingsAppearanceRoute,
   SettingsGitRoute,

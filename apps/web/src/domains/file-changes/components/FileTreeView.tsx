@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileTree, useFileTree } from "@pierre/trees/react"
 import type { GitStatusEntry } from "@pierre/trees"
 import { api, type FileChange, queryKeys, useHuxfluxQuery, useRepos } from "@huxflux/shared"
@@ -78,7 +78,12 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
       }
     }
     walk(rootTree as FileTreeEntry[])
-    return paths
+    const dirPrefixes = new Set<string>()
+    for (const p of paths) {
+      const parts = p.split("/")
+      for (let i = 1; i < parts.length; i++) dirPrefixes.add(parts.slice(0, i).join("/"))
+    }
+    return paths.filter((p) => !dirPrefixes.has(p))
   }, [rootTree, fileChanges, changedOnly, isFolderAgent, folderPaths])
 
   // Git status decoration: map each changed file to added/deleted/modified.
@@ -191,5 +196,30 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
     )
   }
 
-  return <FileTree model={model} className="h-full" style={treeThemeStyles} />
+  return (
+    <TreeErrorBoundary>
+      <FileTree model={model} className="h-full" style={treeThemeStyles} />
+    </TreeErrorBoundary>
+  )
+}
+
+class TreeErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex items-center justify-center py-12 px-4">
+          <div className="space-y-2 text-center">
+            <p className="text-xs text-muted-foreground">Failed to render file tree</p>
+            <p className="text-[11px] text-muted-foreground/60">{this.state.error.message}</p>
+            <button className="text-xs underline text-muted-foreground" onClick={() => this.setState({ error: null })}>
+              Retry
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }

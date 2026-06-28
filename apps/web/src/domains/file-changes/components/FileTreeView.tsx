@@ -5,6 +5,15 @@ import { api, type FileChange, queryKeys, useHuxfluxQuery, useRepos } from "@hux
 import type { FileTreeEntry } from "../file-changes.types"
 import { useTreeThemeStyles } from "../hooks/useTreeThemeStyles"
 
+function stripPathCollisions(paths: string[]): string[] {
+  const dirPrefixes = new Set<string>()
+  for (const p of paths) {
+    const parts = p.split("/")
+    for (let i = 1; i < parts.length; i++) dirPrefixes.add(parts.slice(0, i).join("/"))
+  }
+  return paths.filter((p) => !dirPrefixes.has(p))
+}
+
 interface FileTreeViewProps {
   agentId: string
   repoId: string | null
@@ -67,23 +76,24 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
 
   // Flatten the repo tree into a path list for pierre.
   const allPaths = useMemo(() => {
-    if (changedOnly) return fileChanges.map((f) => f.path)
-    if (isFolderAgent) return Array.from(folderPaths).sort()
-    if (!rootTree) return []
-    const paths: string[] = []
-    function walk(entries: FileTreeEntry[]) {
-      for (const e of entries) {
-        if (e.type === "file") paths.push(e.path)
-        if (e.children) walk(e.children)
+    let paths: string[]
+    if (changedOnly) {
+      paths = fileChanges.map((f) => f.path)
+    } else if (isFolderAgent) {
+      paths = Array.from(folderPaths).sort()
+    } else if (!rootTree) {
+      return []
+    } else {
+      paths = []
+      function walk(entries: FileTreeEntry[]) {
+        for (const e of entries) {
+          if (e.type === "file") paths.push(e.path)
+          if (e.children) walk(e.children)
+        }
       }
+      walk(rootTree as FileTreeEntry[])
     }
-    walk(rootTree as FileTreeEntry[])
-    const dirPrefixes = new Set<string>()
-    for (const p of paths) {
-      const parts = p.split("/")
-      for (let i = 1; i < parts.length; i++) dirPrefixes.add(parts.slice(0, i).join("/"))
-    }
-    return paths.filter((p) => !dirPrefixes.has(p))
+    return stripPathCollisions(paths)
   }, [rootTree, fileChanges, changedOnly, isFolderAgent, folderPaths])
 
   // Git status decoration: map each changed file to added/deleted/modified.

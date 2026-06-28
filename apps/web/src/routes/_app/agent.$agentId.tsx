@@ -1,5 +1,5 @@
 import { createRoute, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useRef, useMemo } from "react"
+import { Component, useState, useEffect, useRef, useMemo, type ReactNode } from "react"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle, Popover, PopoverTrigger, PopoverContent } from "@huxflux/ui"
 import { IconDots, IconLayoutBottombar, IconLayoutSidebar } from "@tabler/icons-react"
 import { ChatView } from "@/domains/chat/ChatView"
@@ -21,8 +21,17 @@ import { Route as appRoute } from "../_app"
 export const Route = createRoute({
   getParentRoute: () => appRoute,
   path: "agent/$agentId",
-  component: AgentRoute,
+  component: AgentRouteWithBoundary,
 })
+
+function AgentRouteWithBoundary() {
+  const { agentId } = Route.useParams()
+  return (
+    <AgentErrorBoundary key={agentId}>
+      <AgentRoute />
+    </AgentErrorBoundary>
+  )
+}
 
 function AgentRoute() {
   const { agentId } = Route.useParams()
@@ -389,4 +398,29 @@ function AgentRoute() {
     </div>
     </WorkerPoolContextProvider>
   )
+}
+
+class AgentErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error("Agent view crashed:", error, info.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-1 items-center justify-center h-full">
+          <div className="max-w-sm space-y-3 text-center p-6">
+            <p className="text-sm font-medium text-foreground">This agent view crashed</p>
+            <p className="text-xs text-muted-foreground">{this.state.error.message}</p>
+            <p className="text-xs text-muted-foreground/60">You can switch to another agent from the sidebar, or retry below.</p>
+            <button className="text-xs underline text-muted-foreground" onClick={() => this.setState({ error: null })}>
+              Retry
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { Component, useState, type ReactNode } from "react"
 import type { FileChange } from "@huxflux/shared"
 import { FileSearchBar } from "./FileSearchBar"
 import { FileTreeView } from "./FileTreeView"
@@ -60,25 +60,45 @@ export function UnifiedFileTree({
         <div className="flex-1 min-h-0">{prView}</div>
       ) : (
         <div className="flex-1 min-h-0">
-          <FileTreeView
-            agentId={agentId}
-            repoId={repoId}
-            fileChanges={fileChanges}
-            changedOnly={activeView === "diff"}
-            search={search}
-            onFileContentSelect={(path) => {
-              // If the clicked file has uncommitted changes and the diff
-              // browser is available, open the file's diff instead of the
-              // read-only content viewer.
-              if (onOpenDiffBrowser && fileChanges.some((f) => f.path === path)) {
-                onOpenDiffBrowser(path)
-                return
-              }
-              onFileContentSelect(path)
-            }}
-          />
+          <PanelErrorBoundary>
+            <FileTreeView
+              agentId={agentId}
+              repoId={repoId}
+              fileChanges={fileChanges}
+              changedOnly={activeView === "diff"}
+              search={search}
+              onFileContentSelect={(path) => {
+                if (onOpenDiffBrowser && fileChanges.some((f) => f.path === path)) {
+                  onOpenDiffBrowser(path)
+                  return
+                }
+                onFileContentSelect(path)
+              }}
+            />
+          </PanelErrorBoundary>
         </div>
       )}
     </div>
   )
+}
+
+class PanelErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex items-center justify-center py-12 px-4">
+          <div className="space-y-2 text-center">
+            <p className="text-xs text-muted-foreground">Failed to render file tree</p>
+            <p className="text-[11px] text-muted-foreground/60">{this.state.error.message}</p>
+            <button className="text-xs underline text-muted-foreground" onClick={() => this.setState({ error: null })}>
+              Retry
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }

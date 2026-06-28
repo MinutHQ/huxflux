@@ -1,9 +1,18 @@
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { FileTree, useFileTree } from "@pierre/trees/react"
 import type { GitStatusEntry } from "@pierre/trees"
 import { api, type FileChange, queryKeys, useHuxfluxQuery, useRepos } from "@huxflux/shared"
 import type { FileTreeEntry } from "../file-changes.types"
 import { useTreeThemeStyles } from "../hooks/useTreeThemeStyles"
+
+function stripPathCollisions(paths: string[]): string[] {
+  const dirPrefixes = new Set<string>()
+  for (const p of paths) {
+    const parts = p.split("/")
+    for (let i = 1; i < parts.length; i++) dirPrefixes.add(parts.slice(0, i).join("/"))
+  }
+  return paths.filter((p) => !dirPrefixes.has(p))
+}
 
 interface FileTreeViewProps {
   agentId: string
@@ -67,8 +76,8 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
 
   // Flatten the repo tree into a path list for pierre.
   const allPaths = useMemo(() => {
-    if (changedOnly) return fileChanges.map((f) => f.path)
-    if (isFolderAgent) return Array.from(folderPaths).sort()
+    if (changedOnly) return stripPathCollisions(fileChanges.map((f) => f.path))
+    if (isFolderAgent) return stripPathCollisions(Array.from(folderPaths).sort())
     if (!rootTree) return []
     const paths: string[] = []
     function walk(entries: FileTreeEntry[]) {
@@ -78,12 +87,7 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
       }
     }
     walk(rootTree as FileTreeEntry[])
-    const dirPrefixes = new Set<string>()
-    for (const p of paths) {
-      const parts = p.split("/")
-      for (let i = 1; i < parts.length; i++) dirPrefixes.add(parts.slice(0, i).join("/"))
-    }
-    return paths.filter((p) => !dirPrefixes.has(p))
+    return stripPathCollisions(paths)
   }, [rootTree, fileChanges, changedOnly, isFolderAgent, folderPaths])
 
   // Git status decoration: map each changed file to added/deleted/modified.
@@ -196,30 +200,5 @@ export function FileTreeView({ agentId, repoId, fileChanges, changedOnly, search
     )
   }
 
-  return (
-    <TreeErrorBoundary>
-      <FileTree model={model} className="h-full" style={treeThemeStyles} />
-    </TreeErrorBoundary>
-  )
-}
-
-class TreeErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state: { error: Error | null } = { error: null }
-  static getDerivedStateFromError(error: Error) { return { error } }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="flex items-center justify-center py-12 px-4">
-          <div className="space-y-2 text-center">
-            <p className="text-xs text-muted-foreground">Failed to render file tree</p>
-            <p className="text-[11px] text-muted-foreground/60">{this.state.error.message}</p>
-            <button className="text-xs underline text-muted-foreground" onClick={() => this.setState({ error: null })}>
-              Retry
-            </button>
-          </div>
-        </div>
-      )
-    }
-    return this.props.children
-  }
+  return <FileTree model={model} className="h-full" style={treeThemeStyles} />
 }

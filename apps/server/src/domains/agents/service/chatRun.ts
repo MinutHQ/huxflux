@@ -58,6 +58,9 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     prReplyHandler(agentId),
   ]
 
+  const allRepos = db.select().from(reposTable).all()
+  const availableRepos = allRepos.map((r) => r.name)
+
   const tagInstructions = buildChatTagInstructions({
     agentTitle: agent?.title ?? agentId,
     branchPrefix: repo?.branchPrefix ?? null,
@@ -65,6 +68,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     agentId,
     threadParentId: agent?.threadParentId ?? null,
     hasPrNumber: !!agent?.prNumber,
+    availableRepos,
   })
 
   return {

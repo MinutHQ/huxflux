@@ -18,11 +18,30 @@ interface BuildArgs {
  */
 export function buildChatTagInstructions(args: BuildArgs): string {
   return [
+    buildPreamble(),
     buildNamingDirective(args.agentTitle, args.branchPrefix, args.isFolderAgent),
     buildDelegateDirective(args.threadParentId, args.agentId),
     ...buildThreadDirective(),
     ...buildPRReplyDirective(args.hasPrNumber),
   ].filter(Boolean).join("\n\n")
+}
+
+function buildPreamble(): string {
+  return [
+    `## Huxflux inline directives`,
+    ``,
+    `You have a set of inline directives you can use by writing special XML tags in your response.`,
+    `Format: \`<huxflux:namespace.kind attr="value">body</huxflux:namespace.kind>\``,
+    `Self-closing (no body): \`<huxflux:namespace.kind attr="value"/>\``,
+    ``,
+    `How they work:`,
+    `1. You write the tag anywhere in your response text (on its own line is best).`,
+    `2. The Huxflux server parses these tags from your response after streaming completes.`,
+    `3. The server executes the associated action (rename branch, post a PR reply, delegate to another agent, etc.).`,
+    `4. The tags are stripped from the visible message, so the user never sees the raw XML.`,
+    ``,
+    `These are real, functional server-side actions. They are your primary mechanism for interacting with the Huxflux platform beyond tool calls. Use them as documented below.`,
+  ].join("\n")
 }
 
 function buildNamingDirective(agentTitle: string, branchPrefix: string | null, isFolderAgent: boolean): string {
@@ -65,16 +84,20 @@ function buildNamingDirective(agentTitle: string, branchPrefix: string | null, i
 
 function buildDelegateDirective(threadParentId: string | null, agentId: string): string {
   const lines = [
-    `Linked workspaces:`,
-    `When the user links other workspaces to your conversation, you can send tasks to them:`,
-    `  <huxflux:agents.delegate agent="AGENT_ID">task or message</huxflux:agents.delegate>`,
-    `The linked agent IDs will be provided in the message context when workspaces are linked.`,
+    `## Delegation`,
+    ``,
+    `You can send messages to other agents. The server delivers the message as a new chat message in that agent's conversation.`,
+    `  <huxflux:agents.delegate agent="AGENT_ID">task or message to send</huxflux:agents.delegate>`,
+    `When the user links other workspaces to your conversation, their agent IDs will appear in the message context. Use those IDs to delegate.`,
   ]
   if (threadParentId) {
-    lines.push(``, `You are a thread agent. To reply to your parent agent, use the delegate tag with their ID.`)
+    lines.push(
+      ``,
+      `You are a thread agent spawned by a parent. Your parent agent's ID is "${threadParentId}".`,
+      `To report back to your parent, use:`,
+      `  <huxflux:agents.delegate agent="${threadParentId}">your update or result</huxflux:agents.delegate>`,
+    )
   }
-  // Reference agentId so the prompt feels less generic when delegate is the
-  // primary callback path.
   void agentId
   return lines.join("\n")
 }
@@ -83,27 +106,26 @@ function buildThreadDirective(): string[] {
   if (!getSettings().threadsEnabled) return []
   return [
     [
-      `Thread agents:`,
-      `To spawn a new agent in another repo (for cross-repo work like translations, shared libraries, etc.):`,
-      `  <huxflux:agents.spawn repo="repo-name">Full task description with context</huxflux:agents.spawn>`,
-      `This creates a new workspace in that repo. Include enough context so the spawned agent understands WHY the changes are needed.`,
+      `## Spawning thread agents`,
+      ``,
+      `You can create a new agent in a different repository. The server creates a fresh workspace, runs the repo's setup script, and sends your task description as the first message. The spawned agent can reply back to you via delegation.`,
+      `  <huxflux:agents.spawn repo="repo-name">Full task description with enough context for the new agent to work independently</huxflux:agents.spawn>`,
+      `Use this for cross-repo work: translations, shared libraries, documentation sites, etc.`,
     ].join("\n"),
   ]
 }
 
 function buildPRReplyDirective(hasPrNumber: boolean): string[] {
-  // Always include the directive so the model has the gh CLI fallback even
-  // before a PR exists (it might create one mid-turn). The huxflux tag is
-  // the preferred path; the gh fallback covers no-PR / no-token cases.
   void hasPrNumber
   return [
     [
-      `PR feedback:`,
-      `When you receive PR review comments (messages from "PR Review"), fix the issues and then reply on GitHub.`,
-      `Preferred: use the huxflux tag to reply (the server posts it via the GitHub API):`,
+      `## PR review replies`,
+      ``,
+      `When you receive PR review comments (messages from "PR Review"), fix the issues and reply to each comment on GitHub.`,
+      `Use this tag to reply. The server posts it as a threaded reply on the GitHub PR review comment via the GitHub API:`,
       `  <huxflux:pr.reply commentId="COMMENT_ID">your reply explaining what you fixed</huxflux:pr.reply>`,
-      `The comment ID is included in the PR review message.`,
-      `If the tag does not work (e.g. no PR linked, no GitHub token), fall back to the gh CLI:`,
+      `The comment ID is included in the PR review message. Emit one tag per comment you address.`,
+      `If the tag fails (e.g. no PR linked, no GitHub token), fall back to the gh CLI:`,
       `  gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID/replies -f body='your reply'`,
       `After fixing and replying, push your changes.`,
     ].join("\n"),
@@ -120,11 +142,17 @@ interface TaskTagArgs {
  */
 export function buildTaskWorkTagInstructions(args: TaskTagArgs): string {
   return [
-    `Task tags:`,
-    `When you have updates about your assigned task (id "${args.taskId}"), emit these tags inline in your response. The server applies them and strips them from the visible chat.`,
+    `## Task updates`,
     ``,
+    `You are assigned to task "${args.taskId}". Use these tags to update it. The server applies the action and strips the tag from the visible message.`,
+    ``,
+    `Post a comment to the task thread:`,
     `  <huxflux:tasks.comment taskId="${args.taskId}">A short note for the task thread.</huxflux:tasks.comment>`,
+    ``,
+    `Mark the task done (or another status):`,
     `  <huxflux:tasks.status taskId="${args.taskId}" status="done"/>`,
+    ``,
+    `Update the task description:`,
     `  <huxflux:tasks.update taskId="${args.taskId}" field="description">New description body.</huxflux:tasks.update>`,
   ].join("\n")
 }

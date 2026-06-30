@@ -7,6 +7,7 @@ interface BuildArgs {
   agentId: string
   threadParentId: string | null
   hasPrNumber: boolean
+  availableRepos: string[]
 }
 
 /**
@@ -21,7 +22,7 @@ export function buildChatTagInstructions(args: BuildArgs): string {
     buildPreamble(),
     buildNamingDirective(args.agentTitle, args.branchPrefix, args.isFolderAgent),
     buildDelegateDirective(args.threadParentId, args.agentId),
-    ...buildThreadDirective(),
+    ...buildThreadDirective(args.availableRepos),
     ...buildPRReplyDirective(args.hasPrNumber),
   ].filter(Boolean).join("\n\n")
 }
@@ -102,17 +103,19 @@ function buildDelegateDirective(threadParentId: string | null, agentId: string):
   return lines.join("\n")
 }
 
-function buildThreadDirective(): string[] {
+function buildThreadDirective(availableRepos: string[]): string[] {
   if (!getSettings().threadsEnabled) return []
-  return [
-    [
-      `## Spawning thread agents`,
-      ``,
-      `You can create a new agent in a different repository. The server creates a fresh workspace, runs the repo's setup script, and sends your task description as the first message. The spawned agent can reply back to you via delegation.`,
-      `  <huxflux:agents.spawn repo="repo-name">Full task description with enough context for the new agent to work independently</huxflux:agents.spawn>`,
-      `Use this for cross-repo work: translations, shared libraries, documentation sites, etc.`,
-    ].join("\n"),
+  const lines = [
+    `## Spawning thread agents`,
+    ``,
+    `You can create a new agent in a different repository. The server creates a fresh workspace, runs the repo's setup script, and sends your task description as the first message. The spawned agent can reply back to you via delegation.`,
+    `  <huxflux:agents.spawn repo="repo-name">Full task description with enough context for the new agent to work independently</huxflux:agents.spawn>`,
+    `Use this for cross-repo work: translations, shared libraries, documentation sites, etc.`,
   ]
+  if (availableRepos.length > 0) {
+    lines.push(``, `Available repos: ${availableRepos.join(", ")}`)
+  }
+  return [lines.join("\n")]
 }
 
 function buildPRReplyDirective(hasPrNumber: boolean): string[] {

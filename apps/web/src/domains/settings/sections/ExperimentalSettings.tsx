@@ -43,7 +43,7 @@ export function ExperimentalSettings() {
       />
       <ExperimentalRow
         label="Thread Agents"
-        description="Allow agents to spawn thread agents in other repos for cross-repo work (e.g. translations). Agents can create new workspaces via <huxflux:spawn> tags."
+        description="Allow agents to spawn thread agents in other repos for cross-repo work (e.g. translations)."
         checked={threads && threadsServer}
         onChange={(v) => {
           setFlag("threads", v)

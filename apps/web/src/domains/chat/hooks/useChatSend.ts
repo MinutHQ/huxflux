@@ -61,7 +61,7 @@ async function buildContent(args: UseChatSendArgs, text: string): Promise<string
     const agentBlock = linkedAgents.map((a) =>
       `- "${a.title}" (${a.branch}) — ID: ${a.id}`
     ).join("\n")
-    content = `${content}\n\n---\n\nLinked workspaces (separate agents in other repos):\n${agentBlock}\n\nTo delegate a task to a linked workspace, emit this tag in your response (do NOT use SendMessage — it is for sub-agents, not linked workspaces):\n  <huxflux:delegate agent="<AGENT_ID>">task description</huxflux:delegate>`
+    content = `${content}\n\n---\n\nLinked agents for cross-repo collaboration:\n${agentBlock}\n\nTo send a task to one of these agents, write this tag in your response:\n  <huxflux:agents.delegate agent="AGENT_ID">task or message</huxflux:agents.delegate>\nReplace AGENT_ID with the ID from the list above. The server delivers your message to that agent's conversation.`
   }
 
   return content

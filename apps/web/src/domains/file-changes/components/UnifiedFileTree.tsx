@@ -60,7 +60,7 @@ export function UnifiedFileTree({
         <div className="flex-1 min-h-0">{prView}</div>
       ) : (
         <div className="flex-1 min-h-0">
-          <PanelErrorBoundary>
+          <PanelErrorBoundary key={agentId}>
             <FileTreeView
               agentId={agentId}
               repoId={repoId}

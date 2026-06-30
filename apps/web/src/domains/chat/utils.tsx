@@ -116,14 +116,7 @@ export function formatTokens(n: number): string {
 /** Strip huxflux XML tags from displayed content */
 export function stripHuxfluxTags(text: string): string {
   return text
-    .replace(/<huxflux:title>.*?<\/huxflux:title>\n?/gs, "")
-    .replace(/<huxflux:branch>.*?<\/huxflux:branch>\n?/gs, "")
-    .replace(/<huxflux:delegate[^>]*>[\s\S]*?<\/huxflux:delegate>\n?/g, "")
-    .replace(/<huxflux:task-comment[^>]*>[\s\S]*?<\/huxflux:task-comment>\n?/g, "")
-    .replace(/<huxflux:task-update[^>]*>[\s\S]*?<\/huxflux:task-update>\n?/g, "")
-    .replace(/<huxflux:task-create[^>]*>[\s\S]*?<\/huxflux:task-create>\n?/g, "")
-    .replace(/<huxflux:task-status[^>]*\/>\n?/g, "")
-    .replace(/<huxflux:task-dependency[^>]*\/>\n?/g, "")
-    .replace(/<huxflux:spawn[^>]*>[\s\S]*?<\/huxflux:spawn>\n?/g, "")
-    .replace(/<huxflux:pr-reply[^>]*>[\s\S]*?<\/huxflux:pr-reply>\n?/g, "")
+    .replace(/<huxflux:[^>]*?\/>[\t ]*\n?/g, "")
+    .replace(/<huxflux:([^\s>]+)\b[^>]*?>[\s\S]*?<\/huxflux:\1>[\t ]*\n?/g, "")
+    .replace(/\n{3,}/g, "\n\n")
 }

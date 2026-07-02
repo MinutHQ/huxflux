@@ -61,6 +61,7 @@ async function persist(ctx: Ctx, tags: TagHandler[] = []): Promise<void> {
     branchFrom: "origin/main",
     flushTimer: ctx.flushTimer,
     tags,
+    followUps: [],
   })
 }
 

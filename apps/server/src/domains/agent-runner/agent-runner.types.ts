@@ -25,6 +25,26 @@ export interface ParsedTag {
 }
 
 /**
+ * A message a tag handler asks the runner to deliver back to the SAME agent as
+ * a fresh turn, once the current turn has fully finalized. The runner stays
+ * domain-agnostic: it just relays whatever a handler returns. Used so a handler
+ * whose side-effect failed (e.g. a PR reply the GitHub API rejected) can tell
+ * the agent instead of failing silently.
+ */
+export interface TagFollowUp {
+  /** Message body delivered to the agent. */
+  content: string
+  /** Sender label shown in the chat (e.g. "PR Reply"). */
+  sender: string
+}
+
+/** Optional structured result a handler may return to influence the runner. */
+export interface TagOutcome {
+  /** Deliver this message to the agent as a new turn after finalize. */
+  followUp?: TagFollowUp
+}
+
+/**
  * Handler description registered by a `runAgent` caller.
  *
  * The runner walks the parsed tags, finds the handler whose `id` matches the
@@ -37,8 +57,12 @@ export interface TagHandler<A extends ZodType = ZodType> {
   id: string
   /** Zod schema describing the expected tag attributes. Use `z.object({})` if none. */
   args: A
-  /** Side-effect invoked for each matched tag. */
-  onTag: (event: { args: ZodInfer<A>; body: string }) => void | Promise<void>
+  /**
+   * Side-effect invoked for each matched tag. May return a `TagOutcome` to ask
+   * the runner to deliver a follow-up message to the agent (e.g. to report a
+   * failed side-effect). Returning nothing is the common case.
+   */
+  onTag: (event: { args: ZodInfer<A>; body: string }) => void | TagOutcome | Promise<void | TagOutcome>
 }
 
 /**

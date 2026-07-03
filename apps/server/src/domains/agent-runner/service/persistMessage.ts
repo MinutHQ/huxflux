@@ -10,7 +10,7 @@ import {
 import { agentsWs } from "../../agents/agents.ws.js"
 import type { Message } from "../../../types.js"
 import type { StreamState, CollectedToolCall } from "../../agents/agents.types.js"
-import type { TagHandler } from "../agent-runner.types.js"
+import type { TagHandler, TagFollowUp } from "../agent-runner.types.js"
 import { tryAutoRename } from "./autoRename.js"
 import { refreshFileChanges } from "./fileChanges.js"
 import { parseTagsFromText, dispatchTags, stripTagsFromBody } from "./tagParser.js"
@@ -28,6 +28,12 @@ interface PersistArgs {
   branchFrom: string
   flushTimer: { current: ReturnType<typeof setTimeout> | null }
   tags: TagHandler[]
+  /**
+   * Collector the caller drains for tag follow-ups. Populated as soon as tags
+   * are dispatched (before any DB write) so the messages survive a later
+   * persist-phase throw — otherwise a failed PR reply would go unreported.
+   */
+  followUps: TagFollowUp[]
   onAssistantMessage?: (event: { content: string }) => void | Promise<void>
 }
 
@@ -39,9 +45,15 @@ interface PersistArgs {
  * `dispatchTags` against the `tags` array supplied by the call site, and all
  * `<huxflux:*>` directives are stripped from the persisted body so they never
  * leak into the visible chat history.
+ *
+ * Any follow-up messages tag handlers ask to deliver back to the agent (e.g. a
+ * PR reply that failed to post) are pushed into `args.followUps` immediately,
+ * before any DB write, so they survive even if a later persist step throws. The
+ * caller delivers them only after the turn is fully finalized, so they land as
+ * a clean next turn.
  */
 export async function persistAssistantMessage(args: PersistArgs): Promise<void> {
-  const { state, agentId, messageId, skeletonCreatedAt, startedAt, model, providerId, branchFrom, flushTimer, tags, onAssistantMessage } = args
+  const { state, agentId, messageId, skeletonCreatedAt, startedAt, model, providerId, branchFrom, flushTimer, tags, followUps, onAssistantMessage } = args
 
   // Cancel any pending flush — we're about to write the final state
   if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
@@ -50,7 +62,7 @@ export async function persistAssistantMessage(args: PersistArgs): Promise<void> 
   // We parse from fullContent (not finalContent) so handlers see directives
   // that streamed before tool calls reset the pendingText buffer.
   const parsed = parseTagsFromText(state.fullContent)
-  await dispatchTags(parsed, tags)
+  followUps.push(...await dispatchTags(parsed, tags))
 
   // Fallback: derive title + branch from the first user message if the agent
   // never emitted the rename tags and is still on the random-bee placeholder.

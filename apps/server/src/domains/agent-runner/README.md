@@ -18,7 +18,7 @@ The execution engine for a single agent turn. Spawns the provider CLI process, p
 (top-level `.ts` files in this domain)
 
 - `agent-runner.service.ts` — exports `runAgent(userContent, opts)` (the turn entrypoint), plus the process-registry helpers `runningProcesses`, `getClaudeBin`, `isAgentRunning`, `stopAgent`, `resetStreamingFlags`, and `resolveModelAlias`.
-- `agent-runner.types.ts` — `ParsedTag`, `TagHandler`, and `RunAgentOptions`. The contract every caller of `runAgent` builds against.
+- `agent-runner.types.ts` — `ParsedTag`, `TagHandler`, `TagOutcome`, `TagFollowUp`, and `RunAgentOptions`. The contract every caller of `runAgent` builds against. A `TagHandler.onTag` may return a `TagOutcome` whose `followUp` the runner delivers back to the agent as a fresh turn after finalize (used to report a side-effect that failed, e.g. a rejected PR reply).
 
 Everything else lives under `service/` and is private to this domain. The end-to-end test (`agent-runner.service.test.ts`) sits next to the public entrypoint because it exercises the full bootstrap → spawn → stream → finalize lifecycle.
 

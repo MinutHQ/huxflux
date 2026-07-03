@@ -1,16 +1,47 @@
 import { getOctokit } from "./octokit.js"
 import { findNearestDiffLine } from "./diffSnap.js"
+import { logger } from "../../../logger.js"
 
-/** Reply to a specific inline review comment by its REST comment id. */
+/**
+ * True when an Octokit error means `comment_id` is not a top-level review
+ * comment — i.e. it's a general PR conversation (issue) comment, or a reply
+ * that isn't the root of its thread. GitHub answers 404 (no such review
+ * comment) or 422 (not repliable) in those cases; anything else (auth, rate
+ * limit, network) is a real failure the caller must see.
+ */
+export function isNotReviewCommentError(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status
+  return status === 404 || status === 422
+}
+
+/**
+ * Reply to an inline review comment by its REST id.
+ *
+ * With `fallbackToConversation` the call also handles ids that are NOT a
+ * review-thread root: if GitHub answers 404/422 it posts a top-level PR
+ * conversation comment so the reply still lands. This is for the agent path,
+ * where the id's kind (inline review vs general conversation comment) is not
+ * known up front. The web-UI route leaves it off (default) because the user
+ * picked a specific inline thread — a silent fallback would misplace the reply,
+ * so a failure must surface. Throws when it can't post.
+ */
 export async function replyToReviewComment(
   owner: string,
   repo: string,
   prNumber: number,
   commentId: number,
   body: string,
+  opts: { fallbackToConversation?: boolean } = {},
 ): Promise<void> {
   const octokit = getOctokit()
-  await octokit.pulls.createReplyForReviewComment({ owner, repo, pull_number: prNumber, comment_id: commentId, body })
+  try {
+    await octokit.pulls.createReplyForReviewComment({ owner, repo, pull_number: prNumber, comment_id: commentId, body })
+    return
+  } catch (err) {
+    if (!opts.fallbackToConversation || !isNotReviewCommentError(err)) throw err
+    logger.info(`[prComments] comment ${commentId} is not a review-thread root; replying as a conversation comment`)
+  }
+  await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body })
 }
 
 /** Delete an inline review comment by its REST id. */

@@ -6,7 +6,7 @@
 // declares which tags it cares about via `TagHandler` entries; this module is
 // the only place that understands the wire format.
 
-import type { ParsedTag, TagHandler } from "../agent-runner.types.js"
+import type { ParsedTag, TagHandler, TagFollowUp } from "../agent-runner.types.js"
 import { logger } from "../../../logger.js"
 
 // Matches a paired tag with a body:
@@ -72,9 +72,14 @@ export function parseTagsFromText(text: string): ParsedTag[] {
  * its attributes are validated against the handler's Zod schema, and
  * `onTag({ args, body })` is invoked. Validation failures and handler
  * exceptions are logged and swallowed so one bad tag never aborts the rest.
+ *
+ * Returns the follow-up messages any handler asked to deliver back to the
+ * agent (in order of appearance). The caller is responsible for delivering
+ * them once the turn has finalized.
  */
-export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]): Promise<void> {
-  if (parsed.length === 0 || handlers.length === 0) return
+export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]): Promise<TagFollowUp[]> {
+  const followUps: TagFollowUp[] = []
+  if (parsed.length === 0 || handlers.length === 0) return followUps
   const byId = new Map<string, TagHandler>()
   for (const h of handlers) byId.set(h.id, h)
 
@@ -87,11 +92,13 @@ export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]):
       continue
     }
     try {
-      await handler.onTag({ args: result.data, body: tag.body })
+      const outcome = await handler.onTag({ args: result.data, body: tag.body })
+      if (outcome?.followUp) followUps.push(outcome.followUp)
     } catch (err) {
       logger.error({ err }, `[tags] handler for <huxflux:${tag.id}> threw`)
     }
   }
+  return followUps
 }
 
 /**

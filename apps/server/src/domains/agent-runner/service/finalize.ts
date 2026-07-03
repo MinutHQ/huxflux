@@ -6,7 +6,7 @@ import { config } from "../../../config.js"
 import type { Message, AgentSummary } from "../../../types.js"
 import type { ProviderAdapter, NormalizedStreamEvent } from "../../providers/providers.types.js"
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
-import type { TagHandler, RunAgentOptions } from "../agent-runner.types.js"
+import type { TagHandler, RunAgentOptions, TagFollowUp } from "../agent-runner.types.js"
 import { runningProcesses } from "./processRegistry.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
@@ -44,9 +44,13 @@ export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
     runningProcesses.delete(args.agentId)
 
     flushRemainingBuffer(args)
-    await persistOrFallback(args)
+    const followUps = await persistOrFallback(args)
     sendDelegateReply(args)
     await restoreStatusAndStreaming(args)
+    // Deliver tag follow-ups LAST — after streaming is cleared and the process
+    // is out of runningProcesses — so re-injecting a message starts a clean new
+    // turn instead of racing bootstrapTurn's streaming=1 write.
+    deliverFollowUps(args.agentId, followUps)
   }
 }
 
@@ -72,9 +76,12 @@ function flushRemainingBuffer(args: FinalizeArgs): void {
   bufferRef.current = ""
 }
 
-async function persistOrFallback(args: FinalizeArgs): Promise<void> {
+async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
   // Persist the final message + emit message:done. Failures here must not
-  // prevent the streaming flag from being cleared, so they're swallowed.
+  // prevent the streaming flag from being cleared, so they're swallowed. The
+  // follow-ups are collected into this array before any DB write, so we can
+  // still deliver them even if persistence throws.
+  const followUps: TagFollowUp[] = []
   try {
     await persistAssistantMessage({
       state: args.state,
@@ -88,6 +95,7 @@ async function persistOrFallback(args: FinalizeArgs): Promise<void> {
       branchFrom: args.branchFrom,
       flushTimer: args.flushTimer,
       tags: args.tags,
+      followUps,
       onAssistantMessage: args.opts.onAssistantMessage,
     })
   } catch (err) {
@@ -101,6 +109,23 @@ async function persistOrFallback(args: FinalizeArgs): Promise<void> {
       durationMs: Date.now() - args.startedAt,
       toolCalls: args.state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result, precedingText: tc.precedingText })),
     } as Message)
+  }
+  return followUps
+}
+
+/**
+ * Deliver each tag-handler follow-up back to the SAME agent as a fresh turn.
+ * Fired only after streaming is cleared, so the message-send path sees the
+ * agent as idle and starts a clean run (or queues if another turn already
+ * began). Fire-and-forget over HTTP, mirroring `sendDelegateReply`.
+ */
+function deliverFollowUps(agentId: string, followUps: TagFollowUp[]): void {
+  for (const followUp of followUps) {
+    fetch(`http://localhost:${config.boundPort}/api/agents/${agentId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}) },
+      body: JSON.stringify({ content: followUp.content, sender: followUp.sender }),
+    }).catch((err) => logger.error({ err }, `[runner] failed to deliver tag follow-up to ${agentId}`))
   }
 }
 

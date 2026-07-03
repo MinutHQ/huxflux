@@ -156,6 +156,46 @@ describe("dispatchTags", () => {
     await dispatchTags(parsed, [handler])
     expect(seen).toEqual(["survive"])
   })
+
+  it("returns an empty array when handlers request no follow-ups", async () => {
+    const handler: TagHandler = {
+      id: "demo.echo",
+      args: z.object({}),
+      onTag: () => { /* no outcome */ },
+    }
+    const parsed = parseTagsFromText(`<huxflux:demo.echo>x</huxflux:demo.echo>`)
+    expect(await dispatchTags(parsed, [handler])).toEqual([])
+  })
+
+  it("collects follow-ups returned by handlers, in order of appearance", async () => {
+    const handler: TagHandler = {
+      id: "demo.echo",
+      args: z.object({}),
+      onTag: ({ body }) => ({ followUp: { content: `re: ${body}`, sender: "Test" } }),
+    }
+    const parsed = parseTagsFromText(
+      `<huxflux:demo.echo>a</huxflux:demo.echo><huxflux:demo.echo>b</huxflux:demo.echo>`,
+    )
+    expect(await dispatchTags(parsed, [handler])).toEqual([
+      { content: "re: a", sender: "Test" },
+      { content: "re: b", sender: "Test" },
+    ])
+  })
+
+  it("does not collect a follow-up from a handler that throws", async () => {
+    const handler: TagHandler = {
+      id: "demo.echo",
+      args: z.object({}),
+      onTag: ({ body }) => {
+        if (body === "boom") throw new Error("nope")
+        return { followUp: { content: body, sender: "Test" } }
+      },
+    }
+    const parsed = parseTagsFromText(
+      `<huxflux:demo.echo>boom</huxflux:demo.echo><huxflux:demo.echo>ok</huxflux:demo.echo>`,
+    )
+    expect(await dispatchTags(parsed, [handler])).toEqual([{ content: "ok", sender: "Test" }])
+  })
 })
 
 describe("stripTagsFromBody", () => {

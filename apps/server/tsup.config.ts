@@ -19,6 +19,9 @@ const sharedExternal = [
   "pino-pretty",
   "simple-git",
   "uuid",
+  // ws does optional native-addon requires (bufferutil / utf-8-validate) that
+  // break when bundled into ESM; keep it external and load from node_modules.
+  "ws",
   // pino (and thread-stream beneath it) does dynamic require() of node builtins
   // and worker threads; like pino-pretty it must not be bundled into ESM.
   "pino",

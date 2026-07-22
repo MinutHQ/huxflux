@@ -100,7 +100,13 @@ export function parseConnectionString(input: string): { url: string; token?: str
     const parsed = new URL(normalized)
     const token = parsed.searchParams.get("token") ?? undefined
     parsed.searchParams.delete("token")
-    return { url: parsed.origin, token }
+    // Preserve any path prefix. When Huxflux is reached through the public
+    // proxy the base URL is `https://proxy.example.com/s/<serverId>` — the
+    // `/s/<serverId>` prefix is load-bearing (it selects which server the proxy
+    // tunnels to), so we must not collapse to `parsed.origin`. A bare
+    // `pathname` of "/" carries no information and is dropped.
+    const path = parsed.pathname.replace(/\/+$/, "")
+    return { url: parsed.origin + path, token }
   } catch {
     return null
   }

@@ -266,6 +266,13 @@ export { useServerStatus, useServerConfig } from "./domains/servers/servers.hook
 export { huxfluxServerSchema, serverStatusSchema } from "./domains/servers/servers.types.js"
 export type { HuxfluxServer, ServerStatus } from "./domains/servers/servers.types.js"
 
+// ── proxy (tunnel wire protocol) ─────────────────────────────────────────────
+// Also available via the `@huxflux/shared/proxy` subpath, which Node consumers
+// (the proxy app, the server connector) prefer so bundling doesn't pull the
+// React-dependent parts of this barrel.
+export { encodeFrame, decodeFrame, tunnelFrameHeaderSchema, TUNNEL_PATH, SERVER_PREFIX } from "./domains/proxy/frame.js"
+export type { TunnelFrame, TunnelFrameHeader, StreamId } from "./domains/proxy/frame.js"
+
 // ── wrapped ──────────────────────────────────────────────────────────────────
 export { wrappedApi } from "./domains/wrapped/wrapped.api.js"
 export { wrappedSummarySchema } from "./domains/wrapped/wrapped.types.js"

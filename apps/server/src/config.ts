@@ -33,4 +33,12 @@ export const config = {
   sandbox: parseSandbox(),
   /** Actual port the server is listening on (set after bind). */
   boundPort: parseInt(process.env.PORT ?? "4321", 10),
+  // ── Internet proxy tunnel (optional) ──────────────────────────────────────
+  // When PROXY_URL + PROXY_SERVER_ID are set, the server dials out to a public
+  // proxy over a secure WebSocket so clients can reach it from anywhere. See
+  // src/domains/proxy-connector. PROXY_URL is the proxy base (e.g.
+  // wss://proxy.example.com); the connector appends the tunnel path.
+  proxyUrl: process.env.PROXY_URL ?? "",
+  proxyServerId: process.env.PROXY_SERVER_ID ?? "",
+  proxySecret: process.env.PROXY_SECRET ?? "",
 }

@@ -257,6 +257,11 @@ try {
   }, null, 2))
 } catch { /* non-fatal */ }
 
+// Dial the public proxy if configured (PROXY_URL + PROXY_SERVER_ID). Needs the
+// bound port so loopback requests hit the port we actually listened on.
+import { startProxyConnector, stopProxyConnector, proxyClientConnectString } from "./domains/proxy-connector/proxy-connector.service.js"
+startProxyConnector()
+
 const cleanupPortFile = () => {
   try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
   try { fs.unlinkSync(CONNECTION_FILE) } catch { /* ignore */ }
@@ -266,6 +271,7 @@ const cleanupPortFile = () => {
 import { killWorktreeProcesses, clearAgentPorts } from "./domains/git/processes.js"
 async function cleanupOnShutdown() {
   cleanupPortFile()
+  stopProxyConnector()
   try {
     const allAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
     // Per-agent kill in parallel — each `lsof` already has a 3s timeout, so
@@ -335,4 +341,10 @@ if (config.authToken) {
     console.info(`  Scan to connect on mobile:\n`)
     console.info(qr)
   } catch { /* non-fatal */ }
+}
+
+// If dialing a public proxy, print the Internet-reachable connect string too.
+const proxyConnect = proxyClientConnectString()
+if (proxyConnect) {
+  console.info(`\n  Connect over the Internet (via proxy): ${proxyConnect}\n`)
 }

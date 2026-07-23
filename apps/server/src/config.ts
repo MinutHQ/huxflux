@@ -37,8 +37,9 @@ export const config = {
   // When PROXY_URL + PROXY_SERVER_ID are set, the server dials out to a public
   // proxy over a secure WebSocket so clients can reach it from anywhere. See
   // src/domains/proxy-connector. PROXY_URL is the proxy base (e.g.
-  // wss://proxy.example.com); the connector appends the tunnel path.
+  // wss://proxy.example.com); the connector appends the tunnel path. The
+  // connector authenticates to the proxy via the OAuth device flow (it prints a
+  // sign-in URL on first run), so no shared secret is configured here.
   proxyUrl: process.env.PROXY_URL ?? "",
   proxyServerId: process.env.PROXY_SERVER_ID ?? "",
-  proxySecret: process.env.PROXY_SECRET ?? "",
 }

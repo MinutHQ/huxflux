@@ -14,10 +14,11 @@ import {
 export function handleHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
+  email: string,
   serverId: string,
   upstreamPath: string,
 ): void {
-  const tunnel = getTunnel(serverId)
+  const tunnel = getTunnel(email, serverId)
   if (!tunnel) {
     sendError(res, 502, `server '${serverId}' is not connected`)
     return

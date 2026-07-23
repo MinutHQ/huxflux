@@ -18,7 +18,13 @@ domain is the single source of truth for the frame format both ends speak.
   re-exported types/schema/constants. This is the file the `./proxy` subpath
   export points at.
 - `proxy.types.ts` — `TunnelFrameHeader`, `TunnelFrame`, `StreamId`,
-  `tunnelFrameHeaderSchema`, `TUNNEL_PATH`, `SERVER_PREFIX`.
+  `tunnelFrameHeaderSchema`, `TUNNEL_PATH`, `SERVER_PREFIX`, plus the OAuth
+  contract: `OAUTH_PATHS`, `PROXY_AUTH_HEADER`, `PROXY_TOKEN_QUERY`, and the
+  `proxyAuthStart` / `proxyToken` / `proxyTokenError` schemas + types.
+- `proxyAuth.ts` — client-side driver for the proxy's OAuth device flow
+  (`startProxyAuth`, `pollProxyToken`, `refreshProxyToken`, `runProxyAuthFlow`),
+  used by the web client and the server connector. Exported from the main
+  `@huxflux/shared` barrel (not the codec-only `./proxy` subpath).
 
 ## Depends on
 

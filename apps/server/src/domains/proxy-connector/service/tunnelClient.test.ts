@@ -60,7 +60,9 @@ describe("TunnelClient", () => {
     loopback = http.createServer((req, res) => {
       if (req.method === "GET" && req.url === "/api/ping") {
         res.writeHead(200, { "content-type": "application/json" })
-        res.end(JSON.stringify({ ok: true }))
+        // Echo the Authorization header so the test can prove the connector
+        // injected the server's own token on the loopback leg.
+        res.end(JSON.stringify({ ok: true, auth: req.headers.authorization ?? null }))
         return
       }
       if (req.method === "POST" && req.url === "/api/echo") {
@@ -108,6 +110,8 @@ describe("TunnelClient", () => {
       proxyUrl: `ws://127.0.0.1:${proxyPort}`,
       serverId: "test-server",
       loopbackBase: `http://127.0.0.1:${loopbackPort}`,
+      loopbackToken: "srv-secret",
+      getAccessToken: async () => "access.jwt.token",
     })
     client.start()
     await ready
@@ -126,7 +130,7 @@ describe("TunnelClient", () => {
 
     const resFrame = await waitFor((f) => f.header.t === "http-res" && f.header.id === 1)
     expect(resFrame.header.t === "http-res" && resFrame.header.status).toBe(200)
-    expect(await httpBody(1)).toBe(JSON.stringify({ ok: true }))
+    expect(await httpBody(1)).toBe(JSON.stringify({ ok: true, auth: "Bearer srv-secret" }))
   })
 
   it("tunnels a POST body through and echoes it", async () => {
@@ -146,13 +150,14 @@ describe("TunnelClient", () => {
     expect(res.header.t === "http-res" && res.header.status).toBe(404)
   })
 
-  it("tunnels a WebSocket, preserving the upstream path and echoing messages", async () => {
-    proxySend({ t: "ws-open", id: 4, path: "/ws?token=abc", headers: {} })
+  it("tunnels a WebSocket, preserving the upstream query and injecting the loopback token", async () => {
+    proxySend({ t: "ws-open", id: 4, path: "/ws?foo=bar", headers: {} })
     await waitFor((f) => f.header.t === "ws-open-ack" && f.header.id === 4)
 
-    // The loopback server greets with the path it saw — proves query survived.
+    // The loopback server greets with the path it saw: the original query is
+    // preserved and the server's own token is injected for its WS auth hook.
     const greeting = await waitFor((f) => f.header.t === "ws-data" && f.header.id === 4)
-    expect(textOf(greeting.payload)).toBe("path:/ws?token=abc")
+    expect(textOf(greeting.payload)).toBe("path:/ws?foo=bar&token=srv-secret")
 
     proxySend({ t: "ws-data", id: 4, binary: false }, textBytes("ping"))
     const echo = await waitFor(

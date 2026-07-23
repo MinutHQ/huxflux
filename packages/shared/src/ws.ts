@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useSyncExternalStore } from "react"
 import { z } from "zod/v4"
-import { getActiveServer } from "./domains/servers/servers.store.js"
+import { getActiveServer, isProxiedServer } from "./domains/servers/servers.store.js"
+import { PROXY_TOKEN_QUERY } from "./domains/proxy/proxy.types.js"
 import type { AgentsServerEvent } from "./domains/agents/agents.types.js"
 import type { TasksServerEvent } from "./domains/tasks/tasks.types.js"
 
@@ -82,6 +83,11 @@ function getActiveWsUrl(): string {
   const server = getActiveServer()
   const base = server?.url ?? "http://localhost:4321"
   const wsUrl = base.replace(/^http/, "ws") + "/ws"
+  // Proxied servers authenticate to the proxy with the access JWT on a distinct
+  // query param; the proxy strips it and injects the inner token on loopback.
+  if (server && isProxiedServer(server)) {
+    return server.proxyAccessToken ? `${wsUrl}?${PROXY_TOKEN_QUERY}=${encodeURIComponent(server.proxyAccessToken)}` : wsUrl
+  }
   return server?.token ? `${wsUrl}?token=${server.token}` : wsUrl
 }
 

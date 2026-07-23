@@ -60,9 +60,28 @@ export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServ
 
 export function updateServer(
   id: string,
-  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>
+  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token" | "proxyAccessToken" | "proxyRefreshToken" | "proxyAccountEmail">>
 ): void {
   saveServers(getServers().map((s) => (s.id === id ? { ...s, ...patch } : s)))
+}
+
+/** True when this server is reached through the public proxy (path prefix /s/). */
+export function isProxiedServer(server: Pick<HuxfluxServer, "url" | "proxyAccessToken">): boolean {
+  if (server.proxyAccessToken) return true
+  try {
+    return new URL(server.url).pathname.startsWith("/s/")
+  } catch {
+    return false
+  }
+}
+
+/** The proxy origin for a proxied server URL (`https://proxy/s/<id>` → `https://proxy`). */
+export function proxyOriginOf(url: string): string | null {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
 }
 
 export function removeServer(id: string): void {

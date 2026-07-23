@@ -20,12 +20,14 @@ const httpHeaders = z.record(z.string(), z.string())
 // the variant; only data-carrying frames (`*-chunk`, `ws-data`) have a payload.
 export const tunnelFrameHeaderSchema = z.discriminatedUnion("t", [
   // ── Control (server → proxy, then proxy → server) ──────────────────────────
-  // First frame a server sends after the socket opens. Auth is intentionally
-  // minimal for now (a shared secret); the proxy's auth hook is pluggable.
+  // First frame a server sends after the socket opens. The server authenticates
+  // to the proxy with a signed access token (JWT) obtained via the OAuth flow;
+  // the proxy derives the owning user's email from it and namespaces the server
+  // registration under that email.
   z.object({
     t: z.literal("register"),
     serverId: z.string().min(1),
-    secret: z.string().optional(),
+    accessToken: z.string(),
     version: z.string().optional(),
   }),
   z.object({ t: z.literal("registered"), version: z.string().optional() }),
@@ -89,3 +91,51 @@ export const TUNNEL_PATH = "/_tunnel"
 
 /** Prefix under which the proxy exposes each connected server to clients. */
 export const SERVER_PREFIX = "/s/"
+
+// ── OAuth device-style flow ──────────────────────────────────────────────────
+// The proxy is the authorization server; Google is the identity provider. A
+// caller (client or server connector) starts a flow, opens the verification URL
+// in a browser, then polls the token endpoint for the result. Both ends share
+// these shapes so requests and responses never drift.
+
+/** OAuth endpoint paths on the proxy. All are public (they establish auth). */
+export const OAUTH_PATHS = {
+  /** POST — start a flow; returns a verification URL + poll handle. */
+  start: "/oauth/auth",
+  /** GET — the browser lands here; redirects to Google consent. */
+  authorize: "/oauth/authorize",
+  /** GET — Google redirects back here after consent. */
+  callback: "/oauth/callback",
+  /** POST — poll for the flow result, or exchange a refresh token. */
+  token: "/oauth/token",
+} as const
+
+/** Header carrying the proxy access JWT on REST requests (distinct from the
+ * tunneled server's own Authorization). */
+export const PROXY_AUTH_HEADER = "x-huxflux-proxy-authorization"
+/** Query param carrying the proxy access JWT on WebSocket upgrades (which can't
+ * set headers). */
+export const PROXY_TOKEN_QUERY = "proxy_token"
+
+export const proxyAuthStartSchema = z.object({
+  authId: z.string(),
+  verificationUrl: z.string(),
+  expiresIn: z.number(),
+  interval: z.number(),
+})
+export type ProxyAuthStart = z.infer<typeof proxyAuthStartSchema>
+
+export const proxyTokenSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string().optional(),
+  email: z.string().optional(),
+  /** Access-token lifetime in seconds. */
+  expiresIn: z.number(),
+})
+export type ProxyToken = z.infer<typeof proxyTokenSchema>
+
+/** Non-terminal / error result of a token poll. */
+export const proxyTokenErrorSchema = z.object({
+  error: z.enum(["authorization_pending", "slow_down", "expired", "denied", "invalid_grant"]),
+})
+export type ProxyTokenError = z.infer<typeof proxyTokenErrorSchema>["error"]

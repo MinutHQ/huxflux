@@ -4,9 +4,9 @@ import { encodeFrame, decodeFrame } from "./frame.js"
 describe("tunnel frame codec", () => {
   it("round-trips a control frame with no payload", () => {
     const { header, payload } = decodeFrame(
-      encodeFrame({ t: "register", serverId: "srv-1", secret: "shh" })
+      encodeFrame({ t: "register", serverId: "srv-1", accessToken: "jwt.abc.def" })
     )
-    expect(header).toEqual({ t: "register", serverId: "srv-1", secret: "shh" })
+    expect(header).toEqual({ t: "register", serverId: "srv-1", accessToken: "jwt.abc.def" })
     expect(payload.length).toBe(0)
   })
 

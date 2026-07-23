@@ -59,5 +59,18 @@ export {
   tunnelFrameHeaderSchema,
   TUNNEL_PATH,
   SERVER_PREFIX,
+  OAUTH_PATHS,
+  PROXY_AUTH_HEADER,
+  PROXY_TOKEN_QUERY,
+  proxyAuthStartSchema,
+  proxyTokenSchema,
+  proxyTokenErrorSchema,
 } from "./proxy.types.js"
-export type { TunnelFrame, TunnelFrameHeader, StreamId } from "./proxy.types.js"
+export type {
+  TunnelFrame,
+  TunnelFrameHeader,
+  StreamId,
+  ProxyAuthStart,
+  ProxyToken,
+  ProxyTokenError,
+} from "./proxy.types.js"

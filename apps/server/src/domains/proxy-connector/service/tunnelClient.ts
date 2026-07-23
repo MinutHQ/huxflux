@@ -17,10 +17,15 @@ export interface TunnelClientOptions {
   proxyUrl: string
   /** Stable id this server registers under. Clients reach it at /s/<serverId>. */
   serverId: string
-  /** Optional shared secret the proxy may require. */
-  secret?: string
   /** Local origin the loopback requests target, e.g. http://127.0.0.1:4321. */
   loopbackBase: string
+  /** The server's own auth token, injected on the loopback leg so tunneled
+   * client traffic (which authenticated to the proxy, not the server) passes. */
+  loopbackToken: string
+  /** Supplies a valid proxy access token, refreshing / re-authenticating as needed. */
+  getAccessToken: () => Promise<string>
+  /** Called when the proxy rejects our token so the next attempt re-authenticates. */
+  onAuthRejected?: () => void
 }
 
 const MAX_BACKOFF_MS = 30_000
@@ -41,7 +46,7 @@ export class TunnelClient {
 
   start(): void {
     this.stopped = false
-    this.connect()
+    void this.connect()
   }
 
   stop(): void {
@@ -55,13 +60,23 @@ export class TunnelClient {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(encodeFrame(header, payload))
   }
 
-  private connect(): void {
+  private async connect(): Promise<void> {
+    let accessToken: string
+    try {
+      accessToken = await this.opts.getAccessToken()
+    } catch (err) {
+      logger.error({ err }, "[proxy] could not obtain access token")
+      this.scheduleReconnect()
+      return
+    }
+    if (this.stopped) return
+
     const url = this.opts.proxyUrl.replace(/\/+$/, "") + TUNNEL_PATH
     const ws = new WebSocket(url)
     this.ws = ws
     ws.on("open", () => {
       logger.info({ proxy: url, serverId: this.opts.serverId }, "[proxy] tunnel connected; registering")
-      this.send({ t: "register", serverId: this.opts.serverId, secret: this.opts.secret, version: SERVER_VERSION })
+      this.send({ t: "register", serverId: this.opts.serverId, accessToken, version: SERVER_VERSION })
     })
     ws.on("message", (data) => this.onMessage(toUint8Array(data)))
     ws.on("close", () => this.onClose())
@@ -85,11 +100,14 @@ export class TunnelClient {
         logger.info({ serverId: this.opts.serverId }, "[proxy] registered with proxy")
         break
       case "register-failed":
-        logger.error({ reason: header.reason }, "[proxy] proxy rejected registration; not retrying")
-        this.stop()
+        // Token invalid / expired: drop it and reconnect; getAccessToken will
+        // refresh or re-run the sign-in flow on the next attempt.
+        logger.warn({ reason: header.reason }, "[proxy] registration rejected; re-authenticating")
+        this.opts.onAuthRejected?.()
+        try { this.ws?.close() } catch { /* noop */ }
         break
       case "http-open": {
-        const stream = createLoopbackHttpStream(this.opts.loopbackBase, header.id, header, this.send)
+        const stream = createLoopbackHttpStream(this.opts.loopbackBase, header.id, header, this.send, this.opts.loopbackToken)
         this.httpStreams.set(header.id, stream)
         break
       }
@@ -110,6 +128,7 @@ export class TunnelClient {
         const stream = createLoopbackWsStream(
           this.opts.loopbackBase, header.id, header, this.send,
           () => this.wsStreams.delete(header.id),
+          this.opts.loopbackToken,
         )
         this.wsStreams.set(header.id, stream)
         break
@@ -134,11 +153,18 @@ export class TunnelClient {
     this.httpStreams.clear()
     this.wsStreams.clear()
     this.ws = null
-    if (this.stopped) return
+    this.scheduleReconnect()
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopped || this.reconnectTimer) return
     const delay = this.backoff
     this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF_MS)
-    logger.warn({ delayMs: delay }, "[proxy] tunnel closed; reconnecting")
-    this.reconnectTimer = setTimeout(() => { if (!this.stopped) this.connect() }, delay)
+    logger.warn({ delayMs: delay }, "[proxy] tunnel down; reconnecting")
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      if (!this.stopped) void this.connect()
+    }, delay)
     this.reconnectTimer.unref?.()
   }
 }

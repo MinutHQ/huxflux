@@ -9,6 +9,7 @@ import { useAgents, parseConnectionString, getServers, setActiveServerId, addSer
 import { useServers } from "@/hooks/useServers"
 import { useUpdater } from "@/hooks/useUpdater"
 import { isTauri } from "@/lib/platform"
+import { isProxyConnectString, connectProxiedServer } from "@/lib/proxyConnect"
 import { getTheme, type Theme } from "@/lib/theme"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
@@ -83,6 +84,13 @@ function RootComponent() {
     const already = existing.find((s) => s.url === parsed.url)
     if (already) {
       setActiveServerId(already.id)
+    } else if (isProxyConnectString(connectParam)) {
+      // Proxy address: sign in via the browser, then store tokens. Async — the
+      // flow opens a tab and polls; refresh once it resolves.
+      connectProxiedServer(connectParam)
+        .then(() => refreshServers())
+        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Sign-in failed"))
+      return
     } else {
       const server = addServer({ name: "My Server", url: parsed.url, token: parsed.token })
       setActiveServerId(server.id)

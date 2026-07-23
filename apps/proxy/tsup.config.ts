@@ -14,4 +14,6 @@ export default defineConfig({
   minify: true,
   clean: true,
   external: ["ws"],
+  // esbuild strips the node: prefix; Node 25+ needs node:sqlite. Restore it.
+  onSuccess: "node scripts/fix-sqlite-import.mjs",
 })

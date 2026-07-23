@@ -20,6 +20,16 @@ function upstreamHeaders(headers: Record<string, string>): Record<string, string
   return out
 }
 
+// Inject the server's own token as the `?token=` query param the WS auth hook
+// reads (the remote client authenticated to the proxy, not to this server).
+function withLoopbackToken(path: string, token?: string): string {
+  if (!token) return path
+  const q = path.indexOf("?")
+  const params = new URLSearchParams(q === -1 ? "" : path.slice(q + 1))
+  params.set("token", token)
+  return `${q === -1 ? path : path.slice(0, q)}?${params.toString()}`
+}
+
 export interface LoopbackWsStream {
   data(payload: Uint8Array, binary: boolean): void
   close(code?: number, reason?: string): void
@@ -34,9 +44,10 @@ export function createLoopbackWsStream(
   header: Extract<TunnelFrameHeader, { t: "ws-open" }>,
   send: SendFrame,
   onDone: () => void,
+  loopbackToken?: string,
 ): LoopbackWsStream {
   const wsBase = base.replace(/^http/, "ws")
-  const upstream = new WebSocket(wsBase + header.path, { headers: upstreamHeaders(header.headers) })
+  const upstream = new WebSocket(wsBase + withLoopbackToken(header.path, loopbackToken), { headers: upstreamHeaders(header.headers) })
   let open = false
   let done = false
   const queue: Array<{ payload: Uint8Array; binary: boolean }> = []

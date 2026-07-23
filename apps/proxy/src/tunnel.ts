@@ -33,7 +33,11 @@ export class Tunnel {
   private readonly wsStreams = new Map<StreamId, WsStreamHandlers>()
   private closedListener: (() => void) | null = null
 
-  constructor(readonly serverId: string, private readonly socket: WebSocket) {
+  constructor(
+    readonly email: string,
+    readonly serverId: string,
+    private readonly socket: WebSocket,
+  ) {
     socket.on("message", (data) => this.onMessage(data))
     socket.on("close", () => this.onSocketClosed())
     socket.on("error", (err: Error) => logger.warn(`tunnel error (${serverId}):`, err.message))

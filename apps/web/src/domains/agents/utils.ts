@@ -1,4 +1,4 @@
-import { getActiveServer } from "@huxflux/shared"
+import { getActiveServer, isProxiedServer, PROXY_TOKEN_QUERY } from "@huxflux/shared"
 import { ANSI_RE, PORT_PATTERNS, TERMINAL_ACTIVE_TAB_KEY } from "./config"
 
 /** True when the active server is not `localhost`. Tauri + remote flips the header into SSH mode. */
@@ -32,6 +32,9 @@ export function getPtyWsUrl(agentId: string, terminalId: string, fresh: boolean)
   const base = server?.url ?? "http://localhost:4321"
   const wsBase = base.replace(/^http/, "ws")
   const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}${fresh ? "&fresh=1" : ""}`
+  if (server && isProxiedServer(server)) {
+    return server.proxyAccessToken ? `${url}&${PROXY_TOKEN_QUERY}=${encodeURIComponent(server.proxyAccessToken)}` : url
+  }
   return server?.token ? `${url}&token=${server.token}` : url
 }
 

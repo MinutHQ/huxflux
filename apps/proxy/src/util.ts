@@ -1,6 +1,6 @@
-import type { IncomingHttpHeaders, ServerResponse } from "node:http"
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http"
 import type { Duplex } from "node:stream"
-import { SERVER_PREFIX } from "@huxflux/shared/proxy"
+import { SERVER_PREFIX, PROXY_AUTH_HEADER } from "@huxflux/shared/proxy"
 
 /** Normalize whatever `ws` / Node hands us for a message body into a Uint8Array. */
 export function toUint8Array(data: unknown): Uint8Array {
@@ -56,6 +56,9 @@ const STRIP_REQUEST = new Set([
   // Force identity encoding on the loopback leg so the tunneled bytes match the
   // headers we forward (undici would otherwise transparently decode gzip).
   "accept-encoding",
+  // The proxy-level access token never travels on to the server; the proxy
+  // consumes it and the connector supplies the server's own token instead.
+  PROXY_AUTH_HEADER,
 ])
 
 const STRIP_RESPONSE = new Set([
@@ -102,4 +105,55 @@ export function rejectUpgrade(socket: Duplex, code: number, message: string): vo
     `Content-Length: 0\r\n\r\n`
   )
   socket.destroy()
+}
+
+/** Extract the proxy access token from the REST header or the WS query param. */
+export function extractProxyToken(req: IncomingMessage): string | null {
+  const header = req.headers[PROXY_AUTH_HEADER]
+  const raw = Array.isArray(header) ? header[0] : header
+  if (raw?.startsWith("Bearer ")) return raw.slice(7)
+  try {
+    const token = new URL(req.url ?? "/", "http://localhost").searchParams.get("proxy_token")
+    if (token) return token
+  } catch { /* malformed url */ }
+  return null
+}
+
+/** Remove a single query param from a `/path?a=1&b=2` string. */
+export function stripQueryParam(path: string, key: string): string {
+  const q = path.indexOf("?")
+  if (q === -1) return path
+  const params = new URLSearchParams(path.slice(q + 1))
+  params.delete(key)
+  const rest = params.toString()
+  return rest ? `${path.slice(0, q)}?${rest}` : path.slice(0, q)
+}
+
+// ── OAuth endpoint response helpers ──────────────────────────────────────────
+
+export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(chunk as Buffer)
+  if (chunks.length === 0) return {}
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) } catch { return {} }
+}
+
+export function sendJson(res: ServerResponse, code: number, obj: unknown): void {
+  const body = JSON.stringify(obj)
+  res.writeHead(code, {
+    "content-type": "application/json",
+    "content-length": Buffer.byteLength(body),
+    "access-control-allow-origin": "*",
+  })
+  res.end(body)
+}
+
+export function sendHtml(res: ServerResponse, code: number, html: string): void {
+  res.writeHead(code, { "content-type": "text/html; charset=utf-8", "content-length": Buffer.byteLength(html) })
+  res.end(html)
+}
+
+export function redirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, { location })
+  res.end()
 }

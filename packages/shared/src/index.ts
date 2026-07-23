@@ -261,6 +261,8 @@ export {
   setActiveServerId,
   getActiveServer,
   parseConnectionString,
+  isProxiedServer,
+  proxyOriginOf,
 } from "./domains/servers/servers.store.js"
 export { useServerStatus, useServerConfig } from "./domains/servers/servers.hooks.js"
 export { huxfluxServerSchema, serverStatusSchema } from "./domains/servers/servers.types.js"
@@ -270,8 +272,19 @@ export type { HuxfluxServer, ServerStatus } from "./domains/servers/servers.type
 // Also available via the `@huxflux/shared/proxy` subpath, which Node consumers
 // (the proxy app, the server connector) prefer so bundling doesn't pull the
 // React-dependent parts of this barrel.
-export { encodeFrame, decodeFrame, tunnelFrameHeaderSchema, TUNNEL_PATH, SERVER_PREFIX } from "./domains/proxy/frame.js"
-export type { TunnelFrame, TunnelFrameHeader, StreamId } from "./domains/proxy/frame.js"
+export {
+  encodeFrame, decodeFrame, tunnelFrameHeaderSchema, TUNNEL_PATH, SERVER_PREFIX,
+  OAUTH_PATHS, PROXY_AUTH_HEADER, PROXY_TOKEN_QUERY,
+  proxyAuthStartSchema, proxyTokenSchema, proxyTokenErrorSchema,
+} from "./domains/proxy/frame.js"
+export type {
+  TunnelFrame, TunnelFrameHeader, StreamId,
+  ProxyAuthStart, ProxyToken, ProxyTokenError,
+} from "./domains/proxy/frame.js"
+export {
+  startProxyAuth, pollProxyToken, refreshProxyToken, runProxyAuthFlow,
+} from "./domains/proxy/proxyAuth.js"
+export type { PollResult } from "./domains/proxy/proxyAuth.js"
 
 // ── wrapped ──────────────────────────────────────────────────────────────────
 export { wrappedApi } from "./domains/wrapped/wrapped.api.js"

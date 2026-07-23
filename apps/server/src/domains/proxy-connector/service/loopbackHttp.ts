@@ -44,10 +44,16 @@ export function createLoopbackHttpStream(
   id: number,
   header: Extract<TunnelFrameHeader, { t: "http-open" }>,
   send: SendFrame,
+  loopbackToken?: string,
 ): LoopbackHttpStream {
   const chunks: Uint8Array[] = []
   const controller = new AbortController()
   let aborted = false
+  // The remote client authenticated to the proxy, not to this server. Supply
+  // the server's own token on the loopback leg so its auth hook still passes.
+  const headers = loopbackToken
+    ? { ...header.headers, authorization: `Bearer ${loopbackToken}` }
+    : header.headers
 
   return {
     pushChunk(payload) { chunks.push(payload) },
@@ -64,7 +70,7 @@ export function createLoopbackHttpStream(
       try {
         const res = await fetch(base + header.path, {
           method,
-          headers: header.headers,
+          headers,
           body: hasBody ? concat(chunks) : undefined,
           signal: controller.signal,
           redirect: "manual",

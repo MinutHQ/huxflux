@@ -30,15 +30,22 @@ client (browser / desktop)                 Huxflux server (behind NAT)
 
 ```
 src/
-  index.ts       HTTP server + upgrade routing + server-registration handshake.
-  config.ts      Env-var config (PORT, HOST, optional auth secrets).
+  index.ts       HTTP server + upgrade routing + OAuth routes + register handshake.
+  config.ts      Env-var config (PORT, HOST, Google creds, allowed domain, JWT).
   logger.ts      Prefixed console logger (no shared pino here).
-  auth.ts        Pluggable, permissive-by-default auth hooks.
-  registry.ts    serverId → Tunnel map (many concurrent servers).
+  auth.ts        JWT verification for registering servers and requesting clients.
+  registry.ts    (email, serverId) → Tunnel map (per-user namespaced).
   tunnel.ts      One server's control socket + the stream multiplexer.
   httpProxy.ts   Tunnel a client HTTP request → server → stream response back.
   wsProxy.ts     Tunnel a client WebSocket (WS-over-WS).
-  util.ts        Path parsing, header sanitizing, byte helpers, error helpers.
+  util.ts        Path parsing, header sanitizing, byte + CORS/JSON helpers.
+  oauth/
+    handlers.ts  The /oauth/auth · /authorize · /callback · /token endpoints.
+    google.ts    Google consent URL + code exchange + domain check.
+    jwt.ts       HS256 access-token sign/verify (jose).
+    refresh.ts   Opaque refresh tokens (hashed in the DB).
+    sessions.ts  In-memory pending device-flow sessions.
+    db.ts        node:sqlite store (refresh tokens + generated secrets).
 ```
 
 The wire protocol (frame format, header union) is NOT defined here — it lives in
@@ -47,18 +54,35 @@ source of truth. Never fork it.
 
 ## Rules
 
-- The proxy is transparent. It does not parse Huxflux payloads, know routes, or
-  add behavior — it moves bytes. CORS, auth, and validation are the real
-  server's job and tunnel through untouched. Resist adding feature logic here.
-- Keep it dependency-light: `ws` + `@huxflux/shared` only. No Fastify, no DB.
-- Auth is deferred by design. Enforce the two env secrets when set, stay open
-  when unset, and keep the checks isolated in `auth.ts` so a real credential
-  store can drop in later without touching tunneling code.
+- The proxy is transparent for tunneled traffic. It does not parse Huxflux
+  payloads or know routes — it moves bytes. Inner CORS and validation are the
+  real server's job and tunnel through untouched. Resist adding feature logic.
+- Auth is NOT deferred anymore. Every tunneled request and every server
+  registration presents a signed access token (JWT); the proxy derives the
+  owner email and only connects a client to a server owned by the same user
+  (`registry.ts`). Keep verification isolated in `auth.ts` / `oauth/`.
+- Delegate identity to Google — never build a login form here. The proxy is the
+  authorization server; Google is the IdP.
+- Dependencies: `ws`, `jose`, `@huxflux/shared`, and `node:sqlite`. No Fastify.
 - Standard file-size caps apply (400-line files, 80-line functions).
+
+## Auth model
+
+- Two tokens are distinct: the **proxy** access JWT (authenticates to the proxy,
+  header `X-Huxflux-Proxy-Authorization` or `?proxy_token=`) and the tunneled
+  server's own token (injected by the connector on loopback, never sent by the
+  remote client). The proxy strips its own token before forwarding.
+- Access tokens are HS256 JWTs carrying the user email (default 1h). Refresh
+  tokens are opaque, stored hashed in SQLite, long-lived, revocable.
+- Config: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PROXY_ALLOWED_DOMAIN`
+  (comma-separated), `PROXY_PUBLIC_URL` (for redirect URIs). Optional:
+  `PROXY_JWT_SECRET` (auto-generated + persisted if unset), `PROXY_ACCESS_TTL`,
+  `PROXY_DB_PATH`. The OAuth flow returns 503 until the first four are set;
+  registration / request verification only needs the JWT secret.
 
 ## Run it
 
 - Dev: `pnpm --filter huxflux-proxy dev` (tsx watch).
 - Build: `pnpm --filter huxflux-proxy build` (tsup → `dist/index.js`).
-- A server points at it with `PROXY_URL`, `PROXY_SERVER_ID`, `PROXY_SECRET`
-  (see apps/server/src/domains/proxy-connector).
+- A server points at it with `PROXY_URL` + `PROXY_SERVER_ID` and signs in via the
+  OAuth device flow on first run (see apps/server/src/domains/proxy-connector).

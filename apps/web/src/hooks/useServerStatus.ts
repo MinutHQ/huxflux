@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react"
-import type { HuxfluxServer } from "@huxflux/shared"
+import { serverAuthHeaders, type HuxfluxServer } from "@huxflux/shared"
 
 export type ServerStatus = "online" | "offline" | "checking"
 
-async function checkHealth(url: string): Promise<boolean> {
+async function checkHealth(server: HuxfluxServer): Promise<boolean> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
-    const res = await fetch(`${url}/health`, { signal: controller.signal })
+    // Proxied servers gate /health behind the proxy, so send the auth header.
+    const res = await fetch(`${server.url}/health`, { headers: serverAuthHeaders(server), signal: controller.signal })
     return res.ok
   } catch {
     return false
@@ -53,7 +54,7 @@ export function useServerStatus(
     async function poll() {
       if (cancelled) return
       const results = await Promise.all(
-        servers.map(async (s) => ({ id: s.id, online: await checkHealth(s.url) }))
+        servers.map(async (s) => ({ id: s.id, online: await checkHealth(s) }))
       )
       if (cancelled) return
       setStatuses((prev) => {

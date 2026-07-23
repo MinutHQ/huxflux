@@ -263,6 +263,8 @@ export {
   parseConnectionString,
   isProxiedServer,
   proxyOriginOf,
+  serverAuthHeaders,
+  serverWsUrl,
 } from "./domains/servers/servers.store.js"
 export { useServerStatus, useServerConfig } from "./domains/servers/servers.hooks.js"
 export { huxfluxServerSchema, serverStatusSchema } from "./domains/servers/servers.types.js"

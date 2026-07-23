@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useState, useEffect, useRef } from "react"
 import { api } from "../../api.js"
 import { queryKeys } from "../../queryKeys.js"
+import { serverAuthHeaders } from "./servers.store.js"
 import type { HuxfluxServer, ServerStatus } from "./servers.types.js"
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
@@ -15,9 +16,13 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
 }
 
 async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
+  // Proxied servers gate /health behind the proxy too, so every probe must
+  // carry the server's auth header (proxy JWT or direct bearer).
+  const headers = serverAuthHeaders(server)
   // Reachability is determined solely by /health.
   try {
-    const healthRes = await fetchWithTimeout(`${server.url}/health`, {}, 5000)
+    const healthRes = await fetchWithTimeout(`${server.url}/health`, { headers }, 5000)
+    if (healthRes.status === 401 || healthRes.status === 403) return "unauthorized"
     if (!healthRes.ok) return "offline"
   } catch {
     return "offline"
@@ -25,9 +30,7 @@ async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
   // Server is reachable. Check auth on its own budget — a failure here must
   // not report the server as offline; only an explicit 401/403 is unauthorized.
   try {
-    const authRes = await fetchWithTimeout(`${server.url}/api/config`, {
-      headers: server.token ? { Authorization: `Bearer ${server.token}` } : {},
-    }, 5000)
+    const authRes = await fetchWithTimeout(`${server.url}/api/config`, { headers }, 5000)
     if (authRes.status === 401 || authRes.status === 403) return "unauthorized"
   } catch {
     // Transient auth-check failure — server is reachable, treat as online.

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback, useSyncExternalStore } from "react"
 import { z } from "zod/v4"
-import { getActiveServer, isProxiedServer } from "./domains/servers/servers.store.js"
-import { PROXY_TOKEN_QUERY } from "./domains/proxy/proxy.types.js"
+import { getActiveServer, serverWsUrl } from "./domains/servers/servers.store.js"
 import type { AgentsServerEvent } from "./domains/agents/agents.types.js"
 import type { TasksServerEvent } from "./domains/tasks/tasks.types.js"
 
@@ -81,14 +80,10 @@ function setWsConnected(value: boolean) {
 
 function getActiveWsUrl(): string {
   const server = getActiveServer()
-  const base = server?.url ?? "http://localhost:4321"
-  const wsUrl = base.replace(/^http/, "ws") + "/ws"
-  // Proxied servers authenticate to the proxy with the access JWT on a distinct
-  // query param; the proxy strips it and injects the inner token on loopback.
-  if (server && isProxiedServer(server)) {
-    return server.proxyAccessToken ? `${wsUrl}?${PROXY_TOKEN_QUERY}=${encodeURIComponent(server.proxyAccessToken)}` : wsUrl
-  }
-  return server?.token ? `${wsUrl}?token=${server.token}` : wsUrl
+  // Proxied servers carry the access JWT as `proxy_token`; direct servers use
+  // `token`. Both handled by the per-server helper.
+  if (server) return serverWsUrl(server, "/ws")
+  return "ws://localhost:4321/ws"
 }
 
 function connect() {

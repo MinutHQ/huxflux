@@ -4,9 +4,8 @@
 // every domain's api.ts depends on it and it has no domain affinity.
 
 import type { z } from "zod/v4"
-import { getActiveServer, updateServer, isProxiedServer, proxyOriginOf } from "./domains/servers/servers.store.js"
+import { getActiveServer, updateServer, isProxiedServer, proxyOriginOf, serverAuthHeaders } from "./domains/servers/servers.store.js"
 import { refreshProxyToken } from "./domains/proxy/proxyAuth.js"
-import { PROXY_AUTH_HEADER } from "./domains/proxy/proxy.types.js"
 import { apiErrorSchema, HuxfluxApiError } from "./error.js"
 
 function getBase(): string {
@@ -18,15 +17,10 @@ export function getApiBase(): string {
 }
 
 export function authHeaders(): Record<string, string> {
-  const server = getActiveServer()
-  if (!server) return {}
   // Proxied servers authenticate to the proxy with the access JWT on a distinct
-  // header; the inner server token is injected by the connector on loopback, so
-  // the client never sends it.
-  if (isProxiedServer(server)) {
-    return server.proxyAccessToken ? { [PROXY_AUTH_HEADER]: `Bearer ${server.proxyAccessToken}` } : {}
-  }
-  return server.token ? { Authorization: `Bearer ${server.token}` } : {}
+  // header; direct servers use their bearer token. Delegated to the per-server
+  // helper so every call site attaches the right credential consistently.
+  return serverAuthHeaders(getActiveServer())
 }
 
 async function doFetch(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<Response> {

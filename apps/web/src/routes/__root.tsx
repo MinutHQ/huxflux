@@ -5,7 +5,7 @@ import { toast, Toaster } from "sonner"
 import { CommandPalette } from "@/app-shell/CommandPalette"
 import { DisconnectedBanner } from "@/app-shell/banners/DisconnectedBanner"
 import { UpdateBanner } from "@/app-shell/banners/UpdateBanner"
-import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer } from "@huxflux/shared"
+import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer, serverWsUrl } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { useUpdater } from "@/hooks/useUpdater"
 import { isTauri } from "@/lib/platform"
@@ -133,8 +133,9 @@ function RootComponent() {
   useEffect(() => {
     const backgroundServers = servers.filter((s) => s.id !== activeId)
     const cleanups = backgroundServers.map((server) => {
-      const wsBase = server.url.replace(/^http/, "ws") + "/ws"
-      const wsUrl = server.token ? `${wsBase}?token=${server.token}` : wsBase
+      // serverWsUrl attaches the right token (proxy_token for proxied servers,
+      // token for direct) so background connections authenticate too.
+      const wsUrl = serverWsUrl(server, "/ws")
       return connectBackgroundServer(wsUrl, (event) => {
         if (event.type !== "message:done") return
         toast.success(`Agent finished on ${server.name}`, {

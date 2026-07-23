@@ -5,6 +5,7 @@ import {
   proxyOriginOf,
   runProxyAuthFlow,
   type HuxfluxServer,
+  type ProxyToken,
 } from "@huxflux/shared"
 import { openExternal } from "./platform"
 
@@ -52,6 +53,39 @@ export async function connectProxiedServer(input: string, opts: ConnectProxiedOp
     proxyAccessToken: token.accessToken,
     proxyRefreshToken: token.refreshToken,
     proxyAccountEmail: token.email,
+  })
+  setActiveServerId(server.id)
+  return server
+}
+
+/** The proxy origin (`https://proxy.example.com`) from a pasted base URL, or null. */
+export function normalizeProxyBase(input: string): string | null {
+  const trimmed = input.trim()
+  try {
+    return new URL(/^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`).origin
+  } catch {
+    return null
+  }
+}
+
+/** Sign in to a proxy by base URL and return the tokens (adds no server yet). */
+export function signInToProxy(baseOrigin: string, openBrowser: (url: string) => void = openExternal): Promise<ProxyToken> {
+  return runProxyAuthFlow(baseOrigin, openBrowser)
+}
+
+/** Add a specific server discovered on a proxy, reusing tokens from sign-in. */
+export function addProxiedServerEntry(args: {
+  baseOrigin: string
+  serverId: string
+  token: ProxyToken
+  name?: string
+}): HuxfluxServer {
+  const server = addServer({
+    name: args.name?.trim() || args.serverId,
+    url: `${args.baseOrigin}/s/${args.serverId}`,
+    proxyAccessToken: args.token.accessToken,
+    proxyRefreshToken: args.token.refreshToken,
+    proxyAccountEmail: args.token.email,
   })
   setActiveServerId(server.id)
   return server

@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest"
-import { registerTunnel, unregisterTunnel, getTunnel } from "./registry.js"
+import { registerTunnel, unregisterTunnel, getTunnel, listServerIds } from "./registry.js"
 import type { Tunnel } from "./tunnel.js"
 
 // The registry is the per-user gate: a client can only reach a server that was
 // registered under the client's own email. These are the security-critical
 // invariants, tested without real sockets.
-function fakeTunnel(): Tunnel {
-  return { close() {} } as unknown as Tunnel
+function fakeTunnel(serverId = "s", version?: string): Tunnel {
+  return { close() {}, serverId, version } as unknown as Tunnel
 }
 
 describe("registry per-user namespacing", () => {
@@ -27,6 +27,16 @@ describe("registry per-user namespacing", () => {
     registerTunnel("bob@minut.com", "dev", b)
     expect(getTunnel("alice@minut.com", "dev")).toBe(a)
     expect(getTunnel("bob@minut.com", "dev")).toBe(b)
+  })
+
+  it("lists only the caller's own servers", () => {
+    registerTunnel("dana@minut.com", "alpha", fakeTunnel("alpha", "1.2.3"))
+    registerTunnel("dana@minut.com", "beta", fakeTunnel("beta"))
+    registerTunnel("erin@minut.com", "alpha", fakeTunnel("alpha"))
+
+    const dana = listServerIds("dana@minut.com").sort((a, b) => a.serverId.localeCompare(b.serverId))
+    expect(dana).toEqual([{ serverId: "alpha", version: "1.2.3" }, { serverId: "beta", version: undefined }])
+    expect(listServerIds("nobody@minut.com")).toEqual([])
   })
 
   it("ignores a stale unregister from a replaced tunnel", () => {

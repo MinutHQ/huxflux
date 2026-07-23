@@ -1,9 +1,13 @@
 import {
   OAUTH_PATHS,
+  PROXY_AUTH_HEADER,
+  PROXY_SERVERS_PATH,
   proxyAuthStartSchema,
   proxyTokenSchema,
   proxyTokenErrorSchema,
+  proxyServersResponseSchema,
   type ProxyAuthStart,
+  type ProxyServerInfo,
   type ProxyToken,
   type ProxyTokenError,
 } from "./proxy.types.js"
@@ -42,6 +46,15 @@ export async function pollProxyToken(proxyBase: string, authId: string): Promise
   if (code === "authorization_pending" || code === "slow_down") return { status: "pending" }
   if (code === "denied") return { status: "denied" }
   return { status: "expired" }
+}
+
+/** List the servers currently registered for the token's owner. */
+export async function fetchProxyServers(proxyBase: string, accessToken: string): Promise<ProxyServerInfo[]> {
+  const res = await fetch(`${trimBase(proxyBase)}${PROXY_SERVERS_PATH}`, {
+    headers: { [PROXY_AUTH_HEADER]: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new Error(`could not list proxy servers: ${res.status}`)
+  return proxyServersResponseSchema.parse(await res.json()).servers
 }
 
 /** Exchange a refresh token for a fresh access token. Null if the refresh token

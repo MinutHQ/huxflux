@@ -62,9 +62,12 @@ export {
   OAUTH_PATHS,
   PROXY_AUTH_HEADER,
   PROXY_TOKEN_QUERY,
+  PROXY_SERVERS_PATH,
   proxyAuthStartSchema,
   proxyTokenSchema,
   proxyTokenErrorSchema,
+  proxyServerInfoSchema,
+  proxyServersResponseSchema,
 } from "./proxy.types.js"
 export type {
   TunnelFrame,
@@ -73,4 +76,5 @@ export type {
   ProxyAuthStart,
   ProxyToken,
   ProxyTokenError,
+  ProxyServerInfo,
 } from "./proxy.types.js"

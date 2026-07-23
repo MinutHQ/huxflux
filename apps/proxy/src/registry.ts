@@ -35,3 +35,13 @@ export function getTunnel(email: string, serverId: string): Tunnel | undefined {
 export function tunnelCount(): number {
   return tunnels.size
 }
+
+/** All servers currently registered by `email` (its own servers only). */
+export function listServerIds(email: string): { serverId: string; version?: string }[] {
+  const prefix = `${email}\n`
+  const out: { serverId: string; version?: string }[] = []
+  for (const [key, tunnel] of tunnels) {
+    if (key.startsWith(prefix)) out.push({ serverId: tunnel.serverId, version: tunnel.version })
+  }
+  return out
+}

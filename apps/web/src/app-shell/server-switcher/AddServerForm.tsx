@@ -4,14 +4,17 @@ import { setActiveServerId } from "@huxflux/shared"
 import { IconLoader2, IconAlertCircle } from "@tabler/icons-react"
 import { validateAuth } from "./validateAuth"
 import { isProxyConnectString, connectProxiedServer } from "@/lib/proxyConnect"
+import { AddProxyServer } from "./AddProxyServer"
 
 /**
  * Inline form rendered at the bottom of the server dropdown for adding a new
- * server. On success, sets the new server active and reloads the window so
- * all hooks re-bootstrap against the new server.
+ * server. Two modes: a direct LAN server (URL + token), or a server reached
+ * through the public proxy (sign in, then pick from the user's servers). On
+ * success, sets the new server active and reloads so hooks re-bootstrap.
  */
 export function AddServerForm({ onDone }: { onDone: () => void }) {
   const { add } = useServers()
+  const [mode, setMode] = useState<"direct" | "proxy">("direct")
   const [name, setName] = useState("")
   const [url, setUrl] = useState("")
   const [token, setToken] = useState("")
@@ -27,8 +30,8 @@ export function AddServerForm({ onDone }: { onDone: () => void }) {
     const normalizedUrl = url.trim().replace(/\/$/, "")
     const trimmedToken = token.trim()
     try {
-      // Proxy address (…/s/<serverId>): sign in via the browser instead of a
-      // token. The auth flow stores the access + refresh tokens on the entry.
+      // A pasted full proxy connect string (…/s/<serverId>) signs in via the
+      // browser instead of taking a token.
       if (isProxyConnectString(normalizedUrl)) {
         await connectProxiedServer(normalizedUrl, { name })
         window.location.reload()
@@ -56,64 +59,77 @@ export function AddServerForm({ onDone }: { onDone: () => void }) {
   }
 
   const proxyMode = isProxyConnectString(url.trim())
+  const tabClass = (active: boolean) =>
+    `pb-0.5 transition-colors ${active ? "border-b-2 border-foreground text-foreground" : "text-muted-foreground hover:text-foreground"}`
 
   return (
-    <form onSubmit={handleSubmit} className="p-3 border-t border-border space-y-2">
+    <div className="p-3 border-t border-border space-y-2">
       <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
         Add server
       </div>
-      <input
-        autoFocus
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="My Machine"
-        className="w-full text-[12px] bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-      />
-      <input
-        type="url"
-        value={url}
-        onChange={(e) => { setUrl(e.target.value); setError(null) }}
-        placeholder="http://localhost:4321"
-        className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-      />
-      {!proxyMode && (
-        <input
-          type="password"
-          value={token}
-          onChange={(e) => { setToken(e.target.value); setError(null) }}
-          placeholder="Auth token"
-          className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
-        />
-      )}
-      {proxyMode && (
-        <div className="text-[11px] text-muted-foreground">
-          This is a proxy address. You'll sign in with your account in the browser.
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-1.5 text-[11px] text-red-400">
-          <IconAlertCircle size={11} />
-          {error}
-        </div>
-      )}
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onDone}
-          className="text-[12px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!url.trim() || (!proxyMode && !token.trim()) || loading}
-          className="text-[12px] bg-primary text-primary-foreground rounded px-3 py-1 disabled:opacity-50 flex items-center gap-1.5"
-        >
-          {loading && <IconLoader2 size={11} className="animate-spin" />}
-          {loading ? (proxyMode ? "Signing in…" : "Verifying…") : (proxyMode ? "Sign in" : "Connect")}
-        </button>
+      <div className="flex gap-3 text-[11px]">
+        <button type="button" onClick={() => setMode("direct")} className={tabClass(mode === "direct")}>Direct</button>
+        <button type="button" onClick={() => setMode("proxy")} className={tabClass(mode === "proxy")}>Via proxy</button>
       </div>
-    </form>
+
+      {mode === "proxy" ? (
+        <AddProxyServer onDone={onDone} />
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <input
+            autoFocus
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My Machine"
+            className="w-full text-[12px] bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+          />
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => { setUrl(e.target.value); setError(null) }}
+            placeholder="http://localhost:4321"
+            className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+          />
+          {!proxyMode && (
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => { setToken(e.target.value); setError(null) }}
+              placeholder="Auth token"
+              className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
+            />
+          )}
+          {proxyMode && (
+            <div className="text-[11px] text-muted-foreground">
+              This is a proxy address. You'll sign in with your account in the browser.
+            </div>
+          )}
+          {error && (
+            <div className="flex items-center gap-1.5 text-[11px] text-red-400">
+              <IconAlertCircle size={11} />
+              {error}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDone}
+              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!url.trim() || (!proxyMode && !token.trim()) || loading}
+              className="text-[12px] bg-primary text-primary-foreground rounded px-3 py-1 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {loading && <IconLoader2 size={11} className="animate-spin" />}
+              {loading ? (proxyMode ? "Signing in…" : "Verifying…") : (proxyMode ? "Sign in" : "Connect")}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }

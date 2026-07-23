@@ -117,6 +117,19 @@ export const PROXY_AUTH_HEADER = "x-huxflux-proxy-authorization"
  * set headers). */
 export const PROXY_TOKEN_QUERY = "proxy_token"
 
+/** Authenticated endpoint listing the caller's currently-registered servers. */
+export const PROXY_SERVERS_PATH = "/servers"
+
+export const proxyServerInfoSchema = z.object({
+  serverId: z.string(),
+  version: z.string().optional(),
+})
+export type ProxyServerInfo = z.infer<typeof proxyServerInfoSchema>
+
+export const proxyServersResponseSchema = z.object({
+  servers: z.array(proxyServerInfoSchema),
+})
+
 export const proxyAuthStartSchema = z.object({
   authId: z.string(),
   verificationUrl: z.string(),

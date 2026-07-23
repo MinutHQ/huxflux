@@ -274,15 +274,16 @@ export type { HuxfluxServer, ServerStatus } from "./domains/servers/servers.type
 // React-dependent parts of this barrel.
 export {
   encodeFrame, decodeFrame, tunnelFrameHeaderSchema, TUNNEL_PATH, SERVER_PREFIX,
-  OAUTH_PATHS, PROXY_AUTH_HEADER, PROXY_TOKEN_QUERY,
+  OAUTH_PATHS, PROXY_AUTH_HEADER, PROXY_TOKEN_QUERY, PROXY_SERVERS_PATH,
   proxyAuthStartSchema, proxyTokenSchema, proxyTokenErrorSchema,
+  proxyServerInfoSchema, proxyServersResponseSchema,
 } from "./domains/proxy/frame.js"
 export type {
   TunnelFrame, TunnelFrameHeader, StreamId,
-  ProxyAuthStart, ProxyToken, ProxyTokenError,
+  ProxyAuthStart, ProxyToken, ProxyTokenError, ProxyServerInfo,
 } from "./domains/proxy/frame.js"
 export {
-  startProxyAuth, pollProxyToken, refreshProxyToken, runProxyAuthFlow,
+  startProxyAuth, pollProxyToken, refreshProxyToken, runProxyAuthFlow, fetchProxyServers,
 } from "./domains/proxy/proxyAuth.js"
 export type { PollResult } from "./domains/proxy/proxyAuth.js"
 

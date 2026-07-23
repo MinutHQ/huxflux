@@ -74,6 +74,8 @@ source of truth. Never fork it.
   remote client). The proxy strips its own token before forwarding.
 - Access tokens are HS256 JWTs carrying the user email (default 1h). Refresh
   tokens are opaque, stored hashed in SQLite, long-lived, revocable.
+- `GET /servers` (authenticated) lists the caller's currently-registered
+  servers, so a client can pick one after signing in without knowing its id.
 - Config: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PROXY_ALLOWED_DOMAIN`
   (comma-separated), `PROXY_PUBLIC_URL` (for redirect URIs). Optional:
   `PROXY_JWT_SECRET` (auto-generated + persisted if unset), `PROXY_ACCESS_TTL`,

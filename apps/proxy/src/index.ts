@@ -2,15 +2,15 @@ import * as http from "node:http"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { Duplex } from "node:stream"
 import { WebSocketServer, type WebSocket } from "ws"
-import { encodeFrame, decodeFrame, TUNNEL_PATH, OAUTH_PATHS } from "@huxflux/shared/proxy"
+import { encodeFrame, decodeFrame, TUNNEL_PATH, OAUTH_PATHS, PROXY_SERVERS_PATH } from "@huxflux/shared/proxy"
 import { config, PROXY_VERSION, isOAuthConfigured } from "./config.js"
 import { logger } from "./logger.js"
 import { authenticateServerToken, authorizeClient } from "./auth.js"
 import { Tunnel } from "./tunnel.js"
-import { registerTunnel, unregisterTunnel, tunnelCount } from "./registry.js"
+import { registerTunnel, unregisterTunnel, tunnelCount, listServerIds } from "./registry.js"
 import { handleHttpRequest } from "./httpProxy.js"
 import { handleWsUpgrade } from "./wsProxy.js"
-import { parseServerPath, pathOf, sendError, rejectUpgrade, toUint8Array } from "./util.js"
+import { parseServerPath, pathOf, sendError, sendJson, rejectUpgrade, toUint8Array } from "./util.js"
 import { handleOAuthStart, handleAuthorize, handleCallback, handleToken } from "./oauth/handlers.js"
 
 const wss = new WebSocketServer({ noServer: true })
@@ -36,6 +36,12 @@ async function handleServiceRoutes(req: IncomingMessage, res: ServerResponse, ur
     const body = JSON.stringify({ status: "ok", servers: tunnelCount(), version: PROXY_VERSION })
     res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) })
     res.end(body)
+    return true
+  }
+  if (path === PROXY_SERVERS_PATH && req.method === "GET") {
+    const email = await authorizeClient(req)
+    if (!email) { sendJson(res, 401, { error: "unauthorized" }); return true }
+    sendJson(res, 200, { servers: listServerIds(email) })
     return true
   }
   if (path === OAUTH_PATHS.start && req.method === "POST") { handleOAuthStart(res); return true }
@@ -99,7 +105,7 @@ async function onRegisterFrame(ws: WebSocket, data: unknown): Promise<void> {
     return
   }
   ws.send(encodeFrame({ t: "registered", version: PROXY_VERSION }))
-  const tunnel = new Tunnel(email, header.serverId, ws)
+  const tunnel = new Tunnel(email, header.serverId, header.version, ws)
   registerTunnel(email, header.serverId, tunnel)
   tunnel.onClosed(() => {
     unregisterTunnel(email, header.serverId, tunnel)

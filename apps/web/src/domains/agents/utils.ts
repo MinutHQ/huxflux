@@ -1,4 +1,4 @@
-import { getActiveServer } from "@huxflux/shared"
+import { getActiveServer, serverWsUrl } from "@huxflux/shared"
 import { ANSI_RE, PORT_PATTERNS, TERMINAL_ACTIVE_TAB_KEY } from "./config"
 
 /** True when the active server is not `localhost`. Tauri + remote flips the header into SSH mode. */
@@ -28,11 +28,11 @@ export function scanForPort(buf: string): number | null {
 
 /** Build the websocket URL for the per-agent PTY. `fresh=1` asks the server to replay buffer. */
 export function getPtyWsUrl(agentId: string, terminalId: string, fresh: boolean): string {
+  const path = `/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}${fresh ? "&fresh=1" : ""}`
   const server = getActiveServer()
-  const base = server?.url ?? "http://localhost:4321"
-  const wsBase = base.replace(/^http/, "ws")
-  const url = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}${fresh ? "&fresh=1" : ""}`
-  return server?.token ? `${url}&token=${server.token}` : url
+  // serverWsUrl attaches the right token (proxy_token vs token) for the path.
+  if (server) return serverWsUrl(server, path)
+  return `ws://localhost:4321${path}`
 }
 
 /** Read the last-active terminal-tab id for `agentId`, returning `null` if missing or storage errors. */

@@ -4,7 +4,8 @@
 // every domain's api.ts depends on it and it has no domain affinity.
 
 import type { z } from "zod/v4"
-import { getActiveServer } from "./domains/servers/servers.store.js"
+import { getActiveServer, updateServer, isProxiedServer, proxyOriginOf, serverAuthHeaders } from "./domains/servers/servers.store.js"
+import { refreshProxyToken } from "./domains/proxy/proxyAuth.js"
 import { apiErrorSchema, HuxfluxApiError } from "./error.js"
 
 function getBase(): string {
@@ -16,27 +17,60 @@ export function getApiBase(): string {
 }
 
 export function authHeaders(): Record<string, string> {
-  const token = getActiveServer()?.token
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  // Proxied servers authenticate to the proxy with the access JWT on a distinct
+  // header; direct servers use their bearer token. Delegated to the per-server
+  // helper so every call site attaches the right credential consistently.
+  return serverAuthHeaders(getActiveServer())
 }
 
-export async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+async function doFetch(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<Response> {
   const hasBody = init?.body !== undefined
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), init?.timeoutMs ?? 15_000)
-  let res: Response
+  const { headers: initHeaders, signal: initSignal, timeoutMs: _t, ...rest } = init ?? {}
   try {
-    res = await fetch(`${getBase()}${path}`, {
+    return await fetch(`${getBase()}${path}`, {
+      ...rest,
       headers: {
         ...(hasBody ? { "Content-Type": "application/json" } : {}),
         ...authHeaders(),
-        ...init?.headers,
+        ...initHeaders,
       },
-      signal: init?.signal ?? controller.signal,
-      ...init,
+      signal: initSignal ?? controller.signal,
     })
   } finally {
     clearTimeout(timer)
+  }
+}
+
+// Coalesce concurrent refreshes so a burst of 401s triggers a single exchange.
+let refreshInFlight: Promise<boolean> | null = null
+
+async function tryRefreshActiveProxyToken(): Promise<boolean> {
+  const server = getActiveServer()
+  if (!server || !isProxiedServer(server) || !server.proxyRefreshToken) return false
+  const origin = proxyOriginOf(server.url)
+  if (!origin) return false
+  const refreshToken = server.proxyRefreshToken
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const token = await refreshProxyToken(origin, refreshToken)
+      if (!token) return false
+      updateServer(server.id, {
+        proxyAccessToken: token.accessToken,
+        ...(token.refreshToken ? { proxyRefreshToken: token.refreshToken } : {}),
+      })
+      return true
+    })().finally(() => { refreshInFlight = null })
+  }
+  return refreshInFlight
+}
+
+export async function req<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  let res = await doFetch(path, init)
+  // A proxied server's access token may have expired — refresh once and retry.
+  if (res.status === 401 && (await tryRefreshActiveProxyToken())) {
+    res = await doFetch(path, init)
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as unknown

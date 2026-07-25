@@ -5,10 +5,11 @@ import { toast, Toaster } from "sonner"
 import { CommandPalette } from "@/app-shell/CommandPalette"
 import { DisconnectedBanner } from "@/app-shell/banners/DisconnectedBanner"
 import { UpdateBanner } from "@/app-shell/banners/UpdateBanner"
-import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer } from "@huxflux/shared"
+import { useAgents, parseConnectionString, getServers, setActiveServerId, addServer, updateServer, connectBackgroundServer, serverWsUrl } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { useUpdater } from "@/hooks/useUpdater"
 import { isTauri } from "@/lib/platform"
+import { isProxyConnectString, connectProxiedServer } from "@/lib/proxyConnect"
 import { getTheme, type Theme } from "@/lib/theme"
 import { playSound } from "@/lib/sounds"
 import { getSoundEnabled, getSoundPref } from "@/lib/notificationPrefs"
@@ -83,6 +84,13 @@ function RootComponent() {
     const already = existing.find((s) => s.url === parsed.url)
     if (already) {
       setActiveServerId(already.id)
+    } else if (isProxyConnectString(connectParam)) {
+      // Proxy address: sign in via the browser, then store tokens. Async — the
+      // flow opens a tab and polls; refresh once it resolves.
+      connectProxiedServer(connectParam)
+        .then(() => refreshServers())
+        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Sign-in failed"))
+      return
     } else {
       const server = addServer({ name: "My Server", url: parsed.url, token: parsed.token })
       setActiveServerId(server.id)
@@ -125,8 +133,9 @@ function RootComponent() {
   useEffect(() => {
     const backgroundServers = servers.filter((s) => s.id !== activeId)
     const cleanups = backgroundServers.map((server) => {
-      const wsBase = server.url.replace(/^http/, "ws") + "/ws"
-      const wsUrl = server.token ? `${wsBase}?token=${server.token}` : wsBase
+      // serverWsUrl attaches the right token (proxy_token for proxied servers,
+      // token for direct) so background connections authenticate too.
+      const wsUrl = serverWsUrl(server, "/ws")
       return connectBackgroundServer(wsUrl, (event) => {
         if (event.type !== "message:done") return
         toast.success(`Agent finished on ${server.name}`, {

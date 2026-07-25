@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./settings-schema": "./src/domains/settings/settings.schema.ts"
+    "./settings-schema": "./src/domains/settings/settings.schema.ts",
+    "./proxy": "./src/domains/proxy/frame.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

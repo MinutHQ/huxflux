@@ -1,4 +1,5 @@
 import { getStorage } from "../../storage.js"
+import { PROXY_AUTH_HEADER, PROXY_TOKEN_QUERY } from "../proxy/proxy.types.js"
 import type { HuxfluxServer } from "./servers.types.js"
 
 function uuid(): string {
@@ -60,9 +61,60 @@ export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServ
 
 export function updateServer(
   id: string,
-  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>
+  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token" | "proxyAccessToken" | "proxyRefreshToken" | "proxyAccountEmail">>
 ): void {
   saveServers(getServers().map((s) => (s.id === id ? { ...s, ...patch } : s)))
+}
+
+/** True when this server is reached through the public proxy (path prefix /s/). */
+export function isProxiedServer(server: Pick<HuxfluxServer, "url" | "proxyAccessToken">): boolean {
+  if (server.proxyAccessToken) return true
+  try {
+    return new URL(server.url).pathname.startsWith("/s/")
+  } catch {
+    return false
+  }
+}
+
+/** The proxy origin for a proxied server URL (`https://proxy/s/<id>` → `https://proxy`). */
+export function proxyOriginOf(url: string): string | null {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
+type AuthFields = Pick<HuxfluxServer, "url" | "token" | "proxyAccessToken">
+
+/**
+ * Auth headers for a request to a SPECIFIC server (not necessarily the active
+ * one). Proxied servers send the access JWT on the proxy header; direct servers
+ * send their bearer token. Use this for any fetch to a server URL so proxied
+ * requests always carry the token (status polls, per-server probes, etc.).
+ */
+export function serverAuthHeaders(server: AuthFields | null | undefined): Record<string, string> {
+  if (!server) return {}
+  if (isProxiedServer(server)) {
+    return server.proxyAccessToken ? { [PROXY_AUTH_HEADER]: `Bearer ${server.proxyAccessToken}` } : {}
+  }
+  return server.token ? { Authorization: `Bearer ${server.token}` } : {}
+}
+
+/**
+ * WebSocket URL for a SPECIFIC server + path, carrying the right token as a
+ * query param (WS can't set headers). Proxied servers use `proxy_token`; direct
+ * servers use `token`. Handles a `path` that already contains a query string.
+ */
+export function serverWsUrl(server: AuthFields, path: string): string {
+  const base = server.url.replace(/^http/, "ws") + path
+  const sep = path.includes("?") ? "&" : "?"
+  if (isProxiedServer(server)) {
+    return server.proxyAccessToken
+      ? `${base}${sep}${PROXY_TOKEN_QUERY}=${encodeURIComponent(server.proxyAccessToken)}`
+      : base
+  }
+  return server.token ? `${base}${sep}token=${encodeURIComponent(server.token)}` : base
 }
 
 export function removeServer(id: string): void {
@@ -100,7 +152,13 @@ export function parseConnectionString(input: string): { url: string; token?: str
     const parsed = new URL(normalized)
     const token = parsed.searchParams.get("token") ?? undefined
     parsed.searchParams.delete("token")
-    return { url: parsed.origin, token }
+    // Preserve any path prefix. When Huxflux is reached through the public
+    // proxy the base URL is `https://proxy.example.com/s/<serverId>` — the
+    // `/s/<serverId>` prefix is load-bearing (it selects which server the proxy
+    // tunnels to), so we must not collapse to `parsed.origin`. A bare
+    // `pathname` of "/" carries no information and is dropped.
+    const path = parsed.pathname.replace(/\/+$/, "")
+    return { url: parsed.origin + path, token }
   } catch {
     return null
   }

@@ -3,5 +3,6 @@
 // have no React test setup yet, and tokens is exports-only.
 export default [
   "apps/server/vitest.config.ts",
+  "apps/proxy/vitest.config.ts",
   "packages/shared/vitest.config.ts",
 ]

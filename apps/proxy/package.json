@@ -1,0 +1,31 @@
+{
+  "name": "huxflux-proxy",
+  "version": "0.0.0",
+  "description": "Public relay that tunnels Huxflux over the Internet (client ↔ proxy ↔ server behind NAT)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.6"
+  },
+  "bin": {
+    "huxflux-proxy": "dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@huxflux/shared": "workspace:*",
+    "@types/node": "^24.12.0",
+    "@types/ws": "^8.5.13",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.4",
+    "typescript": "~5.9.3"
+  }
+}

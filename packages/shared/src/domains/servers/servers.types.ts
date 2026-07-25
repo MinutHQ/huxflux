@@ -11,7 +11,17 @@ export const huxfluxServerSchema = z.object({
   id: z.string(),
   name: z.string(),
   url: z.string(),
+  // Direct (LAN) servers authenticate with this bearer token. Proxied servers
+  // leave it unset — the proxy connector supplies the server's own token on the
+  // loopback leg, so the client only needs the proxy access token below.
   token: z.string().optional(),
+  // ── Proxy auth (set only for servers reached through the public proxy) ──────
+  // Signed access JWT sent to the proxy on every request; short-lived, refreshed
+  // transparently. The refresh token mints new access tokens. The account email
+  // is shown in the UI and lets the proxy gate traffic to same-user servers.
+  proxyAccessToken: z.string().optional(),
+  proxyRefreshToken: z.string().optional(),
+  proxyAccountEmail: z.string().optional(),
   addedAt: z.string(),
 })
 

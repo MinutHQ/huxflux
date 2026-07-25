@@ -1,50 +1,15 @@
 import { useState } from "react"
-import { fetchProxyServers, type ProxyServerInfo, type ProxyToken } from "@huxflux/shared"
 import { IconLoader2, IconAlertCircle, IconServer } from "@tabler/icons-react"
-import { normalizeProxyBase, signInToProxy, addProxiedServerEntry } from "@/lib/proxyConnect"
-
-type Step = "url" | "select"
+import { useProxyConnect } from "@/hooks/useProxyConnect"
 
 /**
  * Proxy add-flow: the user enters only the proxy base URL, signs in with their
  * account in the browser, then picks one of the servers currently registered
- * for them on that proxy.
+ * for them on that proxy. Shared step logic lives in useProxyConnect.
  */
 export function AddProxyServer({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState<Step>("url")
   const [url, setUrl] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [origin, setOrigin] = useState("")
-  const [token, setToken] = useState<ProxyToken | null>(null)
-  const [servers, setServers] = useState<ProxyServerInfo[]>([])
-
-  async function handleSignIn(e: React.FormEvent) {
-    e.preventDefault()
-    if (loading) return
-    const base = normalizeProxyBase(url)
-    if (!base) { setError("Enter a valid proxy URL."); return }
-    setError(null)
-    setLoading(true)
-    try {
-      const t = await signInToProxy(base)
-      const list = await fetchProxyServers(base, t.accessToken)
-      setOrigin(base)
-      setToken(t)
-      setServers(list)
-      setStep("select")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function handleSelect(info: ProxyServerInfo) {
-    if (!token) return
-    addProxiedServerEntry({ baseOrigin: origin, serverId: info.serverId, token, name: info.name })
-    window.location.reload()
-  }
+  const { step, loading, error, token, servers, signIn, select, clearError } = useProxyConnect(() => window.location.reload())
 
   if (step === "select") {
     return (
@@ -62,7 +27,7 @@ export function AddProxyServer({ onDone }: { onDone: () => void }) {
               <button
                 key={s.serverId}
                 type="button"
-                onClick={() => handleSelect(s)}
+                onClick={() => select(s)}
                 className="w-full flex items-center gap-2 text-[12px] text-foreground bg-background border border-input rounded px-2 py-1.5 hover:border-ring transition-colors text-left"
               >
                 <IconServer size={13} className="text-muted-foreground shrink-0" />
@@ -82,12 +47,12 @@ export function AddProxyServer({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSignIn} className="space-y-2">
+    <form onSubmit={(e) => { e.preventDefault(); void signIn(url) }} className="space-y-2">
       <input
         autoFocus
         type="text"
         value={url}
-        onChange={(e) => { setUrl(e.target.value); setError(null) }}
+        onChange={(e) => { setUrl(e.target.value); clearError() }}
         placeholder="https://proxy.example.com"
         className="w-full text-[12px] font-mono bg-background border border-input rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring transition-colors"
       />

@@ -10,6 +10,7 @@ import { Tunnel } from "./tunnel.js"
 import { registerTunnel, unregisterTunnel, tunnelCount, listServerIds } from "./registry.js"
 import { handleHttpRequest } from "./httpProxy.js"
 import { handleWsUpgrade } from "./wsProxy.js"
+import { deriveServerId } from "./serverId.js"
 import { parseServerPath, pathOf, sendError, sendJson, rejectUpgrade, toUint8Array } from "./util.js"
 import { handleOAuthStart, handleAuthorize, handleCallback, handleToken } from "./oauth/handlers.js"
 
@@ -104,14 +105,17 @@ async function onRegisterFrame(ws: WebSocket, data: unknown): Promise<void> {
     ws.close(4401, "unauthorized")
     return
   }
-  ws.send(encodeFrame({ t: "registered", version: PROXY_VERSION }))
-  const tunnel = new Tunnel(email, header.serverId, header.version, ws)
-  registerTunnel(email, header.serverId, tunnel)
+  // Derive the URL-facing id from the server's random key — the server can't
+  // pick its own URL. The human name is tracked but never used in the path.
+  const serverId = deriveServerId(header.serverKey)
+  ws.send(encodeFrame({ t: "registered", serverId, version: PROXY_VERSION }))
+  const tunnel = new Tunnel(email, serverId, header.name, header.version, ws)
+  registerTunnel(email, serverId, tunnel)
   tunnel.onClosed(() => {
-    unregisterTunnel(email, header.serverId, tunnel)
-    logger.info(`server disconnected: ${header.serverId} (${email}) (${tunnelCount()} connected)`)
+    unregisterTunnel(email, serverId, tunnel)
+    logger.info(`server disconnected: ${header.name} (${email}) (${tunnelCount()} connected)`)
   })
-  logger.info(`server registered: ${header.serverId} (${email}) (${tunnelCount()} connected)`)
+  logger.info(`server registered: ${header.name} [${serverId}] (${email}) (${tunnelCount()} connected)`)
 }
 
 server.listen(config.port, config.host, () => {

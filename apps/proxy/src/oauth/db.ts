@@ -2,8 +2,9 @@ import { DatabaseSync } from "node:sqlite"
 import { config } from "../config.js"
 
 // Minimal on-disk store: valid refresh tokens (stored hashed) and generated
-// runtime secrets (the JWT signing key when not provided via env). node:sqlite
-// is the same engine the Huxflux server uses, so no new dependency.
+// runtime secrets (the JWT signing key and the server-id HMAC key when not
+// provided via env). node:sqlite is the same engine the Huxflux server uses, so
+// no new dependency.
 
 const db = new DatabaseSync(config.dbPath)
 db.exec(`

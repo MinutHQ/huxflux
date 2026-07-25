@@ -75,7 +75,14 @@ source of truth. Never fork it.
 - Access tokens are HS256 JWTs carrying the user email (default 1h). Refresh
   tokens are opaque, stored hashed in SQLite, long-lived, revocable.
 - `GET /servers` (authenticated) lists the caller's currently-registered
-  servers, so a client can pick one after signing in without knowing its id.
+  servers as `{ serverId, name, version }`, so a client can pick one by name
+  after signing in. Clients display `name` and use `serverId` only in the URL.
+- Server identity is split: the connector sends a random `serverKey` (stable per
+  server) + a human `name`. The proxy derives the URL-facing `serverId` as
+  `HMAC(id_secret, serverKey)` (`serverId.ts`), so a registering server cannot
+  choose or predict its own URL. The id is echoed back in the `registered` frame.
+  `id_secret` is generated once and persisted in the DB, independent of the JWT
+  secret.
 - Config: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PROXY_ALLOWED_DOMAIN`
   (comma-separated), `PROXY_PUBLIC_URL` (for redirect URIs). Optional:
   `PROXY_JWT_SECRET` (auto-generated + persisted if unset), `PROXY_ACCESS_TTL`,

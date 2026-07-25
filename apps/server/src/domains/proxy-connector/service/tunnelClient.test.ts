@@ -108,7 +108,8 @@ describe("TunnelClient", () => {
 
     client = new TunnelClient({
       proxyUrl: `ws://127.0.0.1:${proxyPort}`,
-      serverId: "test-server",
+      serverKey: "test-server-key",
+      name: "test-server",
       loopbackBase: `http://127.0.0.1:${loopbackPort}`,
       loopbackToken: "srv-secret",
       getAccessToken: async () => "access.jwt.token",

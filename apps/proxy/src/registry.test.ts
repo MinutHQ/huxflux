@@ -5,8 +5,8 @@ import type { Tunnel } from "./tunnel.js"
 // The registry is the per-user gate: a client can only reach a server that was
 // registered under the client's own email. These are the security-critical
 // invariants, tested without real sockets.
-function fakeTunnel(serverId = "s", version?: string): Tunnel {
-  return { close() {}, serverId, version } as unknown as Tunnel
+function fakeTunnel(serverId = "s", name = "srv", version?: string): Tunnel {
+  return { close() {}, serverId, name, version } as unknown as Tunnel
 }
 
 describe("registry per-user namespacing", () => {
@@ -29,13 +29,16 @@ describe("registry per-user namespacing", () => {
     expect(getTunnel("bob@minut.com", "dev")).toBe(b)
   })
 
-  it("lists only the caller's own servers", () => {
-    registerTunnel("dana@minut.com", "alpha", fakeTunnel("alpha", "1.2.3"))
-    registerTunnel("dana@minut.com", "beta", fakeTunnel("beta"))
-    registerTunnel("erin@minut.com", "alpha", fakeTunnel("alpha"))
+  it("lists only the caller's own servers, with names", () => {
+    registerTunnel("dana@minut.com", "alpha", fakeTunnel("alpha", "Laptop", "1.2.3"))
+    registerTunnel("dana@minut.com", "beta", fakeTunnel("beta", "Desktop"))
+    registerTunnel("erin@minut.com", "alpha", fakeTunnel("alpha", "Other"))
 
     const dana = listServerIds("dana@minut.com").sort((a, b) => a.serverId.localeCompare(b.serverId))
-    expect(dana).toEqual([{ serverId: "alpha", version: "1.2.3" }, { serverId: "beta", version: undefined }])
+    expect(dana).toEqual([
+      { serverId: "alpha", name: "Laptop", version: "1.2.3" },
+      { serverId: "beta", name: "Desktop", version: undefined },
+    ])
     expect(listServerIds("nobody@minut.com")).toEqual([])
   })
 

@@ -15,8 +15,10 @@ import { createLoopbackWsStream, type LoopbackWsStream } from "./loopbackWs.js"
 export interface TunnelClientOptions {
   /** Proxy base URL, e.g. wss://proxy.example.com. The tunnel path is appended. */
   proxyUrl: string
-  /** Stable id this server registers under. Clients reach it at /s/<serverId>. */
-  serverId: string
+  /** Stable random key; the proxy derives the public URL id from it. */
+  serverKey: string
+  /** Human label shown to clients (hostname by default). Never in the URL. */
+  name: string
   /** Local origin the loopback requests target, e.g. http://127.0.0.1:4321. */
   loopbackBase: string
   /** The server's own auth token, injected on the loopback leg so tunneled
@@ -26,6 +28,8 @@ export interface TunnelClientOptions {
   getAccessToken: () => Promise<string>
   /** Called when the proxy rejects our token so the next attempt re-authenticates. */
   onAuthRejected?: () => void
+  /** Called on successful registration with the proxy-derived public server id. */
+  onRegistered?: (serverId: string | undefined) => void
 }
 
 const MAX_BACKOFF_MS = 30_000
@@ -75,8 +79,8 @@ export class TunnelClient {
     const ws = new WebSocket(url)
     this.ws = ws
     ws.on("open", () => {
-      logger.info({ proxy: url, serverId: this.opts.serverId }, "[proxy] tunnel connected; registering")
-      this.send({ t: "register", serverId: this.opts.serverId, accessToken, version: SERVER_VERSION })
+      logger.info({ proxy: url, name: this.opts.name }, "[proxy] tunnel connected; registering")
+      this.send({ t: "register", serverKey: this.opts.serverKey, name: this.opts.name, accessToken, version: SERVER_VERSION })
     })
     ws.on("message", (data) => this.onMessage(toUint8Array(data)))
     ws.on("close", () => this.onClose())
@@ -97,7 +101,8 @@ export class TunnelClient {
     switch (header.t) {
       case "registered":
         this.backoff = 1_000
-        logger.info({ serverId: this.opts.serverId }, "[proxy] registered with proxy")
+        this.opts.onRegistered?.(header.serverId)
+        logger.info({ name: this.opts.name, serverId: header.serverId }, "[proxy] registered with proxy")
         break
       case "register-failed":
         // Token invalid / expired: drop it and reconnect; getAccessToken will

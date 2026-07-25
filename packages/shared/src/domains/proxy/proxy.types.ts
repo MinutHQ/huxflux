@@ -24,13 +24,22 @@ export const tunnelFrameHeaderSchema = z.discriminatedUnion("t", [
   // to the proxy with a signed access token (JWT) obtained via the OAuth flow;
   // the proxy derives the owning user's email from it and namespaces the server
   // registration under that email.
+  //
+  // `serverKey` is a random string the server generates once and reuses on every
+  // registration. The proxy derives the URL-facing server id from it (HMAC), so
+  // the server cannot choose its own URL. `name` is a human label (hostname by
+  // default) shown to clients; it never appears in the URL.
   z.object({
     t: z.literal("register"),
-    serverId: z.string().min(1),
+    serverKey: z.string().min(1),
+    name: z.string(),
     accessToken: z.string(),
     version: z.string().optional(),
   }),
-  z.object({ t: z.literal("registered"), version: z.string().optional() }),
+  // The proxy echoes back the derived server id so the server can log its own
+  // public URL (it otherwise cannot compute it — the derivation is keyed by a
+  // proxy-only secret).
+  z.object({ t: z.literal("registered"), serverId: z.string().optional(), version: z.string().optional() }),
   z.object({ t: z.literal("register-failed"), reason: z.string() }),
 
   // ── HTTP request (proxy → server) ──────────────────────────────────────────
@@ -121,7 +130,10 @@ export const PROXY_TOKEN_QUERY = "proxy_token"
 export const PROXY_SERVERS_PATH = "/servers"
 
 export const proxyServerInfoSchema = z.object({
+  /** The proxy-derived, URL-facing id. Opaque to clients; used only in the path. */
   serverId: z.string(),
+  /** Human label the server chose (hostname by default). What clients display. */
+  name: z.string(),
   version: z.string().optional(),
 })
 export type ProxyServerInfo = z.infer<typeof proxyServerInfoSchema>

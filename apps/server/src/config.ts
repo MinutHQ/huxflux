@@ -34,12 +34,14 @@ export const config = {
   /** Actual port the server is listening on (set after bind). */
   boundPort: parseInt(process.env.PORT ?? "4321", 10),
   // ── Internet proxy tunnel (optional) ──────────────────────────────────────
-  // When PROXY_URL + PROXY_SERVER_ID are set, the server dials out to a public
-  // proxy over a secure WebSocket so clients can reach it from anywhere. See
-  // src/domains/proxy-connector. PROXY_URL is the proxy base (e.g.
-  // wss://proxy.example.com); the connector appends the tunnel path. The
-  // connector authenticates to the proxy via the OAuth device flow (it prints a
-  // sign-in URL on first run), so no shared secret is configured here.
+  // When PROXY_URL is set, the server dials out to a public proxy over a secure
+  // WebSocket so clients can reach it from anywhere. See src/domains/proxy-
+  // connector. PROXY_URL is the proxy base (e.g. wss://proxy.example.com); the
+  // connector appends the tunnel path. It authenticates via the OAuth device
+  // flow (prints a sign-in URL on first run). The server's URL id is derived by
+  // the proxy from a random key the connector generates on first run — it is not
+  // configured here. PROXY_SERVER_NAME is the human label shown to clients
+  // (defaults to the system hostname).
   proxyUrl: process.env.PROXY_URL ?? "",
-  proxyServerId: process.env.PROXY_SERVER_ID ?? "",
+  proxyServerName: process.env.PROXY_SERVER_NAME?.trim() || os.hostname(),
 }

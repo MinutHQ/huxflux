@@ -37,11 +37,11 @@ export function tunnelCount(): number {
 }
 
 /** All servers currently registered by `email` (its own servers only). */
-export function listServerIds(email: string): { serverId: string; version?: string }[] {
+export function listServerIds(email: string): { serverId: string; name: string; version?: string }[] {
   const prefix = `${email}\n`
-  const out: { serverId: string; version?: string }[] = []
+  const out: { serverId: string; name: string; version?: string }[] = []
   for (const [key, tunnel] of tunnels) {
-    if (key.startsWith(prefix)) out.push({ serverId: tunnel.serverId, version: tunnel.version })
+    if (key.startsWith(prefix)) out.push({ serverId: tunnel.serverId, name: tunnel.name, version: tunnel.version })
   }
   return out
 }

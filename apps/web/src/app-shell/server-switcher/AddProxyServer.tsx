@@ -40,9 +40,9 @@ export function AddProxyServer({ onDone }: { onDone: () => void }) {
     }
   }
 
-  function handleSelect(serverId: string) {
+  function handleSelect(info: ProxyServerInfo) {
     if (!token) return
-    addProxiedServerEntry({ baseOrigin: origin, serverId, token })
+    addProxiedServerEntry({ baseOrigin: origin, serverId: info.serverId, token, name: info.name })
     window.location.reload()
   }
 
@@ -62,11 +62,11 @@ export function AddProxyServer({ onDone }: { onDone: () => void }) {
               <button
                 key={s.serverId}
                 type="button"
-                onClick={() => handleSelect(s.serverId)}
+                onClick={() => handleSelect(s)}
                 className="w-full flex items-center gap-2 text-[12px] text-foreground bg-background border border-input rounded px-2 py-1.5 hover:border-ring transition-colors text-left"
               >
                 <IconServer size={13} className="text-muted-foreground shrink-0" />
-                <span className="font-mono truncate">{s.serverId}</span>
+                <span className="truncate">{s.name}</span>
                 {s.version && <span className="text-[10px] text-muted-foreground ml-auto shrink-0">v{s.version}</span>}
               </button>
             ))}

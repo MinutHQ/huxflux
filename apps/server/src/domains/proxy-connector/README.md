@@ -9,6 +9,8 @@ this domain does nothing.
 - The outbound tunnel connection to the proxy and its reconnect lifecycle.
 - The proxy sign-in (OAuth device flow): obtaining, refreshing, and persisting
   the access + refresh tokens the server authenticates to the proxy with.
+- The server's stable random registration key (generated once, stored with the
+  refresh token) and its human name (PROXY_SERVER_NAME, default hostname).
 - Replaying tunneled client requests against the local server over loopback:
   HTTP (buffered request, streamed response) and WebSocket (WS-over-WS).
 - The proxy connect string the startup banner prints.
@@ -24,7 +26,7 @@ this domain does nothing.
 - `@huxflux/shared` — the tunnel wire protocol + the OAuth device-flow client
   helpers (`runProxyAuthFlow`, `refreshProxyToken`).
 - `ws` — the WebSocket client for both the proxy tunnel and loopback sockets.
-- `src/config.ts` (PROXY_URL / PROXY_SERVER_ID), `src/logger.ts`, `src/version.ts`.
+- `src/config.ts` (PROXY_URL / PROXY_SERVER_NAME), `src/logger.ts`, `src/version.ts`.
 
 ## Sub-domains
 
@@ -33,6 +35,9 @@ None.
 ## Quirks
 
 - The proxy allocates every stream id; this side only looks ids up.
+- The connector never sets its own public URL id: it sends a random `serverKey`
+  and the proxy derives the id (HMAC). The proxy echoes the derived id in the
+  `registered` frame, which the connector logs as the reachable URL.
 - Auth: on first run (or after refresh-token revocation) the connector prints a
   Google sign-in URL and blocks the tunnel until an operator completes it; tokens
   are cached in `~/huxflux/proxy-auth.json` and refreshed transparently. The

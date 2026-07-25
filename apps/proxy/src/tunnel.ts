@@ -36,6 +36,7 @@ export class Tunnel {
   constructor(
     readonly email: string,
     readonly serverId: string,
+    readonly name: string,
     readonly version: string | undefined,
     private readonly socket: WebSocket,
   ) {

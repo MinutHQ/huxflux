@@ -20,6 +20,11 @@ this domain does nothing.
 - `proxy-connector.service.ts` — `startProxyConnector()`, `stopProxyConnector()`,
   `isProxyConfigured()`, `proxyClientConnectString()`. Booted from `src/index.ts`
   after the HTTP server binds (it needs `config.boundPort`).
+- `proxyAuth.ts` — `authenticateProxy(proxyUrl, onUrl)`. Runs the interactive
+  device-flow sign-in and persists the tokens, so the CLI (`huxflux proxy` /
+  `huxflux setup`) can complete the sign-in in the operator's terminal before the
+  background server starts. Thin re-exporter kept apart from the service file so
+  the CLI doesn't bundle the tunnel client.
 
 ## Depends on
 
@@ -38,10 +43,12 @@ None.
 - The connector never sets its own public URL id: it sends a random `serverKey`
   and the proxy derives the id (HMAC). The proxy echoes the derived id in the
   `registered` frame, which the connector logs as the reachable URL.
-- Auth: on first run (or after refresh-token revocation) the connector prints a
-  Google sign-in URL and blocks the tunnel until an operator completes it; tokens
-  are cached in `~/huxflux/proxy-auth.json` and refreshed transparently. The
-  access token rides the register frame.
+- Auth: sign-in normally happens up front in the CLI (`authenticateProxy`), so
+  the tokens are already cached when the connector starts. As a fallback, on first
+  run (or after refresh-token revocation) the connector itself prints a Google
+  sign-in URL to the server log and blocks the tunnel until an operator completes
+  it. Tokens are cached in `~/huxflux/proxy-auth.json` and refreshed
+  transparently. The access token rides the register frame.
 - The remote client authenticates to the *proxy*, not to this server, so it
   sends no inner token. The connector injects the server's own token
   (`config.authToken`) on the loopback leg — Authorization header for HTTP, a

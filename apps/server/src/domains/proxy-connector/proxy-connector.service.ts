@@ -1,7 +1,7 @@
 import { config } from "../../config.js"
 import { logger } from "../../logger.js"
 import { TunnelClient } from "./service/tunnelClient.js"
-import { getValidAccessToken } from "./service/proxyAuthFlow.js"
+import { getValidAccessToken, toProxyHttpBase } from "./service/proxyAuthFlow.js"
 import { invalidateStoredAccess, getOrCreateServerKey } from "./service/proxyAuthStore.js"
 
 // Public surface for the internet proxy tunnel. When configured, the server
@@ -17,7 +17,7 @@ export function isProxyConfigured(): boolean {
 
 /** The proxy's http(s) base (OAuth endpoints live there, not on the ws URL). */
 function proxyHttpBase(): string {
-  return config.proxyUrl.replace(/^ws/, "http").replace(/\/+$/, "")
+  return toProxyHttpBase(config.proxyUrl)
 }
 
 /** Dial the proxy (idempotent). No-op when not configured. */

@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url"
 import { isFirejailAvailable, sandboxStatus } from "./sandbox.js"
 import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
+import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ interface Config {
   port: number
   sandbox?: SandboxConfig
   disclaimerShown?: boolean
+  /** Public proxy the server tunnels through so clients reach it over the
+   * Internet (e.g. wss://proxy.example.com). Empty/absent = direct only. */
+  proxyUrl?: string
 }
 
 function ensureDataDir() {
@@ -106,6 +110,7 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
     DB_PATH: process.env.DB_PATH ?? path.join(DATA_DIR, "huxflux.db"),
     WORKSPACES_BASE: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, "workspaces"),
     ...(cfg.sandbox ? { SANDBOX_CONFIG: JSON.stringify(cfg.sandbox) } : {}),
+    ...(cfg.proxyUrl ? { PROXY_URL: cfg.proxyUrl } : {}),
   }
 }
 
@@ -841,6 +846,47 @@ function cmdRun() {
 
 // ── Setup wizard ─────────────────────────────────────────────────────────────
 
+// Prompt for a proxy URL, persist it, and run the interactive sign-in so the
+// connector's tokens are on disk before the server (re)starts. Shared by the
+// setup wizard and the standalone `huxflux proxy` command. Returns true when the
+// proxy was configured, false when the user cancelled.
+async function runProxySetup(p: typeof import("@clack/prompts")): Promise<boolean> {
+  const url = await p.text({
+    message: "Proxy URL",
+    placeholder: "wss://proxy.example.com",
+    validate: (v) => {
+      const t = v?.trim()
+      if (!t) return "Enter a proxy URL (or press Ctrl+C to skip)"
+      if (!/^wss?:\/\/.+/i.test(t)) return "Must start with ws:// or wss://"
+      return undefined
+    },
+  })
+  if (p.isCancel(url)) return false
+  const proxyUrl = (url as string).trim()
+
+  // Persist first so a later server start picks up PROXY_URL, then sign in so
+  // the connector finds valid tokens and never has to prompt in the background.
+  const cfg = loadConfig()
+  cfg.proxyUrl = proxyUrl
+  saveConfig(cfg)
+
+  let s: ReturnType<typeof p.spinner> | undefined
+  try {
+    const email = await authenticateProxy(proxyUrl, (signInUrl) => {
+      p.note(signInUrl, "Open this URL in your browser to authorize this server")
+      s = p.spinner()
+      s.start("Waiting for you to authorize in the browser...")
+    })
+    s?.stop(email ? `Signed in as ${email}` : "Signed in to proxy")
+    return true
+  } catch (err) {
+    s?.stop("Proxy sign-in failed")
+    p.log.error((err as Error).message || "Unknown error")
+    // Keep the URL saved so the user can retry with 'huxflux proxy'.
+    return false
+  }
+}
+
 async function cmdSetup() {
   const p = await import("@clack/prompts")
 
@@ -957,6 +1003,17 @@ async function cmdSetup() {
       const installService = await p.confirm({ message: "Start automatically on login? (you can always run 'huxflux start' manually)" })
       if (p.isCancel(installService)) { p.cancel("Setup cancelled."); process.exit(0) }
       wantsService = !!installService
+    }
+
+    // Optional: reach this server over the Internet through a public proxy.
+    // Configure it before the server starts so it comes up already tunneling.
+    const wantsProxy = await p.confirm({
+      message: "Reach this server over the Internet through a proxy? (optional)",
+      initialValue: false,
+    })
+    if (p.isCancel(wantsProxy)) { p.cancel("Setup cancelled."); process.exit(0) }
+    if (wantsProxy) {
+      await runProxySetup(p)
     }
 
     const s = p.spinner()
@@ -1364,6 +1421,7 @@ function installSystemService() {
       `export HUXFLUX_DIR="${DATA_DIR}"`,
       `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
       `exec "${huxfluxBin}" _supervisor`,
     ].join("\n")
@@ -1415,6 +1473,7 @@ function installSystemService() {
       `export HUXFLUX_DIR="${DATA_DIR}"`,
       `export DB_PATH="${path.join(DATA_DIR, "huxflux.db")}"`,
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
+      ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
       `exec "${huxfluxBin}" _supervisor`,
     ].join("\n")
@@ -1690,6 +1749,41 @@ Usage:
 `)
 }
 
+// ── Proxy ──────────────────────────────────────────────────────────────────────
+
+async function cmdProxy(sub?: string) {
+  const cfg = loadConfig()
+
+  // `huxflux proxy off` — stop tunneling through the proxy.
+  if (sub === "off" || sub === "disable") {
+    if (!cfg.proxyUrl) { console.info("Proxy is not configured."); return }
+    delete cfg.proxyUrl
+    saveConfig(cfg)
+    console.info("Proxy disabled.")
+    if (getRunningPid() !== null) console.info("Restart the server to apply: huxflux stop && huxflux start")
+    return
+  }
+
+  if (sub && sub !== "set") {
+    console.error(`Unknown proxy command: ${sub}. Use 'huxflux proxy [set|off]'.`)
+    process.exit(1)
+  }
+
+  // `huxflux proxy [set]` — interactively configure the URL and sign in.
+  const p = await import("@clack/prompts")
+  console.info("")
+  p.intro("Huxflux Proxy")
+  if (cfg.proxyUrl) p.log.info(`Current proxy: ${cfg.proxyUrl}`)
+
+  const ok = await runProxySetup(p)
+  if (!ok) { p.cancel("Proxy setup cancelled."); process.exit(0) }
+
+  if (getRunningPid() !== null) {
+    p.log.warning("Restart the server to apply the change: huxflux stop && huxflux start")
+  }
+  p.outro("Proxy configured. Sign in with your account in the web app and pick this server by name.")
+}
+
 // ── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp() {
@@ -1717,6 +1811,8 @@ Usage:
   huxflux update         Update huxflux to the latest version
   huxflux config channel [stable|beta]  View or switch update channel
   huxflux config auto-update [on|off]   View or set server auto-update
+  huxflux proxy [set]    Reach this server over the Internet through a proxy (sign in)
+  huxflux proxy off      Stop tunneling through the proxy
   huxflux data copy dev-to-prod    Copy dev database to production
   huxflux data copy prod-to-dev    Copy production database to dev
   huxflux uninstall      Remove Huxflux (server, desktop, data)
@@ -1727,6 +1823,8 @@ Environment variables:
                 run multiple independent instances on the same machine.
                 All other paths (DB, workspaces, logs, config) are derived from this.
   PORT          Override the server port (default: 4321)
+  PROXY_URL     Public proxy to tunnel through (e.g. wss://proxy.example.com).
+                Prefer 'huxflux proxy' — it also runs the one-time sign-in.
 `.trimStart())
 }
 
@@ -1750,6 +1848,7 @@ switch (cmd) {
   case "update":   cmdUpdate(); break
   case "setup":    cmdSetup().catch(console.error); break
   case "config":    cmdConfig(cmdArgs[0], cmdArgs[1]); break
+  case "proxy":     cmdProxy(cmdArgs[0]).catch(console.error); break
   case "data":      cmdData(cmdArgs[0], cmdArgs[1]).catch(console.error); break
   case "uninstall": cmdUninstall().catch(console.error); break
   case "sandbox":  cmdSandbox(cmdArgs[0], ...cmdArgs.slice(1)); break

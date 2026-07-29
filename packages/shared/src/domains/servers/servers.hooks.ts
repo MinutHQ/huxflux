@@ -4,7 +4,9 @@ import { api } from "../../api.js"
 import { queryKeys } from "../../queryKeys.js"
 import {
   serverAuthHeaders, subscribeServers, getServersSnapshot, parseServersSnapshot,
+  updateServer, isProxiedServer, proxyOriginOf,
 } from "./servers.store.js"
+import { refreshProxyToken } from "../proxy/proxyAuth.js"
 import { serverAttentionSchema, type HuxfluxServer, type ServerAttention, type ServerStatus } from "./servers.types.js"
 
 export interface ServersStoreState {
@@ -42,15 +44,37 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
   }
 }
 
+async function tryRefreshServerToken(server: HuxfluxServer): Promise<string | null> {
+  if (!isProxiedServer(server) || !server.proxyRefreshToken) return null
+  const origin = proxyOriginOf(server.url)
+  if (!origin) return null
+  const result = await refreshProxyToken(origin, server.proxyRefreshToken)
+  if (!result) return null
+  updateServer(server.id, {
+    proxyAccessToken: result.accessToken,
+    ...(result.refreshToken ? { proxyRefreshToken: result.refreshToken } : {}),
+  })
+  return result.accessToken
+}
+
 async function checkStatus(server: HuxfluxServer): Promise<ServerStatus> {
   // Proxied servers gate /health behind the proxy too, so every probe must
   // carry the server's auth header (proxy JWT or direct bearer).
-  const headers = serverAuthHeaders(server)
+  let headers = serverAuthHeaders(server)
   // Reachability is determined solely by /health.
   try {
     const healthRes = await fetchWithTimeout(`${server.url}/health`, { headers }, 5000)
-    if (healthRes.status === 401 || healthRes.status === 403) return "unauthorized"
-    if (!healthRes.ok) return "offline"
+    if (healthRes.status === 401 || healthRes.status === 403) {
+      // Access token expired — try to refresh before declaring unauthorized.
+      const newToken = await tryRefreshServerToken(server)
+      if (!newToken) return "unauthorized"
+      headers = serverAuthHeaders({ ...server, proxyAccessToken: newToken })
+      const retryRes = await fetchWithTimeout(`${server.url}/health`, { headers }, 5000)
+      if (retryRes.status === 401 || retryRes.status === 403) return "unauthorized"
+      if (!retryRes.ok) return "offline"
+    } else if (!healthRes.ok) {
+      return "offline"
+    }
   } catch {
     return "offline"
   }
@@ -113,7 +137,7 @@ export function useServerStatus(servers: HuxfluxServer[]): Record<string, Server
       clearInterval(interval)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servers.map((s) => s.id).join(",")])
+  }, [servers.map((s) => `${s.id}:${s.proxyAccessToken ?? ""}:${s.token ?? ""}`).join(",")])
 
   return statuses
 }

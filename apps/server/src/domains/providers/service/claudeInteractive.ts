@@ -78,19 +78,21 @@ interface ClaudeRawEvent {
  */
 
 const MODEL_ALIASES: Record<string, string> = {
-  "Opus 4.8": "claude-opus-4-8",
-  "Opus 4.7": "claude-opus-4-7",
-  "Opus 4.6": "claude-opus-4-6",
+  "Opus 4.8":   "claude-opus-4-8",
+  "Opus 4.7":   "claude-opus-4-7",
+  "Opus 4.6":   "claude-opus-4-6",
+  "Sonnet 5":   "claude-sonnet-5",
   "Sonnet 4.6": "claude-sonnet-4-6",
-  "Haiku 4.5": "claude-haiku-4-5",
+  "Haiku 4.5":  "claude-haiku-4-5",
 }
 
 const MODELS = [
-  { id: "claude-opus-4-8", label: "Opus 4.8", api: "claude-opus-4-8" },
-  { id: "claude-opus-4-7", label: "Opus 4.7", api: "claude-opus-4-7" },
-  { id: "claude-opus-4-6", label: "Opus 4.6", api: "claude-opus-4-6" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", api: "claude-sonnet-4-6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", api: "claude-haiku-4-5-20251001" },
+  { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8" },
+  { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7" },
+  { id: "claude-opus-4-6",           label: "Opus 4.6",   api: "claude-opus-4-6" },
+  { id: "claude-sonnet-5",           label: "Sonnet 5",   api: "claude-sonnet-5" },
+  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", api: "claude-sonnet-4-6" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  api: "claude-haiku-4-5-20251001" },
 ]
 
 // Always-true availability check: `claude-p` is now a hard dependency of the

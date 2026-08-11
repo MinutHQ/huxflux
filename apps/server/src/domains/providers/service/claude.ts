@@ -90,7 +90,7 @@ export const claudeProvider: ProviderAdapter = {
       "--model", model,
       ...(opts.effort ? ["--effort", opts.effort] : []),
       "--append-system-prompt", opts.systemPrompt,
-      ...(opts.allowedTools ? ["--allowedTools", opts.allowedTools.join(",")] : []),
+      "--allowedTools", [...(opts.allowedTools ?? []), "AskUserQuestion"].join(","),
       ...resumeArgs,
       opts.prompt,
     ]

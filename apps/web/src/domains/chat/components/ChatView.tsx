@@ -103,7 +103,7 @@ export function ChatView(props: ChatViewProps) {
   })
   const uiIsStreaming = chatSend.serverStreaming || chatSend.isSending
   const streamingAnchor = uiIsStreaming
-    ? agent.messages.findLast((m) => m.role === "assistant")?.timestamp ?? null
+    ? agent.messages.findLast((m) => m.role === "assistant" && m.durationMs == null)?.timestamp ?? null
     : null
   const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
   const { bottomRef, setScrollContainer, isAtBottom, setIsAtBottom } = useChatScroll(agent, uiIsStreaming)

@@ -522,6 +522,10 @@ const MIGRATIONS: Migration[] = [
     version: 32,
     sql: `ALTER TABLE agents ADD COLUMN pinned INTEGER DEFAULT 0;`,
   },
+  {
+    version: 33,
+    sql: `ALTER TABLE agents ADD COLUMN fork_parent_id TEXT;`,
+  },
 ]
 
 export function runMigrations() {

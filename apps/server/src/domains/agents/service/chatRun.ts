@@ -9,6 +9,7 @@ import {
   agentBranchHandler,
   agentDelegateHandler,
   agentSpawnHandler,
+  agentForkHandler,
 } from "../runnerTags.js"
 import {
   taskCommentHandler,
@@ -50,6 +51,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     agentBranchHandler(agentId, branchFrom),
     agentDelegateHandler(agentId),
     agentSpawnHandler(agentId),
+    agentForkHandler(agentId),
     taskCommentHandler(agentId),
     taskUpdateHandler(),
     taskCreateHandler(),
@@ -67,6 +69,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     isFolderAgent: repo?.type === "folder",
     agentId,
     threadParentId: agent?.threadParentId ?? null,
+    forkParentId: agent?.forkParentId ?? null,
     hasPrNumber: !!agent?.prNumber,
     availableRepos,
   })

@@ -10,4 +10,5 @@ export {
   agentBranchHandler,
   agentDelegateHandler,
   agentSpawnHandler,
+  agentForkHandler,
 } from "./service/runnerTags.js"

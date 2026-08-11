@@ -2,6 +2,7 @@ import * as path from "node:path"
 import { v4 as uuid } from "uuid"
 import { z } from "zod/v4"
 import { eq } from "drizzle-orm"
+import { simpleGit } from "simple-git"
 import { db } from "../../../db/index.js"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
 import { agentsWs } from "../agents.ws.js"
@@ -158,7 +159,14 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
     }).run()
     const created = db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
     if (created) agentsWs.agentUpdated(created as unknown as AgentSummary)
-    sendInitialSpawnMessage(id, parentAgent, parentAgentId, taskDescription)
+    const spawnContext = [
+      `You were spawned by "${parentAgent.title}" (${parentAgent.branch}) to handle cross-repo work.`,
+      `Parent agent ID: ${parentAgentId}`,
+      ``,
+      `To send a message back to your parent:`,
+      `  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>`,
+    ].join("\n")
+    sendInitialMessage(id, parentAgent, parentAgentId, spawnContext, taskDescription)
     logger.info(`[tags] agents.spawn: created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
   } catch (err) {
     logger.error({ err }, `[tags] agents.spawn failed`)
@@ -188,24 +196,119 @@ async function runSetupScript(repo: RepoForSetup, worktreePath: string): Promise
   }
 }
 
-function sendInitialSpawnMessage(
-  spawnedAgentId: string,
+function sendInitialMessage(
+  targetAgentId: string,
   parentAgent: { title: string; branch: string },
   parentAgentId: string,
-  taskDescription: string,
+  context: string,
+  body: string,
 ): void {
-  const parentContext = `You were spawned by "${parentAgent.title}" (${parentAgent.branch}) to handle cross-repo work.\nParent agent ID: ${parentAgentId}\n\nTo send a message back to your parent:\n  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>\n\n---\n\n`
-  const body = JSON.stringify({
-    content: parentContext + taskDescription.trim(),
+  const content = `${context}\n\n---\n\n${body.trim()}`
+  const payload = JSON.stringify({
+    content,
     sender: parentAgent.title,
     delegateFrom: parentAgentId,
   })
-  fetch(`http://localhost:${config.boundPort}/api/agents/${spawnedAgentId}/messages`, {
+  fetch(`http://localhost:${config.boundPort}/api/agents/${targetAgentId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {}),
     },
-    body,
-  }).catch((err) => logger.error({ err }, `[tags] agents.spawn initial message failed`))
+    body: payload,
+  }).catch((err) => logger.error({ err }, `[tags] initial message failed for ${targetAgentId}`))
+}
+
+/**
+ * `<huxflux:agents.fork from="committed|head">summary for the new agent</huxflux:agents.fork>`
+ *
+ * Forks the current conversation into a new agent in the same repo with its own
+ * worktree. The tag body is a summary written by the forking agent that seeds
+ * the new conversation. `from` controls the branch point:
+ *   - "committed" (default): branch from the repo's base branch (clean start)
+ *   - "head": branch from the parent agent's current HEAD commit
+ */
+export function agentForkHandler(parentAgentId: string): TagHandler {
+  return defineTagHandler({
+    id: "agents.fork",
+    args: z.object({ from: z.enum(["committed", "head"]).optional() }),
+    onTag: async ({ args, body }) => {
+      const summary = body.trim()
+      if (!summary) return
+      await forkAgent(summary, parentAgentId, args.from ?? "committed")
+    },
+  })
+}
+
+async function forkAgent(
+  summary: string,
+  parentAgentId: string,
+  from: "committed" | "head",
+): Promise<void> {
+  try {
+    const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
+    if (!parentAgent?.repoId) return
+    const repo = db.select().from(reposTable).where(eq(reposTable.id, parentAgent.repoId)).get()
+    if (!repo || repo.type === "folder") return
+
+    const settings = getSettings()
+    const id = uuid()
+    const location = `fork-${id.slice(0, 8)}`
+    const cleanDesc = summary.replace(/^[#*_\->\s]+/, "").split("\n")[0].trim()
+    const slug = cleanDesc.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)
+    const branchPrefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
+    const branch = `${branchPrefix}fork-${slug || "unnamed"}-${id.slice(0, 6)}`
+    const now = new Date().toISOString()
+    const worktreePath = path.join(repo.workspacesPath, location)
+
+    let startPoint: string | undefined
+    if (from === "head") {
+      const currentWorktreePath = parentAgent.noWorktree
+        ? repo.path
+        : path.join(repo.workspacesPath, parentAgent.location)
+      const git = simpleGit(currentWorktreePath)
+      startPoint = (await git.revparse(["HEAD"])).trim()
+    } else {
+      startPoint = repo.branchFrom
+    }
+
+    try {
+      await createWorktree(repo.path, branch, worktreePath, startPoint)
+    } catch (err) {
+      logger.error({ err }, `[tags] agents.fork: failed to create worktree`)
+      return
+    }
+    await runSetupScript(repo, worktreePath)
+
+    db.insert(agentsTable).values({
+      id,
+      repoId: repo.id,
+      title: cleanDesc.slice(0, 60) || `Fork of ${parentAgent.title}`.slice(0, 60),
+      status: "in-progress",
+      branch,
+      model: settings.defaultModel ?? "Sonnet 4.6",
+      location,
+      provider: settings.defaultProvider ?? "claude",
+      forkParentId: parentAgentId,
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+
+    const created = db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+    if (created) agentsWs.agentUpdated(created as unknown as AgentSummary)
+
+    const parentContext = [
+      `You were forked from "${parentAgent.title}" (${parentAgent.branch}).`,
+      `Parent agent ID: ${parentAgentId}`,
+      `Branch point: ${from === "head" ? `parent's HEAD (${startPoint?.slice(0, 10)})` : `repo base (${startPoint ?? "HEAD"})`}`,
+      ``,
+      `To send a message back to your parent:`,
+      `  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>`,
+    ].join("\n")
+
+    sendInitialMessage(id, parentAgent, parentAgentId, parentContext, summary)
+    logger.info(`[tags] agents.fork: created fork ${id} from ${parentAgentId} (${from})`)
+  } catch (err) {
+    logger.error({ err }, `[tags] agents.fork failed`)
+  }
 }

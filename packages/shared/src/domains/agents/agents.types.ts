@@ -132,6 +132,7 @@ export const agentSchema = z.object({
   provider: z.string().nullish(),
   taskId: z.string().nullish(),
   threadParentId: z.string().nullish(),
+  forkParentId: z.string().nullish(),
   location: z.string(),
   unread: z.number().nullish(),
   streaming: intFlagSchema,

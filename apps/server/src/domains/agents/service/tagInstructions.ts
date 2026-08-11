@@ -6,6 +6,7 @@ interface BuildArgs {
   isFolderAgent: boolean
   agentId: string
   threadParentId: string | null
+  forkParentId: string | null
   hasPrNumber: boolean
   availableRepos: string[]
 }
@@ -21,7 +22,8 @@ export function buildChatTagInstructions(args: BuildArgs): string {
   return [
     buildPreamble(),
     buildNamingDirective(args.agentTitle, args.branchPrefix, args.isFolderAgent),
-    buildDelegateDirective(args.threadParentId, args.agentId),
+    buildDelegateDirective(args.threadParentId, args.forkParentId, args.agentId),
+    ...buildForkDirective(args.isFolderAgent),
     ...buildThreadDirective(args.availableRepos),
     ...buildPRReplyDirective(args.hasPrNumber),
   ].filter(Boolean).join("\n\n")
@@ -83,7 +85,7 @@ function buildNamingDirective(agentTitle: string, branchPrefix: string | null, i
   ].join("\n")
 }
 
-function buildDelegateDirective(threadParentId: string | null, agentId: string): string {
+function buildDelegateDirective(threadParentId: string | null, forkParentId: string | null, agentId: string): string {
   const lines = [
     `## Delegation`,
     ``,
@@ -94,13 +96,40 @@ function buildDelegateDirective(threadParentId: string | null, agentId: string):
   if (threadParentId) {
     lines.push(
       ``,
-      `You are a thread agent spawned by a parent. Your parent agent's ID is "${threadParentId}".`,
+      `You are a thread agent spawned by a parent for cross-repo work. Your parent agent's ID is "${threadParentId}".`,
       `To report back to your parent, use:`,
       `  <huxflux:agents.delegate agent="${threadParentId}">your update or result</huxflux:agents.delegate>`,
     )
   }
+  if (forkParentId) {
+    lines.push(
+      ``,
+      `You were forked from another agent in the same repo. Your parent agent's ID is "${forkParentId}".`,
+      `To send updates to your parent, use:`,
+      `  <huxflux:agents.delegate agent="${forkParentId}">your update or result</huxflux:agents.delegate>`,
+    )
+  }
   void agentId
   return lines.join("\n")
+}
+
+function buildForkDirective(isFolderAgent: boolean): string[] {
+  if (isFolderAgent) return []
+  return [
+    [
+      `## Forking your conversation`,
+      ``,
+      `You can fork yourself into a new agent in the same repo with its own worktree. The new agent receives a summary you write as its starting context, plus a link back to you for delegation.`,
+      `  <huxflux:agents.fork>A summary of the conversation so far and what this fork should focus on</huxflux:agents.fork>`,
+      ``,
+      `Optional \`from\` attribute controls the branch point:`,
+      `- \`from="committed"\` (default): branch from the repo's base branch. Use when exploring an alternative approach from scratch.`,
+      `- \`from="head"\`: branch from your current HEAD commit (committed changes only, not uncommitted work). Commit your work first if you want the fork to see it. Use when splitting work (e.g. splitting a large PR into smaller ones).`,
+      ``,
+      `Example (splitting a PR):`,
+      `  <huxflux:agents.fork from="head">We've implemented auth middleware and CSV export. This fork should handle the CSV export portion. The auth middleware changes stay in the parent branch.</huxflux:agents.fork>`,
+    ].join("\n"),
+  ]
 }
 
 function buildThreadDirective(availableRepos: string[]): string[] {

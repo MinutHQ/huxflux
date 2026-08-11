@@ -1,28 +1,30 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
 /**
- * Tracks elapsed seconds since the most recent transition into streaming.
- * Resets to 0 every time streaming starts; freezes when it stops.
+ * Tracks elapsed seconds since streaming started. When an `anchorIso`
+ * timestamp is provided (e.g. the last assistant message's timestamp),
+ * the timer survives component remounts (navigating away and back).
+ * Falls back to `Date.now()` when no anchor is available.
  */
-export function useStreamingElapsed(uiIsStreaming: boolean) {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const streamingStartRef = useRef<number | null>(null)
+export function useStreamingElapsed(uiIsStreaming: boolean, anchorIso?: string | null) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (!uiIsStreaming) return 0
+    if (anchorIso) return Math.max(0, Math.floor((Date.now() - new Date(anchorIso).getTime()) / 1000))
+    return 0
+  })
 
   useEffect(() => {
-    if (uiIsStreaming) {
-      if (streamingStartRef.current === null) {
-        streamingStartRef.current = Date.now()
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset timer when a new streaming session starts
-        setElapsedSeconds(0)
-      }
-      const id = setInterval(() => {
-        setElapsedSeconds(Math.floor((Date.now() - streamingStartRef.current!) / 1000))
-      }, 1000)
-      return () => clearInterval(id)
+    if (!uiIsStreaming) {
+      setElapsedSeconds(0)
+      return
     }
-    streamingStartRef.current = null
-    setElapsedSeconds(0)
-  }, [uiIsStreaming])
+    const start = anchorIso ? new Date(anchorIso).getTime() : Date.now()
+    setElapsedSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)))
+    const id = setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [uiIsStreaming, anchorIso])
 
   return elapsedSeconds
 }

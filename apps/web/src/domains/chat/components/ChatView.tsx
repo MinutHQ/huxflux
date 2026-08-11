@@ -102,7 +102,10 @@ export function ChatView(props: ChatViewProps) {
     mentionAttachments: mentionsSlash.mentionAttachments,
   })
   const uiIsStreaming = chatSend.serverStreaming || chatSend.isSending
-  const elapsedSeconds = useStreamingElapsed(uiIsStreaming)
+  const streamingAnchor = uiIsStreaming
+    ? agent.messages.findLast((m) => m.role === "assistant")?.timestamp ?? null
+    : null
+  const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
   const { bottomRef, setScrollContainer, isAtBottom, setIsAtBottom } = useChatScroll(agent, uiIsStreaming)
   const { fileInputRef, uploadFiles } = useFileUpload(agent.id, setAttachments)
   const openInApps = useOpenInApps(agent.id)

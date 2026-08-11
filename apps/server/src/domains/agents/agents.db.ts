@@ -30,6 +30,7 @@ export const agents = sqliteTable("agents", {
   provider: text("provider").notNull().default("claude"), // CLI provider: "claude" | "codex" | "opencode"
   taskId: text("task_id"), // if set, this is a task agent (refine/work) — hidden from sidebar, output goes to task comments
   threadParentId: text("thread_parent_id"), // if set, this agent was spawned by another agent for cross-repo work
+  forkParentId: text("fork_parent_id"), // if set, this agent was forked from another agent in the same repo
   prCommentMonitoring: integer("pr_comment_monitoring"), // null = use global setting, 0 = off, 1 = on
   ciMonitoring: integer("ci_monitoring"), // null = use global setting, 0 = off, 1 = on
   pinned: integer("pinned").default(0), // 1 = pinned to the Pinned sidebar section, never auto-moved by status

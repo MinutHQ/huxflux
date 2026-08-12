@@ -53,7 +53,6 @@ export function useAgent(id: string | null) {
   // via `queryClient.setQueryData`, eliminating the need for local state at
   // all. Out of scope for this PR; tracked separately.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (query.data) setIsStreaming(!!query.data.streaming)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data?.streaming])
@@ -67,6 +66,7 @@ export function useAgent(id: string | null) {
           return
         case "message:done":
           setIsStreaming(false)
+          clearPendingQuestion()
           handleMessageStreamEvent(event)
           return
         case "message:user":
@@ -99,7 +99,7 @@ export function useAgent(id: string | null) {
           return
       }
     },
-    [handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleLifecycleEvent]
+    [handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleLifecycleEvent, clearPendingQuestion]
   )
 
   useAgentEvents(id, onEvent)

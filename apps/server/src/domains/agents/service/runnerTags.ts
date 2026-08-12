@@ -112,21 +112,28 @@ export function agentSpawnHandler(parentAgentId: string): TagHandler {
     args: z.object({ repo: z.string().min(1) }),
     onTag: async ({ args, body }) => {
       if (!getSettings().threadsEnabled) return
-      await spawnThreadAgent(args.repo, body.trim(), parentAgentId)
+      const spawned = await spawnThreadAgent(args.repo, body.trim(), parentAgentId)
+      if (!spawned) return
+      return {
+        followUp: {
+          content: `Thread agent "${spawned.title}" spawned in ${args.repo}.\nAgent ID: ${spawned.id}\n\nTo send it a message:\n  <huxflux:agents.delegate agent="${spawned.id}">your message</huxflux:agents.delegate>`,
+          sender: "Huxflux",
+        },
+      }
     },
   })
 }
 
-async function spawnThreadAgent(repoName: string, taskDescription: string, parentAgentId: string): Promise<void> {
+async function spawnThreadAgent(repoName: string, taskDescription: string, parentAgentId: string): Promise<{ id: string; title: string } | null> {
   try {
     const allRepos = db.select().from(reposTable).all()
     const repo = allRepos.find((r) => r.name === repoName || r.name.endsWith(`/${repoName}`))
     if (!repo) {
       logger.error(`[tags] agents.spawn: repo "${repoName}" not found`)
-      return
+      return null
     }
     const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
-    if (!parentAgent) return
+    if (!parentAgent) return null
 
     const settings = getSettings()
     const id = uuid()
@@ -141,7 +148,7 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
       await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
     } catch (err) {
       logger.error({ err }, `[tags] agents.spawn: failed to create worktree for ${repoName}`)
-      return
+      return null
     }
     await runSetupScript(repo, worktreePath)
     db.insert(agentsTable).values({
@@ -167,9 +174,12 @@ async function spawnThreadAgent(repoName: string, taskDescription: string, paren
       `  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>`,
     ].join("\n")
     sendInitialMessage(id, parentAgent, parentAgentId, spawnContext, taskDescription)
+    const title = cleanDesc.slice(0, 60)
     logger.info(`[tags] agents.spawn: created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
+    return { id, title }
   } catch (err) {
     logger.error({ err }, `[tags] agents.spawn failed`)
+    return null
   }
 }
 
@@ -235,7 +245,14 @@ export function agentForkHandler(parentAgentId: string): TagHandler {
     onTag: async ({ args, body }) => {
       const summary = body.trim()
       if (!summary) return
-      await forkAgent(summary, parentAgentId, args.from ?? "committed")
+      const forked = await forkAgent(summary, parentAgentId, args.from ?? "committed")
+      if (!forked) return
+      return {
+        followUp: {
+          content: `Fork agent "${forked.title}" created.\nAgent ID: ${forked.id}\n\nTo send it a message:\n  <huxflux:agents.delegate agent="${forked.id}">your message</huxflux:agents.delegate>`,
+          sender: "Huxflux",
+        },
+      }
     },
   })
 }
@@ -244,12 +261,12 @@ async function forkAgent(
   summary: string,
   parentAgentId: string,
   from: "committed" | "head",
-): Promise<void> {
+): Promise<{ id: string; title: string } | null> {
   try {
     const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
-    if (!parentAgent?.repoId) return
+    if (!parentAgent?.repoId) return null
     const repo = db.select().from(reposTable).where(eq(reposTable.id, parentAgent.repoId)).get()
-    if (!repo || repo.type === "folder") return
+    if (!repo || repo.type === "folder") return null
 
     const settings = getSettings()
     const id = uuid()
@@ -276,7 +293,7 @@ async function forkAgent(
       await createWorktree(repo.path, branch, worktreePath, startPoint)
     } catch (err) {
       logger.error({ err }, `[tags] agents.fork: failed to create worktree`)
-      return
+      return null
     }
     await runSetupScript(repo, worktreePath)
 
@@ -307,8 +324,11 @@ async function forkAgent(
     ].join("\n")
 
     sendInitialMessage(id, parentAgent, parentAgentId, parentContext, summary)
+    const title = cleanDesc.slice(0, 60) || `Fork of ${parentAgent.title}`.slice(0, 60)
     logger.info(`[tags] agents.fork: created fork ${id} from ${parentAgentId} (${from})`)
+    return { id, title }
   } catch (err) {
     logger.error({ err }, `[tags] agents.fork failed`)
+    return null
   }
 }

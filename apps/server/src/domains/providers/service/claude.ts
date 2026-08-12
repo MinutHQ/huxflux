@@ -175,16 +175,17 @@ export const claudeProvider: ProviderAdapter = {
       // No curl, no network, no API calls. The server detects AskUserQuestion
       // from the streaming output and notifies the UI directly.
       const scriptPath = `${hooksDir}/huxflux-ask-user.sh`
+      const hookTimeout = 86400
       const scriptContent = [
         `#!/bin/bash`,
         `# Huxflux AskUserQuestion hook — waits for answer from the Hive UI`,
         `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
         `ANSWER_FILE="/tmp/huxflux-ask-$HUXFLUX_AGENT_ID"`,
-        `for i in $(seq 1 1500); do`,
+        `rm -f "$ANSWER_FILE"`,
+        `while true; do`,
         `  [ -f "$ANSWER_FILE" ] && { cat "$ANSWER_FILE"; rm -f "$ANSWER_FILE"; exit 0; }`,
         `  sleep 0.2`,
         `done`,
-        `exit 0`,
       ].join("\n")
       await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
 
@@ -193,19 +194,31 @@ export const claudeProvider: ProviderAdapter = {
       try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) } catch { /* fresh */ }
       const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
       const preToolUse = (hooks.PreToolUse ?? []) as Array<{ matcher?: string; hooks?: unknown[] }>
-      const alreadyInstalled = preToolUse.some((h) =>
+      const existing = preToolUse.find((h) =>
         h.matcher === "AskUserQuestion" && Array.isArray(h.hooks) && h.hooks.some((hk) => {
           const cmd = (hk as { command?: unknown }).command
           return typeof cmd === "string" && cmd.includes("huxflux-ask-user")
         })
       )
-      if (!alreadyInstalled) {
+      let settingsChanged = false
+      if (!existing) {
         preToolUse.push({
           matcher: "AskUserQuestion",
-          hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
+          hooks: [{ type: "command", command: scriptPath, timeout: hookTimeout }],
         })
         hooks.PreToolUse = preToolUse
         settings.hooks = hooks
+        settingsChanged = true
+      } else if (Array.isArray(existing.hooks)) {
+        for (const hk of existing.hooks) {
+          const entry = hk as { command?: string; timeout?: number }
+          if (entry.command?.includes("huxflux-ask-user") && entry.timeout !== hookTimeout) {
+            entry.timeout = hookTimeout
+            settingsChanged = true
+          }
+        }
+      }
+      if (settingsChanged) {
         await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
       }
     } catch (hookErr) {

@@ -11,6 +11,7 @@ import { runningProcesses } from "./processRegistry.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { persistAssistantMessage } from "./persistMessage.js"
+import { clearPendingQuestion } from "../../../askStore.js"
 import { logger } from "../../../logger.js"
 
 interface FinalizeArgs {
@@ -43,6 +44,7 @@ export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
     finalized = true
     runningProcesses.delete(args.agentId)
 
+    clearPendingQuestion(args.agentId)
     flushRemainingBuffer(args)
     const followUps = await persistOrFallback(args)
     sendDelegateReply(args)

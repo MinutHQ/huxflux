@@ -44,6 +44,7 @@ export function buildSystemPrompt(args: SystemPromptArgs): string {
     `- Before telling the user you are done, run the project's test/lint/typecheck commands if they exist in the project's CLAUDE.md or package.json.`,
     `- If any check fails, fix the issue and re-run. Do not declare work complete with failing checks.`,
     `- If you are unsure what commands to run, check package.json scripts or CLAUDE.md for guidance.`,
+    ...buildAskUserQuestionDirective(provider),
     ``,
     `Answer format:`,
     `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -62,6 +63,17 @@ function buildRefinePrompt(taskContext: string): string {
     ``,
     taskContext,
   ].join("\n")
+}
+
+function buildAskUserQuestionDirective(provider: ProviderAdapter): string[] {
+  if (!provider.capabilities.askUserQuestion) return []
+  return [
+    ``,
+    `Asking the user questions:`,
+    `- You have the AskUserQuestion tool. Call it directly — do NOT use ToolSearch to find it, it will not appear there. It is a built-in tool handled by the system.`,
+    `- Use it when you need clarification, want the user to choose between options, or need confirmation before proceeding. Prefer it over guessing when the task is ambiguous.`,
+    `- The user will see your question in the Hive UI and can answer at their own pace. The tool call will block until they respond.`,
+  ]
 }
 
 function buildPlanModeDirective(planMode: boolean, provider: ProviderAdapter): string[] {

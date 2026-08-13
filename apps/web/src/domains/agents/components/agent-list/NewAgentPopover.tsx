@@ -83,7 +83,7 @@ export function NewAgentPopover({ onClose, onSelect, anchorRef }: NewAgentPopove
               </button>
             </div>
           )}
-          <div className="p-1 space-y-0.5">
+          <div className="p-1 space-y-0.5 max-h-64 overflow-y-auto">
             {repos.map((r, i) => {
               const shortcut = i < 9 ? i + 1 : null
               const isFolder = r.type === "folder"

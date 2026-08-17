@@ -96,6 +96,7 @@ export const claudeProvider: ProviderAdapter = {
       "--append-system-prompt", opts.systemPrompt,
       "--allowedTools", [...(opts.allowedTools ?? []), "AskUserQuestion"].join(","),
       ...resumeArgs,
+      "--",
       opts.prompt,
     ]
 

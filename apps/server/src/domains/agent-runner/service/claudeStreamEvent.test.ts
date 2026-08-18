@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { eq } from "drizzle-orm"
 import { agents as agentsTable, toolCalls as toolCallsTable, messages as messagesTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, type TestDb, type CapturedWsEvents } from "../../../../test/harness.js"
+import { getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
 import { createStreamState } from "./state.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
@@ -213,5 +214,74 @@ describe("handleStreamEvent — subagent routing and unknown events", () => {
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
     expect(ctx.capture.events.length).toBe(before)
+  })
+})
+
+describe("handleStreamEvent — AskUserQuestion detection", () => {
+  let ctx: Ctx
+  beforeEach(() => { ctx = setup() })
+  afterEach(() => {
+    clearPendingQuestion(ctx.agentId)
+    ctx.capture.restore()
+    ctx.testDb.close()
+  })
+
+  it("emits ask:question and stores pending state for a valid questions array", () => {
+    const questions = [{ question: "Which approach?", header: "Pick", options: [{ label: "A" }, { label: "B" }] }]
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_1", name: "AskUserQuestion", input: { questions } }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    const askEvents = ctx.capture.events.filter((e) => e.type === "ask:question")
+    expect(askEvents).toHaveLength(1)
+    expect(askEvents[0]).toMatchObject({ type: "ask:question", agentId: ctx.agentId, toolUseId: "tu_ask_1" })
+    const pending = getPendingQuestion(ctx.agentId)
+    expect(pending).toBeDefined()
+    expect(pending!.toolUseId).toBe("tu_ask_1")
+    expect(pending!.questions).toEqual(questions)
+  })
+
+  it("ignores input where questions is a string (the reported crash shape)", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_2", name: "AskUserQuestion", input: { questions: "[{\"question\":\"x\"}]" } }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    const askEvents = ctx.capture.events.filter((e) => e.type === "ask:question")
+    expect(askEvents).toHaveLength(0)
+    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+  })
+
+  it("ignores input where questions is an empty array", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_3", name: "AskUserQuestion", input: { questions: [] } }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
+    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+  })
+
+  it("ignores null input", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_4", name: "AskUserQuestion", input: null }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
+  })
+
+  it("ignores undefined input", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_5", name: "AskUserQuestion", input: undefined }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
+  })
+
+  it("ignores input where questions is a number", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_6", name: "AskUserQuestion", input: { questions: 42 } }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
+    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
   })
 })

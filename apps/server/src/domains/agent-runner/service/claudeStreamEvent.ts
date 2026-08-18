@@ -131,15 +131,9 @@ function recordToolUse(
 
 function detectAskUserQuestion(toolUseId: string, input: unknown, agentId: string): void {
   try {
-    const parsed = input as {
-      questions?: Array<{
-        question: string
-        header?: string
-        multiSelect?: boolean
-        options?: Array<{ label: string; description?: string }>
-      }>
-    }
-    if (!parsed.questions?.length) return
+    if (!input || typeof input !== "object") return
+    const parsed = input as Record<string, unknown>
+    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return
     setPendingQuestion(agentId, toolUseId, parsed.questions)
     agentsWs.askQuestion(agentId, toolUseId, parsed.questions)
   } catch { /* malformed input */ }

@@ -42,7 +42,7 @@ export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, bottomRef, o
         {getFlag("threads") && <ThreadAgentsBar agentId={agent.id} />}
         <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
         <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} isStreaming={uiIsStreaming} />
-        {pendingQuestion && pendingQuestion.agentId === agent.id && pendingQuestion.questions.length > 0 && (
+        {pendingQuestion && pendingQuestion.agentId === agent.id && Array.isArray(pendingQuestion.questions) && pendingQuestion.questions.length > 0 && (
           <AskUserQuestionCard questions={pendingQuestion.questions} onSubmit={onAnswerQuestion} />
         )}
         <ChatInputBar {...inputBarProps} />

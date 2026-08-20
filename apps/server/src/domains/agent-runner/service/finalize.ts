@@ -8,6 +8,7 @@ import type { ProviderAdapter, NormalizedStreamEvent } from "../../providers/pro
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
 import type { TagHandler, RunAgentOptions, TagFollowUp } from "../agent-runner.types.js"
 import { runningProcesses } from "./processRegistry.js"
+import { STATUS_PRESERVED_DURING_RUN } from "./state.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { persistAssistantMessage } from "./persistMessage.js"
@@ -148,10 +149,14 @@ async function restoreStatusAndStreaming(args: FinalizeArgs): Promise<void> {
   // still exists, so the status should keep reflecting it.
   try {
     const doneAt = new Date().toISOString()
-    const keepStatus = args.preRunStatus === "in-review" || args.preRunStatus === "draft-pr"
+    const currentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, args.agentId)).get()
+    const currentStatus = currentAgent?.status ?? args.preRunStatus
+    const restoredStatus = STATUS_PRESERVED_DURING_RUN.includes(currentStatus)
+      ? currentStatus
+      : STATUS_PRESERVED_DURING_RUN.includes(args.preRunStatus) ? args.preRunStatus : "in-progress"
     await db.update(agentsTable)
       .set({
-        status: keepStatus ? args.preRunStatus : "in-progress",
+        status: restoredStatus,
         streaming: 0,
         unread: sql`unread + 1`,
         updatedAt: doneAt,

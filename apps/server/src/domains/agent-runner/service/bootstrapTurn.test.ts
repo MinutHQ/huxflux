@@ -120,4 +120,20 @@ describe("bootstrapTurn", () => {
     const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
     expect(row.status).toBe("draft-pr")
   })
+
+  it("does not downgrade a done agent during bootstrap", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "done" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const result = await bootstrapTurn("hi", buildOpts(ctx), fakeProvider())
+    expect(result.preRunStatus).toBe("done")
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("done")
+  })
+
+  it("does not downgrade a cancelled agent during bootstrap", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "cancelled" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const result = await bootstrapTurn("hi", buildOpts(ctx), fakeProvider())
+    expect(result.preRunStatus).toBe("cancelled")
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("cancelled")
+  })
 })

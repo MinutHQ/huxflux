@@ -1,5 +1,5 @@
 import type { OpenPR } from "../../../types.js"
-import { getOctokit } from "./octokit.js"
+import { getOctokit, getAuthenticatedUser } from "./octokit.js"
 
 type Octokit = ReturnType<typeof getOctokit>
 type SearchItem = Awaited<ReturnType<Octokit["search"]["issuesAndPullRequests"]>>["data"]["items"][number]
@@ -97,10 +97,10 @@ export async function listReviewRequestedPRs(): Promise<Array<OpenPR & { owner: 
   const octokit = getOctokit()
 
   // Fetch both: PRs where review is requested AND PRs already reviewed by me
-  const [{ data: requestedData }, { data: reviewedData }, { data: me }] = await Promise.all([
+  const [{ data: requestedData }, { data: reviewedData }, me] = await Promise.all([
     octokit.search.issuesAndPullRequests({ q: "is:pr is:open review-requested:@me", per_page: 50, sort: "created", order: "desc" }),
     octokit.search.issuesAndPullRequests({ q: "is:pr is:open reviewed-by:@me", per_page: 50, sort: "created", order: "desc" }),
-    octokit.users.getAuthenticated(),
+    getAuthenticatedUser(),
   ])
 
   // Deduplicate by PR URL — requested takes priority for the reviewRequested flag

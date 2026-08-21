@@ -13,12 +13,14 @@ const ThrottledOctokit = Octokit.plugin(throttling, retry)
 
 let shared: Octokit | undefined
 let sharedToken: string | undefined
+let cachedUserPromise: Promise<{ id: number; login: string }> | undefined
 
 /** The shared Octokit instance, configured with the GitHub token, throttling and retry. */
 export function getOctokit(): Octokit {
   const token = config.githubToken || undefined
   if (shared && sharedToken === token) return shared
   sharedToken = token
+  cachedUserPromise = undefined
   shared = new ThrottledOctokit({
     auth: token,
     throttle: {
@@ -33,6 +35,16 @@ export function getOctokit(): Octokit {
     },
   })
   return shared
+}
+
+/** Cached version of octokit.users.getAuthenticated(). Result is cleared when the token changes. */
+export async function getAuthenticatedUser(): Promise<{ id: number; login: string }> {
+  if (cachedUserPromise) return cachedUserPromise
+  const octokit = getOctokit()
+  cachedUserPromise = octokit.users.getAuthenticated()
+    .then(({ data }) => ({ id: data.id, login: data.login }))
+    .catch((err) => { cachedUserPromise = undefined; throw err })
+  return cachedUserPromise
 }
 
 /** Parse owner/repo from a remote URL (HTTPS, SSH with host alias, or owner/repo shorthand). */

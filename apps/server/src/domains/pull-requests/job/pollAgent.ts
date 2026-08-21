@@ -4,7 +4,7 @@ import * as path from "node:path"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { taskAgents, tasks } from "../../../db/schema.js"
-import { getPRStatus, findPRForBranch, prStatusToAgentStatus } from "../prStatus.js"
+import { findPRNumberForBranch, prStatusToAgentStatus } from "../prStatus.js"
 import { getPRDetails } from "../service/prDetails.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { getRemoteUrl } from "../../git/worktrees.js"
@@ -13,7 +13,7 @@ import { tasksWs } from "../../tasks/tasks.ws.js"
 import { getSettings } from "../../settings/settings.service.js"
 import { jiraTransitionIssue } from "../../tasks/jiraClient.js"
 import { logger } from "../../../logger.js"
-import type { PRStatus } from "../../../types.js"
+import type { PRDetails, PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
 import { sendToAgent } from "./sendToAgent.js"
 import { markRateLimited, isRateLimited } from "./rateLimitState.js"
@@ -77,7 +77,7 @@ async function autoCompleteLinkedTasks(agentId: string, now: string): Promise<vo
   }
 }
 
-async function runMonitors(agent: AgentRow, repoUrl: string, pr: PRStatus): Promise<void> {
+async function runMonitors(agent: AgentRow, pr: PRStatus, details: PRDetails): Promise<void> {
   if (!pr.number) return
   if (agent.status === "done" || agent.status === "cancelled") return
   const s = getSettings()
@@ -86,7 +86,6 @@ async function runMonitors(agent: AgentRow, repoUrl: string, pr: PRStatus): Prom
 
   if ((prCommentsEnabled || ciEnabled) && !isAgentRunning(agent.id)) {
     try {
-      const details = await getPRDetails(repoUrl, pr.number)
       if (prCommentsEnabled) await monitorPRComments(agent, details)
       if (ciEnabled) await monitorCI(agent, details)
     } catch (err) {
@@ -108,10 +107,21 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
   if (isRateLimited()) return
 
   try {
-    const pr = agent.prNumber ? await getPRStatus(repoUrl, agent.prNumber) : await findPRForBranch(repoUrl, agent.branch)
-    if (!pr) return
+    const prNumber = agent.prNumber ?? await findPRNumberForBranch(repoUrl, agent.branch)
+    if (!prNumber) return
+    const details = await getPRDetails(repoUrl, prNumber)
+    const pr: PRStatus = {
+      number: details.number,
+      url: details.url,
+      state: details.state,
+      merged: details.merged,
+      draft: details.draft,
+      mergeableState: details.mergeableState,
+      hasChangeRequests: details.hasChangeRequests,
+      hasDismissedReviews: details.hasDismissedReviews,
+    }
     await applyPRStatusUpdate(agent, pr)
-    await runMonitors(agent, repoUrl, pr)
+    await runMonitors(agent, pr, details)
   } catch (err) {
     const status = (err as { status?: number }).status
     if (status === 403 || status === 429) {

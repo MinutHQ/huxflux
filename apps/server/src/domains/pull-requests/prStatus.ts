@@ -6,4 +6,5 @@ export {
   parsePrStatus,
   getPRStatus,
   findPRForBranch,
+  findPRNumberForBranch,
 } from "./service/prStatus.js"

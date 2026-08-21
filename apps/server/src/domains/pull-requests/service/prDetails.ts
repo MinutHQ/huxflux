@@ -1,5 +1,5 @@
 import type { PRDetails, PRReview, PRCheck, PRThread, PRIssueComment } from "../../../types.js"
-import { getOctokit, parseRepo } from "./octokit.js"
+import { getOctokit, getAuthenticatedUser, parseRepo } from "./octokit.js"
 
 type GQLThreadsResult = {
   repository: { pullRequest: { reviewThreads: { nodes: Array<{
@@ -101,15 +101,16 @@ export async function getPRDetails(repoUrl: string, prNumber: number): Promise<P
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
 
-  const [prRes, reviewsRes, checksRes, issueCommentsRes, threadsData, meRes] = await Promise.all([
+  const [prRes, reviewsRes, checksRes, issueCommentsRes, threadsData, me] = await Promise.all([
     octokit.pulls.get({ owner, repo, pull_number: prNumber }),
     octokit.pulls.listReviews({ owner, repo, pull_number: prNumber, per_page: 100 }),
     octokit.checks.listForRef({ owner, repo, ref: `refs/pull/${prNumber}/head`, per_page: 100 })
       .catch(() => ({ data: { check_runs: [] } })),
-    octokit.issues.listComments({ owner, repo, issue_number: prNumber, per_page: 100 }),
+    octokit.issues.listComments({ owner, repo, issue_number: prNumber, per_page: 100 })
+      .catch(() => ({ data: [] as Awaited<ReturnType<typeof octokit.issues.listComments>>["data"] })),
     fetchReviewThreads(octokit, owner, repo, prNumber)
       .catch(() => ({ repository: { pullRequest: { reviewThreads: { nodes: [] } } } } as GQLThreadsResult)),
-    octokit.users.getAuthenticated().catch(() => ({ data: { login: undefined } })),
+    getAuthenticatedUser().catch(() => ({ login: undefined as string | undefined })),
   ])
 
   const pr = prRes.data
@@ -154,7 +155,7 @@ export async function getPRDetails(repoUrl: string, prNumber: number): Promise<P
     checks,
     threads,
     issueComments,
-    currentUser: meRes.data.login,
+    currentUser: me.login,
   }
 }
 

@@ -1,5 +1,5 @@
 import type { OpenPR } from "../../../types.js"
-import { getOctokit, parseRepo } from "./octokit.js"
+import { getOctokit, getAuthenticatedUser, parseRepo } from "./octokit.js"
 
 /** Create an issue on a repo. Used by the feedback domain. */
 export async function createIssue(params: {
@@ -33,9 +33,9 @@ export async function listOpenPRs(repoUrl: string): Promise<OpenPR[]> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
 
-  const [{ data: prs }, { data: me }] = await Promise.all([
+  const [{ data: prs }, me] = await Promise.all([
     octokit.pulls.list({ owner, repo, state: "open", per_page: 50 }),
-    octokit.users.getAuthenticated(),
+    getAuthenticatedUser(),
   ])
   if (prs.length === 0) return []
 

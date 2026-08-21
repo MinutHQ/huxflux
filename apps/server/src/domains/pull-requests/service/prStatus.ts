@@ -51,10 +51,16 @@ export async function getPRStatus(repoUrl: string, prNumber: number): Promise<PR
 
 /** Find the latest PR (open or closed) for a branch on the given remote. */
 export async function findPRForBranch(repoUrl: string, branch: string): Promise<PRStatus | null> {
+  const prNumber = await findPRNumberForBranch(repoUrl, branch)
+  if (prNumber == null) return null
+  return getPRStatus(repoUrl, prNumber)
+}
+
+/** Lightweight lookup: just the PR number, no status fetch. */
+export async function findPRNumberForBranch(repoUrl: string, branch: string): Promise<number | null> {
   const octokit = getOctokit()
   const { owner, repo } = parseRepo(repoUrl)
 
-  // Search open PRs first, then closed (for merged detection)
   for (const state of ["open", "closed"] as const) {
     const { data } = await octokit.pulls.list({
       owner,
@@ -63,9 +69,7 @@ export async function findPRForBranch(repoUrl: string, branch: string): Promise<
       state,
       per_page: 1,
     })
-    if (data.length > 0) {
-      return getPRStatus(repoUrl, data[0].number)
-    }
+    if (data.length > 0) return data[0].number
   }
   return null
 }

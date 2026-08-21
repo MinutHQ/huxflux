@@ -133,4 +133,31 @@ describe("makeFinalize", () => {
     await finalize()
     expect(runningProcesses.has(ctx.agentId)).toBe(false)
   })
+
+  it("preserves done status even when preRunStatus was in-progress", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "done" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const finalize = makeFinalize(buildArgs(ctx, {}, "in-progress"))
+    await finalize()
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("done")
+    expect(row.streaming).toBe(0)
+  })
+
+  it("preserves cancelled status even when preRunStatus was in-progress", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "cancelled" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const finalize = makeFinalize(buildArgs(ctx, {}, "in-progress"))
+    await finalize()
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("cancelled")
+    expect(row.streaming).toBe(0)
+  })
+
+  it("falls back to preRunStatus when current DB status is not preserved but preRunStatus is", async () => {
+    ctx.testDb.db.update(agentsTable).set({ status: "in-progress" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const finalize = makeFinalize(buildArgs(ctx, {}, "draft-pr"))
+    await finalize()
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.status).toBe("draft-pr")
+    expect(row.streaming).toBe(0)
+  })
 })

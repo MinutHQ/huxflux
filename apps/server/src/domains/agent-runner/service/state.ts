@@ -1,5 +1,7 @@
 import type { StreamState } from "../../agents/agents.types.js"
 
+export const STATUS_PRESERVED_DURING_RUN = ["in-review", "draft-pr", "done", "cancelled"]
+
 /** Construct a fresh streaming-state accumulator for a new assistant turn. */
 export function createStreamState(): StreamState {
   return {

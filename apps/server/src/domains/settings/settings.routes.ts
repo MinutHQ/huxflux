@@ -24,7 +24,7 @@ export const settingsPlugin: FastifyPluginAsyncZod = async (app) => {
       scopes: [], rateLimitRemaining: null, rateLimitTotal: null, error: null,
     }
     if (!config.githubToken) {
-      return { ...empty, error: "No GitHub token configured (set GITHUB_TOKEN on the server)" }
+      return { ...empty, error: "No GitHub token configured (set GITHUB_TOKEN or run `gh auth login`)" }
     }
     try {
       const octokit = getOctokit()

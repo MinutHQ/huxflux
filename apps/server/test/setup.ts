@@ -16,6 +16,7 @@ process.env.NODE_ENV ??= "test"
 // Disable the auth-token fallback so the runner's delegate fetch never asks
 // for a token that doesn't exist.
 process.env.AUTH_TOKEN ??= ""
+process.env.GITHUB_TOKEN ??= ""
 
 // Discard `[db]` / `[runner]` / `[meta]` chatter at the worker level so
 // passing test output stays scannable. Per-test `silenceLogs()` still works

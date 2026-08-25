@@ -1,7 +1,13 @@
 import "dotenv/config"
 import * as os from "node:os"
 import * as path from "node:path"
+// eslint-disable-next-line no-restricted-imports -- one-shot cached probe; runs at most once when gh is authenticated, re-probes with 30s cooldown otherwise
+import { execFileSync } from "node:child_process"
 import type { SandboxConfig } from "./sandbox.js"
+
+let _ghCliToken: string | undefined
+let _ghCliProbeTime = 0
+const GH_PROBE_COOLDOWN = 30_000
 
 function parseSandbox(): SandboxConfig | undefined {
   if (!process.env.SANDBOX_CONFIG) return undefined
@@ -24,7 +30,19 @@ export const isDev = process.env.NODE_ENV !== "production"
 export const config = {
   port: parseInt(process.env.PORT ?? "4321", 10),
   dbPath: process.env.DB_PATH ?? path.join(DATA_DIR, isDev ? "huxflux-dev.db" : "huxflux.db"),
-  githubToken: process.env.GITHUB_TOKEN ?? "",
+  get githubToken(): string {
+    if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN
+    if (_ghCliToken) return _ghCliToken
+    const now = Date.now()
+    if (_ghCliToken === "" && now - _ghCliProbeTime < GH_PROBE_COOLDOWN) return ""
+    _ghCliProbeTime = now
+    try {
+      _ghCliToken = execFileSync("gh", ["auth", "token"], { encoding: "utf-8", timeout: 5000 }).trim()
+    } catch {
+      _ghCliToken = ""
+    }
+    return _ghCliToken
+  },
   feedbackRepo: process.env.FEEDBACK_REPO ?? "",
   workspacesBase: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, isDev ? "workspaces-dev" : "workspaces"),
   corsOrigins: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : true,

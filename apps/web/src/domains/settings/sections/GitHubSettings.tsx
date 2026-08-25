@@ -35,7 +35,7 @@ export function GitHubSettings() {
         <div className="text-sm font-medium text-foreground">Connection</div>
         <div className="text-[12px] text-muted-foreground leading-relaxed">
           GitHub access is configured via the <code className="text-foreground/70 bg-card px-1 py-0.5 rounded text-[11px]">GITHUB_TOKEN</code> environment
-          variable on the server. PR reviews, file diffs, and CI checks require a valid token with <code className="text-foreground/70 bg-card px-1 py-0.5 rounded text-[11px]">repo</code> scope.
+          variable on the server, or automatically from the <code className="text-foreground/70 bg-card px-1 py-0.5 rounded text-[11px]">gh</code> CLI if authenticated. PR reviews, file diffs, and CI checks require a valid token with <code className="text-foreground/70 bg-card px-1 py-0.5 rounded text-[11px]">repo</code> scope.
         </div>
       </div>
 

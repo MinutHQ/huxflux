@@ -123,7 +123,8 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
     let prNumber = agent.prNumber ?? await findPRNumberForBranch(repoUrl, agent.branch)
     if (!prNumber) {
       const upstreamBranch = await getUpstreamBranchName(repo, agent)
-      if (upstreamBranch && upstreamBranch !== agent.branch) {
+      const repoBaseBranch = repo.branchFrom.replace(`${repo.remote}/`, "")
+      if (upstreamBranch && upstreamBranch !== agent.branch && upstreamBranch !== repoBaseBranch) {
         prNumber = await findPRNumberForBranch(repoUrl, upstreamBranch)
       }
     }

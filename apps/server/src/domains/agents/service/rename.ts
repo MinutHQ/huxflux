@@ -194,11 +194,29 @@ export async function applyBranchRename(
   if (agent.branch !== newBranch) {
     const { simpleGit } = await import("simple-git")
     const git = simpleGit(worktreePath)
+    let oldRemoteBranch: string | null = null
     try {
       const current = (await git.revparse(["--abbrev-ref", "HEAD"])).trim()
-      if (current !== newBranch) await git.raw(["branch", "-m", current, newBranch])
+      if (current !== newBranch) {
+        try {
+          const upstream = (await git.raw(["rev-parse", "--abbrev-ref", "@{u}"])).trim()
+          const remotePrefix = `${repo.remote}/`
+          if (upstream.startsWith(remotePrefix)) oldRemoteBranch = upstream.slice(remotePrefix.length)
+        } catch { /* no upstream tracking */ }
+        await git.raw(["branch", "-m", current, newBranch])
+      }
     } catch (err) {
       return { ok: false, reason: `git branch -m failed: ${(err as Error).message}` }
+    }
+    if (oldRemoteBranch && oldRemoteBranch !== newBranch) {
+      try {
+        await git.push(repo.remote, `${newBranch}:${newBranch}`)
+        await git.raw(["branch", `--set-upstream-to=${repo.remote}/${newBranch}`])
+        await git.raw(["push", repo.remote, "--delete", oldRemoteBranch])
+        logger.info(`[rename] remote branch renamed: "${oldRemoteBranch}" → "${newBranch}"`)
+      } catch (err) {
+        logger.warn({ err }, `[rename] remote branch sync failed (local rename applied, remote still "${oldRemoteBranch}")`)
+      }
     }
     db.update(agentsTable)
       .set({ branch: newBranch, updatedAt: new Date().toISOString() })

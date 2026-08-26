@@ -39,6 +39,21 @@ export const claudeUsageSpendSchema = z.object({
   deltas: claudeUsageSpendDeltasSchema,
 })
 
+// Why a reading is unavailable, as a value the client can branch on. The
+// human-readable `error` string carries the detail, but copy and layout
+// decisions should never be made by pattern-matching prose.
+export const claudeUsageReasonSchema = z.enum([
+  // No OAuth token: not signed in. The feature does not apply, as opposed to
+  // being broken, so the sidebar renders nothing at all for this one.
+  "no-token",
+  // Upstream returned 429. Transient; the next poll may well succeed.
+  "rate-limited",
+  // Upstream returned 401/403. The token is bad and needs re-authentication.
+  "auth",
+  // Anything else: timeout, network error, 5xx.
+  "unavailable",
+])
+
 export const claudeUsageSchema = z.object({
   // false when no OAuth token could be resolved, on an auth failure, or on a
   // request failure with no cached reading to fall back to.
@@ -50,11 +65,14 @@ export const claudeUsageSchema = z.object({
   // Usage credits spent beyond the plan limits. Null when the upstream
   // response carries no well-formed spend total.
   spend: claudeUsageSpendSchema.nullable(),
-  // Human-readable reason when `connected` is false; null on success.
+  // Why the reading is unavailable; null when connected.
+  reason: claudeUsageReasonSchema.nullable(),
+  // Human-readable detail when `connected` is false; null on success.
   error: z.string().nullable(),
 })
 
 export type ClaudeUsageWindow = z.infer<typeof claudeUsageWindowSchema>
 export type ClaudeUsageSpend = z.infer<typeof claudeUsageSpendSchema>
 export type ClaudeUsageSpendDeltas = z.infer<typeof claudeUsageSpendDeltasSchema>
+export type ClaudeUsageReason = z.infer<typeof claudeUsageReasonSchema>
 export type ClaudeUsage = z.infer<typeof claudeUsageSchema>

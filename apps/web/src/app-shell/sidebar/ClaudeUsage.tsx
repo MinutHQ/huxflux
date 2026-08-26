@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { keepPreviousData } from "@tanstack/react-query"
-import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsageSpend, type ClaudeUsageWindow } from "@huxflux/shared"
+import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsageReason, type ClaudeUsageSpend, type ClaudeUsageWindow } from "@huxflux/shared"
 import { getSpendWindow, setSpendWindow, nextSpendWindow, type SpendWindow } from "@/lib/usagePrefs"
 
 interface UsageRow extends ClaudeUsageWindow {
@@ -10,6 +10,15 @@ interface UsageRow extends ClaudeUsageWindow {
 }
 
 const HOUR_MS = 60 * 60 * 1000
+
+// What each failure reads as in the sidebar. `no-token` is absent on purpose:
+// not being signed in means the feature does not apply rather than being
+// broken, so nothing is rendered for it at all.
+const REASON_LABELS: Partial<Record<ClaudeUsageReason, string>> = {
+  "rate-limited": "rate limited",
+  auth: "sign in again",
+  unavailable: "unavailable",
+}
 
 const WINDOW_LABELS: Record<SpendWindow, string> = {
   hour: "1h",
@@ -168,13 +177,32 @@ function SpendRow({ spend }: { spend: ClaudeUsageSpend }) {
 }
 
 /**
+ * A bar row with nothing behind it: an empty track and the reason where the
+ * percentage would be. Keeping both rows in place means the sidebar does not
+ * jump as readings come and go, and an empty track reads as "this exists, it
+ * just has no data right now" where a vanished block reads as a bug.
+ */
+function GhostBar({ label, note }: { label: string, note: string }) {
+  return (
+    <div className="w-full">
+      <div className="mb-1 flex items-center justify-between text-[10px] leading-none text-sidebar-foreground/40">
+        <span className="font-medium">{label}</span>
+        <span>{note}</span>
+      </div>
+      <div className="h-1 w-full rounded-full bg-sidebar-accent" />
+    </div>
+  )
+}
+
+/**
  * Compact Claude.ai plan-usage readout for the sidebar header: two thin
  * progress bars (5-hour session window + 7-day weekly window) with the
  * percentage used and time until each window resets, plus an extra-usage row
  * once the account has spent beyond its plan limits. Polls every 60s.
  *
- * Renders nothing when no usage is available (no OAuth token, request failed,
- * or both windows absent) so the header stays empty rather than showing noise.
+ * Renders nothing when the account is simply not signed in. A real failure
+ * (rate limit, bad token, network) shows empty ghost bars naming the reason,
+ * so the readout does not silently disappear and look broken.
  */
 export function ClaudeUsage() {
   const { data } = useHuxfluxQuery({
@@ -192,7 +220,20 @@ export function ClaudeUsage() {
   // session window counts down in seconds; weekly resets days out.
   useSecondTicker(data?.session?.resetsAt)
 
-  if (!data?.connected) return null
+  if (!data) return null
+
+  if (!data.connected) {
+    // A reading that fails while a cached one exists is served from the cache
+    // instead, so reaching here means there is genuinely nothing to show.
+    const note = data.reason ? REASON_LABELS[data.reason] : undefined
+    if (!note) return null
+    return (
+      <div className="flex w-full flex-col gap-1.5 px-2 py-1.5" title={data.error ?? undefined}>
+        <GhostBar label="Session" note={note} />
+        <GhostBar label="Weekly" note={note} />
+      </div>
+    )
+  }
 
   const rows: UsageRow[] = [
     data.session ? { label: "Session", precise: true, ...data.session } : null,

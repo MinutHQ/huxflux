@@ -4,7 +4,7 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { promisify } from "node:util"
 
-import type { ClaudeUsage, ClaudeUsageSpend, ClaudeUsageWindow } from "@huxflux/shared"
+import type { ClaudeUsage, ClaudeUsageReason, ClaudeUsageSpend, ClaudeUsageWindow } from "@huxflux/shared"
 import { logger } from "../../logger.js"
 import { recordSpendSample, spendDeltas } from "./service/spendHistory.js"
 import { clearCache, isFresh, readCache, writeCache, _resetMemo } from "./service/usageCache.js"
@@ -37,11 +37,12 @@ interface RawUsageResponse {
   spend?: RawSpend | null
 }
 
-const disconnected = (error: string): ClaudeUsage => ({
+const disconnected = (reason: ClaudeUsageReason, error: string): ClaudeUsage => ({
   connected: false,
   session: null,
   weekly: null,
   spend: null,
+  reason,
   error,
 })
 
@@ -88,6 +89,7 @@ export function mapUsageResponse(raw: RawUsageResponse): ClaudeUsage {
     session: toWindow(raw.five_hour),
     weekly: toWindow(raw.seven_day),
     spend: toSpend(raw.spend),
+    reason: null,
     error: null,
   }
 }
@@ -134,7 +136,7 @@ export async function fetchClaudeUsage(now: number = Date.now()): Promise<Claude
     // No account signed in — genuinely disconnected. Drop any stale reading so
     // we don't keep showing usage for an account that's no longer present.
     clearCache()
-    return disconnected("No Claude OAuth token found (sign in to a Claude subscription account)")
+    return disconnected("no-token", "No Claude OAuth token found (sign in to a Claude subscription account)")
   }
 
   // Serve a recent reading without going upstream. Every open client polls once
@@ -163,9 +165,10 @@ export async function fetchClaudeUsage(now: number = Date.now()): Promise<Claude
       // statuses (429, 5xx) are transient — fall back to the last good reading.
       if (res.status === 401 || res.status === 403) {
         clearCache()
-        return disconnected(`Usage request failed (${res.status})`)
+        return disconnected("auth", `Usage request failed (${res.status})`)
       }
-      return cached?.usage ?? disconnected(`Usage request failed (${res.status})`)
+      const reason: ClaudeUsageReason = res.status === 429 ? "rate-limited" : "unavailable"
+      return cached?.usage ?? disconnected(reason, `Usage request failed (${res.status})`)
     }
     const usage = mapUsageResponse((await res.json()) as RawUsageResponse)
     // Log this reading before diffing against it, so the history always
@@ -182,7 +185,7 @@ export async function fetchClaudeUsage(now: number = Date.now()): Promise<Claude
     // good reading at whatever age, since a token is still present and the
     // account is therefore still connected. That reading now outlives a
     // restart, so a server that comes up into a rate limit still has numbers.
-    return cached?.usage ?? disconnected(err instanceof Error ? err.message : "Unknown error")
+    return cached?.usage ?? disconnected("unavailable", err instanceof Error ? err.message : "Unknown error")
   } finally {
     clearTimeout(timer)
   }

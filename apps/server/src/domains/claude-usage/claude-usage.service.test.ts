@@ -20,6 +20,7 @@ describe("mapUsageResponse", () => {
       session: { utilization: 45, resetsAt: "2026-06-25T17:29:59.319123+00:00" },
       weekly: { utilization: 55, resetsAt: "2026-06-26T23:59:59.319143+00:00" },
       spend: null,
+      reason: null,
       error: null,
     })
   })
@@ -187,12 +188,31 @@ describe("fetchClaudeUsage stale cache", () => {
     expect(after.connected).toBe(false)
   })
 
+  it("reports a rate limit distinctly from other failures", async () => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }))
+    expect((await fetchClaudeUsage(T0)).reason).toBe("rate-limited")
+
+    _resetUsageCache()
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }))
+    expect((await fetchClaudeUsage(T0)).reason).toBe("unavailable")
+  })
+
+  it("reports an auth failure as its own reason", async () => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+
+    expect((await fetchClaudeUsage(T0)).reason).toBe("auth")
+  })
+
   it("reports disconnected on failure when there is no cached reading", async () => {
     vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")))
 
     const result = await fetchClaudeUsage(T0)
     expect(result.connected).toBe(false)
+    expect(result.reason).toBe("unavailable")
     expect(result.error).toBe("network down")
   })
 
@@ -212,5 +232,6 @@ describe("fetchClaudeUsage stale cache", () => {
     vi.stubEnv("CLAUDE_CONFIG_DIR", "/huxflux-nonexistent-config-dir")
     const result = await fetchClaudeUsage(LATER)
     expect(result.connected).toBe(false)
+    expect(result.reason).toBe("no-token")
   })
 })

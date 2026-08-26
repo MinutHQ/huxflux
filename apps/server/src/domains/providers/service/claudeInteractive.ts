@@ -4,6 +4,7 @@ import { createRequire } from "node:module"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
+import { claudeContinueProbePath, claudeSessionFilePath } from "./claudeSessionPaths.js"
 
 const requireFromHere = createRequire(import.meta.url)
 
@@ -220,5 +221,13 @@ export const claudeInteractiveProvider: ProviderAdapter = {
 
   getModels() {
     return MODELS
+  },
+
+  sessionFilePath(cwd: string, sessionId: string): string {
+    return claudeSessionFilePath(cwd, sessionId)
+  },
+
+  continueProbePath(cwd: string): string {
+    return claudeContinueProbePath(cwd)
   },
 }

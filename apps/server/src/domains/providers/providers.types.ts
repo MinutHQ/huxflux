@@ -78,4 +78,17 @@ export interface ProviderAdapter {
 
   /** Install any hooks needed (e.g. AskUserQuestion for Claude). No-op for most providers. */
   installHooks?(agentId: string, cwd: string, apiBase: string, authToken: string): Promise<void>
+
+  /** Path to the CLI's own transcript for `sessionId` under `cwd`, when the CLI
+   *  keeps one somewhere the server can stat. The runner probes this before
+   *  reusing a stored session id, so a session that vanished (worktree moved,
+   *  transcript pruned) degrades to replayed context instead of the CLI failing.
+   *  Providers that store session state elsewhere — or nowhere visible — omit
+   *  this and are trusted to resolve their own session ids. */
+  sessionFilePath?(cwd: string, sessionId: string): string
+
+  /** Path whose presence means the CLI has resumable history in `cwd`, probed
+   *  before passing a `--continue`-style flag. Omit to always pass it when the
+   *  turn is a continuation and the provider declares `sessionContinue`. */
+  continueProbePath?(cwd: string): string
 }

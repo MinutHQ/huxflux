@@ -1,11 +1,15 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { keepPreviousData } from "@tanstack/react-query"
 import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsageSpend, type ClaudeUsageWindow } from "@huxflux/shared"
 import { getSpendWindow, setSpendWindow, nextSpendWindow, type SpendWindow } from "@/lib/usagePrefs"
 
 interface UsageRow extends ClaudeUsageWindow {
   label: string
+  /** Count down in minutes and seconds rather than a single coarse unit. */
+  precise: boolean
 }
+
+const HOUR_MS = 60 * 60 * 1000
 
 const WINDOW_LABELS: Record<SpendWindow, string> = {
   hour: "1h",
@@ -13,16 +17,67 @@ const WINDOW_LABELS: Record<SpendWindow, string> = {
   week: "7d",
 }
 
-// Format the time until a window resets as a compact, human-readable string.
-function formatReset(resetsAt: string): string {
+/**
+ * Format the time until a window resets.
+ *
+ * `precise` keeps two units all the way down instead of collapsing to one, so
+ * the session row reads "2h 34m" and then "34m 12s" inside the final hour
+ * rather than a lone "34m" that looks stalled. The weekly row stays coarse:
+ * it resets days out, and seconds there would be noise.
+ */
+function formatReset(resetsAt: string, precise: boolean): string {
   const ms = new Date(resetsAt).getTime() - Date.now()
   if (!Number.isFinite(ms) || ms <= 0) return "now"
-  const minutes = Math.round(ms / 60_000)
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
+
+  const totalSeconds = Math.floor(ms / 1000)
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const hours = Math.floor(totalMinutes / 60)
   const days = Math.floor(hours / 24)
+
+  if (precise && days < 1) {
+    // Seconds are zero-padded so the countdown does not jitter in width as it
+    // passes each ten-second mark.
+    return hours >= 1
+      ? `${hours}h ${totalMinutes % 60}m`
+      : `${totalMinutes}m ${String(totalSeconds % 60).padStart(2, "0")}s`
+  }
+
+  if (totalMinutes < 60) return `${totalMinutes}m`
+  if (hours < 24) return `${hours}h`
   return `${days}d ${hours % 24}h`
+}
+
+/**
+ * Re-render once a second while the given reset time is inside its final hour,
+ * so a seconds countdown actually counts down. The query only refetches every
+ * 60s, so without this the seconds would sit frozen and jump a whole minute.
+ *
+ * Outside that final hour no timer fires at all: the effect sleeps until the
+ * hour mark and only then starts ticking. All of the timing happens here rather
+ * than during render, because reading the clock while rendering makes the
+ * output depend on when React happens to re-run the component.
+ */
+function useSecondTicker(resetsAt: string | undefined) {
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (!resetsAt) return
+    const target = new Date(resetsAt).getTime()
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    function schedule() {
+      const remaining = target - Date.now()
+      // A malformed timestamp yields NaN, which setTimeout coerces to 0 and
+      // would spin this into a tight loop. Stop instead.
+      if (!Number.isFinite(remaining) || remaining <= 0) return
+      timer = remaining < HOUR_MS
+        ? setTimeout(() => { setTick((t) => t + 1); schedule() }, 1000)
+        : setTimeout(schedule, remaining - HOUR_MS)
+    }
+
+    schedule()
+    return () => clearTimeout(timer)
+  }, [resetsAt])
 }
 
 // Render a minor-unit amount in its own currency. Intl throws on a currency
@@ -50,13 +105,13 @@ function fillClass(pct: number): string {
   return "bg-emerald-500"
 }
 
-function UsageBar({ label, utilization, resetsAt }: UsageRow) {
+function UsageBar({ label, utilization, resetsAt, precise }: UsageRow) {
   const pct = Math.max(0, Math.min(100, Math.round(utilization)))
   return (
     <div className="w-full">
       <div className="mb-1 flex items-center justify-between text-[10px] leading-none text-sidebar-foreground/70">
         <span className="font-medium">{label}</span>
-        <span className="tabular-nums">{pct}% · resets {formatReset(resetsAt)}</span>
+        <span className="tabular-nums">{pct}% · resets {formatReset(resetsAt, precise)}</span>
       </div>
       <div className="h-1 w-full overflow-hidden rounded-full bg-sidebar-accent">
         <div className={`h-full rounded-full transition-all ${fillClass(pct)}`} style={{ width: `${pct}%` }} />
@@ -133,11 +188,15 @@ export function ClaudeUsage() {
     placeholderData: keepPreviousData,
   })
 
+  // Must run before any early return so the hook order stays stable. Only the
+  // session window counts down in seconds; weekly resets days out.
+  useSecondTicker(data?.session?.resetsAt)
+
   if (!data?.connected) return null
 
   const rows: UsageRow[] = [
-    data.session ? { label: "Session", ...data.session } : null,
-    data.weekly ? { label: "Weekly", ...data.weekly } : null,
+    data.session ? { label: "Session", precise: true, ...data.session } : null,
+    data.weekly ? { label: "Weekly", precise: false, ...data.weekly } : null,
   ].filter((r): r is UsageRow => r !== null)
 
   // Extra usage only matters once something has actually been spent — an account

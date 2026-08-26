@@ -9,11 +9,12 @@ Reads the local Claude Code OAuth token, calls Anthropic's plan-usage endpoint (
 - The upstream call to `${ANTHROPIC_BASE_API_URL:-https://api.anthropic.com}/api/oauth/usage` with the `oauth-2025-04-20` beta header and a 5-second timeout
 - The pure `mapUsageResponse` mapping from Anthropic's `five_hour` / `seven_day` / `spend` payload to the `session` / `weekly` / `spend` shape
 - The `claude_usage_samples` table (migration v34): a rolling log of observed credit totals, and the hour/day/week deltas derived from it
+- The `claude_usage_cache` table (migration v35): the last good reading, used both to throttle upstream calls and to survive a restart
 
 ## Public surface
 
 - `claude-usage.routes.ts` — exposes `claudeUsagePlugin`, the Fastify plugin registering GET `/api/claude/usage`. Wired through the registry at `src/domains/index.ts`.
-- `claude-usage.db.ts` — exposes `claudeUsageSamples`, the Drizzle table backing the spend history. Re-exported by the `src/db/schema.ts` barrel.
+- `claude-usage.db.ts` — exposes `claudeUsageSamples` and `claudeUsageCache`, the Drizzle tables backing the spend history and the cached reading. Re-exported by the `src/db/schema.ts` barrel.
 
 ## Depends on
 
@@ -28,7 +29,10 @@ None.
 
 ## Quirks
 
-- The endpoint never throws. A missing token, a 401/403 (bad/revoked token), or any failure with no prior reading resolves to `{ connected: false, error }` so the sidebar degrades gracefully. Transient failures (timeout, 429, 5xx, network errors) return the last good reading while a token is still present — the service keeps a process-global last-good snapshot so a single flaky poll doesn't blank the bars. The cache is dropped on sign-out (no token) and on auth failure.
+- The endpoint never throws. A missing token, a 401/403 (bad/revoked token), or any failure with no prior reading resolves to `{ connected: false, error }` so the sidebar degrades gracefully. Transient failures (timeout, 429, 5xx, network errors) return the last good reading while a token is still present, so a single flaky poll doesn't blank the bars. The cache is dropped on sign-out (no token) and on auth failure.
+- A successful reading is served for 60 seconds without going upstream again. Anthropic's usage endpoint is rate-limited and every open client polls once a minute, so without the throttle the upstream call rate scales with the number of connected clients and the account starts collecting 429s. One poll per minute total is the ceiling regardless of how many clients are watching.
+- The last good reading is persisted, not just held in memory. A server that restarts straight into a rate limit would otherwise have nothing to fall back on and would blank the sidebar entirely; the stored row means it still shows the last known numbers. The in-memory copy is the hot path and the row is only read once per process.
+- A stored payload that no longer parses against `claudeUsageSchema` (written by an older build, then a schema change) is discarded rather than served, so schema drift costs one upstream call instead of producing a response the client rejects.
 - Token resolution is best-effort and platform-aware. The keychain branch only runs on macOS; everything else relies on the env var or the plaintext credentials file.
 - `utilization` is passed through as the upstream 0–100 percentage; no rescaling happens here.
 - Spend is carried in minor units (`amountMinor` + `exponent`), never as a float, so nothing rounds between the API and the render. Formatting to a currency string is the client's job.

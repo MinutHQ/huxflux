@@ -540,6 +540,16 @@ const MIGRATIONS: Migration[] = [
         ON claude_usage_samples(recorded_at);
     `,
   },
+  {
+    version: 35,
+    sql: `
+      CREATE TABLE IF NOT EXISTS claude_usage_cache (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        fetched_at INTEGER NOT NULL,
+        payload TEXT NOT NULL
+      );
+    `,
+  },
 ]
 
 export function runMigrations() {

@@ -21,3 +21,16 @@ export const claudeUsageSamples = sqliteTable("claude_usage_samples", {
   /** Decimal places needed to scale `amountMinor` back to a major amount. */
   exponent: integer("exponent").notNull(),
 })
+
+// The most recent successful reading, kept as one row. Two jobs: it lets N
+// polling clients share a single upstream call inside the freshness window,
+// and it survives a restart, so a rate-limited server can still show the last
+// known numbers instead of collapsing the sidebar to nothing.
+export const claudeUsageCache = sqliteTable("claude_usage_cache", {
+  /** Always 1. The table holds exactly one row, enforced by a CHECK. */
+  id: integer("id").primaryKey(),
+  /** Epoch milliseconds the reading was fetched. */
+  fetchedAt: integer("fetched_at").notNull(),
+  /** The `ClaudeUsage` snapshot, JSON-encoded. */
+  payload: text("payload").notNull(),
+})

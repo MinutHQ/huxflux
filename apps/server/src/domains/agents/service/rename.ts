@@ -208,7 +208,11 @@ export async function applyBranchRename(
     } catch (err) {
       return { ok: false, reason: `git branch -m failed: ${(err as Error).message}` }
     }
-    if (oldRemoteBranch && oldRemoteBranch !== newBranch) {
+    const branchFromPrefix = `${repo.remote}/`
+    const repoBaseBranch = repo.branchFrom.startsWith(branchFromPrefix)
+      ? repo.branchFrom.slice(branchFromPrefix.length)
+      : repo.branchFrom
+    if (oldRemoteBranch && oldRemoteBranch !== newBranch && oldRemoteBranch !== repoBaseBranch) {
       try {
         await git.push(repo.remote, `${newBranch}:${newBranch}`)
         await git.raw(["branch", `--set-upstream-to=${repo.remote}/${newBranch}`])

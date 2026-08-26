@@ -18,8 +18,33 @@ describe("mapUsageResponse", () => {
       connected: true,
       session: { utilization: 45, resetsAt: "2026-06-25T17:29:59.319123+00:00" },
       weekly: { utilization: 55, resetsAt: "2026-06-26T23:59:59.319143+00:00" },
+      spend: null,
       error: null,
     })
+  })
+
+  it("maps the spend total, leaving deltas for the caller to fill in", () => {
+    const usage = mapUsageResponse({
+      spend: {
+        used: { amount_minor: 34654, currency: "EUR", exponent: 2 },
+      },
+    })
+
+    expect(usage.spend).toEqual({
+      amountMinor: 34654,
+      currency: "EUR",
+      exponent: 2,
+      deltas: { hour: null, day: null, week: null },
+    })
+  })
+
+  it("yields a null spend when the total is absent or malformed", () => {
+    expect(mapUsageResponse({}).spend).toBeNull()
+    expect(mapUsageResponse({ spend: null }).spend).toBeNull()
+    expect(mapUsageResponse({ spend: { used: null } }).spend).toBeNull()
+    expect(
+      mapUsageResponse({ spend: { used: { amount_minor: 100, currency: null, exponent: 2 } } }).spend,
+    ).toBeNull()
   })
 
   it("yields a null window when one is omitted", () => {

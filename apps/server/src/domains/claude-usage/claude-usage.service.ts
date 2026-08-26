@@ -4,8 +4,9 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { promisify } from "node:util"
 
-import type { ClaudeUsage, ClaudeUsageWindow } from "@huxflux/shared"
+import type { ClaudeUsage, ClaudeUsageSpend, ClaudeUsageWindow } from "@huxflux/shared"
 import { logger } from "../../logger.js"
+import { recordSpendSample, spendDeltas } from "./service/spendHistory.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -19,23 +20,58 @@ interface RawUsageWindow {
   utilization?: number | null
   resets_at?: string | null
 }
+// The credit-spend total, reported as an integer in the currency's minor unit
+// plus the exponent needed to scale it back (34654 / 10^2 = 346.54).
+interface RawSpendAmount {
+  amount_minor?: number | null
+  currency?: string | null
+  exponent?: number | null
+}
+interface RawSpend {
+  used?: RawSpendAmount | null
+}
 interface RawUsageResponse {
   five_hour?: RawUsageWindow | null
   seven_day?: RawUsageWindow | null
+  spend?: RawSpend | null
 }
 
 const disconnected = (error: string): ClaudeUsage => ({
   connected: false,
   session: null,
   weekly: null,
+  spend: null,
   error,
 })
+
+// Deltas need the sample history, which lives behind the database. The pure
+// mapper can't reach it, so it emits an empty set and `fetchClaudeUsage` fills
+// them in once the reading has been recorded.
+const noDeltas = { hour: null, day: null, week: null }
 
 function toWindow(raw: RawUsageWindow | null | undefined): ClaudeUsageWindow | null {
   if (!raw || typeof raw.utilization !== "number" || typeof raw.resets_at !== "string") {
     return null
   }
   return { utilization: raw.utilization, resetsAt: raw.resets_at }
+}
+
+function toSpend(raw: RawSpend | null | undefined): ClaudeUsageSpend | null {
+  const used = raw?.used
+  if (
+    !used ||
+    typeof used.amount_minor !== "number" ||
+    typeof used.currency !== "string" ||
+    typeof used.exponent !== "number"
+  ) {
+    return null
+  }
+  return {
+    amountMinor: used.amount_minor,
+    currency: used.currency,
+    exponent: used.exponent,
+    deltas: { ...noDeltas },
+  }
 }
 
 // Last successful usage reading. Anthropic's usage endpoint is occasionally
@@ -57,6 +93,7 @@ export function mapUsageResponse(raw: RawUsageResponse): ClaudeUsage {
     connected: true,
     session: toWindow(raw.five_hour),
     weekly: toWindow(raw.seven_day),
+    spend: toSpend(raw.spend),
     error: null,
   }
 }
@@ -131,6 +168,12 @@ export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
       return staleOr(disconnected(`Usage request failed (${res.status})`))
     }
     const usage = mapUsageResponse((await res.json()) as RawUsageResponse)
+    // Log this reading before diffing against it, so the history always
+    // contains the number we are about to report.
+    if (usage.spend) {
+      recordSpendSample(usage.spend)
+      usage.spend.deltas = spendDeltas(usage.spend)
+    }
     lastGood = usage
     return usage
   } catch (err) {

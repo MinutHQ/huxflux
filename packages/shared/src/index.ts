@@ -296,8 +296,8 @@ export type { WrappedSummary } from "./domains/wrapped/wrapped.types.js"
 
 // ── claude-usage ──────────────────────────────────────────────────────────────
 export { claudeUsageApi } from "./domains/claude-usage/claude-usage.api.js"
-export { claudeUsageSchema, claudeUsageWindowSchema } from "./domains/claude-usage/claude-usage.types.js"
-export type { ClaudeUsage, ClaudeUsageWindow } from "./domains/claude-usage/claude-usage.types.js"
+export { claudeUsageSchema, claudeUsageWindowSchema, claudeUsageSpendSchema, claudeUsageSpendDeltasSchema } from "./domains/claude-usage/claude-usage.types.js"
+export type { ClaudeUsage, ClaudeUsageWindow, ClaudeUsageSpend, ClaudeUsageSpendDeltas } from "./domains/claude-usage/claude-usage.types.js"
 
 // ── automations ──────────────────────────────────────────────────────────────
 export { automationsApi } from "./domains/automations/automations.api.js"

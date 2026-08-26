@@ -1,5 +1,6 @@
 import type { AgentStatus, PRStatus } from "../../../types.js"
 import { getOctokit, parseRepo } from "./octokit.js"
+import { logger } from "../../../logger.js"
 
 /** Derive agent status from PR state. Shared between poller and PR routes. */
 export function prStatusToAgentStatus(pr: PRStatus): AgentStatus {
@@ -69,7 +70,13 @@ export async function findPRNumberForBranch(repoUrl: string, branch: string): Pr
       state,
       per_page: 1,
     })
-    if (data.length > 0) return data[0].number
+    if (data.length > 0) {
+      if (data[0].head.ref !== branch) {
+        logger.warn({ expected: branch, got: data[0].head.ref, pr: data[0].number }, "[pr] GitHub API returned PR for wrong branch, ignoring")
+        continue
+      }
+      return data[0].number
+    }
   }
   return null
 }

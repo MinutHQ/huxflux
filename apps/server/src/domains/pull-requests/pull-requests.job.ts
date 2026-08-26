@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, isNotNull } from "drizzle-orm"
 import { db } from "../../db/index.js"
-import { agents } from "../../db/schema.js"
+import { agents, repos } from "../../db/schema.js"
 import { getSettings } from "../settings/settings.service.js"
 import { logger } from "../../logger.js"
 import { agentsWs } from "../agents/agents.ws.js"
@@ -8,6 +8,8 @@ import { isAgentRunning } from "../agent-runner/agent-runner.service.js"
 import type { Job } from "../../jobTypes.js"
 import { pollAgent } from "./job/pollAgent.js"
 import { isRateLimited, rateLimitWaitSec } from "./job/rateLimitState.js"
+import { getRemoteUrl } from "../git/worktrees.js"
+import { parseRepo, getOctokit } from "./service/octokit.js"
 
 const POLL_STATUSES = ["in-progress", "in-review", "draft-pr"]
 const TERMINAL_STATUSES = ["done", "cancelled"]
@@ -79,11 +81,54 @@ async function runCycle(): Promise<void> {
   )
 }
 
+async function repairWrongPRAssignments(): Promise<void> {
+  const cancelled = db.select().from(agents)
+    .where(and(
+      eq(agents.status, "cancelled"),
+      isNotNull(agents.prNumber),
+      isNull(agents.deletedAt),
+    ))
+    .all()
+  if (cancelled.length === 0) return
+
+  logger.info({ count: cancelled.length }, "[job] checking cancelled agents for wrong PR assignments")
+  const octokit = getOctokit()
+  let repaired = 0
+
+  for (const agent of cancelled) {
+    if (!agent.repoId || !agent.prNumber) continue
+    const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+    if (!repo) continue
+    const repoUrl = await getRemoteUrl(repo.path, repo.remote)
+    if (!repoUrl) continue
+
+    try {
+      const { owner, repo: repoName } = parseRepo(repoUrl)
+      const { data: pr } = await octokit.pulls.get({ owner, repo: repoName, pull_number: agent.prNumber })
+      if (pr.head.ref === agent.branch) continue
+
+      const now = new Date().toISOString()
+      db.update(agents).set({
+        status: "in-progress", prNumber: null, prStatus: null, pr: null, updatedAt: now,
+      }).where(eq(agents.id, agent.id)).run()
+      const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
+      if (updated) agentsWs.agentUpdated(updated as never)
+      repaired++
+      logger.info({ agentId: agent.id, title: agent.title, wrongPr: agent.prNumber }, "[job] repaired agent with wrong PR assignment")
+    } catch (err) {
+      logger.warn({ err, agentId: agent.id }, "[job] could not verify PR for cancelled agent")
+    }
+  }
+
+  if (repaired > 0) logger.info({ repaired, total: cancelled.length }, "[job] PR assignment repair complete")
+}
+
 export const pullRequestsJob: Job = {
   name: "pull-requests",
   start() {
     const interval = getSettings().pollingIntervalMs ?? 60_000
     const onError = (err: unknown) => logger.error({ err }, "[job] poll cycle failed")
+    repairWrongPRAssignments().catch(onError)
     setTimeout(() => runCycle().catch(onError), 5_000)
     setInterval(() => runCycle().catch(onError), interval)
   },

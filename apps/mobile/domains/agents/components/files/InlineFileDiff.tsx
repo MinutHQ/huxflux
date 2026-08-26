@@ -2,7 +2,9 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { api, parseUnifiedDiff, type FileChange, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { c } from "@/theme"
+import { useModal } from "@/ui"
 import { DiffLineRow } from "../DiffLineRow"
+import { canSaveToPhone, useFileDownload } from "../../hooks/useFileDownload"
 
 export function InlineFileDiff({ file, agentId, expanded, onToggle }: {
   file: FileChange
@@ -12,6 +14,22 @@ export function InlineFileDiff({ file, agentId, expanded, onToggle }: {
 }) {
   const name = file.path.split("/").pop() ?? file.path
   const dir  = file.path.slice(0, file.path.length - name.length - 1)
+  const modal = useModal()
+  const { saveToPhone } = useFileDownload()
+
+  function handleLongPress() {
+    if (!canSaveToPhone) return
+    modal.showActionSheet(name, [
+      {
+        label: "Save file to phone",
+        onPress: () => saveToPhone({ agentId, path: file.path, kind: "file" }),
+      },
+      {
+        label: "Save diff to phone",
+        onPress: () => saveToPhone({ agentId, path: file.path, kind: "diff" }),
+      },
+    ])
+  }
 
   const { data: rawDiff, isLoading } = useHuxfluxQuery({
     queryKey: queryKeys.agents.diff(agentId, file.path),
@@ -27,6 +45,8 @@ export function InlineFileDiff({ file, agentId, expanded, onToggle }: {
       {/* File header */}
       <TouchableOpacity
         onPress={onToggle}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
         style={{
           paddingHorizontal: 14, paddingVertical: 10,
           flexDirection: "row", alignItems: "center", gap: 10,

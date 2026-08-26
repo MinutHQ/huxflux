@@ -19,6 +19,19 @@ import { sendToAgent } from "./sendToAgent.js"
 import { markRateLimited, isRateLimited } from "./rateLimitState.js"
 
 type AgentRow = typeof agents.$inferSelect
+type RepoRow = typeof repos.$inferSelect
+
+async function getUpstreamBranchName(repo: RepoRow, agent: AgentRow): Promise<string | null> {
+  if (agent.noWorktree) return null
+  try {
+    const worktreePath = path.join(repo.workspacesPath, agent.location)
+    const upstream = (await simpleGit(worktreePath).raw(["rev-parse", "--abbrev-ref", "@{u}"])).trim()
+    const prefix = `${repo.remote}/`
+    return upstream.startsWith(prefix) ? upstream.slice(prefix.length) : upstream
+  } catch {
+    return null
+  }
+}
 
 async function syncBranchFromGit(agent: AgentRow): Promise<AgentRow> {
   if (agent.noWorktree || !agent.repoId) return agent
@@ -107,7 +120,13 @@ export async function pollAgent(initial: AgentRow): Promise<void> {
   if (isRateLimited()) return
 
   try {
-    const prNumber = agent.prNumber ?? await findPRNumberForBranch(repoUrl, agent.branch)
+    let prNumber = agent.prNumber ?? await findPRNumberForBranch(repoUrl, agent.branch)
+    if (!prNumber) {
+      const upstreamBranch = await getUpstreamBranchName(repo, agent)
+      if (upstreamBranch && upstreamBranch !== agent.branch) {
+        prNumber = await findPRNumberForBranch(repoUrl, upstreamBranch)
+      }
+    }
     if (!prNumber) return
     const details = await getPRDetails(repoUrl, prNumber)
     const pr: PRStatus = {

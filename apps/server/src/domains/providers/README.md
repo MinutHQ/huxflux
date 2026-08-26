@@ -1,10 +1,10 @@
 # providers
 
-CLI provider abstractions: Claude (streaming + interactive), Codex (OpenAI), Gemini (Google). Each provider exposes a normalized streaming interface that the agents runner consumes. Provider availability detection (which CLIs are installed) lives in `domains/settings` — only the provider runtimes themselves live here.
+CLI provider abstractions: Claude (streaming + interactive), Codex (OpenAI), Gemini (Google), and Pi (`@earendil-works/pi-coding-agent`). Each provider exposes a normalized streaming interface that the agents runner consumes. Provider availability detection (which CLIs are installed) lives in `domains/settings` — only the provider runtimes themselves live here.
 
 ## Owns
 
-- The provider registry (`getProvider` / `getAvailableProviders` / `getInstalledProviders`) and the four provider adapters: `claudeProvider`, `claudeInteractiveProvider`, `codexProvider`, `geminiProvider`.
+- The provider registry (`getProvider` / `getAvailableProviders` / `getInstalledProviders`) and the provider adapters: `claudeProvider`, `claudeInteractiveProvider`, `codexProvider`, `geminiProvider`, `piProvider`.
 - The `ProviderAdapter` interface: `resolveBinary`, `isAvailable`, `buildSpawnArgs`, `parseStreamLine`, `resolveModel`, `getModels`, optional `installHooks`.
 - The `NormalizedStreamEvent` union: every provider parses its raw stdout into this provider-agnostic shape so the agents runner has a single event-handling path.
 - `SpawnOptions` / `SpawnResult` / `ProviderCapabilities` / `ProviderId` — the data shapes the runner uses to drive provider spawns.
@@ -40,6 +40,8 @@ None.
 - **claude-interactive uses `npx` not node-pty.** The previous CLAUDE.md note about node-pty is out of date: `claude-p` itself owns the PTY internally; from this domain's point of view it's just another `spawn()`-able binary (or `npx claude-p` when the global install isn't found). All four providers are driven via `spawn()` from the agents runner.
 - **Codex has no session resume.** `codexProvider.capabilities.sessionResume === false`, so the agents runner calls `buildConversationContext(agentId)` and passes the result through `SpawnOptions.conversationContext`. The codex adapter prepends it to the user prompt because Codex's `exec` subcommand has no per-message history flag.
 - **Gemini has no `--append-system-prompt`.** The gemini adapter wraps the system prompt in `<system_instructions>` / `<user_message>` XML tags and concatenates them into a single prompt string so the model can still distinguish the two.
+- **Pi is one-shot JSON, not RPC.** The pi adapter spawns `pi --mode json --print "<prompt>"`, which streams JSONL to stdout and exits when the turn settles — a clean fit for the runner's spawn-per-turn model. (pi's richer `--mode rpc` is a persistent stdin/stdout process and is deliberately not used.) It uses pi's `--append-system-prompt` (keeps pi's built-in coding prompt), `--session-id` / `--continue` for resume, and `--thinking` for the effort level.
+- **Pi's model catalog is discovered, not static.** `pi --list-models` prints a fixed-width table (columns `padEnd`-padded and joined by two spaces); `warmAvailability()` parses the `provider` + `model` columns into `provider/id` entries and caches them, so `getModels()` reflects the models the user actually has configured. Until/without discovery it falls back to a small static Anthropic catalog. `resolveModel` defaults to an Anthropic model when none is supplied and passes unknown `provider/id` strings through for pi to validate at spawn.
 - **Claude's `installHooks` writes to the user's global `~/.claude` directory.** It is idempotent — the PreToolUse entry is skipped if a matching `huxflux-ask-user` hook is already installed. Failures are caught and logged because hook installation is non-fatal for the run.
 - **Parsers tolerate malformed lines.** Every `parseStreamLine` swallows `JSON.parse` errors and returns `null`; the runner skips null events. Sub-agent forwarding (Claude, claude-interactive) is keyed on the presence of `parent_tool_use_id` so unknown event shapes still surface as `subagent` events with the raw payload, keeping the upstream Claude CLI event format observable to the UI without a per-event allowlist.
 
@@ -62,16 +64,16 @@ Every provider implements `parseStreamLine(line: string): NormalizedStreamEvent 
 
 ### Mapping table
 
-| Concept | Claude raw | Codex raw | Gemini raw | NormalizedStreamEvent |
-|---|---|---|---|---|
-| Text chunk | `{ type: "assistant", message: { content: [{ type: "text", text }] } }` | `{ type: "item.completed", item: { type: "agent_message", text } }` | `{ type: "message", role: "assistant", content }` | `{ type: "text", text }` |
-| Thinking | `{ type: "assistant", message: { content: [{ type: "thinking", thinking }] } }` | (not supported) | `{ type: "thinking", content }` | `{ type: "thinking", text }` |
-| Tool use | `{ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } }` | `{ type: "item.completed", item: { type: "command_execution" \| "file_edit", id, ... } }` | `{ type: "tool_use", tool_id, tool_name \| name, parameters \| input }` | `{ type: "tool_use", id, name, input }` |
-| Tool result | `{ type: "tool_result", tool_use_id, content }` | (folded into command_execution above) | `{ type: "tool_result", tool_id, output }` | `{ type: "tool_result", toolUseId, content }` |
-| Session start | `{ type: "system", subtype: "init", session_id }` | (not supported, Codex has no resume) | `{ type: "init", session_id }` | `{ type: "session_init", sessionId }` |
-| Usage | `{ type: "result", usage: { input_tokens, output_tokens, ... } }` | `{ type: "turn.completed", usage: { input_tokens, output_tokens, cached_input_tokens } }` | `{ type: "result", status: "success", stats: { input_tokens, output_tokens } }` | `{ type: "usage", inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens? }` |
-| Error | `{ type: "error", message }` | `{ type: "error", message }` or `{ type: "turn.failed", error: { message } }` | `{ type: "error", message }` or `{ type: "result", status: "error", error: { message } }` | `{ type: "error", message }` |
-| Sub-agent | (any event carrying `parent_tool_use_id`) | (not supported) | (not supported) | `{ type: "subagent", toolUseId, event }` |
+| Concept | Claude raw | Codex raw | Gemini raw | Pi raw | NormalizedStreamEvent |
+|---|---|---|---|---|---|
+| Text chunk | `{ type: "assistant", message: { content: [{ type: "text", text }] } }` | `{ type: "item.completed", item: { type: "agent_message", text } }` | `{ type: "message", role: "assistant", content }` | `{ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } }` | `{ type: "text", text }` |
+| Thinking | `{ type: "assistant", message: { content: [{ type: "thinking", thinking }] } }` | (not supported) | `{ type: "thinking", content }` | `{ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta } }` | `{ type: "thinking", text }` |
+| Tool use | `{ type: "assistant", message: { content: [{ type: "tool_use", id, name, input }] } }` | `{ type: "item.completed", item: { type: "command_execution" \| "file_edit", id, ... } }` | `{ type: "tool_use", tool_id, tool_name \| name, parameters \| input }` | `{ type: "message_update", assistantMessageEvent: { type: "toolcall_end", toolCall: { id, name, arguments } } }` | `{ type: "tool_use", id, name, input }` |
+| Tool result | `{ type: "tool_result", tool_use_id, content }` | (folded into command_execution above) | `{ type: "tool_result", tool_id, output }` | `{ type: "tool_execution_end", toolCallId, result: { content: [...] } }` | `{ type: "tool_result", toolUseId, content }` |
+| Session start | `{ type: "system", subtype: "init", session_id }` | (not supported, Codex has no resume) | `{ type: "init", session_id }` | `{ type: "session", id }` (first line) | `{ type: "session_init", sessionId }` |
+| Usage | `{ type: "result", usage: { input_tokens, output_tokens, ... } }` | `{ type: "turn.completed", usage: { input_tokens, output_tokens, cached_input_tokens } }` | `{ type: "result", status: "success", stats: { input_tokens, output_tokens } }` | `{ type: "message_end", message: { role: "assistant", usage: { input, output, cacheRead, cacheWrite } } }` | `{ type: "usage", inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens? }` |
+| Error | `{ type: "error", message }` | `{ type: "error", message }` or `{ type: "turn.failed", error: { message } }` | `{ type: "error", message }` or `{ type: "result", status: "error", error: { message } }` | `{ type: "message_end", message: { role: "assistant", stopReason: "error", errorMessage } }` or `{ type: "extension_error", error }` | `{ type: "error", message }` |
+| Sub-agent | (any event carrying `parent_tool_use_id`) | (not supported) | (not supported) | (not supported) | `{ type: "subagent", toolUseId, event }` |
 
 `NormalizedStreamEvent` also carries a `done` variant. None of the existing providers emit it from `parseStreamLine`; the agents runner derives "done" from process exit and the optional final `result` event. New parsers should follow suit and not invent a synthetic done.
 

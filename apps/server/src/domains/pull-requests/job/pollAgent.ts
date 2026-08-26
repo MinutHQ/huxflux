@@ -15,7 +15,6 @@ import { jiraTransitionIssue } from "../../tasks/jiraClient.js"
 import { logger } from "../../../logger.js"
 import type { PRDetails, PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
-import { sendToAgent } from "./sendToAgent.js"
 import { markRateLimited, isRateLimited } from "./rateLimitState.js"
 
 type AgentRow = typeof agents.$inferSelect
@@ -66,15 +65,6 @@ async function applyPRStatusUpdate(agent: AgentRow, pr: PRStatus): Promise<void>
   const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
   if (updated) agentsWs.agentUpdated({ ...updated, prStatus: pr } as never)
 
-  if (statusChanged && agent.threadParentId) {
-    const parent = db.select().from(agents).where(eq(agents.id, agent.threadParentId)).get()
-    if (parent && !parent.deletedAt) {
-      const msg = newStatus === "done"
-        ? `Thread agent "${agent.title}" has completed its work${pr.url ? ` and has a PR: ${pr.url}` : ""}.`
-        : `Thread agent "${agent.title}" status changed to ${newStatus}.`
-      sendToAgent(parent.id, msg, agent.title).catch(() => {})
-    }
-  }
   if (newStatus === "done" && statusChanged) await autoCompleteLinkedTasks(agent.id, now)
 }
 

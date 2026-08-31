@@ -526,6 +526,30 @@ const MIGRATIONS: Migration[] = [
     version: 33,
     sql: `ALTER TABLE agents ADD COLUMN fork_parent_id TEXT;`,
   },
+  {
+    version: 34,
+    sql: `
+      CREATE TABLE IF NOT EXISTS claude_usage_samples (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recorded_at INTEGER NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        exponent INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_claude_usage_samples_recorded
+        ON claude_usage_samples(recorded_at);
+    `,
+  },
+  {
+    version: 35,
+    sql: `
+      CREATE TABLE IF NOT EXISTS claude_usage_cache (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        fetched_at INTEGER NOT NULL,
+        payload TEXT NOT NULL
+      );
+    `,
+  },
 ]
 
 export function runMigrations() {

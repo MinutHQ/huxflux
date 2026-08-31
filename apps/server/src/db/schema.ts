@@ -20,3 +20,4 @@ export {
 export { wrappedSummaries } from "../domains/wrapped/wrapped.db.js"
 export { tasks, taskAgents, taskComments, taskDependencies } from "../domains/tasks/tasks.db.js"
 export { automations, automationRuns, automationSkills } from "../domains/automations/automations.db.js"
+export { claudeUsageSamples, claudeUsageCache } from "../domains/claude-usage/claude-usage.db.js"

@@ -4,8 +4,10 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { promisify } from "node:util"
 
-import type { ClaudeUsage, ClaudeUsageWindow } from "@huxflux/shared"
+import type { ClaudeUsage, ClaudeUsageReason, ClaudeUsageSpend, ClaudeUsageWindow } from "@huxflux/shared"
 import { logger } from "../../logger.js"
+import { recordSpendSample, spendDeltas } from "./service/spendHistory.js"
+import { clearCache, isFresh, readCache, writeCache, _resetMemo } from "./service/usageCache.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -19,17 +21,35 @@ interface RawUsageWindow {
   utilization?: number | null
   resets_at?: string | null
 }
+// The credit-spend total, reported as an integer in the currency's minor unit
+// plus the exponent needed to scale it back (34654 / 10^2 = 346.54).
+interface RawSpendAmount {
+  amount_minor?: number | null
+  currency?: string | null
+  exponent?: number | null
+}
+interface RawSpend {
+  used?: RawSpendAmount | null
+}
 interface RawUsageResponse {
   five_hour?: RawUsageWindow | null
   seven_day?: RawUsageWindow | null
+  spend?: RawSpend | null
 }
 
-const disconnected = (error: string): ClaudeUsage => ({
+const disconnected = (reason: ClaudeUsageReason, error: string): ClaudeUsage => ({
   connected: false,
   session: null,
   weekly: null,
+  spend: null,
+  reason,
   error,
 })
+
+// Deltas need the sample history, which lives behind the database. The pure
+// mapper can't reach it, so it emits an empty set and `fetchClaudeUsage` fills
+// them in once the reading has been recorded.
+const noDeltas = { hour: null, day: null, week: null }
 
 function toWindow(raw: RawUsageWindow | null | undefined): ClaudeUsageWindow | null {
   if (!raw || typeof raw.utilization !== "number" || typeof raw.resets_at !== "string") {
@@ -38,16 +58,27 @@ function toWindow(raw: RawUsageWindow | null | undefined): ClaudeUsageWindow | n
   return { utilization: raw.utilization, resetsAt: raw.resets_at }
 }
 
-// Last successful usage reading. Anthropic's usage endpoint is occasionally
-// slow (we abort at 5s) or rate-limited; rather than collapsing the sidebar to
-// "disconnected" on a single transient failure, we keep serving the last good
-// reading as long as a token is still present. Cleared when the token vanishes
-// (sign-out) or on process restart.
-let lastGood: ClaudeUsage | null = null
+function toSpend(raw: RawSpend | null | undefined): ClaudeUsageSpend | null {
+  const used = raw?.used
+  if (
+    !used ||
+    typeof used.amount_minor !== "number" ||
+    typeof used.currency !== "string" ||
+    typeof used.exponent !== "number"
+  ) {
+    return null
+  }
+  return {
+    amountMinor: used.amount_minor,
+    currency: used.currency,
+    exponent: used.exponent,
+    deltas: { ...noDeltas },
+  }
+}
 
 // Test-only: reset the cached reading so cases don't leak state into each other.
 export function _resetUsageCache(): void {
-  lastGood = null
+  _resetMemo()
 }
 
 // Pure mapping from the upstream payload to our normalized shape. Exported so
@@ -57,6 +88,8 @@ export function mapUsageResponse(raw: RawUsageResponse): ClaudeUsage {
     connected: true,
     session: toWindow(raw.five_hour),
     weekly: toWindow(raw.seven_day),
+    spend: toSpend(raw.spend),
+    reason: null,
     error: null,
   }
 }
@@ -97,14 +130,20 @@ async function resolveAccessToken(): Promise<string | null> {
   }
 }
 
-export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
+export async function fetchClaudeUsage(now: number = Date.now()): Promise<ClaudeUsage> {
   const token = await resolveAccessToken()
   if (!token) {
     // No account signed in — genuinely disconnected. Drop any stale reading so
     // we don't keep showing usage for an account that's no longer present.
-    lastGood = null
-    return disconnected("No Claude OAuth token found (sign in to a Claude subscription account)")
+    clearCache()
+    return disconnected("no-token", "No Claude OAuth token found (sign in to a Claude subscription account)")
   }
+
+  // Serve a recent reading without going upstream. Every open client polls once
+  // a minute, so without this the upstream call rate scales with the number of
+  // clients and the account starts collecting 429s.
+  const cached = readCache()
+  if (cached && isFresh(cached, now)) return cached.usage
 
   const baseUrl = process.env.ANTHROPIC_BASE_API_URL?.trim() || "https://api.anthropic.com"
   const controller = new AbortController()
@@ -125,24 +164,29 @@ export async function fetchClaudeUsage(): Promise<ClaudeUsage> {
       // don't linger for an account that can no longer authenticate. Other
       // statuses (429, 5xx) are transient — fall back to the last good reading.
       if (res.status === 401 || res.status === 403) {
-        lastGood = null
-        return disconnected(`Usage request failed (${res.status})`)
+        clearCache()
+        return disconnected("auth", `Usage request failed (${res.status})`)
       }
-      return staleOr(disconnected(`Usage request failed (${res.status})`))
+      const reason: ClaudeUsageReason = res.status === 429 ? "rate-limited" : "unavailable"
+      return cached?.usage ?? disconnected(reason, `Usage request failed (${res.status})`)
     }
     const usage = mapUsageResponse((await res.json()) as RawUsageResponse)
-    lastGood = usage
+    // Log this reading before diffing against it, so the history always
+    // contains the number we are about to report.
+    if (usage.spend) {
+      recordSpendSample(usage.spend, now)
+      usage.spend.deltas = spendDeltas(usage.spend, now)
+    }
+    writeCache(usage, now)
     return usage
   } catch (err) {
     logger.warn({ err }, "[claude-usage] failed to fetch usage")
-    return staleOr(disconnected(err instanceof Error ? err.message : "Unknown error"))
+    // A transient failure (timeout, 429, 5xx, network) falls back to the last
+    // good reading at whatever age, since a token is still present and the
+    // account is therefore still connected. That reading now outlives a
+    // restart, so a server that comes up into a rate limit still has numbers.
+    return cached?.usage ?? disconnected("unavailable", err instanceof Error ? err.message : "Unknown error")
   } finally {
     clearTimeout(timer)
   }
-}
-
-// On a transient fetch failure, prefer the last good reading (a token is still
-// present, so the account is connected) over collapsing to disconnected.
-function staleOr(fallback: ClaudeUsage): ClaudeUsage {
-  return lastGood ?? fallback
 }

@@ -2,13 +2,27 @@ import { View, Text, TouchableOpacity } from "react-native"
 import { useRouter } from "expo-router"
 import { useState } from "react"
 import { c } from "@/theme"
+import { useModal } from "@/ui"
+import { canSaveToPhone, useFileDownload } from "../../hooks/useFileDownload"
 
 export type TreeNode = { name: string; path: string; type: "file" | "directory"; children?: TreeNode[] }
 
 export function TreeRow({ node, depth, agentId }: { node: TreeNode; depth: number; agentId: string }) {
   const router = useRouter()
+  const modal = useModal()
+  const { saveToPhone } = useFileDownload()
   const [expanded, setExpanded] = useState(false)
   const isDir = node.type === "directory"
+
+  function handleLongPress() {
+    if (isDir || !canSaveToPhone) return
+    modal.showActionSheet(node.name, [
+      {
+        label: "Save to phone",
+        onPress: () => saveToPhone({ agentId, path: node.path, kind: "file" }),
+      },
+    ])
+  }
 
   return (
     <View>
@@ -20,6 +34,8 @@ export function TreeRow({ node, depth, agentId }: { node: TreeNode; depth: numbe
             router.push({ pathname: "/agent/[id]/file-content", params: { id: agentId, path: node.path } })
           }
         }}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
         style={{
           paddingLeft: 16 + depth * 16, paddingRight: 16, paddingVertical: 10,
           borderBottomWidth: 1, borderBottomColor: c.border,

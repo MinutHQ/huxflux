@@ -9,6 +9,7 @@ const GIT_ARCHIVE_ON_MERGE_KEY = "huxflux:git:archive-on-merge"
 export const COLLAPSED_SECTIONS_KEY = "huxflux:mobile:collapsed-sections"
 export const REPO_FILTER_KEY = "huxflux:mobile:repo-filter"
 export const GROUP_BY_KEY = "huxflux:mobile:group-by"
+export const DOWNLOAD_DIR_KEY = "huxflux:mobile:download-dir"
 
 export const PREF_KEYS = [
   STRIP_KEY,
@@ -20,6 +21,7 @@ export const PREF_KEYS = [
   COLLAPSED_SECTIONS_KEY,
   REPO_FILTER_KEY,
   GROUP_BY_KEY,
+  DOWNLOAD_DIR_KEY,
 ]
 
 function get(key: string, defaultVal: boolean): boolean {
@@ -50,4 +52,10 @@ export const prefs = {
 
   getGitArchiveOnMerge: () => get(GIT_ARCHIVE_ON_MERGE_KEY, true),
   setGitArchiveOnMerge: (v: boolean) => set(GIT_ARCHIVE_ON_MERGE_KEY, v),
+
+  // The Android folder the user picked for saved files, as a Storage Access
+  // Framework tree URI. Remembered so only the first download has to ask.
+  getDownloadDir: () => getStorage().getItem(DOWNLOAD_DIR_KEY),
+  setDownloadDir: (uri: string) => getStorage().setItem(DOWNLOAD_DIR_KEY, uri),
+  clearDownloadDir: () => getStorage().removeItem(DOWNLOAD_DIR_KEY),
 }

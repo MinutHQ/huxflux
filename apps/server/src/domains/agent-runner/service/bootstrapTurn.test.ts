@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import * as fs from "node:fs/promises"
+import * as os from "node:os"
+import * as path from "node:path"
 import { eq } from "drizzle-orm"
 import { agents as agentsTable, messages as messagesTable, repos as reposTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, silenceLogs, type TestDb, type CapturedWsEvents, type SilencedLogs } from "../../../../test/harness.js"
@@ -6,7 +9,7 @@ import { bootstrapTurn } from "./bootstrapTurn.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import type { RunnerOptions } from "../../agents/agents.types.js"
 
-function fakeProvider(sessionResume = true): ProviderAdapter {
+function fakeProvider(sessionResume = true, extra: Partial<ProviderAdapter> = {}): ProviderAdapter {
   return {
     id: "claude",
     name: "Claude",
@@ -22,7 +25,22 @@ function fakeProvider(sessionResume = true): ProviderAdapter {
     parseStreamLine: () => null,
     resolveModel: (m) => m,
     getModels: () => [],
+    ...extra,
   }
+}
+
+/** A provider that keeps session state where the server cannot stat it — i.e.
+ *  supplies neither sessionFilePath nor continueProbePath (pi, gemini, codex). */
+function opaqueSessionProvider(): ProviderAdapter {
+  return fakeProvider(true)
+}
+
+/** A provider whose transcripts live on disk, like the two Claude adapters. */
+function probedProvider(sessionFile: string, continueProbe: string): ProviderAdapter {
+  return fakeProvider(true, {
+    sessionFilePath: () => sessionFile,
+    continueProbePath: () => continueProbe,
+  })
 }
 
 interface Ctx {
@@ -135,5 +153,61 @@ describe("bootstrapTurn", () => {
     expect(result.preRunStatus).toBe("cancelled")
     const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
     expect(row.status).toBe("cancelled")
+  })
+
+  it("keeps a stored sessionId when the provider exposes no transcript path", async () => {
+    ctx.testDb.db.update(agentsTable).set({ sessionId: "pi-sess" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const result = await bootstrapTurn("hi", buildOpts(ctx), opaqueSessionProvider())
+    expect(result.existingSessionId).toBe("pi-sess")
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.sessionId).toBe("pi-sess")
+  })
+
+  it("clears the sessionId when a probed provider's transcript is gone", async () => {
+    ctx.testDb.db.update(agentsTable).set({ sessionId: "claude-sess" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const provider = probedProvider("/totally/missing/transcript.jsonl", "/totally/missing/settings.json")
+    const result = await bootstrapTurn("hi", buildOpts(ctx), provider)
+    expect(result.existingSessionId).toBeNull()
+    const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
+    expect(row.sessionId).toBeNull()
+  })
+
+  it("keeps the sessionId when a probed provider's transcript exists", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hux-boot-"))
+    const sessionFile = path.join(dir, "sess.jsonl")
+    await fs.writeFile(sessionFile, "")
+    ctx.testDb.db.update(agentsTable).set({ sessionId: "claude-sess" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    const result = await bootstrapTurn("hi", buildOpts(ctx), probedProvider(sessionFile, sessionFile))
+    expect(result.existingSessionId).toBe("claude-sess")
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it("passes useContinue on a continuation when the provider exposes no probe path", async () => {
+    const now = new Date().toISOString()
+    ctx.testDb.db.insert(messagesTable).values({
+      id: "older", agentId: ctx.agentId, role: "user", content: "older",
+      timestamp: now, createdAt: now,
+    }).run()
+    const result = await bootstrapTurn("follow-up", buildOpts(ctx), opaqueSessionProvider())
+    expect(result.useContinue).toBe(true)
+  })
+
+  it("withholds useContinue when a probed provider has no history in the cwd", async () => {
+    const now = new Date().toISOString()
+    ctx.testDb.db.insert(messagesTable).values({
+      id: "older", agentId: ctx.agentId, role: "user", content: "older",
+      timestamp: now, createdAt: now,
+    }).run()
+    const provider = probedProvider("/totally/missing/transcript.jsonl", "/totally/missing/settings.json")
+    const result = await bootstrapTurn("follow-up", buildOpts(ctx), provider)
+    expect(result.useContinue).toBe(false)
+  })
+
+  it("never probes a transcript when the provider cannot resume", async () => {
+    ctx.testDb.db.update(agentsTable).set({ sessionId: "stale" }).where(eq(agentsTable.id, ctx.agentId)).run()
+    let probed = false
+    const provider = fakeProvider(false, { sessionFilePath: () => { probed = true; return "/x" } })
+    await bootstrapTurn("hi", buildOpts(ctx), provider)
+    expect(probed).toBe(false)
   })
 })

@@ -8,12 +8,14 @@ import { claudeProvider } from "./service/claude.js"
 import { codexProvider } from "./service/codex.js"
 import { geminiProvider } from "./service/gemini.js"
 import { claudeInteractiveProvider } from "./service/claudeInteractive.js"
+import { piProvider } from "./service/pi.js"
 
 const builtinProviders: Record<string, ProviderAdapter> = {
   claude: claudeProvider,
   "claude-interactive": claudeInteractiveProvider,
   codex: codexProvider,
   gemini: geminiProvider,
+  pi: piProvider,
 }
 
 let providers: Record<string, ProviderAdapter> = { ...builtinProviders }

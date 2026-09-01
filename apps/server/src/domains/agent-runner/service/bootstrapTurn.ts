@@ -1,5 +1,4 @@
 import * as fs from "node:fs/promises"
-import * as os from "node:os"
 import * as path from "node:path"
 import { v4 as uuid } from "uuid"
 import { and, eq } from "drizzle-orm"
@@ -166,22 +165,29 @@ async function resolveCwdAndSession(args: ResolveCwdArgs): Promise<{
     cwd = process.cwd()
   }
 
-  // B4: Check if Claude session file exists before using --continue.
+  // B4: only pass --continue when the provider's own history is present in cwd.
+  // Providers that expose no probe path keep their history outside the
+  // workspace, so there is nothing to check and the flag always applies.
   let useContinue = isContinuation
-  if (useContinue) {
+  const continueProbe = useContinue ? provider.continueProbePath?.(cwd) : undefined
+  if (continueProbe) {
     try {
-      await fs.access(`${cwd}/.claude/settings.json`)
+      await fs.access(continueProbe)
     } catch {
       useContinue = false
     }
   }
 
-  // If --resume would point at a session file that no longer exists for THIS
-  // cwd (e.g. worktree moved and the projects/ dir didn't follow), clearing
+  // If resuming would point at a session file that no longer exists for THIS
+  // cwd (e.g. worktree moved and the transcript dir didn't follow), clearing
   // existingSessionId now lets the runner rebuild context from DB messages
-  // instead of failing with "No conversation found with session ID".
-  if (existingSessionId && provider.capabilities.sessionResume) {
-    const sessionFile = path.join(os.homedir(), ".claude", "projects", cwd.replace(/[./]/g, "-"), `${existingSessionId}.jsonl`)
+  // instead of failing with "No conversation found with session ID". Only
+  // providers that tell us where their transcripts live get probed — the rest
+  // resolve their own session ids and must keep the stored one.
+  const sessionFile = existingSessionId && provider.capabilities.sessionResume
+    ? provider.sessionFilePath?.(cwd, existingSessionId)
+    : undefined
+  if (existingSessionId && sessionFile) {
     try {
       await fs.access(sessionFile)
     } catch {

@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises"
 import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
+import { claudeContinueProbePath, claudeSessionFilePath } from "./claudeSessionPaths.js"
 import { logger } from "../../../logger.js"
 
 interface ClaudeRawBlock {
@@ -168,6 +169,14 @@ export const claudeProvider: ProviderAdapter = {
 
   getModels() {
     return MODELS
+  },
+
+  sessionFilePath(cwd: string, sessionId: string): string {
+    return claudeSessionFilePath(cwd, sessionId)
+  },
+
+  continueProbePath(cwd: string): string {
+    return claudeContinueProbePath(cwd)
   },
 
   async installHooks(_agentId: string, _cwd: string, _apiBase: string, _authToken: string): Promise<void> {

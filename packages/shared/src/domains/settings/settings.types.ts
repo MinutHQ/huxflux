@@ -44,16 +44,34 @@ export const partialHuxfluxSettingsSchema = huxfluxSettingsSchema
 
 // ── ProviderInfo ─────────────────────────────────────────────────────────────
 
+export const modelCapabilitiesSchema = z.object({
+  reasoning: z.boolean().optional(),
+  toolCall: z.boolean().optional(),
+  structuredOutput: z.boolean().optional(),
+  attachment: z.boolean().optional(),
+})
+
+export const providerModelSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  api: z.string(),
+  contextWindow: z.number().optional(),
+  maxOutput: z.number().optional(),
+  inputCost: z.number().optional(),
+  outputCost: z.number().optional(),
+  capabilities: modelCapabilitiesSchema.optional(),
+  effortLevels: z.array(z.string()).optional(),
+  defaultEffort: z.string().optional(),
+})
+
+export type ProviderModel = z.infer<typeof providerModelSchema>
+
 export const providerInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
   available: z.boolean(),
   capabilities: z.record(z.string(), z.union([z.boolean(), z.array(z.string())])),
-  models: z.array(z.object({
-    id: z.string(),
-    label: z.string(),
-    api: z.string(),
-  })),
+  models: z.array(providerModelSchema),
 })
 
 export type ProviderInfo = z.infer<typeof providerInfoSchema>

@@ -61,7 +61,7 @@ function flushRemainingBuffer(args: FinalizeArgs): void {
   // Flush any remaining buffered data (last line may lack trailing newline)
   const { bufferRef, provider, state, agentId, messageId, scheduleFlush } = args
   if (!bufferRef.current.trim()) return
-  const isClaudeFmt = provider.id === "claude" || provider.id === "claude-interactive"
+  const isClaudeFmt = provider.id === "claude"
   const remaining = isClaudeFmt
     ? [bufferRef.current.trim()]
     : bufferRef.current.trim().replace(/\}\s*\{/g, "}\n{").split("\n")

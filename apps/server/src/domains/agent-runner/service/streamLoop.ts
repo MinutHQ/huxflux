@@ -68,8 +68,8 @@ function processStdoutChunk(
   messageId: string,
   scheduleFlush: () => void,
 ): void {
-  const isClaudeFormat = provider.id === "claude" || provider.id === "claude-interactive"
-  if (provider.id === "claude-interactive" || provider.id === "gemini") {
+  const isClaudeFormat = provider.id === "claude"
+  if (provider.id === "gemini") {
     logger.info(`[runner:${provider.id}] stdout chunk (${chunk.length}b): ${chunk.toString().slice(0, 200)}`)
   }
   bufferRef.current += chunk.toString()

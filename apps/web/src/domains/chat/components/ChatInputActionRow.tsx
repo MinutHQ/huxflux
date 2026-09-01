@@ -107,8 +107,10 @@ function SendOrApprove(props: Pick<ChatInputBarProps, "showPlanApproval" | "onPl
 
 export function ChatInputActionRow(props: ChatInputBarProps) {
   const { agent, allModels, providers, capabilities, effort, setEffort, isStreaming, hideChrome, fileInputRef, onFileSelect, onModelChange, planMode, isInPlanMode, setPlanMode } = props
-  const currentLabel = allModels.find((m) => m.id === agent.model)?.label ?? agent.model
-  const effortLevels = (capabilities.effortLevels ?? []) as string[]
+  const agentProvider = agent.provider ?? "claude"
+  const currentModel = allModels.find((m: { id: string; provider: string }) => m.provider === agentProvider && m.id === agent.model)
+  const currentLabel = currentModel?.label ?? agent.model
+  const effortLevels = (currentModel?.effortLevels ?? capabilities.effortLevels ?? []) as string[]
 
   return (
     <div className="flex items-center justify-between px-3 pb-3">

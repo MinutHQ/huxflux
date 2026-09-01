@@ -111,6 +111,11 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
         { repo, branch, code, fullContentBytes: state.fullContent.length, pendingTextBytes: state.pendingText.length },
         `[runner] ${provider.id} exited code=${code} fullContent=${state.fullContent.length}bytes pendingText=${state.pendingText.length}bytes`,
       )
+      if (code && code !== 0 && state.fullContent.length === 0 && state.pendingText.length === 0) {
+        const errMsg = `${provider.name} exited with code ${code}. Check the terminal tab for details.`
+        state.pendingText = errMsg
+        agentsWs.errorEmit(agentId, errMsg)
+      }
       await finalize()
       resolve()
     })
@@ -177,7 +182,7 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
   })
 
   // Apply sandboxing if configured (currently Claude-only)
-  if (config.sandbox && (provider.id === "claude" || provider.id === "claude-interactive")) {
+  if (config.sandbox && provider.id === "claude") {
     const sandboxed = buildSandboxedCommand({
       claudeBin: spawnResult.bin,
       claudeArgs: spawnResult.args,

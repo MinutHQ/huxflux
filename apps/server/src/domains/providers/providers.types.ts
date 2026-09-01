@@ -1,4 +1,24 @@
-export type ProviderId = "claude" | "claude-interactive" | "codex" | "gemini" | "pi"
+export type ProviderId = "claude" | "codex" | "gemini" | "antigravity" | "pi"
+
+export interface ModelCapabilities {
+  reasoning?: boolean
+  toolCall?: boolean
+  structuredOutput?: boolean
+  attachment?: boolean
+}
+
+export interface ProviderModel {
+  id: string
+  label: string
+  api: string
+  contextWindow?: number
+  maxOutput?: number
+  inputCost?: number
+  outputCost?: number
+  capabilities?: ModelCapabilities
+  effortLevels?: string[]
+  defaultEffort?: string
+}
 
 export interface ProviderCapabilities {
   sessionResume: boolean
@@ -74,7 +94,7 @@ export interface ProviderAdapter {
   resolveModel(model: string): string
 
   /** Get the list of available models for this provider */
-  getModels(): Array<{ id: string; label: string; api: string }>
+  getModels(): ProviderModel[]
 
   /** Install any hooks needed (e.g. AskUserQuestion for Claude). No-op for most providers. */
   installHooks?(agentId: string, cwd: string, apiBase: string, authToken: string): Promise<void>

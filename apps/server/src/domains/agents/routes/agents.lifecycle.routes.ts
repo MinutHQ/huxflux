@@ -8,6 +8,7 @@ import { unwatchWorktree } from "../../git/watcher.js"
 import { killWorktreeProcesses } from "../../git/processes.js"
 import { agentsWs } from "../agents.ws.js"
 import { killAgentTerminals } from "../../ws/pty.js"
+import { clearQueue } from "../service/messageQueue.js"
 import * as path from "node:path"
 
 const idParamsSchema = z.object({ id: z.string() })
@@ -22,12 +23,15 @@ export const agentsLifecycleRoutes: FastifyPluginAsyncZod = async (app) => {
 
     const now = new Date().toISOString()
 
+    clearQueue(req.params.id)
+
     // Kill all PTY processes for this agent and its children
     killAgentTerminals(req.params.id)
     const childRows = db.select({ id: agents.id }).from(agents)
       .where(eq(agents.parentAgentId, req.params.id))
       .all()
     for (const child of childRows) {
+      clearQueue(child.id)
       killAgentTerminals(child.id)
     }
 

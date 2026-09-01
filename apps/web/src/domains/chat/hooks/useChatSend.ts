@@ -25,6 +25,7 @@ interface QueuedMessage {
   display: string
   api: string
   planMode?: boolean
+  effort?: string
 }
 
 async function buildContent(args: UseChatSendArgs, text: string): Promise<string> {
@@ -77,7 +78,7 @@ export function useChatSend(args: UseChatSendArgs) {
     displayText: string,
     apiContent: string,
     opts?: { planMode?: boolean; effort?: string },
-  ) => {
+  ): Promise<boolean> => {
     setIsSending(true)
     const optimisticMsg: Message = {
       id: `optimistic-${Date.now()}`,
@@ -93,15 +94,14 @@ export function useChatSend(args: UseChatSendArgs) {
       // fire-and-forget; intentional: optimistic-rollback send with custom cache mutations and isSending bridged via WS streaming state
       // eslint-disable-next-line no-restricted-syntax
       await api.agents.sendMessage(agent.id, apiContent, opts)
-      // Don't clear isSending immediately — wait for the server's streaming flag
-      // to arrive via websocket so there's no gap in the loading indicator.
-      // The flag clears itself when isAgentStreaming becomes true (see effect below).
+      return true
     } catch {
       queryClient.setQueryData<Agent>(queryKeys.agents.detail(agent.id), (old) => {
         if (!old) return old
         return { ...old, messages: old.messages.filter((m) => m.id !== optimisticMsg.id) }
       })
       setIsSending(false)
+      return false
     }
   }, [agent.id, queryClient])
 
@@ -110,9 +110,15 @@ export function useChatSend(args: UseChatSendArgs) {
     if (isStreaming) return
     const idx = messageQueue.findIndex((m) => m.agentId === agent.id)
     if (idx === -1) return
-    const next = messageQueue[idx]
+    const next = messageQueue[idx]!
     setMessageQueue((prev) => prev.filter((_, i) => i !== idx))
-    void sendContent(next.display, next.api, next.planMode ? { planMode: true } : undefined)
+    const opts: { planMode?: boolean; effort?: string } = {}
+    if (next.planMode) opts.planMode = true
+    if (next.effort) opts.effort = next.effort
+    void sendContent(next.display, next.api, Object.keys(opts).length > 0 ? opts : undefined)
+      .then((ok) => {
+        if (!ok) setMessageQueue((prev) => [next, ...prev])
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming, agent.id])
 
@@ -131,6 +137,7 @@ export function useChatSend(args: UseChatSendArgs) {
         display: text,
         api: apiContent,
         planMode: isPlan || undefined,
+        effort: effort || undefined,
       }])
       return
     }

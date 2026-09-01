@@ -43,7 +43,6 @@ type Catalog = Record<string, CatalogProvider>
 
 let catalog: Catalog | null = null
 let fetchPromise: Promise<void> | null = null
-let lastFetchAt = 0
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 function toCatalogModel(m: CatalogModel): ProviderModel {
@@ -86,7 +85,6 @@ export async function fetchModelsCatalog(): Promise<void> {
         return
       }
       catalog = (await res.json()) as Catalog
-      lastFetchAt = Date.now()
       logger.info("[models-catalog] catalog loaded")
 
       if (refreshTimer) clearTimeout(refreshTimer)

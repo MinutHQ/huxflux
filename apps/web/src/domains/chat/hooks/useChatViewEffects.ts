@@ -46,7 +46,7 @@ export function useFlushDraftOnSwitch(agent: Agent, prevAgentIdRef: React.Mutabl
   }, [agent.id])
 }
 
-export function useInitialMessage(initialMessage: string | null | undefined, onConsume: (() => void) | undefined, sendContent: (display: string, api: string) => Promise<void>) {
+export function useInitialMessage(initialMessage: string | null | undefined, onConsume: (() => void) | undefined, sendContent: (display: string, api: string) => Promise<boolean>) {
   const initialMessageSent = useRef(false)
   useEffect(() => {
     if (initialMessage && !initialMessageSent.current) {

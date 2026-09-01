@@ -1,13 +1,11 @@
-import type { FastifyInstance, FastifyReply } from "fastify"
+import type { FastifyReply } from "fastify"
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { z } from "zod/v4"
 import { eq, inArray, lt, and } from "drizzle-orm"
 import { sendMessageBodySchema, type SendMessageBody } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, messages, toolCalls, repos } from "../../../db/schema.js"
-import { runAgent, isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { enqueue, drainQueue } from "../service/messageQueue.js"
-import { buildChatRunOptions } from "../service/chatRun.js"
 import type { QueuedMessage } from "../agents.types.js"
 import * as path from "node:path"
 
@@ -29,7 +27,7 @@ export const messagesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post(
     "/api/agents/:id/messages",
     { schema: { params: idParamsSchema, body: sendMessageBodySchema } },
-    (req, reply) => sendMessageHandler(app, req.params.id, req.body, reply),
+    (req, reply) => sendMessageHandler(req.params.id, req.body, reply),
   )
 }
 
@@ -83,7 +81,6 @@ async function listMessagesHandler(
 }
 
 async function sendMessageHandler(
-  app: FastifyInstance,
   id: string,
   body: SendMessageBody,
   reply: FastifyReply,
@@ -113,30 +110,9 @@ async function sendMessageHandler(
     effort,
   }
 
-  // If agent is busy, queue the message and return immediately
-  if (isAgentRunning(id)) {
-    enqueue(id, opts)
-    reply.code(202)
-    return { status: "queued" }
-  }
-
-  // Title and branch are set by the agent via huxflux tags wired up in
-  // `buildChatRunOptions` (handlers + per-context tag instructions).
-
-  // Fire and forget — streaming happens over WebSocket; drain queue when done
-  runAgent(content, buildChatRunOptions({
-    agentId: id,
-    worktreePath: opts.worktreePath,
-    model: opts.model,
-    planMode: opts.planMode,
-    delegateFrom: opts.delegateFrom,
-    sender: opts.sender,
-    provider: opts.provider,
-    effort: opts.effort,
-  }))
-    .catch((err) => app.log.error(`Claude runner error for agent ${id}: ${err}`))
-    .finally(() => drainQueue(id, app))
+  enqueue(id, opts)
+  drainQueue(id)
 
   reply.code(202)
-  return { status: "running" }
+  return { status: "queued" }
 }

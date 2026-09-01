@@ -60,18 +60,15 @@ export function SettingsPanel({ automation, onUpdate }: SettingsPanelProps) {
         <div className="space-y-1.5">
           <label className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">Provider</label>
           <div className="flex gap-2">
-            {["claude", "claude-interactive"].map((p) => (
-              <button
-                key={p}
-                onClick={() => setProvider(p)}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-lg text-[11px] border transition-colors capitalize",
-                  provider === p ? "bg-primary/15 text-foreground border-primary/30" : "bg-accent/30 text-muted-foreground/60 border-border/40 hover:text-foreground"
-                )}
-              >
-                {p === "claude-interactive" ? "Claude (Interactive)" : "Claude"}
-              </button>
-            ))}
+            <button
+              onClick={() => setProvider("claude")}
+              className={cn(
+                "px-2.5 py-1.5 rounded-lg text-[11px] border transition-colors",
+                provider === "claude" ? "bg-primary/15 text-foreground border-primary/30" : "bg-accent/30 text-muted-foreground/60 border-border/40 hover:text-foreground"
+              )}
+            >
+              Claude
+            </button>
           </div>
         </div>
 

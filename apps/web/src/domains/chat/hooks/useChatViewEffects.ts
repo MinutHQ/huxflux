@@ -15,7 +15,7 @@ export function useProvidersAndModels(agent: Agent) {
     if (providers.length === 0) return FALLBACK_MODELS
     return providers
       .filter((p) => p.available)
-      .flatMap((p) => p.models.map((m) => ({ id: m.api || m.id, label: m.label, provider: p.id })))
+      .flatMap((p) => p.models.map((m) => ({ id: m.api || m.id, label: m.label, provider: p.id, effortLevels: m.effortLevels, defaultEffort: m.defaultEffort })))
   }, [providers])
   const currentProvider = providers.find((p) => p.id === (agent.provider ?? "claude"))
   const capabilities = currentProvider?.capabilities ?? {}

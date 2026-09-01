@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
+import type { ProviderAdapter, ProviderCapabilities, ProviderModel, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
+import { expandPiModels } from "./modelsCatalog.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -14,10 +15,12 @@ const DEFAULT_MODEL = `${DEFAULT_PROVIDER}/claude-sonnet-4-6`
  * produced a real list. pi validates `--model` at spawn time, so a wrong id
  * surfaces as a clear spawn error rather than a silent fallback.
  */
-const FALLBACK_MODELS: Array<{ id: string; label: string; api: string }> = [
-  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", api: "anthropic/claude-sonnet-4-6" },
-  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8", api: "anthropic/claude-opus-4-8" },
-  { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", api: "anthropic/claude-haiku-4-5-20251001" },
+const PI_EFFORT_LEVELS = ["low", "medium", "high", "max"]
+
+const FALLBACK_MODELS: ProviderModel[] = [
+  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", api: "anthropic/claude-sonnet-4-6", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8", api: "anthropic/claude-opus-4-8", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", api: "anthropic/claude-haiku-4-5-20251001", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
 ]
 
 /** pi `--thinking` levels (subset we expose as Huxflux "effort"). */
@@ -27,7 +30,7 @@ const binary = createBinaryResolver({ defaultBin: "pi", envVar: "PI_BIN" })
 
 // Populated by `warmAvailability()` from `pi --list-models`; falls back to the
 // static list above when discovery has not run or failed.
-let models: Array<{ id: string; label: string; api: string }> = [...FALLBACK_MODELS]
+let models: ProviderModel[] = [...FALLBACK_MODELS]
 let discoveryPromise: Promise<void> | null = null
 
 interface PiToolCall {
@@ -227,7 +230,11 @@ export const piProvider: ProviderAdapter = {
   },
 
   getModels() {
-    return models
+    return expandPiModels(models).map((m) => ({
+      ...m,
+      effortLevels: m.effortLevels ?? PI_EFFORT_LEVELS,
+      defaultEffort: m.defaultEffort ?? "high",
+    }))
   },
 }
 
@@ -247,7 +254,7 @@ function extractToolResultText(result?: { content?: PiToolResultBlock[] }): stri
  * `provider` and `model` columns (both space-free) and compose the pi model
  * pattern `provider/id`.
  */
-export function parseListModelsTable(raw: string): Array<{ id: string; label: string; api: string }> {
+export function parseListModelsTable(raw: string): ProviderModel[] {
   const lines = raw.split("\n").map((l) => l.replace(/\r$/, "")).filter((l) => l.trim())
   if (lines.length < 2) return []
   const header = lines[0]
@@ -255,7 +262,7 @@ export function parseListModelsTable(raw: string): Array<{ id: string; label: st
   const contextStart = header.indexOf("context")
   if (modelStart === -1 || contextStart === -1 || contextStart <= modelStart) return []
 
-  const out: Array<{ id: string; label: string; api: string }> = []
+  const out: ProviderModel[] = []
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]
     const provider = line.slice(0, modelStart).trim()

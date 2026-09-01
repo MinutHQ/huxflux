@@ -130,9 +130,6 @@ export function StartWorkPopover({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="claude" className="text-xs">Claude</SelectItem>
-                <SelectItem value="claude-interactive" className="text-xs">
-                  Claude (Interactive)
-                </SelectItem>
               </SelectContent>
             </Select>
           </div>

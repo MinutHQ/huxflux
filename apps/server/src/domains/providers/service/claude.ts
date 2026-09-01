@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises"
-import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
+import type { ProviderAdapter, ProviderCapabilities, ProviderModel, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
 import { claudeContinueProbePath, claudeSessionFilePath } from "./claudeSessionPaths.js"
+import { getModelsForHarness } from "./modelsCatalog.js"
 import { logger } from "../../../logger.js"
 
 interface ClaudeRawBlock {
@@ -40,15 +41,17 @@ const MODEL_ALIASES: Record<string, string> = {
   "Haiku 4.5":  "claude-haiku-4-5",
 }
 
-const MODELS = [
-  { id: "claude-opus-5",             label: "Opus 5",     api: "claude-opus-5" },
-  { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8" },
-  { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7" },
-  { id: "claude-opus-4-6",           label: "Opus 4.6",   api: "claude-opus-4-6" },
-  { id: "claude-fable-5",            label: "Fable 5",    api: "claude-fable-5" },
-  { id: "claude-sonnet-5",           label: "Sonnet 5",   api: "claude-sonnet-5" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", api: "claude-sonnet-4-6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  api: "claude-haiku-4-5-20251001" },
+const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"]
+
+const FALLBACK_MODELS: ProviderModel[] = [
+  { id: "claude-opus-5",             label: "Opus 5",     api: "claude-opus-5",             effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-6",           label: "Opus 4.6",   api: "claude-opus-4-6",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-fable-5",            label: "Fable 5",    api: "claude-fable-5",            effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-sonnet-5",           label: "Sonnet 5",   api: "claude-sonnet-5",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", api: "claude-sonnet-4-6",         effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  api: "claude-haiku-4-5-20251001", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
 ]
 
 const binary = createBinaryResolver({ defaultBin: "claude", envVar: "CLAUDE_BIN" })
@@ -164,11 +167,16 @@ export const claudeProvider: ProviderAdapter = {
   resolveModel(model: string): string {
     if (!model) return "claude-sonnet-4-6"
     if (model.startsWith("claude-")) return model
-    return MODEL_ALIASES[model] ?? "claude-sonnet-4-6"
+    if (MODEL_ALIASES[model]) return MODEL_ALIASES[model]
+    const models = this.getModels()
+    const match = models.find((m) => m.id === model || m.label === model)
+    return match?.api ?? "claude-sonnet-4-6"
   },
 
   getModels() {
-    return MODELS
+    const catalog = getModelsForHarness("claude")
+    if (!catalog) return FALLBACK_MODELS
+    return catalog.map((m) => ({ ...m, effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" }))
   },
 
   sessionFilePath(cwd: string, sessionId: string): string {

@@ -7,14 +7,15 @@ import type { ProviderId, ProviderAdapter } from "./providers.types.js"
 import { claudeProvider } from "./service/claude.js"
 import { codexProvider } from "./service/codex.js"
 import { geminiProvider } from "./service/gemini.js"
-import { claudeInteractiveProvider } from "./service/claudeInteractive.js"
 import { piProvider } from "./service/pi.js"
+import { antigravityProvider } from "./service/antigravity.js"
+import { fetchModelsCatalog } from "./service/modelsCatalog.js"
 
 const builtinProviders: Record<string, ProviderAdapter> = {
   claude: claudeProvider,
-  "claude-interactive": claudeInteractiveProvider,
   codex: codexProvider,
   gemini: geminiProvider,
+  antigravity: antigravityProvider,
   pi: piProvider,
 }
 
@@ -46,10 +47,11 @@ export function getInstalledProviders(): ProviderAdapter[] {
  * all done.
  */
 export function warmAllProviders(): Promise<void> {
-  const tasks = Object.values(providers)
+  const catalogTask = fetchModelsCatalog().catch(() => {})
+  const providerTasks = Object.values(providers)
     .filter((p): p is ProviderAdapter & { warmAvailability: () => Promise<void> } => typeof p.warmAvailability === "function")
     .map((p) => p.warmAvailability().catch(() => { /* underlying resolver already caches "false"; nothing else to do */ }))
-  return Promise.all(tasks).then(() => undefined)
+  return Promise.all([catalogTask, ...providerTasks]).then(() => undefined)
 }
 
 /**
@@ -70,4 +72,4 @@ export function _resetProviders(): void {
   providers = { ...builtinProviders }
 }
 
-export { type ProviderId, type ProviderAdapter } from "./providers.types.js"
+export { type ProviderId, type ProviderAdapter, type ProviderModel } from "./providers.types.js"

@@ -1,5 +1,6 @@
-import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
+import type { ProviderAdapter, ProviderCapabilities, ProviderModel, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
+import { getModelsForHarness } from "./modelsCatalog.js"
 
 interface CodexRawItem {
   type?: string
@@ -24,7 +25,7 @@ interface CodexRawEvent {
   error?: { message?: string }
 }
 
-const MODELS = [
+const FALLBACK_MODELS: ProviderModel[] = [
   { id: "gpt-5.4", label: "GPT-5.4", api: "gpt-5.4" },
   { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", api: "gpt-5.4-mini" },
   { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", api: "gpt-5.3-codex" },
@@ -132,11 +133,12 @@ export const codexProvider: ProviderAdapter = {
 
   resolveModel(model: string): string {
     if (!model) return "gpt-5.4"
-    const found = MODELS.find((m) => m.id === model || m.label === model || m.api === model)
+    const models = this.getModels()
+    const found = models.find((m) => m.id === model || m.label === model || m.api === model)
     return found?.api ?? model
   },
 
   getModels() {
-    return MODELS
+    return getModelsForHarness("codex") ?? FALLBACK_MODELS
   },
 }

@@ -1,5 +1,6 @@
-import type { ProviderAdapter, ProviderCapabilities, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
+import type { ProviderAdapter, ProviderCapabilities, ProviderModel, SpawnOptions, SpawnResult, NormalizedStreamEvent } from "../providers.types.js"
 import { createBinaryResolver } from "./binary.js"
+import { getModelsForHarness } from "./modelsCatalog.js"
 
 interface GeminiRawEvent {
   type?: string
@@ -29,7 +30,7 @@ const MODEL_ALIASES: Record<string, string> = {
   "Gemini 2.5 Flash Lite": "gemini-2.5-flash-lite",
 }
 
-const MODELS = [
+const FALLBACK_MODELS: ProviderModel[] = [
   { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", api: "gemini-2.5-flash" },
   { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", api: "gemini-2.5-pro" },
   { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", api: "gemini-2.5-flash-lite" },
@@ -148,10 +149,13 @@ export const geminiProvider: ProviderAdapter = {
   resolveModel(model: string): string {
     if (!model) return "gemini-2.5-flash"
     if (model.startsWith("gemini-")) return model
-    return MODEL_ALIASES[model] ?? "gemini-2.5-flash"
+    if (MODEL_ALIASES[model]) return MODEL_ALIASES[model]
+    const models = this.getModels()
+    const match = models.find((m) => m.id === model || m.label === model)
+    return match?.api ?? "gemini-2.5-flash"
   },
 
   getModels() {
-    return MODELS
+    return getModelsForHarness("gemini") ?? FALLBACK_MODELS
   },
 }

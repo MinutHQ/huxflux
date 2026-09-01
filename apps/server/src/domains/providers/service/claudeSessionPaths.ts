@@ -3,8 +3,8 @@ import * as path from "node:path"
 
 /**
  * On-disk locations of the Claude CLI's own session state. Shared by the
- * `claude` and `claude-interactive` adapters, which drive the same binary and
- * therefore the same layout. Other providers keep their session state
+ * `claude` adapter, which drives the Claude CLI binary. Other providers keep
+ * their session state
  * elsewhere and must not be probed against these paths.
  */
 

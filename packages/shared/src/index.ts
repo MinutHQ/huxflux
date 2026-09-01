@@ -119,6 +119,8 @@ export {
   huxfluxSettingsSchema,
   partialHuxfluxSettingsSchema,
   providerInfoSchema,
+  modelCapabilitiesSchema,
+  providerModelSchema,
   serverConfigSchema,
   serverVersionInfoSchema,
   updateResultSchema,
@@ -127,6 +129,7 @@ export {
   githubStatusSchema,
 } from "./domains/settings/settings.types.js"
 export type {
+  ProviderModel as SharedProviderModel,
   ProviderInfo,
   ServerConfig,
   ServerVersionInfo,

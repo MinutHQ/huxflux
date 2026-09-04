@@ -12,7 +12,7 @@ import { AgentPromptBlock } from "./AgentPromptBlock"
 import { ResultBlock } from "./ResultBlock"
 
 function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; indent: boolean; isStreaming: boolean }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   let description = ""
   let prompt = ""
   if (call.args) {

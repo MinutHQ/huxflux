@@ -13,7 +13,7 @@ The server-side surface for agent orchestration: HTTP routes for agent CRUD, mes
 - The `/api/agents/:id/upload` chat-attachment surface: accepts a base64-encoded file, sanitises the filename, and persists it under the huxflux data dir (per-agent subdirectory, never inside the worktree)
 - The shared types the runner consumes (`ClaudeStreamEvent`, `StreamState`, `RunnerOptions`) and the WS event union (`AgentsServerEvent`) the runner broadcasts on. The runner itself lives in the peer domain `src/domains/agent-runner/`.
 - The title generation service (Haiku call + slug-cut fallback) and branch rename service (git branch -m + worktree move + Claude session-dir relocation)
-- The WebSocket event types emitted by every agent-related code path (`agent:updated`, `agent:deleted`, `message:*`, `tool:*`, `terminal:line`, `subagent:event`, `file:changed`, `ask:question`, `ports:changed`)
+- The WebSocket event types emitted by every agent-related code path (`agent:updated`, `agent:deleted`, `message:*`, `tool:*`, `terminal:line`, `subagent:event`, `file:changed`, `ask:question`, `ask:resolved`, `ports:changed`)
 
 ## Public surface
 

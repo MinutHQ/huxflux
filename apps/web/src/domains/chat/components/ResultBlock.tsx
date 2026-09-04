@@ -3,7 +3,7 @@ import { cn } from "@huxflux/ui"
 import { IconChevronDown } from "@tabler/icons-react"
 
 export function ResultBlock({ result }: { result: string }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const lines = result.split("\n")
 
   return (

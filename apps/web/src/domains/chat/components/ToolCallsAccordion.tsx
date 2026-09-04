@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { cn } from "@huxflux/ui"
 import {
   IconBolt,
@@ -29,17 +29,11 @@ function computeSummary(calls: ToolCall[], isStreaming: boolean | undefined): st
 }
 
 export function ToolCallsAccordion({ calls, isStreaming, pendingText }: ToolCallsAccordionProps) {
-  const [open, setOpen] = useState(isStreaming ?? false)
-  const [userToggled, setUserToggled] = useState(false)
-
-  // Stay open for the duration of streaming, then collapse once the message
-  // is done. No more line-count threshold — that fought the user's reading
-  // flow. User-toggle still wins.
-  useEffect(() => {
-    if (userToggled) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: syncs accordion state to streaming flag, user-toggle clears it
-    setOpen(!!isStreaming)
-  }, [isStreaming, userToggled])
+  // Folded by default, streaming or not. The collapsed header already shows
+  // the live last tool call while streaming, and a mid-run injection opens a
+  // fresh segment (new accordion) so auto-opening would re-expand on every
+  // injected message. The user's toggle is the only thing that opens it.
+  const [open, setOpen] = useState(false)
 
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
   const summary = computeSummary(calls, isStreaming)
@@ -47,7 +41,7 @@ export function ToolCallsAccordion({ calls, isStreaming, pendingText }: ToolCall
   return (
     <div className="mb-3">
       <button
-        onClick={() => { setOpen(!open); setUserToggled(true) }}
+        onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left py-0.5 group"
       >
         <IconChevronRight size={12} className={cn("transition-transform shrink-0", open && "rotate-90")} />

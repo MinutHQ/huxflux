@@ -84,6 +84,12 @@ const agentsEventsConfig = {
     build: (agentId: string, toolUseId: string, questions: AskQuestion[]) =>
       ({ type: "ask:question" as const, agentId, toolUseId, questions }),
   },
+  // The pending question was answered (from any client) or cancelled by the
+  // CLI, so every client drops its question card.
+  askResolved: {
+    channel: "emit",
+    build: (agentId: string, toolUseId: string) => ({ type: "ask:resolved" as const, agentId, toolUseId }),
+  },
   portsChanged: {
     channel: "broadcast",
     build: (ports: PortInfo[]) => ({ type: "ports:changed" as const, ports }),

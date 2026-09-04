@@ -38,7 +38,7 @@ export function useAgent(id: string | null) {
   const { handleEvent: handleMessageStreamEvent } = useAgentMessageStream(id, subAgentDataRef)
   const { handleEvent: handleFileChangesEvent } = useAgentFileChanges(id)
   const { handleEvent: handleTerminalEvent } = useAgentTerminal(id)
-  const { pendingQuestion, clearPendingQuestion, handleEvent: handlePendingQuestionEvent } = useAgentPendingQuestion()
+  const { pendingQuestion, clearPendingQuestion, handleEvent: handlePendingQuestionEvent, handleResolved: handleQuestionResolvedEvent } = useAgentPendingQuestion()
   const { handleEvent: handleLifecycleEvent } = useAgentLifecycle(id)
 
   // Streaming state: initialized from server data, then driven by WS events.
@@ -90,6 +90,9 @@ export function useAgent(id: string | null) {
         case "ask:question":
           handlePendingQuestionEvent(event)
           return
+        case "ask:resolved":
+          handleQuestionResolvedEvent(event)
+          return
         case "agent:updated":
           // Sync streaming from server broadcast (covers stop, crash, queue drain)
           if ("agent" in event && event.agent) {
@@ -103,7 +106,7 @@ export function useAgent(id: string | null) {
           return
       }
     },
-    [handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleLifecycleEvent, clearPendingQuestion]
+    [handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleQuestionResolvedEvent, handleLifecycleEvent, clearPendingQuestion]
   )
 
   useAgentEvents(id, onEvent)

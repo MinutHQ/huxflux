@@ -116,11 +116,14 @@ describe("handleControlRequest", () => {
     expect(response.response.response.behavior).toBe("deny")
   })
 
-  it("clears the pending question on control_cancel_request", () => {
+  it("clears the pending question and emits ask:resolved on control_cancel_request", () => {
     handleControlRequest(askRequest(), ctx.agentId, ctx.fake.proc)
     expect(getPendingQuestion(ctx.agentId)).toBeDefined()
     handleControlRequest({ type: "control_cancel_request", request_id: "req-1" }, ctx.agentId, ctx.fake.proc)
     expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+    const resolved = ctx.capture.events.filter((e) => e.type === "ask:resolved")
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]).toMatchObject({ agentId: ctx.agentId, toolUseId: "tu-1" })
   })
 
   it("ignores requests without a request_id or unknown subtypes", () => {
@@ -150,6 +153,9 @@ describe("answerPendingQuestion", () => {
       questions,
       answers: { "Which color?": "Blue" },
     })
+    const resolved = ctx.capture.events.filter((e) => e.type === "ask:resolved")
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0]).toMatchObject({ agentId: ctx.agentId, toolUseId: "tu-1" })
   })
 
   it("returns false when there is no pending question", () => {
@@ -179,6 +185,7 @@ describe("injectUserMessage", () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]!.role).toBe("user")
     expect(rows[0]!.content).toBe("STOP and say POTATO")
+    expect(rows[0]!.injected).toBe(1)
 
     const userEvents = ctx.capture.events.filter((e) => e.type === "message:user")
     expect(userEvents).toHaveLength(1)
@@ -224,6 +231,49 @@ describe("injectUserMessage", () => {
     expect(types).toContain("message:done")
     expect(types).toContain("message:start")
     expect(types.indexOf("message:done")).toBeGreaterThan(types.indexOf("message:user"))
+  })
+
+  it("answers a pending AskUserQuestion with the text instead of injecting a user message", () => {
+    // The CLI ignores stream-json input while a control_request is pending, so
+    // a plain injection would hang the turn. The chat text becomes the answer.
+    handleControlRequest(askRequest(), ctx.agentId, ctx.fake.proc)
+    const twoQuestions = [...questions, { question: "Which size?", header: "Size", options: [{ label: "S" }, { label: "L" }] }]
+    handleControlRequest(
+      { type: "control_request", request_id: "req-9", request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", input: { questions: twoQuestions }, tool_use_id: "tu-9" } },
+      ctx.agentId, ctx.fake.proc,
+    )
+
+    expect(injectUserMessage(ctx.agentId, "yes, go ahead")).toBe(true)
+
+    expect(ctx.fake.written).toHaveLength(1)
+    const response = JSON.parse(ctx.fake.written[0]!)
+    expect(response.type).toBe("control_response")
+    expect(response.response.request_id).toBe("req-9")
+    expect(response.response.response.behavior).toBe("allow")
+    expect(response.response.response.updatedInput).toEqual({
+      questions: twoQuestions,
+      answers: { "Which color?": "yes, go ahead", "Which size?": "yes, go ahead" },
+    })
+    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+
+    const rows = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.agentId, ctx.agentId)).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.role).toBe("user")
+    expect(rows[0]!.content).toBe("yes, go ahead")
+    expect(rows[0]!.injected).toBe(1)
+
+    const types = ctx.capture.events.map((e) => e.type)
+    expect(types).toContain("ask:resolved")
+    expect(types).toContain("message:user")
+  })
+
+  it("keeps the pending question and persists nothing when the answer cannot be written", () => {
+    handleControlRequest(askRequest(), ctx.agentId, ctx.fake.proc)
+    runningProcesses.delete(ctx.agentId)
+    expect(injectUserMessage(ctx.agentId, "yes")).toBe(false)
+    expect(getPendingQuestion(ctx.agentId)).toBeDefined()
+    const rows = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.agentId, ctx.agentId)).all()
+    expect(rows).toHaveLength(0)
   })
 
   it("returns false without persisting when there is no running process", () => {

@@ -550,6 +550,10 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 36,
+    sql: `ALTER TABLE messages ADD COLUMN injected INTEGER;`,
+  },
 ]
 
 export function runMigrations() {

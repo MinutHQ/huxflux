@@ -9,7 +9,7 @@ import {
   IconAlertCircle,
   IconCloud,
 } from "@tabler/icons-react"
-import { parseConnectionString, type HuxfluxServer } from "@huxflux/shared"
+import { parseConnectionString, type HuxfluxServer, normalizeServerUrl } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { useServerStatus } from "@/hooks/useServerStatus"
 import { SettingsStatusDot } from "../components/SettingsStatusDot"
@@ -121,7 +121,7 @@ function ServerRowEdit({ server, onDone, onUpdate }: ServerRowEditProps) {
     setSaveError(null)
     setSaving(true)
     try {
-      const targetUrl = (url.trim() || server.url).replace(/\/$/, "")
+      const targetUrl = normalizeServerUrl(url.trim() || server.url)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 5000)
       try {
@@ -221,7 +221,7 @@ function AddServerInline({ onDone }: { onDone: () => void }) {
     if (!url.trim() || !token.trim() || loading) return
     setError(null)
     setLoading(true)
-    const normalizedUrl = url.trim().replace(/\/$/, "")
+    const normalizedUrl = normalizeServerUrl(url)
     const trimmedToken = token.trim()
     try {
       const controller = new AbortController()

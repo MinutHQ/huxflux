@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Button } from "@huxflux/ui"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId, parseConnectionString } from "@huxflux/shared"
+import { setActiveServerId, parseConnectionString, normalizeServerUrl } from "@huxflux/shared"
 import { IconLoader2, IconAlertCircle } from "@tabler/icons-react"
 import { isProxyConnectString, connectProxiedServer } from "@/lib/proxyConnect"
 
@@ -35,7 +35,7 @@ export function OnboardingDirectConnect({ onComplete }: { onComplete: () => void
     setError(null)
     setLoading(true)
 
-    const normalizedUrl = url.trim().replace(/\/$/, "")
+    const normalizedUrl = normalizeServerUrl(url)
     const trimmedToken = token.trim()
     try {
       if (isProxyConnectString(normalizedUrl)) {

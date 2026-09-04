@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { parseConnectionString, serverAuthHeaders, serverWsUrl, isProxiedServer } from "./servers.store.js"
+import { parseConnectionString, serverAuthHeaders, serverWsUrl, isProxiedServer, normalizeServerUrl } from "./servers.store.js"
 import type { HuxfluxServer } from "./servers.types.js"
 
 const direct: HuxfluxServer = { id: "1", name: "lan", url: "http://192.168.1.5:4321", token: "tok123", addedAt: "" }
@@ -99,5 +99,28 @@ describe("serverWsUrl", () => {
     expect(serverWsUrl(proxied, "/ws/pty/a?terminalId=t1&fresh=1")).toBe(
       "wss://proxy.example.com/s/laptop/ws/pty/a?terminalId=t1&fresh=1&proxy_token=jwt.abc"
     )
+  })
+})
+
+describe("normalizeServerUrl", () => {
+  it("prepends http:// when no scheme is given", () => {
+    expect(normalizeServerUrl("localhost:4399")).toBe("http://localhost:4399")
+    expect(normalizeServerUrl("192.168.1.5:4321")).toBe("http://192.168.1.5:4321")
+  })
+
+  it("keeps existing schemes untouched", () => {
+    expect(normalizeServerUrl("http://localhost:4399")).toBe("http://localhost:4399")
+    expect(normalizeServerUrl("https://proxy.example.com/s/laptop")).toBe("https://proxy.example.com/s/laptop")
+    expect(normalizeServerUrl("huxflux://100.64.0.5:4321")).toBe("huxflux://100.64.0.5:4321")
+  })
+
+  it("trims whitespace and trailing slashes", () => {
+    expect(normalizeServerUrl(" http://localhost:4399/ ")).toBe("http://localhost:4399")
+    expect(normalizeServerUrl("localhost:4399//")).toBe("http://localhost:4399")
+  })
+
+  it("returns empty string unchanged", () => {
+    expect(normalizeServerUrl("")).toBe("")
+    expect(normalizeServerUrl("  ")).toBe("")
   })
 })

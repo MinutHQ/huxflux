@@ -79,7 +79,7 @@ function spawnFixture(ctx: Ctx, fixtureName: string) {
     provider: claudeProvider(),
     state: ctx.state,
     agentId: ctx.agentId,
-    messageId: ctx.messageId,
+    turnRef: { messageId: ctx.messageId, createdAt: new Date().toISOString(), startedAt: Date.now() },
     repo: "test-repo",
     branch: "test-branch",
     scheduleFlush: ctx.scheduleFlush,

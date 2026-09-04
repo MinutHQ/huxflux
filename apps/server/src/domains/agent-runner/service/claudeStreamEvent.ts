@@ -2,9 +2,8 @@ import { eq } from "drizzle-orm"
 import { db } from "../../../db/index.js"
 import { toolCalls as toolCallsTable, agents as agentsTable } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
-import { setPendingQuestion } from "../../../askStore.js"
 import type { ToolCall } from "../../../types.js"
-import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
+import type { ClaudeStreamEvent, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
 
 /** Process one Claude-format stream event and update streaming state + DB. */
 export function handleStreamEvent(
@@ -25,6 +24,10 @@ export function handleStreamEvent(
 
   if (event.type === "assistant" && event.message) {
     handleAssistantBlocks(event.message.content, state, agentId, messageId, scheduleFlush)
+  } else if (event.type === "user" && event.message) {
+    // The CLI reports tool results as user-role events. Text blocks here are
+    // echoes of injected user messages — already persisted by the server.
+    handleUserBlocks(event.message.content as unknown as ClaudeUserContentBlock[], state, agentId, messageId)
   } else if (event.type === "tool_result" && event.tool_use_id) {
     handleToolResult(event.tool_use_id, event.content ?? "", state, agentId, messageId)
   } else if (event.type === "result" && event.usage) {
@@ -43,6 +46,30 @@ export function handleStreamEvent(
     agentsWs.subagentEvent(agentId, toolUseId, event as unknown as Record<string, unknown>)
     agentsWs.terminalLine(agentId, `[stream] ${JSON.stringify(event)}`)
   }
+}
+
+function handleUserBlocks(
+  blocks: ClaudeUserContentBlock[],
+  state: StreamState,
+  agentId: string,
+  messageId: string,
+): void {
+  if (!Array.isArray(blocks)) return
+  for (const block of blocks) {
+    if (block.type !== "tool_result" || !block.tool_use_id) continue
+    handleToolResult(block.tool_use_id, toolResultContentToString(block.content), state, agentId, messageId)
+  }
+}
+
+/** tool_result content is either a plain string or an array of text blocks. */
+function toolResultContentToString(content: unknown): string {
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content
+      .map((c) => (c && typeof c === "object" && typeof (c as { text?: unknown }).text === "string" ? (c as { text: string }).text : ""))
+      .join("")
+  }
+  return ""
 }
 
 function handleToolResult(
@@ -121,20 +148,4 @@ function recordToolUse(
     }).run()
   } catch { /* duplicate ID from provider replaying events */ }
   agentsWs.toolCall(agentId, messageId, tc)
-
-  // Detect AskUserQuestion from the stream and notify the UI directly
-  // (no dependency on the hook script for notification).
-  if (block.name === "AskUserQuestion") {
-    detectAskUserQuestion(block.id, block.input, agentId)
-  }
-}
-
-function detectAskUserQuestion(toolUseId: string, input: unknown, agentId: string): void {
-  try {
-    if (!input || typeof input !== "object") return
-    const parsed = input as Record<string, unknown>
-    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) return
-    setPendingQuestion(agentId, toolUseId, parsed.questions)
-    agentsWs.askQuestion(agentId, toolUseId, parsed.questions)
-  } catch { /* malformed input */ }
 }

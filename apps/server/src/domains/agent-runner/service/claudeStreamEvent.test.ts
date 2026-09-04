@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { eq } from "drizzle-orm"
 import { agents as agentsTable, toolCalls as toolCallsTable, messages as messagesTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, type TestDb, type CapturedWsEvents } from "../../../../test/harness.js"
-import { getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
 import { createStreamState } from "./state.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
@@ -217,71 +216,48 @@ describe("handleStreamEvent — subagent routing and unknown events", () => {
   })
 })
 
-describe("handleStreamEvent — AskUserQuestion detection", () => {
+describe("handleStreamEvent — user events (tool results, injected echoes)", () => {
   let ctx: Ctx
   beforeEach(() => { ctx = setup() })
   afterEach(() => {
-    clearPendingQuestion(ctx.agentId)
     ctx.capture.restore()
     ctx.testDb.close()
   })
 
-  it("emits ask:question and stores pending state for a valid questions array", () => {
-    const questions = [{ question: "Which approach?", header: "Pick", options: [{ label: "A" }, { label: "B" }] }]
+  function insertToolCall(id: string): void {
+    ctx.testDb.db.insert(toolCallsTable).values({
+      id, messageId: ctx.messageId, tool: "Bash", args: "{}", orderIdx: 0,
+    }).run()
+    ctx.state.collectedToolCalls.push({ id, tool: "Bash", args: "{}" })
+  }
+
+  it("applies a string tool_result block from a user event", () => {
+    insertToolCall("tu_1")
     handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_1", name: "AskUserQuestion", input: { questions } }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu_1", content: "ok output" }] } } as unknown as ClaudeStreamEvent,
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
-    const askEvents = ctx.capture.events.filter((e) => e.type === "ask:question")
-    expect(askEvents).toHaveLength(1)
-    expect(askEvents[0]).toMatchObject({ type: "ask:question", agentId: ctx.agentId, toolUseId: "tu_ask_1" })
-    const pending = getPendingQuestion(ctx.agentId)
-    expect(pending).toBeDefined()
-    expect(pending!.toolUseId).toBe("tu_ask_1")
-    expect(pending!.questions).toEqual(questions)
+    expect(ctx.state.collectedToolCalls[0]!.result).toBe("ok output")
+    const row = ctx.testDb.db.select().from(toolCallsTable).where(eq(toolCallsTable.id, "tu_1")).get()
+    expect(row?.result).toBe("ok output")
+    expect(ctx.capture.events.some((e) => e.type === "tool:result")).toBe(true)
   })
 
-  it("ignores input where questions is a string (the reported crash shape)", () => {
+  it("joins text blocks when tool_result content is an array", () => {
+    insertToolCall("tu_2")
     handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_2", name: "AskUserQuestion", input: { questions: "[{\"question\":\"x\"}]" } }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu_2", content: [{ type: "text", text: "part1 " }, { type: "text", text: "part2" }] }] } } as unknown as ClaudeStreamEvent,
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
-    const askEvents = ctx.capture.events.filter((e) => e.type === "ask:question")
-    expect(askEvents).toHaveLength(0)
-    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+    expect(ctx.state.collectedToolCalls[0]!.result).toBe("part1 part2")
   })
 
-  it("ignores input where questions is an empty array", () => {
+  it("ignores echoed injected text blocks without forwarding as subagent noise", () => {
+    const before = ctx.capture.events.length
     handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_3", name: "AskUserQuestion", input: { questions: [] } }] } },
+      { type: "user", message: { content: [{ type: "text", text: "STOP counting" }] } } as unknown as ClaudeStreamEvent,
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
-    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
-    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
-  })
-
-  it("ignores null input", () => {
-    handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_4", name: "AskUserQuestion", input: null }] } },
-      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
-    )
-    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
-  })
-
-  it("ignores undefined input", () => {
-    handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_5", name: "AskUserQuestion", input: undefined }] } },
-      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
-    )
-    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
-  })
-
-  it("ignores input where questions is a number", () => {
-    handleStreamEvent(
-      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_ask_6", name: "AskUserQuestion", input: { questions: 42 } }] } },
-      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
-    )
-    expect(ctx.capture.events.filter((e) => e.type === "ask:question")).toHaveLength(0)
-    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+    expect(ctx.capture.events.length).toBe(before)
   })
 })

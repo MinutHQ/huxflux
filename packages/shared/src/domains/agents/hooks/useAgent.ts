@@ -65,8 +65,12 @@ export function useAgent(id: string | null) {
           handleMessageStreamEvent(event)
           return
         case "message:done":
-          setIsStreaming(false)
-          clearPendingQuestion()
+          // A segment close (mid-run injection split) is not the end of the
+          // turn — the agent keeps streaming into the next message.
+          if (!event.segment) {
+            setIsStreaming(false)
+            clearPendingQuestion()
+          }
           handleMessageStreamEvent(event)
           return
         case "message:user":

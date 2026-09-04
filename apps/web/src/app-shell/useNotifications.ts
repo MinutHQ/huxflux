@@ -37,7 +37,8 @@ export function useNotifications(agents: AgentSummary[]) {
     const agent = agentId ? agents.find((a) => a.id === agentId) : undefined
     const title = agent?.title ?? "Agent"
 
-    if (event.type === "message:done") {
+    // Segment closes (mid-run injection splits) are not the end of the turn.
+    if (event.type === "message:done" && !event.segment) {
       toast.success(`${title} finished`, {
         description: "Claude has completed its response.",
         duration: 4000,

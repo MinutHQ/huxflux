@@ -90,21 +90,31 @@ export const claudeProvider: ProviderAdapter = {
       resumeArgs = ["--continue"]
     }
 
+    // The prompt goes over stdin (stream-json input mode) instead of argv.
+    // `--permission-prompt-tool stdio` makes the CLI expose AskUserQuestion in
+    // print mode and route it as a `can_use_tool` control_request on stdout,
+    // which the runner answers on stdin. The open stdin pipe also lets the
+    // server inject user messages mid-run.
     const args = [
       "--print",
+      "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--verbose",
       ...(opts.planMode ? ["--permission-mode", "plan"] : ["--dangerously-skip-permissions"]),
+      "--permission-prompt-tool", "stdio",
       "--model", model,
       ...(opts.effort ? ["--effort", opts.effort] : []),
       "--append-system-prompt", opts.systemPrompt,
       "--allowedTools", [...(opts.allowedTools ?? []), "AskUserQuestion"].join(","),
       ...resumeArgs,
-      "--",
-      opts.prompt,
     ]
 
-    return { bin, args }
+    const stdinInit = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: opts.prompt }] },
+    })
+
+    return { bin, args, stdinInit }
   },
 
   parseStreamLine(line: string): NormalizedStreamEvent | null {
@@ -188,63 +198,37 @@ export const claudeProvider: ProviderAdapter = {
   },
 
   async installHooks(_agentId: string, _cwd: string, _apiBase: string, _authToken: string): Promise<void> {
+    // AskUserQuestion is now answered over the CLI's stdin control protocol
+    // (`--permission-prompt-tool stdio`). Older Huxflux versions installed a
+    // PreToolUse hook in ~/.claude/settings.json that blocks the tool call
+    // waiting for an answer file — with the control protocol active that hook
+    // would deadlock the tool before the can_use_tool request is ever sent,
+    // so remove the legacy entry if present.
     try {
       const homeClaudeDir = `${process.env.HOME}/.claude`
-      const hooksDir = `${homeClaudeDir}/hooks`
-      await fs.mkdir(hooksDir, { recursive: true })
-
-      // The hook script waits for an answer file written by the server.
-      // No curl, no network, no API calls. The server detects AskUserQuestion
-      // from the streaming output and notifies the UI directly.
-      const scriptPath = `${hooksDir}/huxflux-ask-user.sh`
-      const hookTimeout = 86400
-      const scriptContent = [
-        `#!/bin/bash`,
-        `# Huxflux AskUserQuestion hook — waits for answer from the Hive UI`,
-        `[ -z "$HUXFLUX_AGENT_ID" ] && exit 0`,
-        `ANSWER_FILE="/tmp/huxflux-ask-$HUXFLUX_AGENT_ID"`,
-        `rm -f "$ANSWER_FILE"`,
-        `while true; do`,
-        `  [ -f "$ANSWER_FILE" ] && { cat "$ANSWER_FILE"; rm -f "$ANSWER_FILE"; exit 0; }`,
-        `  sleep 0.2`,
-        `done`,
-      ].join("\n")
-      await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 })
-
       const settingsPath = `${homeClaudeDir}/settings.json`
       let settings: Record<string, unknown> = {}
-      try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) } catch { /* fresh */ }
-      const hooks = (settings.hooks ?? {}) as Record<string, unknown[]>
-      const preToolUse = (hooks.PreToolUse ?? []) as Array<{ matcher?: string; hooks?: unknown[] }>
-      const existing = preToolUse.find((h) =>
+      try { settings = JSON.parse(await fs.readFile(settingsPath, "utf8")) } catch { return }
+      const hooks = settings.hooks as Record<string, unknown[]> | undefined
+      const preToolUse = hooks?.PreToolUse as Array<{ matcher?: string; hooks?: unknown[] }> | undefined
+      if (!preToolUse) return
+
+      const isLegacyAskHook = (h: { matcher?: string; hooks?: unknown[] }): boolean =>
         h.matcher === "AskUserQuestion" && Array.isArray(h.hooks) && h.hooks.some((hk) => {
           const cmd = (hk as { command?: unknown }).command
           return typeof cmd === "string" && cmd.includes("huxflux-ask-user")
         })
-      )
-      let settingsChanged = false
-      if (!existing) {
-        preToolUse.push({
-          matcher: "AskUserQuestion",
-          hooks: [{ type: "command", command: scriptPath, timeout: hookTimeout }],
-        })
-        hooks.PreToolUse = preToolUse
-        settings.hooks = hooks
-        settingsChanged = true
-      } else if (Array.isArray(existing.hooks)) {
-        for (const hk of existing.hooks) {
-          const entry = hk as { command?: string; timeout?: number }
-          if (entry.command?.includes("huxflux-ask-user") && entry.timeout !== hookTimeout) {
-            entry.timeout = hookTimeout
-            settingsChanged = true
-          }
-        }
-      }
-      if (settingsChanged) {
-        await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
-      }
+
+      const filtered = preToolUse.filter((h) => !isLegacyAskHook(h))
+      if (filtered.length === preToolUse.length) return
+
+      if (filtered.length > 0) hooks!.PreToolUse = filtered
+      else delete hooks!.PreToolUse
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2))
+      await fs.rm(`${homeClaudeDir}/hooks/huxflux-ask-user.sh`, { force: true })
+      logger.info(`[claude] Removed legacy AskUserQuestion hook from ~/.claude/settings.json`)
     } catch (hookErr) {
-      logger.error({ err: (hookErr as Error).message }, `[claude] Failed to install AskUserQuestion hook`)
+      logger.warn({ err: (hookErr as Error).message }, `[claude] Failed to clean up legacy AskUserQuestion hook`)
     }
   },
 }

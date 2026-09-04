@@ -21,6 +21,7 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 - `setActiveServerId` — switches the active server and broadcasts the change
 - `getActiveServer` — returns the active server, or the first server, or null
 - `parseConnectionString` — parses a `huxflux://` or `http(s)://` URL into `{ url, token }` (returns null on failure)
+- `normalizeServerUrl` — trims a user-entered server URL, strips trailing slashes, and prepends `http://` when no scheme is given (a scheme-less URL would resolve relative to the page origin)
 - `useServerStatus` — polls reachability for a list of servers (every 20s, 5s timeout per probe)
 - `useServerConfig` — TanStack Query wrapper around `/api/config` returning `{ githubEnabled, feedbackEnabled }`
 - `huxfluxServerSchema` — Zod schema for the server registry entry; `HuxfluxServer` is its inferred type

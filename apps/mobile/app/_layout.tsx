@@ -100,9 +100,10 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
     return () => tapSub.remove()
   }, [hydrated, router])
 
-  // Fire a local notification whenever an agent finishes a turn
+  // Fire a local notification whenever an agent finishes a turn. Segment
+  // closes (mid-run injection splits) are not the end of the turn.
   useAgentEvents(null, (event) => {
-    if (event.type !== "message:done") return
+    if (event.type !== "message:done" || event.segment) return
     const serverUrl = getActiveServer()?.url ?? null
     const agents = queryClient.getQueryData<AgentSummary[]>(queryKeys.agents.list(serverUrl))
     const agent = agents?.find((a) => a.id === event.agentId)

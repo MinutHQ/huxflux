@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useServers } from "@/hooks/useServers"
-import { setActiveServerId } from "@huxflux/shared"
+import { setActiveServerId, normalizeServerUrl } from "@huxflux/shared"
 import { IconLoader2, IconAlertCircle } from "@tabler/icons-react"
 import { validateAuth } from "./validateAuth"
 import { isProxyConnectString, connectProxiedServer } from "@/lib/proxyConnect"
@@ -27,7 +27,7 @@ export function AddServerForm({ onDone }: { onDone: () => void }) {
     setError(null)
     setLoading(true)
 
-    const normalizedUrl = url.trim().replace(/\/$/, "")
+    const normalizedUrl = normalizeServerUrl(url)
     const trimmedToken = token.trim()
     try {
       // A pasted full proxy connect string (…/s/<serverId>) signs in via the

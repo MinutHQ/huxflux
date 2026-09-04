@@ -64,6 +64,12 @@ export interface SpawnResult {
   bin: string
   args: string[]
   env?: Record<string, string>
+  /** When set, the runner opens a stdin pipe and writes this line (plus "\n")
+   *  right after spawn. Providers that take the prompt over stdin (Claude's
+   *  stream-json input mode) put the initial user message here. A piped stdin
+   *  also enables mid-run user-message injection and control-protocol
+   *  responses (AskUserQuestion answers). */
+  stdinInit?: string
 }
 
 export interface ProviderAdapter {

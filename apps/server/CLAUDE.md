@@ -97,7 +97,7 @@ domains/agents/
     agents.update.routes.ts         — PATCH /api/agents/:id (with rebase --onto)
     agents.branch.routes.ts         — switch-branch / rename-branch / stop / generate-title
     agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes
-    agents.misc.routes.ts           — ask/answer / open-in / worktree-path / context / providers
+    agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / context / providers
     messages.routes.ts              — GET/POST /api/agents/:id/messages
     files.routes.ts                 — /api/agents/:id/files/*
     terminal.routes.ts              — GET /api/agents/:id/terminal
@@ -126,7 +126,12 @@ domains/agent-runner/
     bootstrapTurn.ts                — pre-spawn setup: persist user msg, mark streaming,
                                       pre-rename, cwd/session resolution
     systemPrompt.ts                 — domain-free system prompt scaffolding builder
-    streamLoop.ts                   — spawn plus stdout/stderr to handleStreamEvent
+    streamLoop.ts                   — spawn plus stdout/stderr to handleStreamEvent; stdin pipe
+                                      for stream-json prompt, control responses, injection
+    controlProtocol.ts              — stdin control protocol: AskUserQuestion round trip +
+                                      mid-run user-message injection
+    turnSegments.ts                 — splits a running turn into message segments on injection
+    userMessage.ts                  — user-message display strip + injected-message persist
     finalize.ts                     — idempotent exit handler
     claudeStreamEvent.ts            — Claude-format event handler
     normalizedEvent.ts              — provider-agnostic NormalizedStreamEvent handler

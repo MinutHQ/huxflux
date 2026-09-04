@@ -45,7 +45,7 @@ export function useAgents() {
         return old.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
       })
     }
-    if (event.type === "message:done") {
+    if (event.type === "message:done" && !event.segment) {
       const agentId = (event as { agentId?: string }).agentId
       if (agentId) {
         queryClient.setQueriesData<AgentSummary[]>({ queryKey: queryKeys.agents.all }, (old) =>

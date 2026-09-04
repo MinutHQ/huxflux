@@ -146,6 +146,18 @@ export function getActiveServer(): HuxfluxServer | null {
 }
 
 /** Parses a huxflux:// or http(s):// connection string into { url, token }. */
+/**
+ * Normalize a user-entered server URL: trim, strip trailing slashes, and
+ * prepend `http://` when no scheme is given. Without a scheme, fetch and
+ * WebSocket resolve the URL relative to the page origin, which silently
+ * points every request at the web client itself instead of the server.
+ */
+export function normalizeServerUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "")
+  if (trimmed === "" || /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed
+  return `http://${trimmed}`
+}
+
 export function parseConnectionString(input: string): { url: string; token?: string } | null {
   try {
     const normalized = input.trim().replace(/^huxflux:\/\//, "http://")

@@ -4,7 +4,7 @@ The server-side surface for agent orchestration: HTTP routes for agent CRUD, mes
 
 ## Owns
 
-- The `/api/agents` REST surface: listing, single-agent snapshots, child sessions, port lookups, process kills, create-with-worktree, partial updates (including `rebase --onto` when `baseBranch` changes), branch switch / rename, stop, generate-title, soft delete, sync-files, ask/answer hook bridge, open-in launcher, worktree-path lookup, context-window probe, and `/api/providers` discovery
+- The `/api/agents` REST surface: listing, single-agent snapshots, child sessions, port lookups, process kills, create-with-worktree, partial updates (including `rebase --onto` when `baseBranch` changes), branch switch / rename, stop, generate-title, soft delete, sync-files, AskUserQuestion answer endpoint (writes the allow control_response to the running CLI via agent-runner), open-in launcher, worktree-path lookup, context-window probe, and `/api/providers` discovery
 - The `/api/agents/:id/messages` REST surface plus the in-memory per-agent message queue that serializes turns when a previous run is still streaming
 - The `/api/agents/:id/files/*` surface: file list, single-file diff, file tree, raw content, base content, batch diffs, and disk refresh
 - The `/api/agents/:id/terminal` surface and `/api/agents/:id/terminal-tabs` CRUD (kills the PTY when a tab is deleted)

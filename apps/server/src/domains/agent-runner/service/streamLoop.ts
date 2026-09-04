@@ -7,6 +7,8 @@ import { agentsWs } from "../../agents/agents.ws.js"
 import type { ProviderAdapter, NormalizedStreamEvent, SpawnResult } from "../../providers/providers.types.js"
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
 import { runningProcesses } from "./processRegistry.js"
+import { handleControlRequest, type ControlRequestEvent } from "./controlProtocol.js"
+import type { TurnSegmentRef } from "./turnSegments.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { logger } from "../../../logger.js"
@@ -19,24 +21,30 @@ interface StreamLoopArgs {
   provider: ProviderAdapter
   state: StreamState
   agentId: string
-  messageId: string
+  /** Mutable current-segment identity — mid-run injection swaps the target
+   *  message, so every event reads the id at dispatch time. */
+  turnRef: TurnSegmentRef
   repo: string
   branch: string
   scheduleFlush: () => void
   bufferRef: { current: string }
+  /** Initial stdin line (stream-json user message). When set, stdin stays a
+   *  writable pipe for control responses and mid-run message injection. */
+  stdinInit?: string
 }
 
 /** Spawn the CLI process and wire stdout/stderr into the streaming pipeline. */
 export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
-  const { bin, args: cliArgs, cwd, env, provider, state, agentId, messageId, repo, branch, scheduleFlush, bufferRef } = args
+  const { bin, args: cliArgs, cwd, env, provider, state, agentId, turnRef, repo, branch, scheduleFlush, bufferRef, stdinInit } = args
 
   const proc = spawn(bin, cliArgs, {
     cwd,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [stdinInit != null ? "pipe" : "ignore", "pipe", "pipe"],
     env,
   })
 
   runningProcesses.set(agentId, proc)
+  if (stdinInit != null) proc.stdin?.write(stdinInit + "\n")
 
   logger.info(
     { repo, branch, pid: proc.pid },
@@ -44,7 +52,7 @@ export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
   )
 
   proc.stdout?.on("data", (chunk: Buffer) => {
-    processStdoutChunk(chunk, provider, bufferRef, state, agentId, messageId, scheduleFlush)
+    processStdoutChunk(chunk, provider, bufferRef, state, agentId, turnRef, scheduleFlush, proc)
   })
 
   proc.stderr?.on("data", (chunk: Buffer) => {
@@ -65,8 +73,9 @@ function processStdoutChunk(
   bufferRef: { current: string },
   state: StreamState,
   agentId: string,
-  messageId: string,
+  turnRef: TurnSegmentRef,
   scheduleFlush: () => void,
+  proc: ChildProcess,
 ): void {
   const isClaudeFormat = provider.id === "claude"
   if (provider.id === "gemini") {
@@ -88,12 +97,20 @@ function processStdoutChunk(
     if (isClaudeFormat) {
       try {
         const parsed = JSON.parse(line) as ClaudeStreamEvent
-        handleStreamEvent(parsed, state, agentId, messageId, scheduleFlush)
+        if (parsed.type === "control_request" || parsed.type === "control_cancel_request") {
+          handleControlRequest(parsed as ControlRequestEvent, agentId, proc)
+          continue
+        }
+        handleStreamEvent(parsed, state, agentId, turnRef.messageId, scheduleFlush)
+        // The turn is over — close stdin so the CLI exits instead of waiting
+        // for more stream-json input. (An injection racing past this point is
+        // still processed by the CLI as a follow-up turn before it exits.)
+        if (parsed.type === "result" && proc.stdin && !proc.stdin.destroyed) proc.stdin.end()
       } catch { /* non-JSON */ }
     } else {
       const event = provider.parseStreamLine(line) as NormalizedStreamEvent | null
       logger.info(`[runner:${provider.id}] parsed line → ${event?.type ?? "null"} | line: ${line.slice(0, 100)}`)
-      if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+      if (event) handleNormalizedEvent(event, state, agentId, turnRef.messageId, scheduleFlush)
     }
   }
 }
@@ -104,7 +121,7 @@ function processStdoutChunk(
  */
 export function makeScheduleFlush(
   state: StreamState,
-  messageId: string,
+  turnRef: TurnSegmentRef,
   flushTimer: { current: ReturnType<typeof setTimeout> | null },
 ): () => void {
   return function scheduleFlush(): void {
@@ -113,7 +130,7 @@ export function makeScheduleFlush(
       flushTimer.current = null
       db.update(messagesTable)
         .set({ content: state.pendingText, thinking: state.fullThinking || null })
-        .where(eq(messagesTable.id, messageId))
+        .where(eq(messagesTable.id, turnRef.messageId))
         .run()
     }, 500)
   }

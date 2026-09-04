@@ -3,16 +3,14 @@ import type { FastifyPluginAsyncZod, ZodTypeProvider } from "fastify-type-provid
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { z } from "zod/v4"
 import { eq } from "drizzle-orm"
-import { askBodySchema, answerBodySchema, openInBodySchema } from "@huxflux/shared"
+import { answerBodySchema, openInBodySchema } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
-import { agentsWs } from "../agents.ws.js"
 import { getAvailableProviders } from "../../providers/registry.js"
-import { getClaudeBin } from "../../agent-runner/agent-runner.service.js"
-import { setPendingQuestion, getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
+import { getClaudeBin, answerPendingQuestion } from "../../agent-runner/agent-runner.service.js"
+import { getPendingQuestion } from "../../../askStore.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
-import * as fsP from "node:fs/promises"
 import { spawn } from "node:child_process"
 
 // Fastify instance shape that carries the Zod type provider so the `schema`
@@ -37,36 +35,10 @@ export const agentsMiscRoutes: FastifyPluginAsyncZod = async (app) => {
 }
 
 function registerAskAnswer(app: ZodApp): void {
-  // AskUserQuestion is detected from the streaming output in the runner and
-  // emitted to the UI directly. The hook script waits for an answer file
-  // written by /answer; no curl or network calls in the hook.
-
-  // POST /api/agents/:id/ask — backwards compat with legacy curl-based hooks
-  app.post("/api/agents/:id/ask", {
-    schema: { params: idParamsSchema, body: askBodySchema },
-  }, async (req) => {
-    const { id } = req.params
-    const { tool_input, tool_use_id } = req.body
-    const questions = tool_input?.questions ?? []
-
-    app.log.info(`[ask] Agent ${id} AskUserQuestion (legacy hook): ${questions.length} questions, tool_use_id=${tool_use_id}`)
-
-    setPendingQuestion(id, tool_use_id, questions)
-    agentsWs.askQuestion(id, tool_use_id, questions)
-
-    // Wait for the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID)
-    const answerFile = `/tmp/huxflux-ask-${id}`
-    const deadline = Date.now() + 300_000
-    while (Date.now() < deadline) {
-      try {
-        const data = await fsP.readFile(answerFile, "utf8")
-        await fsP.unlink(answerFile)
-        return JSON.parse(data) as unknown
-      } catch { /* file doesn't exist yet */ }
-      await new Promise((r) => setTimeout(r, 200))
-    }
-    return {}
-  })
+  // AskUserQuestion arrives as a `can_use_tool` control_request from the CLI;
+  // the runner parks it in the ask store and notifies the UI over WS. This
+  // endpoint completes the round trip by writing the allow control_response
+  // (with the user's answers) to the running CLI's stdin.
 
   // POST /api/agents/:id/answer — called by frontend when user answers a question
   app.post(
@@ -74,27 +46,12 @@ function registerAskAnswer(app: ZodApp): void {
     { schema: { params: idParamsSchema, body: answerBodySchema } },
     async (req, reply) => {
       const { id } = req.params
-      const { answers, toolUseId } = req.body
+      const { answers } = req.body
 
-      const pendingQ = getPendingQuestion(id)
-      if (!toolUseId && !pendingQ) return reply.code(404).send({ error: "No pending question" })
-
-      const questions = pendingQ?.questions ?? []
-      clearPendingQuestion(id)
-
-      // Write the answer file keyed by agentId (hook uses HUXFLUX_AGENT_ID).
-      // updatedInput must include the original questions + the user's answers
-      // so Claude sees the complete tool input.
-      const answerFile = `/tmp/huxflux-ask-${id}`
-      const hookResponse = JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse",
-          permissionDecision: "allow",
-          updatedInput: { questions, answers },
-        },
-      })
-      await fsP.writeFile(answerFile, hookResponse)
-
+      if (!getPendingQuestion(id)) return reply.code(404).send({ error: "No pending question" })
+      if (!answerPendingQuestion(id, answers)) {
+        return reply.code(409).send({ error: "Agent is no longer running; the question expired" })
+      }
       return { ok: true }
     },
   )

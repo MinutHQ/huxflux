@@ -1,6 +1,7 @@
 import React from "react"
 import { Button, Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
 import {
+  IconBolt,
   IconCopy,
   IconPaperclip,
 } from "@tabler/icons-react"
@@ -39,10 +40,17 @@ function parseUserContent(content: string): UserMessageParts {
   return { files, displayText }
 }
 
-function UserBubble({ content }: { content: string }) {
+function UserBubble({ content, injected }: { content: string; injected?: boolean }) {
   const { files, displayText } = parseUserContent(content)
   return (
-    <div className="mb-5 ml-auto w-fit max-w-[80%] bg-card border border-border rounded-xl px-5 py-4 space-y-3">
+    <div className="mb-5 ml-auto w-fit max-w-[80%]">
+      {injected && (
+        <div className="flex items-center justify-end gap-1 mb-1 text-[10px] text-muted-foreground/60">
+          <IconBolt size={11} />
+          <span>Delivered to the running agent</span>
+        </div>
+      )}
+    <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {files.map((f) => (
@@ -62,6 +70,7 @@ function UserBubble({ content }: { content: string }) {
           )}
         </p>
       )}
+    </div>
     </div>
   )
 }
@@ -202,7 +211,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, isStreamin
     return <LinkedWorkspaceMessage sender={msg.sender} content={msg.content} icon={isSystem ? "system" : "workspace"} />
   }
 
-  if (isUser) return <UserBubble content={msg.content} />
+  if (isUser) return <UserBubble content={msg.content} injected={msg.injected} />
 
   // Empty in-flight assistant message — nothing yet, typing bubble shown separately
   if (isEmpty) return null

@@ -128,9 +128,16 @@ export function useChatSend(args: UseChatSendArgs) {
     if (serverStreaming && isSending) setIsSending(false)
   }, [serverStreaming, isSending])
 
+  // Claude turns run with an open stdin pipe, so a message sent while the
+  // agent is streaming is injected into the running turn by the server
+  // (POST /messages returns "injected"). Plan-mode messages must start their
+  // own turn, and other providers have no injection path — those still go
+  // through the client-side queue.
+  const canInject = (agent.provider ?? "claude") === "claude"
+
   const buildAndQueue = useCallback(async (text: string, isPlan: boolean, effort: string) => {
     const apiContent = await buildContent(args, text)
-    if (isStreaming) {
+    if (isStreaming && (isPlan || !canInject)) {
       setMessageQueue((prev) => [...prev, {
         id: `q-${Date.now()}`,
         agentId: agent.id,
@@ -145,7 +152,7 @@ export function useChatSend(args: UseChatSendArgs) {
     if (isPlan) sendOpts.planMode = true
     if (effort) sendOpts.effort = effort
     void sendContent(text, apiContent, Object.keys(sendOpts).length > 0 ? sendOpts : undefined)
-  }, [args, agent.id, isStreaming, sendContent])
+  }, [args, agent.id, isStreaming, canInject, sendContent])
 
   return {
     isSending,

@@ -65,9 +65,7 @@ function buildArgs(ctx: Ctx, opts: Partial<RunAgentOptions> = {}, preRunStatus =
   return {
     state: ctx.state,
     agentId: ctx.agentId,
-    messageId: ctx.messageId,
-    skeletonCreatedAt: new Date().toISOString(),
-    startedAt: Date.now() - 50,
+    turnRef: { messageId: ctx.messageId, createdAt: new Date().toISOString(), startedAt: Date.now() - 50 },
     model: "Sonnet 4.6",
     provider: fakeProvider(),
     cwd: "/tmp/x",

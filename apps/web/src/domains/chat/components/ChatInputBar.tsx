@@ -114,7 +114,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
           ref={textareaRef}
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
-          placeholder={showPlanApproval ? "Approve or dismiss the plan…" : agent.messages.length === 0 ? "Tell the agent what to work on…" : "Add a follow up"}
+          placeholder={
+            showPlanApproval ? "Approve or dismiss the plan…"
+            : agent.messages.length === 0 ? "Tell the agent what to work on…"
+            : props.isStreaming && (agent.provider ?? "claude") === "claude" ? "Message the running agent…"
+            : "Add a follow up"
+          }
           rows={2}
           className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none overflow-y-auto"
           onDragOver={(e) => e.preventDefault()}

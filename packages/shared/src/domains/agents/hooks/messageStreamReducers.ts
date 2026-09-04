@@ -7,21 +7,24 @@
 import type { Message, ToolCall } from "../agents.types.js"
 import type { SubAgentDataMap } from "./subAgentData.js"
 
-type UserEvent = { message: { id: string; role: "user"; content: string; timestamp: string; sender?: string } }
+type UserEvent = { message: { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean } }
 
 export function applyUserMessage(msgs: Message[], event: UserEvent): Message[] {
   // Avoid duplicate if already present with real id
   if (msgs.some((m) => m.id === event.message.id)) return msgs
-  // Replace optimistic placeholder from the sender
+  const incoming: Message = { ...event.message, toolCalls: [] }
+  // Replace optimistic placeholder from the sender. Injected messages need no
+  // reordering: the server closes the running assistant segment first and
+  // opens a new one after this event, so plain append lands them correctly.
   const optimisticIdx = msgs.findLastIndex(
     (m) => m.id.startsWith("optimistic-") && m.role === "user"
   )
   if (optimisticIdx !== -1) {
     const next = [...msgs]
-    next[optimisticIdx] = { ...event.message, toolCalls: [] }
+    next[optimisticIdx] = incoming
     return next
   }
-  return [...msgs, { ...event.message, toolCalls: [] }]
+  return [...msgs, incoming]
 }
 
 export function applyMessageStart(msgs: Message[], messageId: string): Message[] {
@@ -81,8 +84,14 @@ export function applyToolCall(msgs: Message[], messageId: string, toolCall: Tool
 }
 
 export function applyToolResult(msgs: Message[], messageId: string, toolCallId: string, result: string): Message[] {
+  // Match by tool-call id across ALL messages, not just `messageId`: when a
+  // mid-run injection splits the turn, a tool started in the previous segment
+  // finishes while the stream already targets the new segment's message id.
+  const owner = msgs.find((m) => (m.toolCalls ?? []).some((tc) => tc.id === toolCallId)) ??
+    msgs.find((m) => m.id === messageId)
+  if (!owner) return msgs
   return msgs.map((m) =>
-    m.id === messageId
+    m.id === owner.id
       ? {
           ...m,
           toolCalls: (m.toolCalls ?? []).map((tc) =>

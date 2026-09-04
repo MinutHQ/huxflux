@@ -8,6 +8,7 @@ import type { ProviderAdapter, NormalizedStreamEvent } from "../../providers/pro
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
 import type { TagHandler, RunAgentOptions, TagFollowUp } from "../agent-runner.types.js"
 import { runningProcesses } from "./processRegistry.js"
+import { unregisterTurnSplitter, type TurnSegmentRef } from "./turnSegments.js"
 import { STATUS_PRESERVED_DURING_RUN } from "./state.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
@@ -18,9 +19,9 @@ import { logger } from "../../../logger.js"
 interface FinalizeArgs {
   state: StreamState
   agentId: string
-  messageId: string
-  skeletonCreatedAt: string
-  startedAt: number
+  /** Current-segment identity — injection may have split the turn, so the
+   *  final persist targets whatever segment is live at exit time. */
+  turnRef: TurnSegmentRef
   model: string
   provider: ProviderAdapter
   cwd: string
@@ -44,6 +45,7 @@ export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
     if (finalized) return
     finalized = true
     runningProcesses.delete(args.agentId)
+    unregisterTurnSplitter(args.agentId)
 
     clearPendingQuestion(args.agentId)
     flushRemainingBuffer(args)
@@ -59,7 +61,7 @@ export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
 
 function flushRemainingBuffer(args: FinalizeArgs): void {
   // Flush any remaining buffered data (last line may lack trailing newline)
-  const { bufferRef, provider, state, agentId, messageId, scheduleFlush } = args
+  const { bufferRef, provider, state, agentId, turnRef, scheduleFlush } = args
   if (!bufferRef.current.trim()) return
   const isClaudeFmt = provider.id === "claude"
   const remaining = isClaudeFmt
@@ -69,11 +71,11 @@ function flushRemainingBuffer(args: FinalizeArgs): void {
     if (!part.trim()) continue
     if (isClaudeFmt) {
       try {
-        handleStreamEvent(JSON.parse(part) as ClaudeStreamEvent, state, agentId, messageId, scheduleFlush)
+        handleStreamEvent(JSON.parse(part) as ClaudeStreamEvent, state, agentId, turnRef.messageId, scheduleFlush)
       } catch { /* non-JSON */ }
     } else {
       const event = provider.parseStreamLine(part) as NormalizedStreamEvent | null
-      if (event) handleNormalizedEvent(event, state, agentId, messageId, scheduleFlush)
+      if (event) handleNormalizedEvent(event, state, agentId, turnRef.messageId, scheduleFlush)
     }
   }
   bufferRef.current = ""
@@ -89,9 +91,9 @@ async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
     await persistAssistantMessage({
       state: args.state,
       agentId: args.agentId,
-      messageId: args.messageId,
-      skeletonCreatedAt: args.skeletonCreatedAt,
-      startedAt: args.startedAt,
+      messageId: args.turnRef.messageId,
+      skeletonCreatedAt: args.turnRef.createdAt,
+      startedAt: args.turnRef.startedAt,
       model: args.model,
       providerId: args.provider.id,
       worktreePath: args.cwd,
@@ -104,12 +106,12 @@ async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
   } catch (err) {
     logger.error({ err }, `[runner] persistAssistantMessage failed for ${args.agentId}`)
     // Still emit a done signal with whatever we have so the client unsticks.
-    agentsWs.messageDone(args.agentId, args.messageId, {
-      id: args.messageId,
+    agentsWs.messageDone(args.agentId, args.turnRef.messageId, {
+      id: args.turnRef.messageId,
       role: "assistant",
       content: args.state.pendingText,
-      timestamp: args.skeletonCreatedAt,
-      durationMs: Date.now() - args.startedAt,
+      timestamp: args.turnRef.createdAt,
+      durationMs: Date.now() - args.turnRef.startedAt,
       toolCalls: args.state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result, precedingText: tc.precedingText })),
     } as Message)
   }

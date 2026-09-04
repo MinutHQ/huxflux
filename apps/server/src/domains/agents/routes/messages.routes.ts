@@ -6,6 +6,7 @@ import { sendMessageBodySchema, type SendMessageBody } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, messages, toolCalls, repos } from "../../../db/schema.js"
 import { enqueue, drainQueue } from "../service/messageQueue.js"
+import { isAgentRunning, injectUserMessage } from "../../agent-runner/agent-runner.service.js"
 import type { QueuedMessage } from "../agents.types.js"
 import * as path from "node:path"
 
@@ -108,6 +109,14 @@ async function sendMessageHandler(
     delegateFrom,
     provider: agent.provider ?? undefined,
     effort,
+  }
+
+  // While a turn is running, deliver the message into it (the CLI hands it to
+  // the model at the next step boundary). Plan-mode messages always start
+  // their own turn, and providers without a stdin pipe fall back to the queue.
+  if (!planMode && isAgentRunning(id) && injectUserMessage(id, content, sender)) {
+    reply.code(202)
+    return { status: "injected" }
   }
 
   enqueue(id, opts)

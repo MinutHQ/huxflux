@@ -88,6 +88,9 @@ export const messageSchema = z.object({
   cacheWriteTokens: z.number().nullish(),
   // Display name for the sender (delegated messages between agents).
   sender: z.string().nullish(),
+  // WS-only: true when the message was injected into a running turn. Absent
+  // after a reload — the DB does not store it.
+  injected: z.boolean().optional(),
   // Client-only: text being streamed since the last tool call. Rendered inside
   // the tool-calls accordion so intermediate narration doesn't first appear
   // under the bubble and then jump into the accordion. Cleared on
@@ -361,25 +364,6 @@ export const generateTitleBodySchema = z.object({
 
 export type GenerateTitleBody = z.infer<typeof generateTitleBodySchema>
 
-const askQuestionSchema = z.object({
-  question: z.string(),
-  header: z.string().optional(),
-  multiSelect: z.boolean().optional(),
-  options: z.array(z.object({
-    label: z.string(),
-    description: z.string().optional(),
-  })).optional(),
-})
-
-export const askBodySchema = z.object({
-  tool_input: z.object({
-    questions: z.array(askQuestionSchema),
-  }),
-  tool_use_id: z.string(),
-})
-
-export type AskBody = z.infer<typeof askBodySchema>
-
 export const answerBodySchema = z.object({
   answers: z.record(z.string(), z.string()),
   toolUseId: z.string().optional(),
@@ -440,13 +424,15 @@ export type { PRStatus }
 export type AgentsServerEvent =
   | { type: "agent:updated";    agent: AgentSummary }
   | { type: "agent:deleted";    agentId: string }
-  | { type: "message:user";     agentId: string; message: { id: string; role: "user"; content: string; timestamp: string; sender?: string } }
+  | { type: "message:user";     agentId: string; message: { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean } }
   | { type: "message:start";    agentId: string; messageId: string }
   | { type: "message:chunk";    agentId: string; messageId: string; delta: string }
   | { type: "message:thinking"; agentId: string; messageId: string; delta: string }
   | { type: "tool:call";        agentId: string; messageId: string; toolCall: ToolCall }
   | { type: "tool:result";      agentId: string; messageId: string; toolCallId: string; result: string }
-  | { type: "message:done";     agentId: string; messageId: string; message: Message }
+  // `segment: true` marks a mid-turn segment close (injection split) — the
+  // agent is still working, so it must not be treated as "turn finished".
+  | { type: "message:done";     agentId: string; messageId: string; message: Message; segment?: boolean }
   | { type: "terminal:line";    agentId: string; line: string }
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }

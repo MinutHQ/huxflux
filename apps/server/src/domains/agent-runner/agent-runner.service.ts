@@ -11,6 +11,7 @@ import { createStreamState } from "./service/state.js"
 import { bootstrapTurn, type BootstrapResult } from "./service/bootstrapTurn.js"
 import { buildSystemPrompt } from "./service/systemPrompt.js"
 import { spawnAndStream, makeScheduleFlush, buildSpawnEnv } from "./service/streamLoop.js"
+import { makeTurnSplitter, registerTurnSplitter, type TurnSegmentRef } from "./service/turnSegments.js"
 import { makeFinalize } from "./service/finalize.js"
 import { logger } from "../../logger.js"
 
@@ -22,6 +23,8 @@ export {
   resetStreamingFlags,
   resolveModelAlias,
 } from "./service/processRegistry.js"
+
+export { answerPendingQuestion, injectUserMessage } from "./service/controlProtocol.js"
 
 export type { ParsedTag, TagHandler, RunAgentOptions } from "./agent-runner.types.js"
 
@@ -79,7 +82,7 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
   const repo = bootstrap.repoRow?.name ?? "unknown"
   const branch = bootstrap.liveAgentRow?.branch ?? bootstrap.agentRow?.branch ?? "unknown"
   return new Promise((resolve, reject) => {
-    const { bin, args: cliArgs, env: providerEnv } = resolveSpawnCommand({ userContent, opts, provider, model, bootstrap })
+    const { bin, args: cliArgs, env: providerEnv, stdinInit } = resolveSpawnCommand({ userContent, opts, provider, model, bootstrap })
     const spawnEnv = buildSpawnEnv({
       agentId,
       apiBase,
@@ -90,17 +93,26 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
     })
     // Flush content/thinking to DB periodically so it survives page reloads.
     const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null }
-    const scheduleFlush = makeScheduleFlush(state, bootstrap.messageId, flushTimer)
+    const turnRef: TurnSegmentRef = {
+      messageId: bootstrap.messageId,
+      createdAt: bootstrap.skeletonCreatedAt,
+      startedAt,
+    }
+    const scheduleFlush = makeScheduleFlush(state, turnRef, flushTimer)
     const bufferRef = { current: "" }
 
     const proc = spawnAndStream({
       bin, args: cliArgs, cwd: bootstrap.cwd, env: spawnEnv,
-      provider, state, agentId, messageId: bootstrap.messageId, repo, branch, scheduleFlush, bufferRef,
+      provider, state, agentId, turnRef, repo, branch, scheduleFlush, bufferRef,
+      stdinInit,
     })
 
+    // Mid-run injection splits the turn into visible segments (only meaningful
+    // for providers with a stdin pipe; the splitter is inert otherwise).
+    registerTurnSplitter(agentId, makeTurnSplitter({ agentId, model, state, turnRef }))
+
     const finalize = makeFinalize({
-      state, agentId, messageId: bootstrap.messageId,
-      skeletonCreatedAt: bootstrap.skeletonCreatedAt, startedAt, model, provider,
+      state, agentId, turnRef, model, provider,
       cwd: bootstrap.cwd, branchFrom: bootstrap.branchFrom,
       preRunStatus: bootstrap.preRunStatus, flushTimer, bufferRef, scheduleFlush, opts,
       tags: opts.tags ?? [],
@@ -190,7 +202,7 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
       repoPath: repoRow?.path ?? null,
       cfg: config.sandbox,
     })
-    return { bin: sandboxed.bin, args: sandboxed.args, env: spawnResult.env }
+    return { bin: sandboxed.bin, args: sandboxed.args, env: spawnResult.env, stdinInit: spawnResult.stdinInit }
   }
   return spawnResult
 }

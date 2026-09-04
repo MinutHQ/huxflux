@@ -11,6 +11,7 @@ import { STATUS_PRESERVED_DURING_RUN } from "./state.js"
 import type { RunnerOptions } from "../../agents/agents.types.js"
 import { isPlaceholderName } from "../../agents/rename.js"
 import { tryAutoRename } from "./autoRename.js"
+import { stripDisplayContent } from "./userMessage.js"
 import { logger } from "../../../logger.js"
 
 export interface BootstrapResult {
@@ -120,11 +121,7 @@ export async function bootstrapTurn(
 async function persistUserMessage(userContent: string, opts: RunnerOptions, now: string): Promise<void> {
   // Persist user message — strip internal metadata (linked workspaces, attached files, etc.)
   // so the chat displays cleanly. The full content is still passed to Claude.
-  const displayContent = userContent
-    .replace(/\n\n---\n\nLinked workspaces[\s\S]*$/, "")
-    .replace(/^Attached files:\n[\s\S]*?\n\n---\n\n/, "")
-    .replace(/\n\n---\n\nLinked agents[\s\S]*$/, "")
-    .trim()
+  const displayContent = stripDisplayContent(userContent)
   const userMsgId = uuid()
   // Sender can be explicitly provided (answer-back) or derived from delegateFrom (outbound delegate)
   const senderName = opts.sender

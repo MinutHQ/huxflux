@@ -46,13 +46,24 @@ export interface ClaudeUsage {
  * Field shapes are derived from the runner's accesses, NOT from the CLI's
  * public schema. If the CLI adds a field the runner needs, add it here.
  */
+export interface ClaudeUserContentBlock {
+  type?: string
+  text?: string
+  tool_use_id?: string
+  content?: unknown
+}
+
 export interface ClaudeStreamEvent {
   type: string
   /** Sub-agent routing — when present, the event belongs to a sub-agent run. */
   parent_tool_use_id?: string | null
   tool_use_id?: string | null
-  /** Present on `type: "assistant"` events. */
+  /** Present on `type: "assistant"` events; `type: "user"` events carry
+   *  tool_result / echoed-text blocks under the same key. */
   message?: { content: ClaudeContentBlock[] }
+  /** Present on `type: "control_request"` events (stdin control protocol). */
+  request_id?: string
+  request?: { subtype?: string; tool_name?: string; input?: unknown; tool_use_id?: string }
   /** Present on `type: "tool_result"` events. */
   content?: string
   /** Present on `type: "result"` events. */

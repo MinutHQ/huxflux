@@ -42,7 +42,6 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `switchBranchBodySchema` — Zod schema for the `POST /api/agents/:id/switch-branch` request body
 - `renameBranchBodySchema` — Zod schema for the `POST /api/agents/:id/rename-branch` request body
 - `generateTitleBodySchema` — Zod schema for the `POST /api/agents/:id/generate-title` request body
-- `askBodySchema` — Zod schema for the legacy `POST /api/agents/:id/ask` request body
 - `answerBodySchema` — Zod schema for the `POST /api/agents/:id/answer` request body
 - `saveFileContentBodySchema` — Zod schema for the `PUT /api/agents/:id/files/content` request body
 - `openInBodySchema` — Zod schema for the `POST /api/agents/:id/open-in` request body
@@ -68,7 +67,6 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `SwitchBranchBody` — request-body type for `POST /api/agents/:id/switch-branch`
 - `RenameBranchBody` — request-body type for `POST /api/agents/:id/rename-branch`
 - `GenerateTitleBody` — request-body type for `POST /api/agents/:id/generate-title`
-- `AskBody` — request-body type for the legacy `POST /api/agents/:id/ask` hook endpoint
 - `AnswerBody` — request-body type for `POST /api/agents/:id/answer`
 - `SaveFileContentBody` — request-body type for `PUT /api/agents/:id/files/content`
 - `OpenInBody` — request-body type for `POST /api/agents/:id/open-in`

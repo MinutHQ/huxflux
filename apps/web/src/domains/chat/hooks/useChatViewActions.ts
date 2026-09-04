@@ -66,9 +66,8 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
   }
 
   async function handleAnswerQuestion(answers: Record<string, string>) {
-    // Pass `toolUseId` so the server can write the answer file the file-based
-    // AskUserQuestion hook is polling for. Legacy hooks without a toolUseId
-    // continue to work via the older /answer endpoint behaviour.
+    // The server completes the AskUserQuestion round trip by writing an allow
+    // control_response (with these answers) to the running CLI's stdin.
     // fire-and-forget; intentional: non-fatal answer ping with explicit error swallowing
     // eslint-disable-next-line no-restricted-syntax
     try { await api.agents.answerQuestion(agent.id, answers, pendingQuestion?.toolUseId) } catch { /* non-fatal */ }

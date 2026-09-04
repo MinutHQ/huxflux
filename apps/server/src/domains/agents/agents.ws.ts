@@ -12,7 +12,7 @@
 import type { AgentSummary, Message, FileChange, ToolCall } from "../../types.js"
 import { defineEvents, type InferEvents } from "../ws/define.js"
 
-type UserMessagePayload = { id: string; role: "user"; content: string; timestamp: string; sender?: string }
+type UserMessagePayload = { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean }
 
 type AskQuestion = { question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }
 
@@ -59,7 +59,10 @@ const agentsEventsConfig = {
   },
   messageDone: {
     channel: "emit",
-    build: (agentId: string, messageId: string, message: Message) => ({ type: "message:done" as const, agentId, messageId, message }),
+    // `segment: true` marks a mid-turn segment close (message injection split)
+    // — the agent is still working, so clients must not notify "finished".
+    build: (agentId: string, messageId: string, message: Message, segment?: boolean) =>
+      ({ type: "message:done" as const, agentId, messageId, message, ...(segment ? { segment: true } : {}) }),
   },
   terminalLine: {
     channel: "emit",

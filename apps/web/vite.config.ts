@@ -14,6 +14,12 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
+    // Vite 8 forwards browser console output to the dev server over the HMR
+    // socket, but its transport crashes ("can't access property 'send' of
+    // undefined") whenever the socket is not open, and the unhandled-rejection
+    // hook it installs re-forwards that crash, snowballing into thousands of
+    // errors during any reconnect window. Off until upstream guards the send.
+    forwardConsole: false,
   },
   preview: {
     host: "0.0.0.0",

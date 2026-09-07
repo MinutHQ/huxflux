@@ -98,7 +98,7 @@ domains/agents/
     agents.branch.routes.ts         — switch-branch / rename-branch / stop / generate-title
     agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes
     agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / context / providers
-    messages.routes.ts              — GET/POST /api/agents/:id/messages
+    messages.routes.ts              — GET/POST /api/agents/:id/messages, POST /api/agents/:id/clear
     files.routes.ts                 — /api/agents/:id/files/*
     terminal.routes.ts              — GET /api/agents/:id/terminal
     terminalTabs.routes.ts          — /api/agents/:id/terminal-tabs/*
@@ -107,6 +107,7 @@ domains/agents/
     title.ts                        — generateTitle / deriveTitle / titleToBranchSlug
     rename.ts                       — applyBranchRename / reconcileWorktreeLocation
     messageQueue.ts                 — per-agent in-memory turn queue
+    clearConversation.ts            — `/clear`: wipe transcript + provider session
     setupScript.ts                  — sh script runner that streams output as terminal lines
 ```
 

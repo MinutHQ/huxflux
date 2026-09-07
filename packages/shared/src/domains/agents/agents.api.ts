@@ -34,6 +34,7 @@ const killedResponseSchema = z.object({ killed: z.number() })
 const stoppedResponseSchema = z.object({ stopped: z.boolean() })
 const okResponseSchema = z.object({ ok: z.boolean() })
 const sendMessageResponseSchema = z.object({ status: z.string() })
+const clearConversationResponseSchema = z.object({ cleared: z.literal(true), deletedMessages: z.number() })
 const worktreePathResponseSchema = z.object({ path: z.string() })
 const uploadResponseSchema = z.object({
   path: z.string(),
@@ -114,6 +115,11 @@ export const agentsApi = {
       body: JSON.stringify(sendMessageBodySchema.parse(body)),
     })
   },
+
+  // `/clear`: wipe the transcript and provider session so the next turn
+  // starts fresh. 409 while the agent is running.
+  clearConversation: (agentId: string) =>
+    reqValidated(clearConversationResponseSchema, `/api/agents/${agentId}/clear`, { method: "POST" }),
 
   // Files
   files: (agentId: string) =>

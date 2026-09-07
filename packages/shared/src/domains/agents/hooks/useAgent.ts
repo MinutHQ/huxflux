@@ -100,6 +100,7 @@ export function useAgent(id: string | null) {
           }
           handleLifecycleEvent(event)
           return
+        case "messages:cleared":
         case "ws:reconnected":
         case "error":
           handleLifecycleEvent(event)

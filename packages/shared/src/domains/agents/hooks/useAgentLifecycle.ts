@@ -6,6 +6,7 @@ import { reportAgentError } from "./errorHandler.js"
 
 type LifecycleEvent =
   | Extract<AgentsServerEvent, { type: "agent:updated" }>
+  | Extract<AgentsServerEvent, { type: "messages:cleared" }>
   | { type: "error"; agentId?: string; message: string }
   | { type: "ws:reconnected" }
 
@@ -15,6 +16,8 @@ type LifecycleEvent =
  *     by an id match because the underlying `useAgentEvents` filter doesn't
  *     catch this frame (no top-level `agentId` field), so without the guard
  *     a newly-created agent B could overwrite agent A's cache entry.
+ *   - `messages:cleared`: `/clear` wiped the transcript server-side; empty
+ *     the cached message list so every open client drops it at once.
  *   - `ws:reconnected`: invalidate the detail query so we resync after a
  *     dropped connection.
  *   - `error`: surface through the platform-injected handler.
@@ -38,6 +41,14 @@ export function useAgentLifecycle(id: string | null) {
         queryClient.setQueryData<Agent>(queryKeys.agents.detail(id), (old) => {
           if (!old) return old
           return { ...old, ...parsed }
+        })
+        return
+      }
+      if (event.type === "messages:cleared") {
+        if (event.agentId !== id) return
+        queryClient.setQueryData<Agent>(queryKeys.agents.detail(id), (old) => {
+          if (!old) return old
+          return { ...old, messages: [] }
         })
         return
       }

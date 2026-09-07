@@ -79,6 +79,7 @@ export {
   openInBodySchema,
   uploadFileBodySchema,
   terminalTabUpdateBodySchema,
+  CLEAR_COMMAND,
 } from "./domains/agents/agents.types.js"
 export type {
   Agent,

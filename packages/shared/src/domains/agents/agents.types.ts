@@ -335,6 +335,10 @@ export const updateAgentBodySchema = z.object({
 
 export type UpdateAgentBody = z.infer<typeof updateAgentBodySchema>
 
+// Typed into any chat composer, this is a command (wipe transcript + provider
+// session), never a prompt. Trimmed content must equal it exactly.
+export const CLEAR_COMMAND = "/clear"
+
 export const sendMessageBodySchema = z.object({
   content: z.string(),
   planMode: z.boolean().optional(),
@@ -440,4 +444,6 @@ export type AgentsServerEvent =
   // The pending question was answered (from any client) or cancelled by the
   // CLI — every client should drop its question card.
   | { type: "ask:resolved";     agentId: string; toolUseId: string }
+  // `/clear` wiped the transcript and provider session — drop cached messages.
+  | { type: "messages:cleared"; agentId: string }
   | { type: "ports:changed";    ports: Array<{ agentId: string; agentTitle: string; port: number }> }

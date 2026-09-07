@@ -1,7 +1,8 @@
 import { useCallback } from "react"
 import type React from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, queryKeys } from "@huxflux/shared"
+import { toast } from "sonner"
+import { api, queryKeys, useHuxfluxMutation, CLEAR_COMMAND } from "@huxflux/shared"
 import type { Agent, AgentSummary, PRComment } from "@huxflux/shared"
 import type { PendingQuestion } from "../chat.types"
 
@@ -45,9 +46,26 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     mentionsSlash.detectInputTriggers(value)
   }
 
+  // `/clear` is a command, not a prompt: wipe the transcript and provider
+  // session so the next message starts a fresh context. The server also
+  // intercepts it on POST /messages; short-circuiting here skips the
+  // optimistic user bubble and gives instant feedback on refusal.
+  const clearConversation = useHuxfluxMutation({
+    mutationFn: () => api.agents.clearConversation(agent.id),
+    onSuccess: () => {
+      queryClient.setQueryData<Agent>(queryKeys.agents.detail(agent.id), (old) =>
+        old ? { ...old, messages: [] } : old)
+      toast.success("Conversation cleared")
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to clear conversation")
+    },
+  })
+
   function handleSend() {
     const text = input.trim()
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || chatSend.isSending) return
+    if (clearConversation.isPending) return
     const isPlan = planMode
     setInput(() => "")
     if (textareaRef.current) textareaRef.current.style.height = "auto"
@@ -55,6 +73,10 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     onClearComments?.()
     setAttachments(() => [])
     mentionsSlash.setMentionAttachments(() => [])
+    if (text === CLEAR_COMMAND) {
+      clearConversation.mutate(undefined)
+      return
+    }
     if (isPlan) setAwaitingPlanApproval(true)
     void chatSend.buildAndQueue(text, isPlan, effort)
   }

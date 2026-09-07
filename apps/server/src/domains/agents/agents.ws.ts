@@ -90,6 +90,12 @@ const agentsEventsConfig = {
     channel: "emit",
     build: (agentId: string, toolUseId: string) => ({ type: "ask:resolved" as const, agentId, toolUseId }),
   },
+  // `/clear` wiped the agent's transcript and provider session — every
+  // client drops its cached messages for this agent.
+  messagesCleared: {
+    channel: "emit",
+    build: (agentId: string) => ({ type: "messages:cleared" as const, agentId }),
+  },
   portsChanged: {
     channel: "broadcast",
     build: (ports: PortInfo[]) => ({ type: "ports:changed" as const, ports }),

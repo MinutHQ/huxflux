@@ -21,9 +21,9 @@ export function stripDisplayContent(userContent: string): string {
 
 /**
  * Persist a mid-run injected user message row and emit the `message:user` WS
- * event. `injected: true` on the payload lets the UI mark the message as
- * delivered into a running turn (WS-only — reloads render it as a plain user
- * message). Ordering comes from the turn split that follows the injection: the
+ * event. `injected` is stored on the row and echoed on the payload so the UI
+ * marks the message as delivered into a running turn, both live and after a
+ * reload. Ordering comes from the turn split that follows the injection: the
  * previous assistant segment keeps its earlier createdAt and the new segment's
  * skeleton is created after this row.
  */
@@ -38,6 +38,7 @@ export function persistUserMessageRow(agentId: string, userContent: string, send
     content: displayContent,
     timestamp: now,
     createdAt: now,
+    injected: 1,
     ...(sender ? { sender } : {}),
   }).run()
   agentsWs.messageUser(agentId, { id, role: "user" as const, content: displayContent, timestamp: now, injected: true, ...(sender ? { sender } : {}) })

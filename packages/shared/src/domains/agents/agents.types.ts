@@ -88,8 +88,8 @@ export const messageSchema = z.object({
   cacheWriteTokens: z.number().nullish(),
   // Display name for the sender (delegated messages between agents).
   sender: z.string().nullish(),
-  // WS-only: true when the message was injected into a running turn. Absent
-  // after a reload — the DB does not store it.
+  // True when the user message was delivered into a running turn (mid-run
+  // injection or a chat reply that answered a pending AskUserQuestion).
   injected: z.boolean().optional(),
   // Client-only: text being streamed since the last tool call. Rendered inside
   // the tool-calls accordion so intermediate narration doesn't first appear
@@ -437,4 +437,7 @@ export type AgentsServerEvent =
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
   | { type: "ask:question";     agentId: string; toolUseId: string; questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
+  // The pending question was answered (from any client) or cancelled by the
+  // CLI — every client should drop its question card.
+  | { type: "ask:resolved";     agentId: string; toolUseId: string }
   | { type: "ports:changed";    ports: Array<{ agentId: string; agentTitle: string; port: number }> }

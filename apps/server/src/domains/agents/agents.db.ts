@@ -66,6 +66,7 @@ export const messages = sqliteTable("messages", {
   cacheReadTokens: integer("cache_read_tokens"),
   cacheWriteTokens: integer("cache_write_tokens"),
   sender: text("sender"), // display name for delegated messages, e.g. agent title
+  injected: integer("injected"), // 1 = user message delivered into a running turn (mid-run injection)
 })
 
 export const toolCalls = sqliteTable("tool_calls", {

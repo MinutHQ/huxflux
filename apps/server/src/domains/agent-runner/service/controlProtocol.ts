@@ -59,7 +59,7 @@ function buildControlResponseLine(requestId: string, response: Record<string, un
  */
 export function handleControlRequest(event: ControlRequestEvent, agentId: string, proc: ChildProcess): void {
   if (event.type === "control_cancel_request") {
-    clearPendingQuestion(agentId)
+    resolvePendingQuestion(agentId)
     return
   }
   const requestId = event.request_id
@@ -82,6 +82,14 @@ export function handleControlRequest(event: ControlRequestEvent, agentId: string
   if (!denied) logger.warn({ agentId, tool: request.tool_name }, "[control] could not write deny response")
 }
 
+/** Drop the pending question and tell every client to remove its card. */
+function resolvePendingQuestion(agentId: string): void {
+  const pending = getPendingQuestion(agentId)
+  if (!pending) return
+  clearPendingQuestion(agentId)
+  agentsWs.askResolved(agentId, pending.toolUseId)
+}
+
 function extractQuestions(input: unknown): PendingQuestionEntry[] | null {
   if (!input || typeof input !== "object") return null
   const questions = (input as { questions?: unknown }).questions
@@ -102,7 +110,7 @@ export function answerPendingQuestion(agentId: string, answers: Record<string, s
     behavior: "allow",
     updatedInput: { questions: pending.questions, answers },
   }))
-  if (written) clearPendingQuestion(agentId)
+  if (written) resolvePendingQuestion(agentId)
   return written
 }
 
@@ -112,9 +120,19 @@ export function answerPendingQuestion(agentId: string, answers: Record<string, s
  * message is persisted and emitted as `message:user`. Returns false when the
  * agent has no running process or its stdin is not a writable pipe (e.g. a
  * provider that takes the prompt over argv) — callers fall back to queueing.
+ *
+ * While an AskUserQuestion is pending the CLI is blocked on the
+ * control_response and ignores stream-json input, so a plain injection would
+ * hang the turn. In that case the text is delivered as the free-text answer to
+ * every pending question instead (the model sees it in the tool result).
  */
 export function injectUserMessage(agentId: string, text: string, sender?: string): boolean {
-  const written = writeStdinLine(runningProcesses.get(agentId), buildUserMessageLine(text))
+  const pending = getPendingQuestion(agentId)
+  // Answers are keyed by question text (same convention as the /answer
+  // endpoint); AskUserQuestion questions are assumed unique within a request.
+  const written = pending
+    ? answerPendingQuestion(agentId, Object.fromEntries(pending.questions.map((q) => [q.question, text])))
+    : writeStdinLine(runningProcesses.get(agentId), buildUserMessageLine(text))
   if (!written) return false
   persistUserMessageRow(agentId, text, sender)
   // Close the current assistant segment and open a fresh one below the

@@ -69,6 +69,7 @@ async function listMessagesHandler(
     const tcs = (toolCallsByMsg.get(m.id) ?? []).sort((a, b) => a.orderIdx - b.orderIdx)
     return {
       ...m,
+      injected: m.injected ? true : undefined,
       toolCalls: tcs.length > 0 ? tcs.map((tc) => ({
         id: tc.id,
         tool: tc.tool,

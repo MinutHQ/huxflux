@@ -86,6 +86,10 @@ export const messageSchema = z.object({
   outputTokens: z.number().nullish(),
   cacheReadTokens: z.number().nullish(),
   cacheWriteTokens: z.number().nullish(),
+  // Prompt size of the last model call in the turn and the model's context
+  // limit. Drives the context ring; the four counters above are turn totals.
+  contextTokens: z.number().nullish(),
+  contextWindow: z.number().nullish(),
   // Display name for the sender (delegated messages between agents).
   sender: z.string().nullish(),
   // True when the user message was delivered into a running turn (mid-run
@@ -257,22 +261,6 @@ export const agentPortEntrySchema = z.object({
 })
 
 export type AgentPortEntry = z.infer<typeof agentPortEntrySchema>
-
-// ── Context window probe response ────────────────────────────────────────────
-
-export const agentContextSchema = z.object({
-  used: z.number(),
-  limit: z.number(),
-  percent: z.number(),
-  model: z.string().optional(),
-  categories: z.array(z.object({
-    name: z.string(),
-    tokens: z.number(),
-    percent: z.number(),
-  })).optional(),
-})
-
-export type AgentContext = z.infer<typeof agentContextSchema>
 
 // ── Batched file diff payload ────────────────────────────────────────────────
 

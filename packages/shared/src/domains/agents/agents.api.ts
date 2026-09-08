@@ -10,7 +10,6 @@ import {
   fileTreeNodeSchema,
   terminalTabSchema,
   agentPortEntrySchema,
-  agentContextSchema,
   agentFileDiffSchema,
   systemSshInfoSchema,
   createAgentBodySchema,
@@ -158,8 +157,6 @@ export const agentsApi = {
     reqValidated(z.array(agentFileDiffSchema), `/api/agents/${agentId}/files/diffs`, { timeoutMs: 30_000 }),
   worktreePath: (agentId: string) =>
     reqValidated(worktreePathResponseSchema, `/api/agents/${agentId}/worktree-path`),
-  context: (agentId: string) =>
-    reqValidated(agentContextSchema, `/api/agents/${agentId}/context`, { timeoutMs: 20_000 }),
 
   // Terminal
   terminal: (agentId: string) =>

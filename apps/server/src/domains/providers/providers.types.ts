@@ -40,7 +40,7 @@ export type NormalizedStreamEvent =
   | { type: "thinking"; text: string }
   | { type: "tool_use"; id: string; name: string; input: unknown; precedingText?: string }
   | { type: "tool_result"; toolUseId: string; content: string }
-  | { type: "usage"; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
+  | { type: "usage"; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; contextTokens?: number; contextWindow?: number }
   | { type: "session_init"; sessionId: string }
   | { type: "subagent"; toolUseId: string; event: Record<string, unknown> }
   | { type: "done"; result?: string }

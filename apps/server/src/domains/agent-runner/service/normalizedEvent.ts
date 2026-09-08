@@ -55,6 +55,9 @@ export function handleNormalizedEvent(
       state.outputTokens = event.outputTokens ?? null
       state.cacheReadTokens = event.cacheReadTokens ?? null
       state.cacheWriteTokens = event.cacheWriteTokens ?? null
+      state.contextTokens = event.contextTokens
+        ?? (event.inputTokens ?? 0) + (event.cacheReadTokens ?? 0) + (event.cacheWriteTokens ?? 0)
+      state.contextWindow = event.contextWindow ?? null
       break
     case "session_init":
       db.update(agentsTable).set({ sessionId: event.sessionId }).where(eq(agentsTable.id, agentId)).run()

@@ -155,19 +155,10 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
   // the unsandboxed `spawnResult` independently).
   const { userContent, opts, provider, model, bootstrap } = args
   const { agentId } = opts
-  const { isContinuation, existingSessionId, useContinue, cwd, agentRow, repoRow, liveAgentRow } = bootstrap
+  const { isContinuation, existingSessionId, useContinue, cwd, repoRow } = bootstrap
 
   const systemPrompt = buildSystemPrompt({
     agentId,
-    agent: liveAgentRow
-      ? {
-          id: liveAgentRow.id,
-          title: liveAgentRow.title,
-          branch: liveAgentRow.branch ?? "",
-          prNumber: liveAgentRow.prNumber ?? null,
-          threadParentId: agentRow?.threadParentId ?? null,
-        }
-      : null,
     repo: repoRow ? { branchPrefix: repoRow.branchPrefix ?? null, type: repoRow.type ?? null } : null,
     planMode: opts.planMode ?? false,
     taskContext: opts.taskContext,
@@ -181,8 +172,10 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
     ? buildConversationContext(agentId)
     : undefined
 
+  const prompt = opts.turnContext ? `${userContent}\n\n---\n\n${opts.turnContext}` : userContent
+
   const spawnResult = provider.buildSpawnArgs({
-    prompt: userContent,
+    prompt,
     model,
     planMode: opts.planMode ?? false,
     sessionId: canResume ? existingSessionId : null,

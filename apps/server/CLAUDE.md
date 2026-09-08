@@ -97,7 +97,7 @@ domains/agents/
     agents.update.routes.ts         — PATCH /api/agents/:id (with rebase --onto)
     agents.branch.routes.ts         — switch-branch / rename-branch / stop / generate-title
     agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes
-    agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / context / providers
+    agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / providers
     messages.routes.ts              — GET/POST /api/agents/:id/messages, POST /api/agents/:id/clear
     files.routes.ts                 — /api/agents/:id/files/*
     terminal.routes.ts              — GET /api/agents/:id/terminal

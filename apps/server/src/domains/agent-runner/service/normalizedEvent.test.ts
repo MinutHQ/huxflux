@@ -70,6 +70,18 @@ describe("handleNormalizedEvent — text, thinking, usage", () => {
     expect(ctx.state.outputTokens).toBe(13)
     expect(ctx.state.cacheReadTokens).toBe(1)
     expect(ctx.state.cacheWriteTokens).toBe(2)
+    // No explicit context figure: derived from the prompt-side counters.
+    expect(ctx.state.contextTokens).toBe(10)
+    expect(ctx.state.contextWindow).toBeNull()
+  })
+
+  it("prefers explicit contextTokens / contextWindow from the provider", () => {
+    handleNormalizedEvent(
+      { type: "usage", inputTokens: 7, outputTokens: 13, contextTokens: 4200, contextWindow: 128000 },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextTokens).toBe(4200)
+    expect(ctx.state.contextWindow).toBe(128000)
   })
 })
 

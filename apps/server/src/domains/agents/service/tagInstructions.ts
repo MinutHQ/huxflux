@@ -1,7 +1,38 @@
 import { getSettings } from "../../settings/settings.service.js"
+import { isPlaceholderName } from "./rename.js"
+
+/** Marker that opens the per-turn placeholder note appended to the user prompt. */
+export const PLACEHOLDER_NOTE_PREFIX = "[Huxflux naming]"
+
+interface TurnContextArgs {
+  title: string
+  branch: string | null
+  branchPrefix: string | null
+  isFolderAgent: boolean
+}
+
+/**
+ * Per-turn note appended to the model prompt (never persisted, never shown in
+ * the chat) while the agent still carries placeholder names. Returns null once
+ * both names are real so renamed agents stop re-emitting the naming tags.
+ * Lives in the prompt suffix on purpose: changing the system prompt busts the
+ * provider's prompt cache, appending to the newest user message does not.
+ */
+export function buildNamingTurnContext(args: TurnContextArgs): string | null {
+  const titleIsPlaceholder = isPlaceholderName(args.title)
+  if (args.isFolderAgent) {
+    if (!titleIsPlaceholder) return null
+    return `${PLACEHOLDER_NOTE_PREFIX} Your current title "${args.title}" is still a random placeholder. Emit the naming tag in this response as instructed.`
+  }
+  const prefix = args.branchPrefix ? `${args.branchPrefix}/` : ""
+  const branch = args.branch ?? ""
+  const branchSuffix = branch.startsWith(prefix) ? branch.slice(prefix.length) : branch
+  const branchIsPlaceholder = isPlaceholderName(branchSuffix)
+  if (!titleIsPlaceholder && !branchIsPlaceholder) return null
+  return `${PLACEHOLDER_NOTE_PREFIX} Your current title "${args.title}" and branch "${branch}" are still random placeholders. Emit both naming tags in this response as instructed.`
+}
 
 interface BuildArgs {
-  agentTitle: string
   branchPrefix: string | null
   isFolderAgent: boolean
   agentId: string
@@ -21,7 +52,7 @@ interface BuildArgs {
 export function buildChatTagInstructions(args: BuildArgs): string {
   return [
     buildPreamble(),
-    buildNamingDirective(args.agentTitle, args.branchPrefix, args.isFolderAgent),
+    buildNamingDirective(args.branchPrefix, args.isFolderAgent),
     buildDelegateDirective(args.threadParentId, args.forkParentId, args.agentId),
     ...buildForkDirective(args.isFolderAgent),
     ...buildThreadDirective(args.availableRepos),
@@ -47,27 +78,33 @@ function buildPreamble(): string {
   ].join("\n")
 }
 
-function buildNamingDirective(agentTitle: string, branchPrefix: string | null, isFolderAgent: boolean): string {
-  const preamble = `## FIRST RESPONSE REQUIREMENT — name yourself\n`
+/**
+ * The wording here must stay byte-identical across turns (it is part of the
+ * cached system prompt), so it never embeds the agent's current title. The
+ * "you still have placeholder names" fact arrives per turn via
+ * `PLACEHOLDER_NOTE_PREFIX` in the user prompt instead.
+ */
+function buildNamingDirective(branchPrefix: string | null, isFolderAgent: boolean): string {
+  const preamble = `## Naming yourself\n`
   if (isFolderAgent) {
     return [
       preamble,
-      `Your current title is a RANDOM PLACEHOLDER (e.g. "${agentTitle}"). It is not a real name.`,
-      `In your very first response — before anything else, including any tool calls — you MUST emit this tag on its own line:`,
+      `New agents start with a RANDOM PLACEHOLDER title (two words plus a short code). It is not a real name.`,
+      `When a user message ends with a "${PLACEHOLDER_NOTE_PREFIX}" note, you MUST emit this tag on its own line in that response — before anything else, including any tool calls:`,
       ``,
       `  <huxflux:agents.title>A short task description</huxflux:agents.title>`,
       ``,
       `This rule applies to EVERY task type, including questions, exploration, documentation, refactors, bug fixes, and chat-style conversations.`,
       `Title rules: max ~50 chars, describe the actual task (not "Help with code").`,
-      `If the focus changes later in the conversation, emit the tag again to rename.`,
+      `When no such note is present your title is already real: do not rename unless the focus of the conversation clearly changes.`,
       ``,
       `This folder may not be a git repository. Do not assume git is available unless you verify it.`,
     ].join("\n")
   }
   return [
     preamble,
-    `Your current title and branch are RANDOM PLACEHOLDERS (e.g. "${agentTitle}"). They are not real names.`,
-    `In your very first response — before anything else, including any tool calls — you MUST emit BOTH of these tags on their own lines:`,
+    `New agents start with a RANDOM PLACEHOLDER title and branch (two words plus a short code). They are not real names.`,
+    `When a user message ends with a "${PLACEHOLDER_NOTE_PREFIX}" note, you MUST emit BOTH of these tags on their own lines in that response — before anything else, including any tool calls:`,
     ``,
     `  <huxflux:agents.title>A short task description</huxflux:agents.title>`,
     `  <huxflux:agents.branch>kebab-case-version</huxflux:agents.branch>`,
@@ -81,7 +118,7 @@ function buildNamingDirective(agentTitle: string, branchPrefix: string | null, i
     `Title rules: max ~50 chars, describe the actual task (not "Help with code"), no repo or branch name.`,
     `Branch rules: kebab-case, max ~50 chars, NO prefix${branchPrefix ? ` (the prefix "${branchPrefix}/" is added automatically)` : ""}. The tag triggers "git branch -m" and a worktree relocation automatically — do NOT run git branch -m yourself.`,
     `Do NOT run \`git push\`, \`gh\`, or any command that touches a remote (or that opens/updates a PR) before emitting both tags. Otherwise the remote branch will be created under the placeholder name and you'll have to clean it up by hand.`,
-    `If the focus changes later in the conversation, emit the tags again to rename.`,
+    `When no such note is present your names are already real: do not rename unless the focus of the conversation clearly changes.`,
   ].join("\n")
 }
 

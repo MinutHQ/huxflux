@@ -58,6 +58,9 @@ None.
 
 ## Quirks
 
+- The system prompt is kept byte-identical across turns on purpose. The Claude CLI puts its prompt-cache breakpoint after the `--append-system-prompt` block, so any change there (a renamed title or branch, for example) rewrites the whole conversation into the cache on the next `--resume` spawn. The intro line therefore names only the agent ID; per-turn facts go through `opts.turnContext`, which the runner appends to the user prompt after a `---` separator (never persisted, never shown in the chat). The agents domain uses it to tell the model while its names are still placeholders.
+- Context-window figures come from the stream itself. Each `assistant` event's `message.usage` is one model call, so `contextTokens` (input + cache read + cache write of the latest call) is what the window actually holds; the `result` event's `usage` is the turn total and only serves as a fallback. `result.modelUsage[*].contextWindow` supplies the limit. Both land on the assistant message row; nothing spawns a `--resume` probe any more.
+
 - `agent-runner.service.test.ts` is the end-to-end test that spawns the fake-claude binary. It validates the entire bootstrap, spawn, stream, finalize lifecycle against deterministic JSON fixtures.
 - The `processRegistry` module owns a process-level Map of `agentId` to `ChildProcess`. This is in-memory state that cannot survive a server restart; `resetStreamingFlags()` is called at boot to clear the `streaming=1` rows that a previous (now-dead) process owned.
 - `runAgent` is the single behavioural public entry. The other exports (`runningProcesses`, `getClaudeBin`, `isAgentRunning`, `stopAgent`, `resetStreamingFlags`, `resolveModelAlias`) are narrow observability + cleanup helpers.

@@ -554,6 +554,10 @@ const MIGRATIONS: Migration[] = [
     version: 36,
     sql: `ALTER TABLE messages ADD COLUMN injected INTEGER;`,
   },
+  {
+    version: 37,
+    sql: `ALTER TABLE messages ADD COLUMN context_tokens INTEGER; ALTER TABLE messages ADD COLUMN context_window INTEGER;`,
+  },
 ]
 
 export function runMigrations() {

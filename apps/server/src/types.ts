@@ -148,6 +148,8 @@ export interface Message {
   outputTokens?: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+  contextTokens?: number
+  contextWindow?: number
   sender?: string
 }
 

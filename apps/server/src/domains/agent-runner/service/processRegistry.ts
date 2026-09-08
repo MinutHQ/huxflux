@@ -11,7 +11,7 @@ import { logger } from "../../../logger.js"
 export const runningProcesses = new Map<string, ChildProcess>()
 
 // Legacy: resolve claude binary for backward compat (used by PR review/chat,
-// title gen, /api/agents/:id/context). Delegates to the claude provider so
+// title gen). Delegates to the claude provider so
 // there's a single cached binary path across the runner and the legacy callers.
 export function getClaudeBin(): string {
   return getProvider("claude").resolveBinary()

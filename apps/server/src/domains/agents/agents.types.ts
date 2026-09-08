@@ -34,6 +34,10 @@ export interface ClaudeUsage {
   cache_creation_input_tokens?: number
 }
 
+export interface ClaudeModelUsage {
+  contextWindow?: number
+}
+
 /**
  * A single newline-delimited JSON event emitted by the Claude CLI on stdout.
  *
@@ -60,7 +64,7 @@ export interface ClaudeStreamEvent {
   tool_use_id?: string | null
   /** Present on `type: "assistant"` events; `type: "user"` events carry
    *  tool_result / echoed-text blocks under the same key. */
-  message?: { content: ClaudeContentBlock[] }
+  message?: { content: ClaudeContentBlock[]; usage?: ClaudeUsage }
   /** Present on `type: "control_request"` events (stdin control protocol). */
   request_id?: string
   request?: { subtype?: string; tool_name?: string; input?: unknown; tool_use_id?: string }
@@ -68,6 +72,8 @@ export interface ClaudeStreamEvent {
   content?: string
   /** Present on `type: "result"` events. */
   usage?: ClaudeUsage
+  /** Present on `type: "result"` events; keyed by model id. */
+  modelUsage?: Record<string, ClaudeModelUsage>
   /** Present on `type: "system"` init events. */
   subtype?: string
   session_id?: string
@@ -110,6 +116,11 @@ export interface StreamState {
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
+  // Prompt size of the most recent model call (input + cache read + cache
+  // write). Unlike the four counters above, which the CLI sums over the whole
+  // turn, this is what the context window actually holds right now.
+  contextTokens: number | null
+  contextWindow: number | null
 }
 
 export interface QueuedMessage {

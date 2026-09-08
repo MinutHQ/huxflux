@@ -14,7 +14,7 @@ interface SidebarHeaderProps {
 // toggle.
 export function SidebarHeader({ sidebarCollapsed, onToggleSidebar }: SidebarHeaderProps) {
   const isMacDesktop = isTauri && isMacOS
-  // In native fullscreen the traffic lights hide, so drop their left gutter.
+  // In native fullscreen, put the toggle beside Home without reserving a row.
   const isFullscreen = useIsFullscreen()
 
   if (!isMacDesktop) return null
@@ -31,11 +31,11 @@ export function SidebarHeader({ sidebarCollapsed, onToggleSidebar }: SidebarHead
   }
 
   return (
-    <div>
+    <div className={isFullscreen ? "relative h-0 shrink-0" : undefined}>
       <div
-        onMouseDown={handleMouseDown}
-        className="relative flex shrink-0 items-center gap-1"
-        style={{ paddingLeft: isFullscreen ? 8 : 80, paddingRight: 6, minHeight: 40 }}
+        onMouseDown={isFullscreen ? undefined : handleMouseDown}
+        className={isFullscreen ? "absolute right-2 top-2 z-10 flex items-center" : "relative flex shrink-0 items-center gap-1"}
+        style={isFullscreen ? undefined : { paddingLeft: 80, paddingRight: 6, minHeight: 40 }}
       >
         <div className="min-w-0 flex-1" />
         <Button

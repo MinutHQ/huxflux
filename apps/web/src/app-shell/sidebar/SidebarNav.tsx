@@ -2,6 +2,8 @@ import { IconHome, IconLayoutKanban } from "@tabler/icons-react"
 import { cn } from "@huxflux/ui"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
 import { getFlag } from "@/lib/flags"
+import { isMacOS } from "@/lib/platform"
+import { useIsFullscreen } from "@/app-shell/useIsFullscreen"
 
 /**
  * Quick-navigation buttons at the top of the sidebar: Home, and (behind the
@@ -14,12 +16,13 @@ export function SidebarNav() {
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const tasksEnabled = getFlag("tasks")
+  const isFullscreen = useIsFullscreen()
   const showHome = !!matchRoute({ to: "/", fuzzy: false })
   const showTasks = !!matchRoute({ to: "/tasks", fuzzy: true })
 
   return (
     <>
-      <div className="px-2 pt-2 shrink-0">
+      <div className={cn("px-2 pt-2 shrink-0", isMacOS && isFullscreen && "pr-9")}>
         <button
           onClick={() => navigate({ to: "/" })}
           className={cn(

@@ -1,5 +1,6 @@
 {
   "productName": "Huxflux Dev",
+  "identifier": "com.huxflux.desktop.dev",
   "bundle": {
     "icon": [
       "icons/dev/32x32.png",

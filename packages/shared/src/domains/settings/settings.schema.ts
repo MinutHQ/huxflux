@@ -16,7 +16,7 @@
 
 // ── Setting type discriminants ────────────────────────────────────────────
 
-type SettingType = "boolean" | "string" | "longtext" | "number" | "select" | "custom"
+type SettingType = "boolean" | "string" | "longtext" | "number" | "select" | "stringArray" | "custom"
 
 interface BaseSettingDef {
   type: SettingType
@@ -60,6 +60,11 @@ interface SelectSettingDef extends BaseSettingDef {
   options: "models" | "providers" | ReadonlyArray<{ value: string; label: string }>
 }
 
+interface StringArraySettingDef extends BaseSettingDef {
+  type: "stringArray"
+  default: string[]
+}
+
 interface CustomSettingDef extends BaseSettingDef {
   type: "custom"
   default?: unknown
@@ -71,6 +76,7 @@ export type SettingDef =
   | LongTextSettingDef
   | NumberSettingDef
   | SelectSettingDef
+  | StringArraySettingDef
   | CustomSettingDef
 
 export type SettingsSection =
@@ -171,6 +177,13 @@ export const settingsSchema = {
   },
 
   // ── Models ────────────────────────────────────────────────────────────
+  hiddenModels: {
+    type: "stringArray",
+    default: [] as string[],
+    section: "models",
+    label: "Hidden models",
+    description: "Provider-qualified model IDs hidden from the switcher",
+  },
   defaultModel: {
     type: "select",
     default: "Opus 4.8",
@@ -221,6 +234,7 @@ export const settingsSchema = {
 // ── Derived types ────────────────────────────────────────────────────────
 
 type SettingValueType<D> =
+  D extends { type: "stringArray" } ? string[] :
   D extends { type: "boolean" } ? boolean :
   D extends { type: "number" } ? number :
   D extends { type: "string" | "longtext" | "select" } ? string :

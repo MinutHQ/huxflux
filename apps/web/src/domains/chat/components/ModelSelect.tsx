@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
+import { api, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { cn } from "@huxflux/ui"
 import { IconSearch, IconCheck } from "@tabler/icons-react"
 
@@ -88,7 +89,14 @@ export function ModelSelect({ currentValue, currentLabel, models, providers, onC
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  const sections = useMemo(() => buildSections(models, providers, query), [models, providers, query])
+  const { data: settings } = useHuxfluxQuery({
+    queryKey: queryKeys.settings.current(),
+    queryFn: api.settings.current,
+  })
+  const sections = useMemo(() => buildSections(
+    models.filter((model) => !settings?.hiddenModels?.includes(`${model.provider}:${model.id}`)),
+    providers, query,
+  ), [models, providers, query, settings?.hiddenModels])
   const flat = useMemo(() => sections.flatMap((s) => s.models), [sections])
 
   const [prevOpen, setPrevOpen] = useState(open)

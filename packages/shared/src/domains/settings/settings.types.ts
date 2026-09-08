@@ -23,6 +23,8 @@ function fieldSchema(def: SettingDef): z.ZodTypeAny {
     case "longtext":
     case "select":
       return z.string()
+    case "stringArray":
+      return z.array(z.string())
     case "custom":
       return z.unknown()
   }

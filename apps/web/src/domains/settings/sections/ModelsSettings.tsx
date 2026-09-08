@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
-import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
-import { cn } from "@huxflux/ui"
+import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, type HuxfluxSettings, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
+import { Button, cn } from "@huxflux/ui"
+import { toast } from "sonner"
 import { IconSearch } from "@tabler/icons-react"
 
 const SUB_PROVIDER_LABELS: Record<string, string> = {
@@ -46,8 +47,8 @@ export function ModelsSettings() {
   const defaultProvider = settings?.defaultProvider ?? "claude"
 
   const updateSettings = useHuxfluxMutation({
-    mutationFn: (opts: { provider: string; model: string }) =>
-      api.settings.update({ defaultProvider: opts.provider, defaultModel: opts.model }),
+    mutationFn: (opts: HuxfluxSettings) => api.settings.update(opts),
+    onError: () => toast.error("Could not save model settings"),
     invalidate: () => queryKeys.settings.current(),
   })
 
@@ -67,7 +68,7 @@ export function ModelsSettings() {
   return (
     <div className="space-y-4">
       <p className="text-[12px] text-muted-foreground">
-        The default model used for new agents. Can be overridden per agent.
+        Check the models you want to show in the switcher. Set the default for new agents separately.
       </p>
       {isLoading ? (
         <p className="text-[12px] text-muted-foreground">Loading providers...</p>
@@ -94,8 +95,15 @@ export function ModelsSettings() {
               provider={provider}
               isDefaultProvider={provider.id === defaultProvider}
               defaultModel={defaultModel}
+              hiddenModels={settings?.hiddenModels ?? []}
+              saving={updateSettings.isPending || !settings}
+              onToggleModel={(model) => {
+                const key = `${provider.id}:${model.api || model.id}`
+                const hidden = settings?.hiddenModels ?? []
+                updateSettings.mutate({ hiddenModels: hidden.includes(key) ? hidden.filter((id) => id !== key) : [...hidden, key] })
+              }}
               onSelectModel={(model) =>
-                updateSettings.mutate({ provider: provider.id, model })
+                updateSettings.mutate({ defaultProvider: provider.id, defaultModel: model })
               }
             />
           ))}
@@ -105,39 +113,45 @@ export function ModelsSettings() {
   )
 }
 
-function ModelRow({ model, isSelected, disabled, onSelect }: {
+function ModelRow({ model, isSelected, disabled, visible, onToggle, onSelect }: {
   model: SharedProviderModel
   isSelected: boolean
   disabled: boolean
+  visible: boolean
+  onToggle: () => void
   onSelect: () => void
 }) {
   return (
-    <button
-      disabled={disabled}
-      onClick={onSelect}
-      className={cn(
-        "w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors",
-        "border-b border-border last:border-b-0",
-        !disabled
-          ? isSelected
-            ? "bg-primary/5 text-foreground"
-            : "text-foreground hover:bg-accent/50"
-          : "text-muted-foreground/50 cursor-not-allowed",
-      )}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="text-[13px] font-medium">{model.label}</span>
-        <span className="text-[11px] text-muted-foreground font-mono">{model.api}</span>
-      </div>
-      {isSelected && <span className="text-[11px] font-medium text-primary">Default</span>}
-    </button>
+    <div className={cn("flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0", isSelected && "bg-primary/5")}>
+      <label className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={visible}
+          disabled={disabled}
+          onChange={onToggle}
+          aria-label={`Show ${model.label} in model switcher`}
+          className="size-4 shrink-0 accent-primary"
+        />
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="text-[13px] font-medium">{model.label}</span>
+          <span className="text-[11px] text-muted-foreground font-mono break-all">{model.api}</span>
+        </span>
+      </label>
+      <Button variant="ghost" size="sm" disabled={disabled || isSelected} onClick={onSelect}
+        aria-label={isSelected ? `${model.label} is the default` : `Set ${model.label} as default`}>
+        {isSelected ? "Default" : "Set default"}
+      </Button>
+    </div>
   )
 }
 
-function ProviderCard({ provider, isDefaultProvider, defaultModel, onSelectModel }: {
+function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels, saving, onToggleModel, onSelectModel }: {
   provider: ProviderInfo
   isDefaultProvider: boolean
   defaultModel: string
+  hiddenModels: string[]
+  saving: boolean
+  onToggleModel: (model: SharedProviderModel) => void
   onSelectModel: (model: string) => void
 }) {
   const hasSubProviders = provider.models.some((m) => subProviderOf(m.api) !== null)
@@ -174,7 +188,9 @@ function ProviderCard({ provider, isDefaultProvider, defaultModel, onSelectModel
                   key={model.id}
                   model={model}
                   isSelected={isDefaultProvider && model.label === defaultModel}
-                  disabled={!provider.available}
+                  disabled={!provider.available || saving}
+                  visible={!hiddenModels.includes(`${provider.id}:${model.api || model.id}`)}
+                  onToggle={() => onToggleModel(model)}
                   onSelect={() => onSelectModel(model.label)}
                 />
               ))}
@@ -184,7 +200,9 @@ function ProviderCard({ provider, isDefaultProvider, defaultModel, onSelectModel
               key={model.id}
               model={model}
               isSelected={isDefaultProvider && model.label === defaultModel}
-              disabled={!provider.available}
+              disabled={!provider.available || saving}
+              visible={!hiddenModels.includes(`${provider.id}:${model.api || model.id}`)}
+              onToggle={() => onToggleModel(model)}
               onSelect={() => onSelectModel(model.label)}
             />
           ))}

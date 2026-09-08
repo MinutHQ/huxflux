@@ -15,7 +15,7 @@ Cross-platform API slice for the server-side settings blob, the feature-flag / p
 - `settingsSchema` — canonical schema for every server-side setting (type, default, label, description, section)
 - `settingsDefaults` — typed `{ [key]: default }` map derived from the schema; the server spreads this under the on-disk JSON so every reader sees a fully-populated object
 - `HuxfluxSettings` — shape of the settings blob, derived from `settingsSchema`
-- `SettingDef` — discriminated union describing one setting (boolean / string / longtext / number / select / custom)
+- `SettingDef` — discriminated union describing one setting (boolean / string / longtext / number / select / stringArray / custom)
 - `SettingsSection` — string union of every settings tab a `SettingDef` may live in
 - `huxfluxSettingsSchema` — Zod schema for the settings blob (derived from `settingsSchema`); used by `settingsApi` and the server's settings route to validate input
 - `partialHuxfluxSettingsSchema` — alias of `huxfluxSettingsSchema` (every field is already optional); kept as a documented entry-point for PATCH bodies

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { settingsDefaults, settingsSchema, type HuxfluxSettings } from "./settings.schema.js"
 
+import { partialHuxfluxSettingsSchema } from "./settings.types.js"
+
 describe("settingsDefaults", () => {
   it("matches the HuxfluxSettings shape (compile-time check)", () => {
     // `satisfies` lets TS verify defaults conform to HuxfluxSettings without
@@ -33,5 +35,23 @@ describe("settingsDefaults", () => {
     expect(typeof settingsDefaults.pollingIntervalMs).toBe("number")
     expect(settingsDefaults.pollingIntervalMs).toBeGreaterThanOrEqual(5_000)
     expect(settingsDefaults.pollingIntervalMs).toBeLessThanOrEqual(600_000)
+  })
+})
+
+describe("model visibility settings", () => {
+  it("keeps all models visible for existing settings", () => {
+    expect(settingsDefaults.hiddenModels).toEqual([])
+    expect(partialHuxfluxSettingsSchema.parse({})).toEqual({})
+  })
+
+  it("preserves provider-qualified IDs and independent default selection", () => {
+    const settings = { hiddenModels: ["claude:shared-id", "pi:openai/gpt-5"], defaultProvider: "codex", defaultModel: "GPT-5" }
+    expect(partialHuxfluxSettingsSchema.parse(settings)).toEqual(settings)
+    expect(partialHuxfluxSettingsSchema.parse({ hiddenModels: [] })).toEqual({ hiddenModels: [] })
+  })
+
+  it("rejects malformed visibility lists", () => {
+    expect(partialHuxfluxSettingsSchema.safeParse({ hiddenModels: "claude:model" }).success).toBe(false)
+    expect(partialHuxfluxSettingsSchema.safeParse({ hiddenModels: [42] }).success).toBe(false)
   })
 })

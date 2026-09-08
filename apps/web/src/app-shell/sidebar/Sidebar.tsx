@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { PullRequest, AgentSummary } from "@huxflux/shared"
 import { SidebarHeader } from "./SidebarHeader"
+import { ClaudeUsage } from "./ClaudeUsage"
 import { FeedbackDialog } from "@/app-shell/FeedbackDialog"
 import { AgentList } from "@/domains/agents/AgentList"
 import { ActiveProcesses } from "@/domains/agents/ActiveProcesses"
@@ -29,10 +30,10 @@ interface SidebarProps {
 }
 
 /**
- * The application sidebar: header (usage readout + collapse toggle), quick-nav
+ * The application sidebar: header (collapse toggle), quick-nav
  * buttons (Home/Tasks), an
  * optional 3-way tab strip (Agents / Review / Refine, gated on flags), the
- * active pane, the active-processes panel, and the footer (server switcher +
+ * active pane, the active-processes panel, usage cards, and the footer (server switcher +
  * help + settings).
  *
  * State ownership:
@@ -112,6 +113,8 @@ export function Sidebar({
         )}
 
         <ActiveProcesses />
+
+        {!sidebarCollapsed ? <div className="shrink-0"><ClaudeUsage /></div> : null}
 
         <SidebarFooter
           helpBtnRef={helpBtnRef}

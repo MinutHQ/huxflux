@@ -328,3 +328,6 @@ export type {
   UpdateAutomationBody,
   ReplyToAutomationBuilderBody,
 } from "./domains/automations/automations.types.js"
+
+export { codexUsageApi } from "./domains/codex-usage/codex-usage.api.js"
+export { codexUsageSchema, type CodexUsage } from "./domains/codex-usage/codex-usage.types.js"

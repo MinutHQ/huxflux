@@ -10,7 +10,7 @@ const SPEND_WINDOWS: SpendWindow[] = ["hour", "day", "week"]
 
 export function getSpendWindow(): SpendWindow {
   const stored = localStorage.getItem(SPEND_WINDOW_KEY) as SpendWindow | null
-  return stored && SPEND_WINDOWS.includes(stored) ? stored : "hour"
+  return stored && SPEND_WINDOWS.includes(stored) ? stored : "day"
 }
 
 export function setSpendWindow(window: SpendWindow) {

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@huxflux/ui"
-import { IconSparkles, IconSearch, IconCheck } from "@tabler/icons-react"
+import { IconSearch, IconCheck } from "@tabler/icons-react"
+
+import { ModelSelectTrigger } from "./ModelSelectTrigger"
 
 interface Model {
   id: string
@@ -126,31 +128,22 @@ export function ModelSelect({ currentValue, currentLabel, models, providers, onC
     return () => window.removeEventListener("keydown", onKey)
   }, [open, flat, safeIndex, onChange])
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-      >
-        <IconSparkles size={13} className="text-muted-foreground shrink-0" />
-        <span>{currentLabel}</span>
-      </button>
-    )
-  }
+  const provider = currentValue.split(":")[0] ?? "claude"
+  const providerName = provider === "claude" ? "Claude" : provider === "codex" ? "Codex" : providerDisplayName(provider, providers)
+  const trigger = <ModelSelectTrigger provider={provider} providerName={providerName} label={currentLabel} open={open} onClick={() => setOpen(!open)} />
+
+  if (!open) return trigger
 
   let globalIdx = 0
 
   return (
     <>
-      <button className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-foreground bg-accent transition-colors">
-        <IconSparkles size={13} className="shrink-0" />
-        <span>{currentLabel}</span>
-      </button>
+      {trigger}
       {createPortal(
         <div className="fixed inset-0 z-[200]">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-full max-w-md">
-            <div className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
+            <div role="dialog" aria-modal="true" aria-label="Choose model" className="bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
               <div className="flex items-center gap-3 px-4 border-b border-border">
                 <IconSearch size={15} className="text-muted-foreground/40 shrink-0" />
                 <input

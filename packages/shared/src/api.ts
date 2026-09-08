@@ -1,3 +1,4 @@
+import { codexUsageApi } from "./domains/codex-usage/codex-usage.api.js"
 // Composes every domain's api slice into one namespaced `api` object.
 // Consumers import `{ api }` from `@huxflux/shared` and call
 // `api.<domain>.<method>(...)`. Each slice lives in `domains/<name>/api.ts`.
@@ -24,6 +25,7 @@ export const api = {
   wrapped: wrappedApi,
   automations: automationsApi,
   claudeUsage: claudeUsageApi,
+  codexUsage: codexUsageApi,
 }
 
 export { getApiBase } from "./apiBase.js"

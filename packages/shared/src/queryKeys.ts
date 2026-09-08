@@ -91,6 +91,9 @@ export const queryKeys = {
   wrapped: {
     all: ["wrapped"] as const,
   },
+  codexUsage: {
+    current: (serverUrl?: string | null) => ["codex-usage", serverUrl] as const,
+  },
   claudeUsage: {
     all: ["claude-usage"] as const,
     // Keyed by the active server URL: usage is scoped to the machine the

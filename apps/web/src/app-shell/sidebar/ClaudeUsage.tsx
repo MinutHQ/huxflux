@@ -1,24 +1,9 @@
 import { useEffect, useState } from "react"
-import { keepPreviousData } from "@tanstack/react-query"
-import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsageReason, type ClaudeUsageSpend, type ClaudeUsageWindow } from "@huxflux/shared"
+import { IconBrandOpenai, IconAsterisk, IconInfinity } from "@tabler/icons-react"
+import { api, getApiBase, queryKeys, useHuxfluxQuery, type ClaudeUsage, type ClaudeUsageSpend, type ClaudeUsageWindow } from "@huxflux/shared"
 import { getSpendWindow, setSpendWindow, nextSpendWindow, type SpendWindow } from "@/lib/usagePrefs"
 
-interface UsageRow extends ClaudeUsageWindow {
-  label: string
-  /** Count down in minutes and seconds rather than a single coarse unit. */
-  precise: boolean
-}
-
 const HOUR_MS = 60 * 60 * 1000
-
-// What each failure reads as in the sidebar. `no-token` is absent on purpose:
-// not being signed in means the feature does not apply rather than being
-// broken, so nothing is rendered for it at all.
-const REASON_LABELS: Partial<Record<ClaudeUsageReason, string>> = {
-  "rate-limited": "rate limited",
-  auth: "sign in again",
-  unavailable: "unavailable",
-}
 
 const WINDOW_LABELS: Record<SpendWindow, string> = {
   hour: "1h",
@@ -106,25 +91,36 @@ function formatMoney(amountMinor: number, currency: string, exponent: number): s
   }
 }
 
-// Severity color tracks how much of the window is consumed. emerald/amber/red
-// are design-system colors (the forbidden zinc/slate/gray scales are not used).
-function fillClass(pct: number): string {
-  if (pct >= 90) return "bg-red-500"
-  if (pct >= 70) return "bg-amber-500"
-  return "bg-emerald-500"
-}
-
-function UsageBar({ label, utilization, resetsAt, precise }: UsageRow) {
+function UsageRing({ utilization, label, color }: { utilization: number; label: string; color: string }) {
   const pct = Math.max(0, Math.min(100, Math.round(utilization)))
   return (
-    <div className="w-full">
-      <div className="mb-1 flex items-center justify-between text-[10px] leading-none text-sidebar-foreground/70">
-        <span className="font-medium">{label}</span>
-        <span className="tabular-nums">{pct}% · resets {formatReset(resetsAt, precise)}</span>
+    <div className="relative size-[36px] shrink-0" role="meter" aria-label={`${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+      <svg viewBox="0 0 100 100" className={`size-full -rotate-90 ${color}`} aria-hidden="true">
+        <circle cx="50" cy="50" r="43" fill="none" stroke="currentColor" strokeWidth="10" className="text-sidebar-accent" />
+        <circle cx="50" cy="50" r="43" fill="none" stroke="currentColor" strokeWidth="10" pathLength="100" strokeDasharray={`${pct} 100`} strokeLinecap="round" opacity={pct === 0 ? 0 : 1} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[8px] font-medium leading-none tabular-nums">{pct}%</span>
       </div>
-      <div className="h-1 w-full overflow-hidden rounded-full bg-sidebar-accent">
-        <div className={`h-full rounded-full transition-all ${fillClass(pct)}`} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function UsageBar({ window, label, color }: { window: ClaudeUsageWindow | null; label: string; color: string }) {
+  const pct = window ? Math.max(0, Math.min(100, Math.round(window.utilization))) : null
+  return (
+    <div>
+      <div className="mb-1 flex justify-between gap-1 text-[10px]">
+        <span className="text-sidebar-foreground/80">{label} <span className="ml-1 text-[9px] tabular-nums text-sidebar-foreground/60">
+          {window ? `· resets in ${formatReset(window.resetsAt, label === "Session")}` : "· no limit"}
+        </span></span>
+        <span className="tabular-nums text-sidebar-foreground/60">{pct !== null ? `${pct}%` : "∞"}</span>
       </div>
+      {pct !== null ? (
+        <div role="meter" aria-label={`${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-1.5 overflow-hidden rounded-full bg-sidebar-accent">
+          <div className={`h-full rounded-full bg-current transition-all ${color}`} style={{ width: `${pct}%` }} />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -158,100 +154,71 @@ function SpendRow({ spend }: { spend: ClaudeUsageSpend }) {
     <button
       type="button"
       onClick={handleClick}
-      title={`Extra usage spent · change over the last ${WINDOW_LABELS[window]} (click to change window)`}
-      className="flex w-full items-center justify-between rounded text-[10px] leading-none text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground"
+      title={delta !== null ? `Total extra usage ${total} (click to change window)` : "Total extra usage; insufficient history for this window (click to change window)"}
+      className="flex w-full flex-col items-end gap-1 rounded text-right text-[9px] leading-none text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground"
     >
       <span className="font-medium">
-        Extra usage <span className="text-sidebar-foreground/50">{WINDOW_LABELS[window]}</span>
+        Extra usage <span className="text-sidebar-foreground/50">{delta !== null ? WINDOW_LABELS[window] : "total"}</span>
       </span>
       <span className="tabular-nums">
-        {total}
-        {delta !== null ? (
-          <span className="ml-1 text-sidebar-foreground/50">
-            +{formatMoney(delta, spend.currency, spend.exponent)}
-          </span>
-        ) : null}
+        {delta !== null ? formatMoney(delta, spend.currency, spend.exponent) : total}
       </span>
     </button>
   )
 }
 
-/**
- * A bar row with nothing behind it: an empty track and the reason where the
- * percentage would be. Keeping both rows in place means the sidebar does not
- * jump as readings come and go, and an empty track reads as "this exists, it
- * just has no data right now" where a vanished block reads as a bug.
- */
-function GhostBar({ label, note }: { label: string, note: string }) {
+function ProviderUsageCard({ provider, data }: { provider: "claude" | "codex"; data: ClaudeUsage | undefined }) {
+  useSecondTicker(data?.session?.resetsAt)
+  useSecondTicker(data?.weekly?.resetsAt)
+  if (!data?.connected || (!data.session && !data.weekly && !data.spend)) return null
+  const spend = data.spend && data.spend.amountMinor > 0 ? data.spend : null
+  if (!data.session && !data.weekly && !spend) return null
+
+  const color = provider === "claude" ? "text-orange-500" : "text-blue-500"
+  const border = provider === "claude" ? "border-orange-500/25" : "border-blue-500/25"
+  const ring = data.weekly
+
   return (
-    <div className="w-full">
-      <div className="mb-1 flex items-center justify-between text-[10px] leading-none text-sidebar-foreground/40">
-        <span className="font-medium">{label}</span>
-        <span>{note}</span>
+    <section aria-label={`${provider === "claude" ? "Claude" : "Codex"} usage`} className={`min-w-0 rounded-lg border ${border} bg-sidebar px-2 py-1.5 text-sidebar-foreground`}>
+      <div className="mb-1.5 flex min-h-[36px] items-center gap-2">
+        {ring ? <UsageRing utilization={ring.utilization} label="Weekly" color={color} /> : (
+          <div className="flex size-[36px] shrink-0 items-center justify-center" role="img" aria-label="No weekly limit">
+            <IconInfinity size={26} className={color} stroke={1.5} aria-hidden="true" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 text-[11px] font-medium">
+            {provider === "claude" ? <IconAsterisk size={14} className="text-orange-500" /> : <IconBrandOpenai size={14} className="text-blue-500" />}
+            {provider === "claude" ? "Claude" : "Codex"}
+          </div>
+          <div className="mt-0.5 text-[9px] leading-tight text-sidebar-foreground/60">
+            {ring ? <>Weekly resets in <span className="tabular-nums">{formatReset(ring.resetsAt, false)}</span></> : "No weekly limit"}
+          </div>
+        </div>
+        {spend ? <div className="min-w-0 max-w-[35%]"><SpendRow spend={spend} /></div> : null}
       </div>
-      <div className="h-1 w-full rounded-full bg-sidebar-accent" />
-    </div>
+      <UsageBar window={data.session} label="Session" color={color} />
+    </section>
   )
 }
 
-/**
- * Compact Claude.ai plan-usage readout for the sidebar header: two thin
- * progress bars (5-hour session window + 7-day weekly window) with the
- * percentage used and time until each window resets, plus an extra-usage row
- * once the account has spent beyond its plan limits. Polls every 60s.
- *
- * Renders nothing when the account is simply not signed in. A real failure
- * (rate limit, bad token, network) shows empty ghost bars naming the reason,
- * so the readout does not silently disappear and look broken.
- */
 export function ClaudeUsage() {
-  const { data } = useHuxfluxQuery({
+  const { data: claude } = useHuxfluxQuery({
     queryKey: queryKeys.claudeUsage.current(getApiBase()),
     queryFn: () => api.claudeUsage.current(),
     staleTime: 60_000,
     refetchInterval: 60_000,
-    // Keep showing the last reading while a poll is in flight or comes back
-    // empty, so a single transient failure doesn't blank the bars for up to a
-    // minute until the next poll succeeds.
-    placeholderData: keepPreviousData,
   })
-
-  // Must run before any early return so the hook order stays stable. Only the
-  // session window counts down in seconds; weekly resets days out.
-  useSecondTicker(data?.session?.resetsAt)
-
-  if (!data) return null
-
-  if (!data.connected) {
-    // A reading that fails while a cached one exists is served from the cache
-    // instead, so reaching here means there is genuinely nothing to show.
-    const note = data.reason ? REASON_LABELS[data.reason] : undefined
-    if (!note) return null
-    return (
-      <div className="flex w-full flex-col gap-1.5 px-2 py-1.5" title={data.error ?? undefined}>
-        <GhostBar label="Session" note={note} />
-        <GhostBar label="Weekly" note={note} />
-      </div>
-    )
-  }
-
-  const rows: UsageRow[] = [
-    data.session ? { label: "Session", precise: true, ...data.session } : null,
-    data.weekly ? { label: "Weekly", precise: false, ...data.weekly } : null,
-  ].filter((r): r is UsageRow => r !== null)
-
-  // Extra usage only matters once something has actually been spent — an account
-  // that never exceeds its plan limits should not carry a permanent 0.00.
-  const spend = data.spend && data.spend.amountMinor > 0 ? data.spend : null
-
-  if (rows.length === 0 && !spend) return null
-
+  const { data: codex } = useHuxfluxQuery({
+    queryKey: queryKeys.codexUsage.current(getApiBase()),
+    queryFn: () => api.codexUsage.current(),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  })
   return (
-    <div className="flex w-full flex-col gap-1.5 px-2 py-1.5">
-      {rows.map((row) => (
-        <UsageBar key={row.label} {...row} />
-      ))}
-      {spend ? <SpendRow spend={spend} /> : null}
+    <div className="mx-2 grid max-w-[480px] grid-cols-1 auto-rows-fr gap-1.5 [&:has(section)]:my-2">
+      <ProviderUsageCard provider="claude" data={claude} />
+      <ProviderUsageCard provider="codex" data={codex} />
     </div>
   )
 }

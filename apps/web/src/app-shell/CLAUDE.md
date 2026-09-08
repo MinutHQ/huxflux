@@ -45,8 +45,8 @@ app-shell/
     validateAuth.ts         /api/config probe helper
   sidebar/                  Left nav: header, tabs, agent list, footer
     Sidebar.tsx             Orchestrator
-    SidebarHeader.tsx       Top row: Claude usage readout + collapse toggle (macOS drag region)
-    ClaudeUsage.tsx         Session / weekly plan-usage bars + extra-usage spend row
+    SidebarHeader.tsx       Top row: collapse toggle (macOS drag region)
+    ClaudeUsage.tsx         Claude and Codex usage cards above the server picker, with weekly rings, session bars, and extra spend
     SidebarNav.tsx          Home / Tasks quick links
     SidebarTabs.tsx         Agents / Review / Refine tab strip
     SidebarFooter.tsx       Server switcher + help + settings + collapse

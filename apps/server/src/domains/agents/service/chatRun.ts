@@ -19,7 +19,7 @@ import {
   taskDependencyHandler,
 } from "../../tasks/runnerTags.js"
 import { prReplyHandler } from "../../pull-requests/runnerTags.js"
-import { buildChatTagInstructions } from "./tagInstructions.js"
+import { buildChatTagInstructions, buildNamingTurnContext } from "./tagInstructions.js"
 
 interface ChatRunInput {
   agentId: string
@@ -64,7 +64,6 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
   const availableRepos = allRepos.map((r) => r.name)
 
   const tagInstructions = buildChatTagInstructions({
-    agentTitle: agent?.title ?? agentId,
     branchPrefix: repo?.branchPrefix ?? null,
     isFolderAgent: repo?.type === "folder",
     agentId,
@@ -73,6 +72,15 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     hasPrNumber: !!agent?.prNumber,
     availableRepos,
   })
+
+  const turnContext = agent
+    ? buildNamingTurnContext({
+        title: agent.title,
+        branch: agent.branch ?? null,
+        branchPrefix: repo?.branchPrefix ?? null,
+        isFolderAgent: repo?.type === "folder",
+      }) ?? undefined
+    : undefined
 
   return {
     agentId: input.agentId,
@@ -85,6 +93,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     effort: input.effort,
     tags,
     tagInstructions,
+    turnContext,
     onAssistantMessage: makeTaskMirror(agentId),
   }
 }

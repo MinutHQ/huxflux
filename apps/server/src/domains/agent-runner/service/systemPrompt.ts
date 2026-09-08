@@ -2,7 +2,6 @@ import type { ProviderAdapter } from "../../providers/providers.types.js"
 
 interface SystemPromptArgs {
   agentId: string
-  agent: { id: string; title: string; branch: string; prNumber: number | null; threadParentId: string | null } | null
   repo: { branchPrefix: string | null; type?: string | null } | null
   planMode: boolean
   taskContext?: string
@@ -27,15 +26,17 @@ interface SystemPromptArgs {
  * caller via `tagInstructions` so the runner stays domain-agnostic.
  */
 export function buildSystemPrompt(args: SystemPromptArgs): string {
-  const { agentId, agent, repo, planMode, taskContext, tagInstructions, provider } = args
+  const { agentId, repo, planMode, taskContext, tagInstructions, provider } = args
   if (taskContext) return buildRefinePrompt(taskContext)
 
-  const agentTitle = agent?.title ?? agentId
-  const agentBranch = agent?.branch ?? ""
+  // Deliberately takes no title or branch: both change when the agent renames
+  // itself, and any byte change here invalidates the provider's prompt cache
+  // for the whole conversation on the next turn. Per-turn facts travel in the
+  // user prompt (see `turnContext` in RunAgentOptions).
   const isFolderAgent = repo?.type === "folder"
   const introLine = isFolderAgent
-    ? `You are a Huxflux agent. Your agent ID is "${agentId}" and your current title is "${agentTitle}". You are working directly in a folder (not a git repository).`
-    : `You are a Huxflux agent. Your agent ID is "${agentId}", your current title is "${agentTitle}", and your current git branch is "${agentBranch}".`
+    ? `You are a Huxflux agent. Your agent ID is "${agentId}". You are working directly in a folder (not a git repository).`
+    : `You are a Huxflux agent. Your agent ID is "${agentId}". You are working in a git worktree on your own branch; run \`git branch --show-current\` if you need its name.`
 
   const lines = [
     introLine,

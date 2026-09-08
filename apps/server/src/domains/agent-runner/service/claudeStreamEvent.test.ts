@@ -173,6 +173,53 @@ describe("handleStreamEvent — tool_result, result/usage, system:init", () => {
     expect(ctx.state.cacheWriteTokens).toBe(5)
   })
 
+  it("tracks the prompt size of the latest assistant call as contextTokens", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "text", text: "a" }], usage: { input_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 100, output_tokens: 3 } } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextTokens).toBe(1110)
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "text", text: "b" }], usage: { input_tokens: 20, cache_read_input_tokens: 1200, cache_creation_input_tokens: 0, output_tokens: 3 } } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextTokens).toBe(1220)
+    // The turn-total usage on the result event must not overwrite the last-call figure.
+    handleStreamEvent(
+      { type: "result", usage: { input_tokens: 30, output_tokens: 6, cache_read_input_tokens: 2200, cache_creation_input_tokens: 100 } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextTokens).toBe(1220)
+  })
+
+  it("falls back to the result usage for contextTokens when no assistant usage was seen", () => {
+    handleStreamEvent(
+      { type: "result", usage: { input_tokens: 30, output_tokens: 6, cache_read_input_tokens: 2200, cache_creation_input_tokens: 100 } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextTokens).toBe(2330)
+  })
+
+  it("reads the context window from the result's modelUsage, taking the largest", () => {
+    handleStreamEvent(
+      {
+        type: "result",
+        usage: { input_tokens: 1, output_tokens: 1 },
+        modelUsage: { "claude-haiku-4-5": { contextWindow: 200000 }, "claude-opus-5": { contextWindow: 1000000 } },
+      },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextWindow).toBe(1000000)
+  })
+
+  it("leaves contextWindow null when the result carries no modelUsage", () => {
+    handleStreamEvent(
+      { type: "result", usage: { input_tokens: 1, output_tokens: 1 } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    expect(ctx.state.contextWindow).toBeNull()
+  })
+
   it("persists the session id on system:init", () => {
     handleStreamEvent(
       { type: "system", subtype: "init", session_id: "sess-1" },

@@ -7,7 +7,7 @@ import { answerBodySchema, openInBodySchema } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { getAvailableProviders } from "../../providers/registry.js"
-import { getClaudeBin, answerPendingQuestion } from "../../agent-runner/agent-runner.service.js"
+import { answerPendingQuestion } from "../../agent-runner/agent-runner.service.js"
 import { getPendingQuestion } from "../../../askStore.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
@@ -30,7 +30,6 @@ export const agentsMiscRoutes: FastifyPluginAsyncZod = async (app) => {
   registerAskAnswer(app)
   registerOpenIn(app)
   registerWorktreePath(app)
-  registerContext(app)
   registerProviders(app)
 }
 
@@ -150,94 +149,6 @@ function registerWorktreePath(app: ZodApp): void {
     const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
     return { path: worktreePath }
   })
-}
-
-function registerContext(app: ZodApp): void {
-  // GET /api/agents/:id/context — get context window usage from Claude
-  app.get("/api/agents/:id/context", {
-    schema: { params: idParamsSchema },
-  }, async (req, reply) => {
-    const agent = db.select().from(agents).where(eq(agents.id, req.params.id)).get()
-    if (!agent) return reply.code(404).send({ error: "Not found" })
-    if (!agent.sessionId) return reply.code(200).send({ used: 0, limit: 0, percent: 0, model: agent.model })
-
-    const claudeBin = getClaudeBin()
-
-    try {
-      const result = await runClaudeContextProbe(claudeBin, agent.sessionId)
-      return parseContextResult(result, agent.model)
-    } catch (err) {
-      return reply.code(500).send({ error: `Failed to get context: ${(err as Error).message}` })
-    }
-  })
-}
-
-function runClaudeContextProbe(claudeBin: string, sessionId: string): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    let output = ""
-    const proc = spawn(claudeBin, [
-      "--resume", sessionId,
-      "-p", "/context",
-      "--output-format", "text",
-    ], {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        PATH: `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${process.env.HOME ?? ""}/.npm-global/bin:${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
-      },
-      timeout: 15_000,
-    })
-    proc.stdout.on("data", (chunk: Buffer) => { output += chunk.toString() })
-    proc.on("close", (code) => code === 0 ? resolve(output) : reject(new Error(`exit ${code}`)))
-    proc.on("error", reject)
-  })
-}
-
-interface ContextResult {
-  used: number
-  limit: number
-  percent: number
-  model: string
-  raw?: string
-  categories?: Array<{ name: string; tokens: number; percent: number }>
-}
-
-function parseContextResult(result: string, fallbackModel: string): ContextResult {
-  // Parse "Tokens: 190k / 1m (19%)" or "Tokens: 18.2k / 1000k (2%)"
-  const tokensMatch = result.match(/\*\*Tokens:\*\*\s*([\d.]+)([km]?)\s*\/\s*([\d.]+)([km]?)\s*\((\d+)%\)/i)
-  if (!tokensMatch) {
-    return { used: 0, limit: 0, percent: 0, model: fallbackModel, raw: result }
-  }
-
-  const used = parseTokenCount(tokensMatch[1], tokensMatch[2].toLowerCase())
-  const limit = parseTokenCount(tokensMatch[3], tokensMatch[4].toLowerCase())
-  const percent = parseInt(tokensMatch[5], 10)
-
-  // Parse model from "Model: claude-opus-4-6"
-  const modelMatch = result.match(/\*\*Model:\*\*\s*(\S+)/)
-
-  // Parse category breakdown
-  const categories: Array<{ name: string; tokens: number; percent: number }> = []
-  const catRegex = /\|\s*([^|]+?)\s*\|\s*([\d.,]+)([km]?)\s*(?:tokens)?\s*\|\s*([\d.]+)%\s*\|/gi
-  let m
-  while ((m = catRegex.exec(result)) !== null) {
-    const name = m[1].trim()
-    if (name === "Category" || name.startsWith("--")) continue
-    categories.push({
-      name,
-      tokens: parseTokenCount(m[2].replace(",", ""), m[3].toLowerCase()),
-      percent: parseFloat(m[4]),
-    })
-  }
-
-  return { used, limit, percent, model: modelMatch?.[1] ?? fallbackModel, categories }
-}
-
-function parseTokenCount(num: string, suffix: string): number {
-  const n = parseFloat(num)
-  if (suffix === "k") return Math.round(n * 1000)
-  if (suffix === "m") return Math.round(n * 1_000_000)
-  return Math.round(n)
 }
 
 function registerProviders(app: ZodApp): void {

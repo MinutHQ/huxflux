@@ -29,7 +29,7 @@ describe("buildSystemPrompt", () => {
 
   it("returns the refine prompt when taskContext is provided", () => {
     const out = buildSystemPrompt({
-      agentId: "a", agent: null, repo: null, planMode: false,
+      agentId: "a", repo: null, planMode: false,
       taskContext: "Refine the spec for task XYZ.", provider: fakeProvider(false),
     })
     expect(out).toContain("Huxflux refinement assistant")
@@ -40,20 +40,35 @@ describe("buildSystemPrompt", () => {
   it("includes the agent identity line and quality-checks scaffolding", () => {
     const out = buildSystemPrompt({
       agentId: "agent-1",
-      agent: { id: "agent-1", title: "dawnlit-carver-mu6rh", branch: "wip/x", prNumber: null, threadParentId: null },
       repo: { branchPrefix: null },
       planMode: false,
       provider: fakeProvider(false),
     })
-    expect(out).toContain("dawnlit-carver-mu6rh")
-    expect(out).toContain("wip/x")
+    expect(out).toContain('Your agent ID is "agent-1"')
     expect(out).toContain("Quality checks")
+  })
+
+  it("stays byte-identical when the agent's title and branch change (prompt-cache stability)", () => {
+    const before = buildSystemPrompt({
+      agentId: "agent-1",
+      repo: { branchPrefix: "ai" },
+      planMode: false,
+      provider: fakeProvider(false),
+    })
+    const after = buildSystemPrompt({
+      agentId: "agent-1",
+      repo: { branchPrefix: "ai" },
+      planMode: false,
+      provider: fakeProvider(false),
+    })
+    expect(after).toBe(before)
+    expect(after).not.toContain("dawnlit-carver-mu6rh")
+    expect(after).not.toContain("fix-login-bug")
   })
 
   it("emits zero hardcoded tag instructions (the caller owns them)", () => {
     const out = buildSystemPrompt({
       agentId: "agent-1",
-      agent: { id: "agent-1", title: "t", branch: "b", prNumber: null, threadParentId: null },
       repo: { branchPrefix: "ai" },
       planMode: false,
       provider: fakeProvider(false),
@@ -64,7 +79,6 @@ describe("buildSystemPrompt", () => {
   it("splices in tagInstructions verbatim when provided", () => {
     const out = buildSystemPrompt({
       agentId: "agent-1",
-      agent: { id: "agent-1", title: "t", branch: "b", prNumber: null, threadParentId: null },
       repo: null,
       planMode: false,
       tagInstructions: "Emit <huxflux:agents.title>...</huxflux:agents.title> on the first turn.",
@@ -76,14 +90,12 @@ describe("buildSystemPrompt", () => {
   it("adds the plan-mode addendum only when planMode is true and provider supports it", () => {
     const withPlan = buildSystemPrompt({
       agentId: "a",
-      agent: { id: "a", title: "t", branch: "b", prNumber: null, threadParentId: null },
       repo: null, planMode: true, provider: fakeProvider(true),
     })
     expect(withPlan).toContain("plan mode")
 
     const withoutPlan = buildSystemPrompt({
       agentId: "a",
-      agent: { id: "a", title: "t", branch: "b", prNumber: null, threadParentId: null },
       repo: null, planMode: false, provider: fakeProvider(true),
     })
     expect(withoutPlan).not.toContain("plan mode")
@@ -92,7 +104,6 @@ describe("buildSystemPrompt", () => {
   it("identifies folder-style agents in the intro line", () => {
     const out = buildSystemPrompt({
       agentId: "agent-1",
-      agent: { id: "agent-1", title: "dawnlit-carver-mu6rh", branch: "", prNumber: null, threadParentId: null },
       repo: { branchPrefix: null, type: "folder" },
       planMode: false,
       provider: fakeProvider(false),

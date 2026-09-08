@@ -129,7 +129,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
       </div>
       <div className="flex items-center gap-1">
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={onFileSelect} />
-        <ContextRing agentId={agent.id} isStreaming={isStreaming} />
+        <ContextRing agent={agent} models={allModels} />
         <PlusPopover {...props} />
         {isStreaming && (
           <Button size="icon-xs" variant="destructive" onClick={() => api.agents.stop(agent.id).catch(() => {})}>

@@ -65,6 +65,8 @@ export const messages = sqliteTable("messages", {
   outputTokens: integer("output_tokens"),
   cacheReadTokens: integer("cache_read_tokens"),
   cacheWriteTokens: integer("cache_write_tokens"),
+  contextTokens: integer("context_tokens"), // prompt size of the last model call in the turn (input + cache read + cache write)
+  contextWindow: integer("context_window"), // model context limit reported by the CLI for that call
   sender: text("sender"), // display name for delegated messages, e.g. agent title
   injected: integer("injected"), // 1 = user message delivered into a running turn (mid-run injection)
 })

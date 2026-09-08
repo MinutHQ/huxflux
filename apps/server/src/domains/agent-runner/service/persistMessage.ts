@@ -167,6 +167,8 @@ async function writeAssistantRow(
       outputTokens: state.outputTokens,
       cacheReadTokens: state.cacheReadTokens,
       cacheWriteTokens: state.cacheWriteTokens,
+      contextTokens: state.contextTokens,
+      contextWindow: state.contextWindow,
     })
     .where(eq(messagesTable.id, messageId))
 }
@@ -201,6 +203,8 @@ function buildMessage(
     outputTokens: state.outputTokens ?? undefined,
     cacheReadTokens: state.cacheReadTokens ?? undefined,
     cacheWriteTokens: state.cacheWriteTokens ?? undefined,
+    contextTokens: state.contextTokens ?? undefined,
+    contextWindow: state.contextWindow ?? undefined,
     toolCalls: state.collectedToolCalls.map((tc) => ({
       id: tc.id,
       tool: tc.tool,

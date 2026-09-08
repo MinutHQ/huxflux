@@ -14,5 +14,7 @@ export function createStreamState(): StreamState {
     outputTokens: null,
     cacheReadTokens: null,
     cacheWriteTokens: null,
+    contextTokens: null,
+    contextWindow: null,
   }
 }

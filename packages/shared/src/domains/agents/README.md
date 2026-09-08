@@ -33,7 +33,6 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `fileTreeNodeSchema` — recursive Zod schema for a directory listing node
 - `terminalTabSchema` — Zod schema for a terminal-tab row
 - `agentPortEntrySchema` — Zod schema for one entry in `/api/ports` and the `ports:changed` WS event
-- `agentContextSchema` — Zod schema for the `/api/agents/:id/context` response
 - `agentFileDiffSchema` — Zod schema for one entry of the batched `/api/agents/:id/files/diffs` response
 - `systemSshInfoSchema` — Zod schema for the `/api/system/ssh-info` response
 - `createAgentBodySchema` — Zod schema for the `POST /api/agents` request body
@@ -58,7 +57,6 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `FileTreeNode` — recursive directory-tree node returned by `/api/agents/:id/files/tree`
 - `TerminalTab` — single row from the terminal-tabs API
 - `AgentPortEntry` — `{ agentId, agentTitle, port }` entry shape
-- `AgentContext` — context-window usage payload
 - `AgentFileDiff` — batched-file-diffs entry shape
 - `SystemSshInfo` — SSH-info payload for open-in-editor
 - `CreateAgentBody` — request-body type for `POST /api/agents`

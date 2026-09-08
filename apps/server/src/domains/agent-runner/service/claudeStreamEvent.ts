@@ -3,7 +3,7 @@ import { db } from "../../../db/index.js"
 import { toolCalls as toolCallsTable, agents as agentsTable } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
 import type { ToolCall } from "../../../types.js"
-import type { ClaudeStreamEvent, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
+import type { ClaudeModelUsage, ClaudeStreamEvent, ClaudeUsage, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
 
 /** Process one Claude-format stream event and update streaming state + DB. */
 export function handleStreamEvent(
@@ -23,6 +23,7 @@ export function handleStreamEvent(
   }
 
   if (event.type === "assistant" && event.message) {
+    if (event.message.usage) state.contextTokens = sumPromptTokens(event.message.usage)
     handleAssistantBlocks(event.message.content, state, agentId, messageId, scheduleFlush)
   } else if (event.type === "user" && event.message) {
     // The CLI reports tool results as user-role events. Text blocks here are
@@ -35,6 +36,8 @@ export function handleStreamEvent(
     state.outputTokens = event.usage.output_tokens ?? null
     state.cacheReadTokens = event.usage.cache_read_input_tokens ?? null
     state.cacheWriteTokens = event.usage.cache_creation_input_tokens ?? null
+    if (state.contextTokens == null) state.contextTokens = sumPromptTokens(event.usage)
+    state.contextWindow = pickContextWindow(event.modelUsage) ?? state.contextWindow
   } else if (event.type === "system" && event.subtype === "init" && event.session_id) {
     db.update(agentsTable)
       .set({ sessionId: event.session_id })
@@ -46,6 +49,21 @@ export function handleStreamEvent(
     agentsWs.subagentEvent(agentId, toolUseId, event as unknown as Record<string, unknown>)
     agentsWs.terminalLine(agentId, `[stream] ${JSON.stringify(event)}`)
   }
+}
+
+/** Prompt size of one model call: everything the model read, cached or not. */
+function sumPromptTokens(usage: ClaudeUsage): number {
+  return (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+}
+
+/** Largest context window across the models used in the turn (main model dominates). */
+function pickContextWindow(modelUsage: Record<string, ClaudeModelUsage> | undefined): number | null {
+  if (!modelUsage) return null
+  let max = 0
+  for (const entry of Object.values(modelUsage)) {
+    if (entry.contextWindow && entry.contextWindow > max) max = entry.contextWindow
+  }
+  return max > 0 ? max : null
 }
 
 function handleUserBlocks(

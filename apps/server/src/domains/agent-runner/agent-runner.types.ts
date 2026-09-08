@@ -99,6 +99,14 @@ export interface RunAgentOptions extends RunnerOptions {
    */
   tagInstructions?: string
   /**
+   * Free-form prose appended to the model prompt for this turn only, after a
+   * `---` separator. Never persisted or shown in the chat. Use it for facts
+   * that change between turns (the agent's current names, for instance) so
+   * the system prompt can stay byte-identical and the provider's prompt cache
+   * survives.
+   */
+  turnContext?: string
+  /**
    * Invoked after the assistant message has been persisted and the
    * `message:done` event fired. Useful for cross-domain side effects that
    * aren't a single tag (e.g. mirroring the message into a linked task).

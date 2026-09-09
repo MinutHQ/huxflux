@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react"
+import React, { createContext, useContext, useState, useRef } from "react"
 import { IconCheck, IconCopy } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -44,15 +44,24 @@ function TableBlock({ children }: { node?: any; children?: React.ReactNode }) {
   )
 }
 
-function CodeBlock({ children, className }: { children?: React.ReactNode; className?: string }) {
-  const isBlock = className?.startsWith("language-")
-  if (isBlock) {
-    return (
-      <code className="block font-mono text-[12px] bg-secondary border border-border rounded-lg px-4 py-3 my-3 overflow-x-auto text-foreground/80 leading-relaxed whitespace-pre">
+// Fenced blocks arrive as <pre><code>. A fence with no language tag (or an
+// indented block) carries no `language-*` class, so the parent <pre> is the
+// only reliable block signal. PreContext tells the inner <code> it is a block.
+const PreContext = createContext(false)
+
+function PreBlock({ children }: { children?: React.ReactNode }) {
+  return (
+    <PreContext.Provider value={true}>
+      <pre className="my-3 overflow-x-auto rounded-lg border border-border bg-secondary px-4 py-3 font-mono text-[12px] leading-relaxed text-foreground/80">
         {children}
-      </code>
-    )
-  }
+      </pre>
+    </PreContext.Provider>
+  )
+}
+
+function CodeBlock({ children }: { children?: React.ReactNode; className?: string }) {
+  const isBlock = useContext(PreContext)
+  if (isBlock) return <code className="whitespace-pre">{children}</code>
   return (
     <code className="font-mono text-[12px] bg-secondary border border-border px-1.5 py-0.5 rounded text-foreground">
       {children}
@@ -69,7 +78,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content }: 
         strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
         em: ({ children }) => <em className="italic">{children}</em>,
         code: CodeBlock,
-        pre: ({ children }) => <>{children}</>,
+        pre: PreBlock,
         h1: ({ children }) => <h1 className="text-lg font-bold text-foreground mt-4 mb-2 first:mt-0">{children}</h1>,
         h2: ({ children }) => <h2 className="text-base font-semibold text-foreground mt-4 mb-2 first:mt-0">{children}</h2>,
         h3: ({ children }) => <h3 className="text-sm font-semibold text-foreground mt-3 mb-1.5 first:mt-0">{children}</h3>,

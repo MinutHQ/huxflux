@@ -3,7 +3,7 @@ import * as TablerIcons from "@tabler/icons-react"
 import { IconFolder } from "@tabler/icons-react"
 import { AnchoredPopover, cn } from "@huxflux/ui"
 import { useRepos } from "@huxflux/shared"
-import { randomBeeName, repoColor } from "../../agentListUtils"
+import { buildNewAgentArgs, repoColor } from "../../agentListUtils"
 
 interface NewAgentPopoverProps {
   onClose: () => void
@@ -22,7 +22,8 @@ interface NewAgentPopoverProps {
  * The worktree/direct toggle is hidden when every visible repo is a folder.
  *
  * Number keys 1-9 are mapped to the first 9 repos so power users can spawn an
- * agent without leaving the keyboard.
+ * agent without leaving the keyboard. The same ordering backs the global ⌘1-9
+ * shortcut (see `useNewAgentShortcuts`), which skips the popover entirely.
  */
 export function NewAgentPopover({ onClose, onSelect, anchorRef }: NewAgentPopoverProps) {
   const [direct, setDirect] = useState(false)
@@ -30,15 +31,10 @@ export function NewAgentPopover({ onClose, onSelect, anchorRef }: NewAgentPopove
   const hasGitRepo = repos.some((r) => r.type !== "folder")
 
   function handleSelectRepo(repoId: string) {
-    const name = randomBeeName()
     const repo = repos.find((r) => r.id === repoId)
-    if (repo?.type === "folder") {
-      onSelect(repoId, name, "local", true)
-      return
-    }
-    const prefix = repo?.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
-    const branch = `${prefix}${name}`
-    onSelect(repoId, name, branch, direct)
+    if (!repo) return
+    const args = buildNewAgentArgs(repo, direct)
+    onSelect(repoId, args.title, args.branch, args.direct)
   }
 
   return (

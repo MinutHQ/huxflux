@@ -1,7 +1,8 @@
 import { useMemo } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@huxflux/ui"
 import type { Agent } from "@huxflux/shared"
-import { formatTokens } from "../utils"
+import { formatTokens, isHeadroomOn } from "../utils"
+import { HeadroomStatsBlock } from "./HeadroomStatsBlock"
 import { deriveChatStats, formatDuration, type ChatStats, type ContextUsage } from "./contextStats"
 
 interface ContextRingProps {
@@ -140,6 +141,7 @@ export function ContextRing({ agent, models }: ContextRingProps) {
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-60 text-xs p-3 space-y-1.5">
         <StatsBody stats={stats} />
+        {isHeadroomOn(agent) && <HeadroomStatsBlock agentId={agent.id} />}
       </PopoverContent>
     </Popover>
   )

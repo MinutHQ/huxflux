@@ -64,6 +64,10 @@ export const queryKeys = {
     card: (owner: string, repo: string, number: number | string) =>
       ["pr-card", owner, repo, number] as const,
   },
+  headroom: {
+    status: () => ["headroom-status"] as const,
+    agentStats: (agentId: string) => ["headroom-stats", agentId] as const,
+  },
   settings: {
     all: ["settings"] as const,
     current: () => ["settings"] as const,

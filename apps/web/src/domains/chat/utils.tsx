@@ -120,3 +120,8 @@ export function stripHuxfluxTags(text: string): string {
     .replace(/<huxflux:([^\s>]+)\b[^>]*?>[\s\S]*?<\/huxflux:\1>[\t ]*\n?/g, "")
     .replace(/\n{3,}/g, "\n\n")
 }
+
+/** The per-agent Headroom flag arrives as 0/1 from the DB, or a boolean from an optimistic cache patch. */
+export function isHeadroomOn(agent: { headroom?: number | boolean | null }): boolean {
+  return agent.headroom === 1 || agent.headroom === true
+}

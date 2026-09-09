@@ -1,4 +1,5 @@
 import { codexUsagePlugin } from "./codex-usage/codex-usage.routes.js"
+import { headroomPlugin } from "./headroom/headroom.routes.js"
 import type { FastifyPluginAsync } from "fastify"
 import { agentsPlugin } from "./agents/agents.routes.js"
 import { automationsPlugin } from "./automations/automations.routes.js"
@@ -29,4 +30,5 @@ export const domainPlugins: FastifyPluginAsync[] = [
   tasksPlugin,
   claudeUsagePlugin,
   codexUsagePlugin,
+  headroomPlugin,
 ]

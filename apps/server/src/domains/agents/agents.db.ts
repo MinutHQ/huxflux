@@ -34,6 +34,7 @@ export const agents = sqliteTable("agents", {
   prCommentMonitoring: integer("pr_comment_monitoring"), // null = use global setting, 0 = off, 1 = on
   ciMonitoring: integer("ci_monitoring"), // null = use global setting, 0 = off, 1 = on
   pinned: integer("pinned").default(0), // 1 = pinned to the Pinned sidebar section, never auto-moved by status
+  headroom: integer("headroom").default(0), // 1 = route this agent's claude process through the Headroom compression proxy
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

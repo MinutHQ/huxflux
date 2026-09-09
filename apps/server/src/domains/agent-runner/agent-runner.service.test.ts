@@ -3,13 +3,14 @@ import { eq } from "drizzle-orm"
 import { z } from "zod/v4"
 import * as path from "node:path"
 import { fileURLToPath } from "node:url"
-import { agents as agentsTable, messages as messagesTable, repos as reposTable } from "../../db/schema.js"
+import { agents as agentsTable, messages as messagesTable, repos as reposTable, terminalLines as terminalLinesTable } from "../../db/schema.js"
 import {
-  createTestDb, captureWsEvents, silenceLogs, waitFor,
+  createTestDb, captureWsEvents, silenceLogs, waitFor, freePort,
   type TestDb, type CapturedWsEvents, type SilencedLogs,
 } from "../../../test/harness.js"
 import { runAgent } from "./agent-runner.service.js"
 import { registerProvider, _resetProviders } from "../providers/registry.js"
+import { _resetHeadroom, _setHeadroomSpawnOverride } from "../headroom/headroom.service.js"
 import type { ProviderAdapter } from "../providers/providers.types.js"
 import type { TagHandler } from "./agent-runner.types.js"
 
@@ -17,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url)
 const SERVER_ROOT = path.resolve(path.dirname(__filename), "..", "..", "..")
 const FAKE_BIN = path.join(SERVER_ROOT, "test", "fixtures", "fake-claude.mjs")
 const FIXTURE_DIR = path.join(SERVER_ROOT, "test", "fixtures", "streams")
+const FAKE_HEADROOM = path.join(SERVER_ROOT, "test", "fixtures", "fake-headroom.mjs")
 
 function makeTestProvider(fixturePath: string): ProviderAdapter {
   // Mirrors the Claude provider's stream format so the runner's
@@ -160,5 +162,68 @@ describe("runAgent with caller-provided tag handlers", () => {
       .where(eq(messagesTable.agentId, ctx.agentId)).all()
       .find((m: { role: string }) => m.role === "assistant") as { content: string } | undefined
     expect(assistantMsg?.content).not.toContain("<huxflux:")
+  })
+})
+
+describe("runAgent headroom routing", () => {
+  let ctx: Ctx
+  let savedEnv: NodeJS.ProcessEnv
+  beforeEach(() => {
+    ctx = setup()
+    savedEnv = { ...process.env }
+    registerProvider("test-provider", makeTestProvider(path.join(FIXTURE_DIR, "happy-path-echo-env.json")))
+    _setHeadroomSpawnOverride({ bin: process.execPath, argsPrefix: [FAKE_HEADROOM, "proxy"] })
+  })
+  afterEach(async () => {
+    await _resetHeadroom()
+    _setHeadroomSpawnOverride(null)
+    process.env = savedEnv
+    _resetProviders()
+    ctx.capture.restore()
+    ctx.testDb.close()
+    ctx.logs.restore()
+  })
+
+  function envLines(): string[] {
+    return ctx.testDb.db.select().from(terminalLinesTable).where(eq(terminalLinesTable.agentId, ctx.agentId)).all()
+      .map((r: { line: string }) => r.line)
+      .filter((l: string) => l.startsWith("env "))
+  }
+
+  it("routes the claude spawn through the proxy with the project header when headroom is on", async () => {
+    const port = await freePort()
+    process.env.HEADROOM_PORT = String(port)
+    delete process.env.ANTHROPIC_CUSTOM_HEADERS
+    await runAgent("hello agent", {
+      agentId: ctx.agentId, worktreePath: "/tmp/no-such-worktree", provider: "test-provider", model: "Sonnet 4.6", headroom: true,
+    })
+    const lines = await waitFor(() => { const l = envLines(); return l.length >= 3 ? l : undefined })
+    expect(lines).toContain(`env ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`)
+    expect(lines).toContain("env ENABLE_TOOL_SEARCH=true")
+    expect(lines).toContain(`env ANTHROPIC_CUSTOM_HEADERS=X-Headroom-Project: ${ctx.agentId}`)
+  })
+
+  it("leaves the spawn env alone when headroom is off", async () => {
+    delete process.env.ANTHROPIC_BASE_URL
+    delete process.env.ANTHROPIC_CUSTOM_HEADERS
+    await runAgent("hello agent", {
+      agentId: ctx.agentId, worktreePath: "/tmp/no-such-worktree", provider: "test-provider", model: "Sonnet 4.6",
+    })
+    const lines = await waitFor(() => { const l = envLines(); return l.length >= 3 ? l : undefined })
+    expect(lines).toContain("env ANTHROPIC_BASE_URL=")
+    expect(lines).toContain("env ANTHROPIC_CUSTOM_HEADERS=")
+  })
+
+  it("runs uncompressed and reports the failure when the proxy cannot start", async () => {
+    process.env.HEADROOM_PORT = String(await freePort())
+    process.env.HUXFLUX_FAKE_HEADROOM_EXIT = "1"
+    delete process.env.ANTHROPIC_BASE_URL
+    await runAgent("hello agent", {
+      agentId: ctx.agentId, worktreePath: "/tmp/no-such-worktree", provider: "test-provider", model: "Sonnet 4.6", headroom: true,
+    })
+    const lines = await waitFor(() => { const l = envLines(); return l.length >= 3 ? l : undefined })
+    expect(lines).toContain("env ANTHROPIC_BASE_URL=")
+    const errorEvent = ctx.capture.events.find((e) => e.type === "error") as { message?: string } | undefined
+    expect(errorEvent?.message).toMatch(/Headroom proxy unavailable/)
   })
 })

@@ -558,6 +558,10 @@ const MIGRATIONS: Migration[] = [
     version: 37,
     sql: `ALTER TABLE messages ADD COLUMN context_tokens INTEGER; ALTER TABLE messages ADD COLUMN context_window INTEGER;`,
   },
+  {
+    version: 38,
+    sql: `ALTER TABLE agents ADD COLUMN headroom INTEGER DEFAULT 0;`,
+  },
 ]
 
 export function runMigrations() {

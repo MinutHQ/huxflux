@@ -203,10 +203,13 @@ initializeReserves().catch((err) => logger.error({ err }, "[reserve] initializat
 // underlying resolver. Without this, the first provider check would freeze
 // every other HTTP/WS handler (including the user's terminal PTY upgrade).
 import { warmAllProviders } from "./domains/providers/registry.js"
+import { warmHeadroomAvailability, stopHeadroomProxy } from "./domains/headroom/headroom.service.js"
 const providerWarmStart = Date.now()
 warmAllProviders()
   .then(() => logger.info(`[providers] warm complete in ${Date.now() - providerWarmStart}ms`))
   .catch((err) => logger.error({ err }, "[providers] warm failed"))
+// Same idea for the optional `headroom` CLI; the resolver caches "not installed" on failure.
+warmHeadroomAvailability().catch(() => {})
 
 
 // Attach git file watchers lazily: watch an agent's worktree only while a
@@ -272,6 +275,7 @@ import { killWorktreeProcesses, clearAgentPorts } from "./domains/git/processes.
 async function cleanupOnShutdown() {
   cleanupPortFile()
   stopProxyConnector()
+  await stopHeadroomProxy().catch(() => {})
   try {
     const allAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
     // Per-agent kill in parallel — each `lsof` already has a 3s timeout, so

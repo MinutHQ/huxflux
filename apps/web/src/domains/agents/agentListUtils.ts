@@ -2,7 +2,7 @@
 // Kept separate from utils.ts (which holds terminal/PTY helpers) because the
 // concerns are unrelated.
 
-import type { AgentStatus } from "@huxflux/shared"
+import type { AgentStatus, Repo } from "@huxflux/shared"
 
 // ── Worktree duration tracking ────────────────────────────────────────────────
 
@@ -62,6 +62,27 @@ export function randomBeeName(): string {
   // name reuse from false-positive "already merged" detection.
   const suffix = Math.random().toString(36).slice(2, 7).padStart(5, "0")
   return `${adj}-${noun}-${suffix}`
+}
+
+// ── New-agent request derivation ──────────────────────────────────────────────
+
+export interface NewAgentArgs {
+  title: string
+  branch: string
+  direct: boolean
+}
+
+/**
+ * Derives the title / branch / direct triple for a fresh agent on `repo`.
+ * Shared by the "+" popover and the global ⌘1-9 shortcut so both spawn
+ * identical agents. Folder-type repos have no git branch and always use the
+ * `local` sentinel in direct mode; git repos get `<branchPrefix|agent>/<name>`.
+ */
+export function buildNewAgentArgs(repo: Repo, direct: boolean): NewAgentArgs {
+  const title = randomBeeName()
+  if (repo.type === "folder") return { title, branch: "local", direct: true }
+  const prefix = repo.branchPrefix ? repo.branchPrefix.replace(/\/$/, "") + "/" : "agent/"
+  return { title, branch: `${prefix}${title}`, direct }
 }
 
 // Matches the random-bee placeholder pattern (e.g. "dawnlit-carver-mu6rh").

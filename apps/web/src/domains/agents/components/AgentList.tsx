@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useRef, useState } from "react"
 import { IconFilter, IconFolderPlus, IconPlus, IconSparkles } from "@tabler/icons-react"
 import { Button } from "@huxflux/ui"
 import { useNavigate, useMatchRoute } from "@tanstack/react-router"
@@ -9,6 +9,7 @@ import { QuickStartDialog } from "@/domains/settings/QuickStartDialog"
 import { visibleStatuses } from "../agentListUtils"
 import { useAgentGroups } from "../hooks/useAgentGroups"
 import { useAgentLifecycle } from "../hooks/useAgentLifecycle"
+import { useNewAgentShortcuts } from "../hooks/useNewAgentShortcuts"
 import { AgentPopover } from "./agent-list/AgentPopover"
 import { AddWorkspacePopover } from "./agent-list/AddWorkspacePopover"
 import { FilterPopover } from "./agent-list/FilterPopover"
@@ -70,12 +71,15 @@ export function AgentList({ agents, containerRef }: AgentListProps) {
     repos: groups.repos,
   })
 
-  // ⌘N from a global key listener fires the `huxflux:new-agent` window event.
-  useEffect(() => {
-    function onNewAgent() { setShowNewAgent(true) }
-    window.addEventListener("huxflux:new-agent", onNewAgent)
-    return () => window.removeEventListener("huxflux:new-agent", onNewAgent)
-  }, [])
+  // ⌘N opens the picker; ⌘1-9 creates an agent for the Nth repo straight away.
+  useNewAgentShortcuts({
+    repos,
+    onOpenPicker: () => setShowNewAgent(true),
+    onCreate: (repoId, title, branch, direct) => {
+      setShowNewAgent(false)
+      void handleCreateAgent(repoId, title, branch, direct)
+    },
+  })
 
   const onSelect = (id: string) => navigate({ to: "/agent/$agentId", params: { agentId: id } })
 

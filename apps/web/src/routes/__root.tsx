@@ -61,6 +61,11 @@ function RootComponent() {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent("huxflux:new-agent"))
       }
+      // ⌘1-9: create an agent for the Nth repo (sidebar order) without opening the picker.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:new-agent-for-repo", { detail: { index: Number(e.key) - 1 } }))
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
         setCmdkOpen((v) => !v)

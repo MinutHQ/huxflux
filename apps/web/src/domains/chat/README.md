@@ -9,7 +9,8 @@ The agent chat view. Renders the conversation between the user and a Huxflux age
 - Composer (input, attachments, mentions, slash commands, model picker, plan mode, effort, queued messages)
 - Top metadata bar (repo / branch / base branch / PR status / open-in)
 - Tab bar (multi-agent tabs, file / diff-browser / PR tabs)
-- Team agent and thread agent bars, Tasks bar, ContextRing (context-window ring plus chat stats popover, derived from `agent.messages`; no server probe), AskUserQuestion card
+- Team agent and thread agent bars, Tasks bar, ContextRing (context-window ring plus chat stats popover, derived from `agent.messages`; no server probe; shows the Headroom savings block when the agent has compression on), AskUserQuestion card
+- Headroom compression toggle in the composer toolbar and its install dialog (`components/HeadroomToggle.tsx`, `dialogs/HeadroomInstallDialog.tsx`)
 - Setup view shown while a worktree is being scaffolded
 - Teardown view shown while a worktree is being deleted
 

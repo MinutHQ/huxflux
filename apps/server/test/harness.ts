@@ -5,6 +5,7 @@
 // Pattern: every helper returns an object with a `cleanup` (or `restore`)
 // function. Use `afterEach(() => h.cleanup())` to keep tests isolated.
 
+import { createServer } from "node:net"
 import { DatabaseSync } from "node:sqlite"
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync } from "node:fs"
@@ -158,4 +159,16 @@ export async function waitFor<T>(
     if (Date.now() - start > timeoutMs) throw new Error(`waitFor timed out after ${timeoutMs}ms`)
     await new Promise((r) => setTimeout(r, intervalMs))
   }
+}
+
+/** Ask the OS for a free loopback TCP port (bind to 0, read it back, close). */
+export async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer()
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address()
+      const port = typeof addr === "object" && addr ? addr.port : 0
+      srv.close(() => (port ? resolve(port) : reject(new Error("freePort: no port assigned"))))
+    })
+  })
 }

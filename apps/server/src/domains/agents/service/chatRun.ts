@@ -91,6 +91,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     sender: input.sender,
     provider: input.provider,
     effort: input.effort,
+    headroom: agent?.headroom === 1,
     tags,
     tagInstructions,
     turnContext,

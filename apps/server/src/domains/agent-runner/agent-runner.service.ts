@@ -6,6 +6,7 @@ import { buildSandboxedCommand } from "../../sandbox.js"
 import type { ProviderAdapter, SpawnResult } from "../providers/providers.types.js"
 import type { StreamState } from "../agents/agents.types.js"
 import type { RunAgentOptions } from "./agent-runner.types.js"
+import { buildHeadroomEnv, ensureHeadroomProxy } from "../headroom/headroom.service.js"
 import { runningProcesses } from "./service/processRegistry.js"
 import { createStreamState } from "./service/state.js"
 import { bootstrapTurn, type BootstrapResult } from "./service/bootstrapTurn.js"
@@ -62,7 +63,27 @@ export async function runAgent(userContent: string, opts: RunAgentOptions): Prom
     await provider.installHooks(agentId, bootstrap.cwd, apiBase, config.authToken)
   }
 
-  return spawnAndAwaitExit({ userContent, opts, provider, model, apiBase, bootstrap, state, startedAt })
+  const headroomBaseUrl = await resolveHeadroomBaseUrl(opts, provider)
+
+  return spawnAndAwaitExit({ userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl })
+}
+
+/**
+ * Base URL of the Headroom compression proxy when this agent opted in, or
+ * null. Claude-only: it is the one provider whose CLI honours
+ * ANTHROPIC_BASE_URL. A proxy that cannot start is reported into the chat and
+ * the turn proceeds uncompressed rather than failing.
+ */
+async function resolveHeadroomBaseUrl(opts: RunAgentOptions, provider: ProviderAdapter): Promise<string | null> {
+  if (!opts.headroom || provider.id !== "claude") return null
+  try {
+    return await ensureHeadroomProxy()
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.warn({ err, agentId: opts.agentId }, "[runner] headroom proxy unavailable")
+    agentsWs.errorEmit(opts.agentId, `Headroom proxy unavailable, running without compression: ${reason}`)
+    return null
+  }
 }
 
 interface SpawnAndAwaitArgs {
@@ -74,10 +95,11 @@ interface SpawnAndAwaitArgs {
   bootstrap: BootstrapResult
   state: StreamState
   startedAt: number
+  headroomBaseUrl: string | null
 }
 
 function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
-  const { userContent, opts, provider, model, apiBase, bootstrap, state, startedAt } = args
+  const { userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl } = args
   const { agentId } = opts
   const repo = bootstrap.repoRow?.name ?? "unknown"
   const branch = bootstrap.liveAgentRow?.branch ?? bootstrap.agentRow?.branch ?? "unknown"
@@ -89,7 +111,10 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
       authToken: config.authToken,
       cwd: bootstrap.cwd,
       repoPath: bootstrap.repoRow?.path ?? null,
-      spawnEnvFromProvider: providerEnv,
+      spawnEnvFromProvider: {
+        ...providerEnv,
+        ...(headroomBaseUrl ? buildHeadroomEnv(agentId, headroomBaseUrl) : {}),
+      },
     })
     // Flush content/thinking to DB periodically so it survives page reloads.
     const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null }

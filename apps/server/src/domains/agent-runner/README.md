@@ -44,6 +44,7 @@ The current tag inventory (owned by the consumer domains, not by this one):
 - `../agents/agents.types.js` — `ClaudeStreamEvent`, `StreamState`, `RunnerOptions`, `CollectedToolCall`, `ClaudeContentBlock` (the runner-shared accumulator + the queue-shape options)
 - `../agents/rename.js`, `../agents/title.js` — used by `autoRename` for the placeholder-name fallback (agent-domain helpers, intentionally allowed)
 - `../providers/registry.js`, `../providers/providers.types.js`, `../providers/context.js` — provider lookup + adapter types
+- `../headroom/headroom.service.js` — `ensureHeadroomProxy` + `buildHeadroomEnv`, used only when `opts.headroom` is set and the provider is `claude`; a proxy that fails to start is reported via `errorEmit` and the turn runs uncompressed
 - `../git/worktrees.js` — `getFileChanges`
 - `../../db/index.js`, `../../db/schema.js` — Drizzle handle + tables (`agents`, `messages`, `toolCalls`, `terminalLines`, `fileChanges`, `repos`)
 - `../../config.js`, `../../sandbox.js`, `../../types.js`, `../../askStore.js` — config, sandbox, cross-cutting types, AskUserQuestion store

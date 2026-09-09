@@ -72,6 +72,7 @@ function buildPatch(body: UpdateBody, now: string): Record<string, unknown> {
     ...(body.prCommentMonitoring !== undefined && { prCommentMonitoring: body.prCommentMonitoring === null ? null : body.prCommentMonitoring ? 1 : 0 }),
     ...(body.ciMonitoring !== undefined && { ciMonitoring: body.ciMonitoring === null ? null : body.ciMonitoring ? 1 : 0 }),
     ...(body.pinned !== undefined && { pinned: body.pinned ? 1 : 0 }),
+    ...(body.headroom !== undefined && { headroom: body.headroom ? 1 : 0 }),
     updatedAt: now,
   }
 }

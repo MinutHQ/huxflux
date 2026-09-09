@@ -13,6 +13,7 @@ import { api } from "@huxflux/shared"
 import { ContextRing } from "./ContextRing"
 import { ModelSelect } from "./ModelSelect"
 import { AgentSettingsPopover } from "./AgentSettingsPopover"
+import { HeadroomToggle } from "./HeadroomToggle"
 import { AgentLinker } from "./AgentLinker"
 import type { ChatInputBarProps } from "./chatInputBarTypes"
 
@@ -126,6 +127,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
         {!hideChrome && capabilities.planMode !== false && (
           <PlanModeButton planMode={planMode} isInPlanMode={isInPlanMode} setPlanMode={setPlanMode} />
         )}
+        {agentProvider === "claude" && <HeadroomToggle agent={agent} />}
       </div>
       <div className="flex items-center gap-1">
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={onFileSelect} />

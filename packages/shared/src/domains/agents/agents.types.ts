@@ -150,6 +150,7 @@ export const agentSchema = z.object({
   prCommentMonitoring: intFlagSchema,
   ciMonitoring: intFlagSchema,
   pinned: intFlagSchema,
+  headroom: intFlagSchema,
   messages: z.array(messageSchema),
   hasMore: z.boolean().optional(),
   fileChanges: z.array(fileChangeSchema),
@@ -319,6 +320,7 @@ export const updateAgentBodySchema = z.object({
   prCommentMonitoring: z.boolean().nullable().optional(),
   ciMonitoring: z.boolean().nullable().optional(),
   pinned: z.boolean().optional(),
+  headroom: z.boolean().optional(),
 })
 
 export type UpdateAgentBody = z.infer<typeof updateAgentBodySchema>

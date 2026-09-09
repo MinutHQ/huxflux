@@ -9,7 +9,7 @@ CLI provider abstractions: Claude (streaming + interactive), Codex (OpenAI), Gem
 - The `NormalizedStreamEvent` union: every provider parses its raw stdout into this provider-agnostic shape so the agents runner has a single event-handling path.
 - `SpawnOptions` / `SpawnResult` / `ProviderCapabilities` / `ProviderId` — the data shapes the runner uses to drive provider spawns.
 - `buildConversationContext` — formats the last N persisted messages into a prompt prefix for providers that don't support session resume (currently Codex).
-- The `createBinaryResolver` factory in `service/binary.ts` (internal, not exported). Every adapter constructs one to get `{ resolve, isAvailable, reset }` so binary discovery, the cached path, and the availability probe live in one place.
+- The `createBinaryResolver` factory in `service/binary.ts` (re-exported through the top-level `binary.ts`). Every adapter constructs one to get `{ resolve, isAvailable, reset }` so binary discovery, the cached path, and the availability probe live in one place.
 - Per-provider model alias maps (claude / claude-interactive / gemini) and the `MODELS` table each adapter returns from `getModels()`. Shape is uniform across providers: `{ id, label, api }`.
 - The `claude` provider's `installHooks` implementation: writes `~/.claude/hooks/huxflux-ask-user.sh` and registers it as a PreToolUse hook in `~/.claude/settings.json` so the AskUserQuestion CLI tool routes back to the Hive UI.
 
@@ -19,6 +19,7 @@ Top-level `.ts` files in this domain are public; the `service/` subfolder houses
 
 - `registry.ts` — provider registry: `getProvider`, `getAvailableProviders`, `getInstalledProviders`, `registerProvider` (test seam), `_resetProviders` (test-only). Re-exports `ProviderId` and `ProviderAdapter` from `providers.types.ts`.
 - `providers.types.ts` — `ProviderId`, `ProviderAdapter`, `NormalizedStreamEvent`, `SpawnOptions`, `SpawnResult`, `ProviderCapabilities`.
+- `binary.ts` — re-exports `createBinaryResolver` (and its types) from `service/binary.ts` so other domains (currently `headroom`) can discover a CLI the same way adapters do.
 - `context.ts` — `buildConversationContext` (formats the last N persisted messages into a prompt prefix for providers that don't support session resume).
 - `service/claudeSessionPaths.ts` (internal) — `claudeSessionFilePath` / `claudeContinueProbePath`, the on-disk locations of the Claude CLI's session state, shared by the two adapters that drive that binary.
 

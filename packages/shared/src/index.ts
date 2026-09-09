@@ -329,3 +329,16 @@ export type {
 
 export { codexUsageApi } from "./domains/codex-usage/codex-usage.api.js"
 export { codexUsageSchema, type CodexUsage } from "./domains/codex-usage/codex-usage.types.js"
+
+// ── headroom ──────────────────────────────────────────────────────────────────
+export { headroomApi } from "./domains/headroom/headroom.api.js"
+export {
+  headroomStatusSchema,
+  headroomAgentStatsSchema,
+  headroomInstallStateSchema,
+  type HeadroomStatus,
+  type HeadroomInstallState,
+  type HeadroomAgentStats,
+  type HeadroomAgentSavings,
+  type HeadroomProxyCache,
+} from "./domains/headroom/headroom.types.js"

@@ -91,6 +91,7 @@ export interface RunnerOptions {
   provider?: string      // provider ID (defaults to agent's provider or "claude")
   effort?: string        // effort level (e.g. "low", "medium", "high", "max")
   taskContext?: string   // appended to system prompt for task-aware agents (refinement)
+  headroom?: boolean     // route the claude process through the Headroom compression proxy
 }
 
 export interface CollectedToolCall {

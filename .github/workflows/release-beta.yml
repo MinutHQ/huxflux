@@ -2,6 +2,10 @@ name: Release Beta
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [beta]
 
 concurrency:
   group: release-beta
@@ -18,12 +22,15 @@ jobs:
     permissions:
       contents: write
       packages: write
-    if: github.ref == 'refs/heads/beta'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/beta') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'beta')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Compute next version
         id: version

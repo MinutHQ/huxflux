@@ -34,7 +34,20 @@ interface PersistArgs {
    * persist-phase throw — otherwise a failed PR reply would go unreported.
    */
   followUps: TagFollowUp[]
+  /**
+   * Set when the server (not the user) stopped the turn, e.g. a restart. A
+   * note is appended to the persisted body so the transcript explains why the
+   * agent stopped mid-thought instead of silently ending on a tool call.
+   */
+  interruptedReason?: string
   onAssistantMessage?: (event: { content: string }) => void | Promise<void>
+}
+
+/** Append the "turn interrupted" note when a server-side stop reason is set. */
+export function appendInterruptedNote(content: string, reason: string | undefined): string {
+  if (!reason) return content
+  const note = `*Turn interrupted: ${reason}. Send a message to continue.*`
+  return content.trim() ? `${content.trimEnd()}\n\n${note}` : note
 }
 
 /**
@@ -53,7 +66,7 @@ interface PersistArgs {
  * a clean next turn.
  */
 export async function persistAssistantMessage(args: PersistArgs): Promise<void> {
-  const { state, agentId, messageId, skeletonCreatedAt, startedAt, model, providerId, branchFrom, flushTimer, tags, followUps, onAssistantMessage } = args
+  const { state, agentId, messageId, skeletonCreatedAt, startedAt, model, providerId, branchFrom, flushTimer, tags, followUps, interruptedReason, onAssistantMessage } = args
 
   // Cancel any pending flush — we're about to write the final state
   if (flushTimer.current) { clearTimeout(flushTimer.current); flushTimer.current = null }
@@ -73,7 +86,7 @@ export async function persistAssistantMessage(args: PersistArgs): Promise<void> 
   state.fullContent = stripTagsFromBody(state.fullContent)
   stripHuxfluxTagsFromToolCalls(state.collectedToolCalls)
 
-  const finalContent = stripTagsFromBody(computeFinalContent(state, providerId))
+  const finalContent = appendInterruptedNote(stripTagsFromBody(computeFinalContent(state, providerId)), interruptedReason)
 
   await writeAssistantRow(messageId, finalContent, state, model, startedAt)
   await updateToolCallResults(state.collectedToolCalls)

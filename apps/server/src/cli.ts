@@ -458,8 +458,10 @@ function runSupervisor() {
   }
 
   // Watch for binary replacement (npm update with ignore-scripts).
-  // Poll SERVER_ENTRY mtime every 30s. If it changes, SIGTERM the child
-  // so it exits cleanly, then restart with the new code.
+  // Poll SERVER_ENTRY mtime every 30s. If it changes, ask the child to
+  // restart once no agent turn is running (SIGUSR2). The server drains its
+  // in-flight turns and exits on its own; killing it outright would cut every
+  // running agent mid-turn and lose the text it was about to send.
   let lastBinaryMtime = 0
   try { lastBinaryMtime = fs.statSync(SERVER_ENTRY).mtimeMs } catch { /* ignore */ }
   const BINARY_POLL_MS = 30_000
@@ -467,10 +469,10 @@ function runSupervisor() {
     try {
       const mtime = fs.statSync(SERVER_ENTRY).mtimeMs
       if (lastBinaryMtime > 0 && mtime !== lastBinaryMtime) {
-        console.info("[supervisor] Binary updated on disk, restarting...")
+        console.info("[supervisor] Binary updated on disk, restarting once running agents finish...")
         lastBinaryMtime = mtime
         binaryUpdated = true
-        if (activeChild) activeChild.kill("SIGTERM")
+        if (activeChild) activeChild.kill("SIGUSR2")
       }
     } catch { /* file temporarily missing during npm install */ }
   }, BINARY_POLL_MS)
@@ -508,8 +510,10 @@ function runSupervisor() {
         process.exit(0)
       }
 
-      // Clean exit or signal forwarded from us
-      if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
+      // Clean exit or signal forwarded from us. SIGUSR2 is the restart-when-
+      // idle request; a server too old to handle it dies on the signal, which
+      // is still a planned restart rather than a crash.
+      if (code === 0 || signal === "SIGTERM" || signal === "SIGINT" || signal === "SIGUSR2") {
         if (binaryUpdated) {
           binaryUpdated = false
           console.info("[supervisor] Restarting with updated binary...")
@@ -519,8 +523,10 @@ function runSupervisor() {
         process.exit(0)
       }
 
-      // Exit code 42 = planned restart after update (not a crash)
+      // Exit code 42 = planned restart after update (not a crash). Also the
+      // normal exit of a SIGUSR2 restart-when-idle, so clear the update flag.
       if (code === 42) {
+        binaryUpdated = false
         console.info("[supervisor] Server updated, restarting with new version...")
         setTimeout(startChild, 1000)
         return

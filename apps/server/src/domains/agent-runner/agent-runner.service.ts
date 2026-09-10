@@ -7,7 +7,7 @@ import type { ProviderAdapter, SpawnResult } from "../providers/providers.types.
 import type { StreamState } from "../agents/agents.types.js"
 import type { RunAgentOptions } from "./agent-runner.types.js"
 import { buildHeadroomEnv, ensureHeadroomProxy } from "../headroom/headroom.service.js"
-import { runningProcesses } from "./service/processRegistry.js"
+import { runningProcesses, trackTurn } from "./service/processRegistry.js"
 import { createStreamState } from "./service/state.js"
 import { bootstrapTurn, type BootstrapResult } from "./service/bootstrapTurn.js"
 import { buildSystemPrompt } from "./service/systemPrompt.js"
@@ -21,6 +21,7 @@ export {
   getClaudeBin,
   isAgentRunning,
   stopAgent,
+  stopAllRunningTurns,
   resetStreamingFlags,
   resolveModelAlias,
 } from "./service/processRegistry.js"
@@ -65,7 +66,9 @@ export async function runAgent(userContent: string, opts: RunAgentOptions): Prom
 
   const headroomBaseUrl = await resolveHeadroomBaseUrl(opts, provider)
 
-  return spawnAndAwaitExit({ userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl })
+  const turn = spawnAndAwaitExit({ userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl })
+  trackTurn(agentId, turn)
+  return turn
 }
 
 /**
@@ -153,7 +156,7 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
         state.pendingText = errMsg
         agentsWs.errorEmit(agentId, errMsg)
       }
-      await finalize()
+      await finalize(code)
       resolve()
     })
 

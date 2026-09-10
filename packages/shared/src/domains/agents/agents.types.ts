@@ -124,6 +124,27 @@ const diffSummarySchema = z.object({
 // truthy checks.
 const intFlagSchema = z.union([z.number(), z.boolean()]).nullish()
 
+// One question of a pending AskUserQuestion round trip. Mirrors the shape the
+// Claude CLI puts in the tool input.
+export const askQuestionEntrySchema = z.object({
+  question: z.string(),
+  header: z.string().optional(),
+  multiSelect: z.boolean().optional(),
+  options: z.array(z.object({ label: z.string(), description: z.string().optional() })).optional(),
+})
+
+export type AskQuestionEntry = z.infer<typeof askQuestionEntrySchema>
+
+// The AskUserQuestion the agent is currently blocked on, if any. Served on the
+// agent detail so a client that missed the `ask:question` frame (other agent
+// open, reload, reconnect) still shows the card.
+export const agentPendingQuestionSchema = z.object({
+  toolUseId: z.string(),
+  questions: z.array(askQuestionEntrySchema),
+})
+
+export type AgentPendingQuestion = z.infer<typeof agentPendingQuestionSchema>
+
 export const agentSchema = z.object({
   id: z.string(),
   repoId: z.string().nullish(),
@@ -165,6 +186,7 @@ export const agentSchema = z.object({
   // routes still echo it as part of the row.
   noWorktree: intFlagSchema,
   deletedAt: z.string().nullish(),
+  pendingQuestion: agentPendingQuestionSchema.nullish(),
 })
 
 export type Agent = z.infer<typeof agentSchema>
@@ -430,7 +452,7 @@ export type AgentsServerEvent =
   | { type: "terminal:line";    agentId: string; line: string }
   | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
-  | { type: "ask:question";     agentId: string; toolUseId: string; questions: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }> }
+  | { type: "ask:question";     agentId: string; toolUseId: string; questions: AskQuestionEntry[] }
   // The pending question was answered (from any client) or cancelled by the
   // CLI — every client should drop its question card.
   | { type: "ask:resolved";     agentId: string; toolUseId: string }

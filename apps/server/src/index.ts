@@ -51,9 +51,6 @@ import { registerErrorHandler } from "./errorHandler.js"
 import { startJobs } from "./jobs.js"
 import { resetStreamingFlags } from "./domains/agent-runner/agent-runner.service.js"
 import { watchAgent, unwatchWorktree } from "./domains/git/watcher.js"
-import { db } from "./db/index.js"
-import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
-import { isNull, eq } from "drizzle-orm"
 
 // Fastify shares the one server-wide logger (pretty in dev, JSON in prod). See
 // src/logger.ts. Request-lifecycle logs and operational logs go through the
@@ -203,7 +200,7 @@ initializeReserves().catch((err) => logger.error({ err }, "[reserve] initializat
 // underlying resolver. Without this, the first provider check would freeze
 // every other HTTP/WS handler (including the user's terminal PTY upgrade).
 import { warmAllProviders } from "./domains/providers/registry.js"
-import { warmHeadroomAvailability, stopHeadroomProxy } from "./domains/headroom/headroom.service.js"
+import { warmHeadroomAvailability } from "./domains/headroom/headroom.service.js"
 const providerWarmStart = Date.now()
 warmAllProviders()
   .then(() => logger.info(`[providers] warm complete in ${Date.now() - providerWarmStart}ms`))
@@ -262,7 +259,7 @@ try {
 
 // Dial the public proxy if configured (PROXY_URL + PROXY_SERVER_ID). Needs the
 // bound port so loopback requests hit the port we actually listened on.
-import { startProxyConnector, stopProxyConnector, proxyClientConnectString } from "./domains/proxy-connector/proxy-connector.service.js"
+import { startProxyConnector, proxyClientConnectString } from "./domains/proxy-connector/proxy-connector.service.js"
 startProxyConnector()
 
 const cleanupPortFile = () => {
@@ -270,55 +267,11 @@ const cleanupPortFile = () => {
   try { fs.unlinkSync(CONNECTION_FILE) } catch { /* ignore */ }
 }
 
-// Kill all agent processes and clear port records on shutdown
-import { killWorktreeProcesses, clearAgentPorts } from "./domains/git/processes.js"
-async function cleanupOnShutdown() {
-  cleanupPortFile()
-  stopProxyConnector()
-  await stopHeadroomProxy().catch(() => {})
-  try {
-    const allAgents = db.select().from(agentsTable).where(isNull(agentsTable.deletedAt)).all()
-    // Per-agent kill in parallel — each `lsof` already has a 3s timeout, so
-    // total cleanup is bounded by the slowest single agent, not the sum.
-    await Promise.all(allAgents.map(async (agent) => {
-      if (!agent.repoId) return
-      const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
-      if (!repo) return
-      const worktreePath = agent.noWorktree ? repo.path : path.join(repo.workspacesPath, agent.location)
-      await killWorktreeProcesses(worktreePath).catch(() => {})
-      clearAgentPorts(agent.id)
-    }))
-  } catch { /* best effort */ }
-}
-
-// Belt-and-suspenders shutdown:
-//   1. Hard timeout — if cleanup hangs (lsof stuck, db locked, whatever), the
-//      process exits anyway. Without this, Ctrl+C looks like nothing happened.
-//   2. Second-signal escape hatch — if the user hits Ctrl+C twice, exit
-//      immediately without waiting on anything.
-const SHUTDOWN_TIMEOUT_MS = 2000
-let shuttingDown = false
-function shutdown(signal: string) {
-  if (shuttingDown) {
-    logger.warn(`[server] received second ${signal}; forcing exit`)
-    process.exit(1)
-  }
-  shuttingDown = true
-  const force = setTimeout(() => {
-    logger.warn(`[server] cleanup did not complete in ${SHUTDOWN_TIMEOUT_MS}ms; forcing exit`)
-    process.exit(1)
-  }, SHUTDOWN_TIMEOUT_MS)
-  // Don't let the timer itself hold the loop open if cleanup finishes fast.
-  force.unref()
-  void cleanupOnShutdown().finally(() => {
-    clearTimeout(force)
-    process.exit(0)
-  })
-}
-
-process.on("exit", cleanupPortFile)
-process.on("SIGTERM", () => shutdown("SIGTERM"))
-process.on("SIGINT", () => shutdown("SIGINT"))
+// Shutdown: drain in-flight agent turns, kill worktree processes, clear the
+// port/connection files. SIGUSR2 from the supervisor means "restart once no
+// agent is running". See shutdown.ts.
+import { installShutdownHandlers } from "./shutdown.js"
+installShutdownHandlers(cleanupPortFile)
 
 startJobs()
 if (!process.env.HUXFLUX_SSH_USER) {

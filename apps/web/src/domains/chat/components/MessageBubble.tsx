@@ -120,7 +120,7 @@ function MessageMetadata({ msg }: { msg: Message }) {
   )
 }
 
-function AssistantFooter({ msg }: { msg: Message }) {
+function AssistantFooter({ msg, body }: { msg: Message; body: string }) {
   return (
     <div className="flex items-center gap-1.5 mt-2.5">
       {msg.durationMs != null && (
@@ -144,7 +144,7 @@ function AssistantFooter({ msg }: { msg: Message }) {
         variant="ghost"
         size="icon-xs"
         className="text-muted-foreground/40 hover:text-muted-foreground/80"
-        onClick={() => navigator.clipboard.writeText(msg.content)}
+        onClick={() => navigator.clipboard.writeText(body)}
       >
         <IconCopy size={12} />
       </Button>
@@ -152,7 +152,28 @@ function AssistantFooter({ msg }: { msg: Message }) {
   )
 }
 
+/**
+ * A finished turn that ended on a tool call (unanswered AskUserQuestion, a stop
+ * or restart mid-tool, a trailing TodoWrite) has no `content`: the model's last
+ * words are the last tool call's `precedingText`, which otherwise sits inside
+ * the collapsed accordion and reads as "the agent never answered". Surface it
+ * as the message body instead.
+ */
+function trailingToolText(msg: Message, isStreaming: boolean): string | undefined {
+  if (isStreaming || (msg.content && !isOnlyInterruptNote(msg.content))) return undefined
+  const last = msg.toolCalls?.[msg.toolCalls.length - 1]
+  return last?.precedingText?.trim() ? last.precedingText : undefined
+}
+
+// The server appends this note when it had to stop the turn itself (restart).
+// A body that is only the note still wants the model's last words above it.
+function isOnlyInterruptNote(content: string): boolean {
+  return /^\*Turn interrupted: [^\n]*\*$/.test(content.trim())
+}
+
 function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: { msg: Message; isStreaming: boolean; hasPending: boolean; pendingText: string }) {
+  const trailingText = trailingToolText(msg, isStreaming)
+  const body = trailingText ? [trailingText.trimEnd(), msg.content].filter(Boolean).join("\n\n") : msg.content
   return (
     <div className="mb-5 max-w-4xl">
       {/* Thinking */}
@@ -167,6 +188,7 @@ function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: { msg: M
           hasContent={!!msg.content}
           isStreaming={isStreaming}
           pendingText={pendingText}
+          omitLastPrecedingText={!!trailingText}
         />
       )}
 
@@ -174,11 +196,11 @@ function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: { msg: M
       {msg.content && !isStreaming && <PRCreatedCard content={msg.content} />}
 
       {/* Content */}
-      {msg.content && (
+      {body && (
         <div className="text-sm text-foreground leading-relaxed">
           <MarkdownContent content={stripHuxfluxTags(getStripYoureRight()
-            ? msg.content.replace(/^(You're (absolutely |completely |totally |entirely )?right[!.,]?\s*)+/i, "")
-            : msg.content)}
+            ? body.replace(/^(You're (absolutely |completely |totally |entirely )?right[!.,]?\s*)+/i, "")
+            : body)}
           />
         </div>
       )}
@@ -188,7 +210,7 @@ function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: { msg: M
         <TurnDiffSummary calls={msg.toolCalls} />
       )}
 
-      <AssistantFooter msg={msg} />
+      <AssistantFooter msg={msg} body={body} />
     </div>
   )
 }

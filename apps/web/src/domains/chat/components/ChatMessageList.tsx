@@ -1,4 +1,3 @@
-import React from "react"
 import { cn } from "@huxflux/ui"
 import {
   IconChevronUp,
@@ -23,8 +22,8 @@ interface ChatMessageListProps {
   hasMore: boolean
   isLoadingMore: boolean
   loadMore?: () => Promise<void>
-  bottomRef: React.RefObject<HTMLDivElement | null>
   setScrollContainer: (el: HTMLDivElement | null) => void
+  setScrollContent: (el: HTMLDivElement | null) => void
   messageQueue: QueuedMessage[]
   onEditQueued: (qm: QueuedMessage) => void
   onRemoveQueued: (id: string) => void
@@ -81,15 +80,15 @@ export function ChatMessageList({
   hasMore,
   isLoadingMore,
   loadMore,
-  bottomRef,
   setScrollContainer,
+  setScrollContent,
   messageQueue,
   onEditQueued,
   onRemoveQueued,
 }: ChatMessageListProps) {
   return (
     <div ref={setScrollContainer} className="flex-1 min-h-0 overflow-y-auto">
-      <div className="px-10 py-8">
+      <div ref={setScrollContent} className="px-10 py-8">
         <LoadMoreButton hasMore={hasMore} isLoadingMore={isLoadingMore} loadMore={loadMore} />
         {agent.messages.map((msg, i) => (
           <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
@@ -103,7 +102,6 @@ export function ChatMessageList({
             onRemove={() => onRemoveQueued(qm.id)}
           />
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   )

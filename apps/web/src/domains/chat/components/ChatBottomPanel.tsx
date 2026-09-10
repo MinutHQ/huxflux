@@ -1,4 +1,3 @@
-import React from "react"
 import { cn } from "@huxflux/ui"
 import { IconChevronDown } from "@tabler/icons-react"
 import type { Agent } from "@huxflux/shared"
@@ -17,19 +16,18 @@ interface ChatBottomPanelProps {
   agent: Agent
   uiIsStreaming: boolean
   isAtBottom: boolean
-  bottomRef: React.RefObject<HTMLDivElement | null>
   onScrollToBottom: () => void
   pendingQuestion: PendingQuestion | null
   onAnswerQuestion: (answers: Record<string, string>) => Promise<void> | void
   inputBarProps: ChatInputBarProps
 }
 
-export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, bottomRef, onScrollToBottom, pendingQuestion, onAnswerQuestion, inputBarProps }: ChatBottomPanelProps) {
+export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBottom, pendingQuestion, onAnswerQuestion, inputBarProps }: ChatBottomPanelProps) {
   return (
     <div className="shrink-0 relative">
       {!isAtBottom && agent.messages.length > 0 && (
         <button
-          onClick={() => { onScrollToBottom(); bottomRef.current?.scrollIntoView({ behavior: "smooth" }) }}
+          onClick={onScrollToBottom}
           className={cn(
             "absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border shadow-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors z-10"
           )}

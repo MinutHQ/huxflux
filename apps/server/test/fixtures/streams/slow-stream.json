@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": [],
+  "events": [
+    { "type": "system", "subtype": "init", "session_id": "test-session-slow" },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "Working on it" }] } },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "... still going" }] } },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "... and going" }] } },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "... nearly there" }] } },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "... done." }] } },
+    { "type": "result", "usage": { "input_tokens": 5, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0 } }
+  ]
+}

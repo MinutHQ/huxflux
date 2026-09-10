@@ -8,6 +8,7 @@ import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
 import { isNull } from "drizzle-orm"
 import { logger } from "./logger.js"
+import { restartWhenIdle } from "./shutdown.js"
 
 const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
@@ -76,8 +77,6 @@ function isIdle(): boolean {
   }
 }
 
-// Exit code 42 tells the supervisor this is a planned restart (not a crash)
-const UPDATE_EXIT_CODE = 42
 
 function ensureNpmRegistry() {
   const npmrc = path.join(os.homedir(), ".npmrc")
@@ -104,8 +103,9 @@ export function triggerServerUpdate(): Promise<{ success: boolean; error?: strin
     child.on("close", (code) => {
       if (code === 0) {
         resolve({ success: true })
-        // Give the response time to send before restarting
-        setTimeout(() => process.exit(UPDATE_EXIT_CODE), 1000)
+        // Give the response time to send, then restart once running agent
+        // turns have finished so none of them is cut mid-message.
+        setTimeout(() => restartWhenIdle("the Huxflux server was updated"), 1000)
       } else {
         resolve({ success: false, error: stderr.trim() || `npm install failed (exit code ${code})` })
       }

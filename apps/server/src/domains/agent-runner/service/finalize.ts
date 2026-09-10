@@ -7,12 +7,12 @@ import type { Message, AgentSummary } from "../../../types.js"
 import type { ProviderAdapter, NormalizedStreamEvent } from "../../providers/providers.types.js"
 import type { ClaudeStreamEvent, StreamState } from "../../agents/agents.types.js"
 import type { TagHandler, RunAgentOptions, TagFollowUp } from "../agent-runner.types.js"
-import { runningProcesses } from "./processRegistry.js"
+import { runningProcesses, takeStopReason } from "./processRegistry.js"
 import { unregisterTurnSplitter, type TurnSegmentRef } from "./turnSegments.js"
 import { STATUS_PRESERVED_DURING_RUN } from "./state.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
-import { persistAssistantMessage } from "./persistMessage.js"
+import { persistAssistantMessage, appendInterruptedNote } from "./persistMessage.js"
 import { clearPendingQuestion } from "../../../askStore.js"
 import { logger } from "../../../logger.js"
 
@@ -39,9 +39,9 @@ interface FinalizeArgs {
  * (close success, close catch, spawn error). Guarantees: process map cleared,
  * streaming flag cleared in DB, message:done emitted, agent:updated broadcast.
  */
-export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
+export function makeFinalize(args: FinalizeArgs): (exitCode?: number | null) => Promise<void> {
   let finalized = false
-  return async function finalize(): Promise<void> {
+  return async function finalize(exitCode?: number | null): Promise<void> {
     if (finalized) return
     finalized = true
     runningProcesses.delete(args.agentId)
@@ -49,7 +49,12 @@ export function makeFinalize(args: FinalizeArgs): () => Promise<void> {
 
     clearPendingQuestion(args.agentId)
     flushRemainingBuffer(args)
-    const followUps = await persistOrFallback(args)
+    // A server-side stop reason only applies when the process did not finish
+    // on its own: a turn that completed (code 0) in the same tick the shutdown
+    // signalled it must not be labelled "interrupted".
+    const stopReason = takeStopReason(args.agentId)
+    const interruptedReason = exitCode === 0 ? undefined : stopReason
+    const followUps = await persistOrFallback(args, interruptedReason)
     sendDelegateReply(args)
     await restoreStatusAndStreaming(args)
     // Deliver tag follow-ups LAST — after streaming is cleared and the process
@@ -81,7 +86,7 @@ function flushRemainingBuffer(args: FinalizeArgs): void {
   bufferRef.current = ""
 }
 
-async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
+async function persistOrFallback(args: FinalizeArgs, interruptedReason: string | undefined): Promise<TagFollowUp[]> {
   // Persist the final message + emit message:done. Failures here must not
   // prevent the streaming flag from being cleared, so they're swallowed. The
   // follow-ups are collected into this array before any DB write, so we can
@@ -101,6 +106,7 @@ async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
       flushTimer: args.flushTimer,
       tags: args.tags,
       followUps,
+      interruptedReason,
       onAssistantMessage: args.opts.onAssistantMessage,
     })
   } catch (err) {
@@ -109,7 +115,7 @@ async function persistOrFallback(args: FinalizeArgs): Promise<TagFollowUp[]> {
     agentsWs.messageDone(args.agentId, args.turnRef.messageId, {
       id: args.turnRef.messageId,
       role: "assistant",
-      content: args.state.pendingText,
+      content: appendInterruptedNote(args.state.pendingText, interruptedReason),
       timestamp: args.turnRef.createdAt,
       durationMs: Date.now() - args.turnRef.startedAt,
       toolCalls: args.state.collectedToolCalls.map((tc) => ({ id: tc.id, tool: tc.tool, args: tc.args, result: tc.result, precedingText: tc.precedingText })),

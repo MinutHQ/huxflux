@@ -10,6 +10,46 @@ import { logger } from "../../../logger.js"
 // Registry of running agent processes
 export const runningProcesses = new Map<string, ChildProcess>()
 
+// Promise of each in-flight turn (resolves once finalize has run). Lets the
+// shutdown path wait for the partial message to be persisted before exiting.
+const turnPromises = new Map<string, Promise<void>>()
+
+// Why a turn was stopped, when the stop came from the server rather than the
+// user (e.g. a restart). Consumed once by finalize and appended to the
+// message so the transcript says why the agent went quiet.
+const stopReasons = new Map<string, string>()
+
+export function trackTurn(agentId: string, turn: Promise<void>): void {
+  turnPromises.set(agentId, turn)
+  turn.catch(() => {}).finally(() => {
+    if (turnPromises.get(agentId) === turn) turnPromises.delete(agentId)
+  })
+}
+
+export function takeStopReason(agentId: string): string | undefined {
+  const reason = stopReasons.get(agentId)
+  stopReasons.delete(agentId)
+  return reason
+}
+
+/**
+ * Stop every running turn and wait (bounded) for each to finalize, so the
+ * text streamed so far is persisted and `message:done` reaches the clients
+ * before the process exits. Returns the number of turns that were running.
+ */
+export async function stopAllRunningTurns(reason: string, timeoutMs: number): Promise<number> {
+  const agentIds = [...runningProcesses.keys()]
+  if (agentIds.length === 0) return 0
+  logger.info({ agentIds, reason }, "[runner] stopping running turns")
+  const pending = agentIds.map((id) => turnPromises.get(id)).filter((p): p is Promise<void> => !!p)
+  for (const id of agentIds) stopAgent(id, reason)
+  await Promise.race([
+    Promise.allSettled(pending),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs).unref()),
+  ])
+  return agentIds.length
+}
+
 // Legacy: resolve claude binary for backward compat (used by PR review/chat,
 // title gen). Delegates to the claude provider so
 // there's a single cached binary path across the runner and the legacy callers.
@@ -17,9 +57,10 @@ export function getClaudeBin(): string {
   return getProvider("claude").resolveBinary()
 }
 
-export function stopAgent(agentId: string): boolean {
+export function stopAgent(agentId: string, reason?: string): boolean {
   const proc = runningProcesses.get(agentId)
   if (!proc) return false
+  if (reason) stopReasons.set(agentId, reason)
   try {
     // Kill the entire process group so child processes die too
     if (proc.pid) process.kill(-proc.pid, "SIGTERM")

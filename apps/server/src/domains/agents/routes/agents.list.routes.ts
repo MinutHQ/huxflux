@@ -6,6 +6,7 @@ import { db } from "../../../db/index.js"
 import { agents, messages, toolCalls, fileChanges, terminalLines } from "../../../db/schema.js"
 import { parsePrStatus } from "../../pull-requests/prStatus.js"
 import { getAgentPortsFromDB, getAllPortsFromDB } from "../../git/processes.js"
+import { getPendingQuestionPayload } from "../../../askStore.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -106,6 +107,7 @@ async function getAgentHandler(id: string, reply: FastifyReply): Promise<unknown
     terminalOutput: terminal,
     diffSummary: files.length > 0 ? { additions, deletions } : undefined,
     prStatus: parsePrStatus(agent.prStatus),
+    pendingQuestion: getPendingQuestionPayload(agent.id),
   }
 }
 

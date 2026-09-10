@@ -15,6 +15,9 @@ interface ToolCallsAccordionProps {
   hasContent?: boolean
   isStreaming?: boolean
   pendingText?: string
+  /** The last call's precedingText is rendered as the message body by the
+   *  parent (turn ended on a tool call); don't repeat it here. */
+  omitLastPrecedingText?: boolean
 }
 
 function computeSummary(calls: ToolCall[], isStreaming: boolean | undefined): string {
@@ -28,7 +31,7 @@ function computeSummary(calls: ToolCall[], isStreaming: boolean | undefined): st
   return distinct.slice(0, 4).join(", ") + (distinct.length > 4 ? ", …" : "")
 }
 
-export function ToolCallsAccordion({ calls, isStreaming, pendingText }: ToolCallsAccordionProps) {
+export function ToolCallsAccordion({ calls, isStreaming, pendingText, omitLastPrecedingText }: ToolCallsAccordionProps) {
   // Folded by default, streaming or not. The collapsed header already shows
   // the live last tool call while streaming, and a mid-run injection opens a
   // fresh segment (new accordion) so auto-opening would re-expand on every
@@ -55,9 +58,9 @@ export function ToolCallsAccordion({ calls, isStreaming, pendingText }: ToolCall
       </button>
       {open && (
         <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
-          {calls.map((tc) => (
+          {calls.map((tc, i) => (
             <div key={tc.id}>
-              {tc.precedingText && tc.precedingText.trim() && (
+              {tc.precedingText && tc.precedingText.trim() && !(omitLastPrecedingText && i === calls.length - 1) && (
                 <div className="my-1.5 text-[12px] text-foreground/80 leading-relaxed [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_ul]:ml-3 [&_ol]:ml-3 [&_li]:mb-0.5 [&_code]:text-[11px] [&_pre]:text-[11px]">
                   <MarkdownContent content={stripHuxfluxTags(tc.precedingText)} />
                 </div>

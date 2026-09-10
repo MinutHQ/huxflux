@@ -76,11 +76,13 @@ export function useInitialDraft(initialDraft: string | null | undefined, onConsu
   }, [initialDraft])
 }
 
-export function useResetOnAgentSwitch(agentId: string, setActiveTab: (t: ActiveTab) => void, setIsAtBottom: (v: boolean) => void, bottomRef: React.RefObject<HTMLDivElement | null>) {
+export function useResetOnAgentSwitch(agentId: string, setActiveTab: (t: ActiveTab) => void, resetToBottom: () => void) {
   useEffect(() => {
     setActiveTab("chat")
-    setIsAtBottom(true)
-    bottomRef.current?.scrollIntoView({ behavior: "instant" })
+    // The new agent's messages are laid out after this effect; scroll on the
+    // next frame so the list lands on its real bottom.
+    const frame = requestAnimationFrame(resetToBottom)
+    return () => cancelAnimationFrame(frame)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId])
 }

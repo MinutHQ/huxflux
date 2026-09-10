@@ -4,7 +4,7 @@ import { z } from "zod/v4"
 import { agents as agentsTable, messages as messagesTable, repos as reposTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, silenceLogs, type TestDb, type CapturedWsEvents, type SilencedLogs } from "../../../../test/harness.js"
 import { createStreamState } from "./state.js"
-import { persistAssistantMessage } from "./persistMessage.js"
+import { persistAssistantMessage, appendInterruptedNote } from "./persistMessage.js"
 import type { StreamState } from "../../agents/agents.types.js"
 import type { TagHandler } from "../agent-runner.types.js"
 
@@ -48,8 +48,9 @@ function setup(): Ctx {
   }
 }
 
-async function persist(ctx: Ctx, tags: TagHandler[] = []): Promise<void> {
+async function persist(ctx: Ctx, tags: TagHandler[] = [], interruptedReason?: string): Promise<void> {
   await persistAssistantMessage({
+    interruptedReason,
     state: ctx.state,
     agentId: ctx.agentId,
     messageId: ctx.messageId,
@@ -65,10 +66,34 @@ async function persist(ctx: Ctx, tags: TagHandler[] = []): Promise<void> {
   })
 }
 
+describe("appendInterruptedNote", () => {
+  it("returns the content untouched without a reason", () => {
+    expect(appendInterruptedNote("hello", undefined)).toBe("hello")
+    expect(appendInterruptedNote("", undefined)).toBe("")
+  })
+
+  it("appends the note after the text, and stands alone when there is no text", () => {
+    expect(appendInterruptedNote("hello\n", "the server was restarting"))
+      .toBe("hello\n\n*Turn interrupted: the server was restarting. Send a message to continue.*")
+    expect(appendInterruptedNote("   ", "the server was restarting"))
+      .toBe("*Turn interrupted: the server was restarting. Send a message to continue.*")
+  })
+})
+
 describe("persistAssistantMessage", () => {
   let ctx: Ctx
   beforeEach(() => { ctx = setup() })
   afterEach(() => { ctx.capture.restore(); ctx.testDb.close(); ctx.logs.restore() })
+
+  it("appends the interrupted note to the persisted body and the message:done payload", async () => {
+    ctx.state.pendingText = "Half a thought"
+    ctx.state.fullContent = "Half a thought"
+    await persist(ctx, [], "the Huxflux server was restarting")
+    const row = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.id, ctx.messageId)).get()
+    expect(row?.content).toBe("Half a thought\n\n*Turn interrupted: the Huxflux server was restarting. Send a message to continue.*")
+    const done = ctx.capture.events.find((e) => e.type === "message:done") as { message: { content: string } } | undefined
+    expect(done?.message.content).toContain("Turn interrupted: the Huxflux server was restarting")
+  })
 
   it("writes the assistant content to the messages row", async () => {
     ctx.state.pendingText = "Done."

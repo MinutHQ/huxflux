@@ -35,3 +35,9 @@ export function getPendingQuestion(agentId: string): PendingQuestion | undefined
 export function clearPendingQuestion(agentId: string): void {
   pending.delete(agentId)
 }
+
+/** Wire shape served on the agent detail (no control-request id). */
+export function getPendingQuestionPayload(agentId: string): { toolUseId: string; questions: PendingQuestionEntry[] } | null {
+  const entry = pending.get(agentId)
+  return entry ? { toolUseId: entry.toolUseId, questions: entry.questions } : null
+}

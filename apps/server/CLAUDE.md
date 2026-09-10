@@ -21,6 +21,8 @@ src/
   config.ts          Config loading.
   auth.ts            Auth middleware.
   audit.ts           Audit logging.
+  shutdown.ts        Graceful exit: drains in-flight agent turns before the process exits;
+                     SIGUSR2 from the supervisor means "restart once no turn is running".
   sandbox.ts         Sandbox execution.
   jobs.ts            Background-job registry. Each domain's `domains/<x>/<x>.job.ts`
                      exports a `Job` (see `jobTypes.ts`); this file lists them and
@@ -34,7 +36,7 @@ Endpoints live in `src/domains/<name>/<name>.routes.ts`. There is no flat `route
 
 ## What stays flat at src root
 
-Single-file utilities (`auth.ts`, `audit.ts`, `sandbox.ts`, `config.ts`, `jobs.ts`, `jobTypes.ts`, `types.ts`) stay flat. Promoting them to `domains/<name>/` would mean a README for under 100 lines of code, so the boundary benefit does not outweigh the overhead.
+Single-file utilities (`auth.ts`, `audit.ts`, `sandbox.ts`, `shutdown.ts`, `config.ts`, `jobs.ts`, `jobTypes.ts`, `types.ts`) stay flat. Promoting them to `domains/<name>/` would mean a README for under 100 lines of code, so the boundary benefit does not outweigh the overhead.
 
 `db/` stays flat: per-domain pieces already live in `domains/<x>/<x>.db.ts`, so the root directory is just the runtime kernel (migration runner plus schema barrel). The WebSocket plumbing graduated to a real domain at `src/domains/ws/`.
 

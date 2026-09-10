@@ -106,7 +106,7 @@ export function ChatView(props: ChatViewProps) {
     ? agent.messages.findLast((m) => m.role === "assistant" && m.durationMs == null)?.timestamp ?? null
     : null
   const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
-  const { bottomRef, setScrollContainer, isAtBottom, setIsAtBottom } = useChatScroll(agent, uiIsStreaming)
+  const { setScrollContainer, setScrollContent, isAtBottom, jumpToBottom, resetToBottom } = useChatScroll()
   const { fileInputRef, uploadFiles } = useFileUpload(agent.id, setAttachments)
   const openInApps = useOpenInApps(agent.id)
 
@@ -114,7 +114,7 @@ export function ChatView(props: ChatViewProps) {
   useFlushDraftOnSwitch(agent, prevAgentIdRef, inputRef)
   useInitialMessage(initialMessage, onConsumeInitialMessage, chatSend.sendContent)
   useInitialDraft(initialDraft, onConsumeInitialDraft, setInput)
-  useResetOnAgentSwitch(agent.id, setActiveTab, setIsAtBottom, bottomRef)
+  useResetOnAgentSwitch(agent.id, setActiveTab, resetToBottom)
 
   useEffect(() => {
     if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")
@@ -195,7 +195,7 @@ export function ChatView(props: ChatViewProps) {
             <ChatMessageList
               agent={agent} uiIsStreaming={uiIsStreaming} elapsedSeconds={elapsedSeconds}
               hasMore={hasMore} isLoadingMore={isLoadingMore} loadMore={loadMore}
-              bottomRef={bottomRef} setScrollContainer={setScrollContainer}
+              setScrollContainer={setScrollContainer} setScrollContent={setScrollContent}
               messageQueue={chatSend.messageQueue}
               onEditQueued={(qm) => {
                 setInput(() => qm.display)
@@ -206,8 +206,7 @@ export function ChatView(props: ChatViewProps) {
           )}
           <ChatBottomPanel
             agent={agent} uiIsStreaming={uiIsStreaming} isAtBottom={isAtBottom}
-            bottomRef={bottomRef}
-            onScrollToBottom={() => setIsAtBottom(true)}
+            onScrollToBottom={jumpToBottom}
             pendingQuestion={pendingQuestion}
             onAnswerQuestion={actions.handleAnswerQuestion}
             inputBarProps={inputBarProps}

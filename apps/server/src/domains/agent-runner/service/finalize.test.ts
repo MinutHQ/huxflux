@@ -4,7 +4,7 @@ import { agents as agentsTable, messages as messagesTable, repos as reposTable }
 import { createTestDb, captureWsEvents, silenceLogs, type TestDb, type CapturedWsEvents, type SilencedLogs } from "../../../../test/harness.js"
 import { createStreamState } from "./state.js"
 import { makeFinalize } from "./finalize.js"
-import { runningProcesses } from "./processRegistry.js"
+import { runningProcesses, stopAgent } from "./processRegistry.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import type { StreamState } from "../../agents/agents.types.js"
 import type { RunAgentOptions } from "../agent-runner.types.js"
@@ -85,6 +85,30 @@ describe("makeFinalize", () => {
   afterEach(() => {
     ctx.capture.restore(); ctx.testDb.close(); ctx.logs.restore()
     runningProcesses.delete(ctx.agentId)
+  })
+
+  it("appends the interrupted note only when the process did not exit on its own", async () => {
+    // A stop reason recorded while the turn was already exiting cleanly (the
+    // shutdown drain racing a natural finish) must not label it interrupted.
+    ctx.state.pendingText = "complete answer"
+    ctx.state.fullContent = "complete answer"
+    runningProcesses.set(ctx.agentId, { pid: undefined, kill: () => true } as never)
+    expect(stopAgent(ctx.agentId, "the Huxflux server was stopped")).toBe(true)
+    const finalize = makeFinalize(buildArgs(ctx))
+    await finalize(0)
+    const row = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.id, ctx.messageId)).get()
+    expect(row?.content).toBe("complete answer")
+  })
+
+  it("appends the interrupted note when a stopped process exits by signal", async () => {
+    ctx.state.pendingText = "half"
+    ctx.state.fullContent = "half"
+    runningProcesses.set(ctx.agentId, { pid: undefined, kill: () => true } as never)
+    stopAgent(ctx.agentId, "the Huxflux server was stopped")
+    const finalize = makeFinalize(buildArgs(ctx))
+    await finalize(null)
+    const row = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.id, ctx.messageId)).get()
+    expect(row?.content).toBe("half\n\n*Turn interrupted: the Huxflux server was stopped. Send a message to continue.*")
   })
 
   it("clears the streaming flag and bumps unread on a normal exit", async () => {

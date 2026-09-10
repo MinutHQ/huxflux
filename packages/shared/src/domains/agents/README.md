@@ -22,7 +22,8 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `isAgentStreaming` — derives the streaming state from an agent's `streaming` flag plus the last assistant message's `durationMs`
 - `statusConfig` — map from `AgentStatus` to `{ label, color, dotColor, hex }`
 - `statusOrder` — canonical sort order for `AgentStatus` values
-- `agentSchema` — Zod schema for the full `Agent` entity returned by `GET /api/agents/:id`
+- `agentSchema` — Zod schema for the full `Agent` entity returned by `GET /api/agents/:id`. Includes `pendingQuestion` (the AskUserQuestion the agent is blocked on, or null) so clients re-hydrate the question card after a reload, reconnect, or agent switch
+- `agentPendingQuestionSchema` / `askQuestionEntrySchema` — Zod schemas for that pending question and its entries
 - `agentSummarySchema` — Zod schema for the lightweight `AgentSummary` entity returned by `GET /api/agents`
 - `agentStatusSchema` — Zod schema for the `AgentStatus` enum
 - `messageSchema` — Zod schema for a chat `Message` (covers both `user` and `assistant` roles)
@@ -88,7 +89,7 @@ None.
 
 ## Quirks
 
-- `useAgent` is a thin orchestrator (`hooks/useAgent.ts`) over per-concern hooks that each handle one slice of WS-driven state: `useAgentQuery` (fetch + sub-agent merge), `useAgentPagination` (loadMore / hasMore), `useAgentMessageStream` (message / tool / subagent frames), `useAgentFileChanges`, `useAgentTerminal`, `useAgentPendingQuestion`, `useAgentLifecycle` (agent:updated / messages:cleared / ws:reconnected / error). Each sub-hook returns a stable `handleEvent` callback so the orchestrator subscribes to `useAgentEvents` exactly once and dispatches by event type. Pure reducer helpers live alongside in `messageStreamReducers.ts` and `subagentEventReducer.ts`. None of the sub-hooks are public; consumers still call `useAgent` and get the same return shape.
+- `useAgent` is a thin orchestrator (`hooks/useAgent.ts`) over per-concern hooks that each handle one slice of WS-driven state: `useAgentQuery` (fetch + sub-agent merge), `useAgentPagination` (loadMore / hasMore), `useAgentMessageStream` (message / tool / subagent frames), `useAgentFileChanges`, `useAgentTerminal`, `useAgentPendingQuestion` (keeps the pending question on the detail cache entry, not in component state, so it survives the per-agent route remount and is re-hydrated by every refetch), `useAgentLifecycle` (agent:updated / messages:cleared / ws:reconnected / error). Each sub-hook returns a stable `handleEvent` callback so the orchestrator subscribes to `useAgentEvents` exactly once and dispatches by event type. Pure reducer helpers live alongside in `messageStreamReducers.ts` and `subagentEventReducer.ts`. None of the sub-hooks are public; consumers still call `useAgent` and get the same return shape.
 - `Agent.prStatus` is typed as `PRStatus` (from `../pull-requests/types`). This is the one cross-domain type reference in this domain — moving `PRStatus` into agents would invert the semantic ownership. The pull-requests domain owns the type; the agents domain just references it on its own type.
 - `agentsApi` includes `systemSshInfo` because the agent open-in-editor flow is the only consumer. If a future consumer outside agents needs SSH info, the method should move to its own slice; for now this avoids a one-method "system" domain.
 - `agentsApi` includes `uploadFile` (agent-scoped chat attachments). It's part of the chat surface, not a generic file upload — keep it here.

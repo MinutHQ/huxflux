@@ -22,7 +22,7 @@ Top-level `.ts` files in this domain are public; subfolders (`routes/`, `service
 - `agents.routes.ts` — exposes `agentsPlugin`, the Fastify plugin registering every agent-related HTTP route. Wired through the registry at `src/domains/index.ts`.
 - `title.ts` — re-exports the title-generation service: `generateTitle`, `deriveTitle`, `titleToBranchSlug`.
 - `rename.ts` — re-exports the branch-rename / worktree-relocate service: `applyBranchRename`, `isPlaceholderName`, `reconcileWorktreeLocation`.
-- `agents.ws.ts` — typed event builder `agentsWs` and the `AgentsServerEvent` union. Consumed by `src/domains/ws/events.ts` to compose the central `ServerEvent`. Also consumed by `src/domains/agent-runner/`, which broadcasts agents events from inside the runner.
+- `agents.ws.ts` — typed event builder `agentsWs` and the `AgentsServerEvent` union (includes `background:state`, emitted by the runner when the CLI's background work changes). Consumed by `src/domains/ws/events.ts` to compose the central `ServerEvent`. Also consumed by `src/domains/agent-runner/`, which broadcasts agents events from inside the runner.
 - `agents.types.ts` — `ClaudeStreamEvent`, `StreamState`, `RunnerOptions` (including the per-agent `headroom` flag that `chatRun.ts` reads from the `agents.headroom` column), `CollectedToolCall`, `ClaudeContentBlock`, and other agent-runtime types. Consumed cross-domain by `src/domains/agent-runner/`.
 - `agents.db.ts` — Drizzle table definitions (`agents`, `messages`, `tool_calls`, `file_changes`, `terminal_lines`, `terminal_tabs`, `agent_ports`, `worktree_pool`). Re-exported by `src/db/schema.ts` for cross-domain consumers.
 - `agents.job.ts` — `agentsJob` (dead-port cleanup). Wired through `src/jobs.ts`.

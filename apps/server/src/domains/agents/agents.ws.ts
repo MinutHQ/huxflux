@@ -10,6 +10,7 @@
 // is composed into the central `ServerEvent` in `src/domains/ws/events.ts`.
 
 import type { AgentSummary, Message, FileChange, ToolCall } from "../../types.js"
+import type { BackgroundState } from "@huxflux/shared"
 import { defineEvents, type InferEvents } from "../ws/define.js"
 
 type UserMessagePayload = { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean }
@@ -99,6 +100,12 @@ const agentsEventsConfig = {
   portsChanged: {
     channel: "broadcast",
     build: (ports: PortInfo[]) => ({ type: "ports:changed" as const, ports }),
+  },
+  // Background work the CLI is running for this agent changed (Monitor or
+  // background Bash started/stopped, or the CLI outlived its final result).
+  backgroundState: {
+    channel: "emit",
+    build: (agentId: string, state: BackgroundState) => ({ type: "background:state" as const, agentId, state }),
   },
   // Transport-level error. `agentId` is optional in the wire shape; emit
   // routes it to a single agent's subscribers when known.

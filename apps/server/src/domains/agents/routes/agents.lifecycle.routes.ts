@@ -9,6 +9,7 @@ import { killWorktreeProcesses } from "../../git/processes.js"
 import { agentsWs } from "../agents.ws.js"
 import { killAgentTerminals } from "../../ws/pty.js"
 import { clearQueue } from "../service/messageQueue.js"
+import { endTurn, getBackgroundState } from "../../agent-runner/agent-runner.service.js"
 import * as path from "node:path"
 
 const idParamsSchema = z.object({ id: z.string() })
@@ -76,6 +77,24 @@ export const agentsLifecycleRoutes: FastifyPluginAsyncZod = async (app) => {
     const summary = await getDiffSummary(worktreePath, agent.baseBranch ?? repo.branchFrom)
 
     return { diffSummary: summary }
+  })
+
+  // GET /api/agents/:id/background — background work the CLI is running for
+  // this turn (Monitor watches, background Bash) and whether the CLI is still
+  // alive after its final result. In-memory; empty when no turn is running.
+  app.get("/api/agents/:id/background", {
+    schema: { params: idParamsSchema },
+  }, async (req) => getBackgroundState(req.params.id))
+
+  // POST /api/agents/:id/end-turn — terminate only the CLI process so a turn
+  // held open by background tasks closes. Worktree processes are left alone
+  // (contrast with /stop, which also sweeps them).
+  app.post("/api/agents/:id/end-turn", {
+    schema: { params: idParamsSchema },
+  }, async (req, reply) => {
+    const ended = endTurn(req.params.id)
+    if (!ended) return reply.code(404).send({ error: "No running process for this agent" })
+    return { stopped: true }
   })
 
   // POST /api/agents/:id/kill-processes — kill processes in a worktree (async)

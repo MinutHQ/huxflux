@@ -10,7 +10,8 @@ import {
 import { registerProvider, _resetProviders } from "../../providers/registry.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import { runAgent } from "../agent-runner.service.js"
-import { resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason } from "./processRegistry.js"
+import { spawn } from "node:child_process"
+import { endTurn, resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason } from "./processRegistry.js"
 
 const SERVER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..")
 const FAKE_BIN = path.join(SERVER_ROOT, "test", "fixtures", "fake-claude.mjs")
@@ -153,5 +154,33 @@ describe("resolveModelAlias", () => {
 
   it("treats the empty string as missing (returns the fallback)", () => {
     expect(resolveModelAlias("")).toBe("claude-sonnet-4-6")
+  })
+})
+
+describe("endTurn", () => {
+  const agentId = "agent-end-turn"
+  afterEach(() => { runningProcesses.delete(agentId) })
+
+  it("returns false when the agent has no running process", () => {
+    expect(endTurn("nobody")).toBe(false)
+  })
+
+  it("terminates only the tracked CLI process, leaving its children alone", async () => {
+    // A shell that starts a long-lived child in the same process group, then
+    // waits. stopAgent would kill the group; endTurn must hit only the shell.
+    const proc = spawn("sh", ["-c", "sleep 30 >/dev/null 2>&1 & echo $!; wait"], { stdio: ["ignore", "pipe", "ignore"] })
+    const childPid = await new Promise<number>((resolve) => {
+      proc.stdout!.once("data", (chunk: Buffer) => resolve(parseInt(chunk.toString().trim(), 10)))
+    })
+    runningProcesses.set(agentId, proc)
+
+    const exit = new Promise<string | null>((resolve) => proc.on("exit", (_code, signal) => resolve(signal)))
+    expect(endTurn(agentId)).toBe(true)
+    expect(await exit).toBe("SIGTERM")
+
+    let childAlive = true
+    try { process.kill(childPid, 0) } catch { childAlive = false }
+    expect(childAlive).toBe(true)
+    process.kill(childPid, "SIGKILL")
   })
 })

@@ -86,6 +86,23 @@ export function stopAgent(agentId: string, reason?: string): boolean {
   return true
 }
 
+/**
+ * End the turn by terminating only the CLI process. Unlike `stopAgent` this
+ * leaves the worktree's own processes (dev servers, long-running scripts the
+ * agent started) untouched — it is for a CLI that outlived its final result
+ * because of background tasks, not for aborting the agent's work.
+ */
+export function endTurn(agentId: string): boolean {
+  const proc = runningProcesses.get(agentId)
+  if (!proc?.pid) return false
+  try { proc.kill("SIGTERM") } catch { /* dead */ }
+  setTimeout(() => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return
+    try { proc.kill("SIGKILL") } catch { /* dead */ }
+  }, 5000).unref()
+  return true
+}
+
 function cleanupOrphanedProcesses(agentId: string): void {
   try {
     const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()

@@ -69,9 +69,10 @@ function setup(): Ctx {
   }
 }
 
-function spawnFixture(ctx: Ctx, fixtureName: string) {
+function spawnFixture(ctx: Ctx, fixtureName: string, stdinInit?: string) {
   const fixturePath = path.join(FIXTURE_DIR, fixtureName)
   return spawnAndStream({
+    stdinInit,
     bin: process.execPath,
     args: [FAKE_BIN],
     cwd: SERVER_ROOT,
@@ -168,5 +169,45 @@ describe("spawnAndStream — malformed input tolerance", () => {
     expect(ctx.state.fullContent).toBe("Recovered.")
     const row = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, ctx.agentId)).get()
     expect(row.sessionId).toBe("test-session-malformed")
+  })
+})
+
+describe("spawnAndStream — stdin lifetime", () => {
+  let ctx: Ctx
+  beforeEach(() => { ctx = setup() })
+  afterEach(() => {
+    ctx.capture.restore(); ctx.testDb.close(); ctx.logs.restore()
+    runningProcesses.delete(ctx.agentId)
+  })
+
+  function stdinReport(): string | undefined {
+    const lines = ctx.capture.events
+      .filter((e) => e.type === "terminal:line")
+      .map((e) => (e as { line: string }).line)
+    return lines.find((l) => l.startsWith("stdin-ended-after="))
+  }
+
+  it("closes stdin after the real turn's result, not after the empty pre-turn result", async () => {
+    // Fixture: task_notification, init, empty result (event index 3), init,
+    // assistant, result (index 6). Stdin must survive the first result.
+    const proc = spawnFixture(ctx, "orphan-result-first.json", JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "hi" }] } }))
+    await waitForExit(proc)
+    expect(stdinReport()).toBe("stdin-ended-after=6")
+    expect(ctx.state.fullContent).toBe("Real turn.")
+  })
+
+  it("closes stdin on an empty result when no task notification preceded it", async () => {
+    // A turn with no model output at all (no orphaned tasks) must still end,
+    // otherwise the CLI would wait on stdin forever.
+    const proc = spawnFixture(ctx, "empty-result-no-notification.json", JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "hi" }] } }))
+    await waitForExit(proc)
+    expect(stdinReport()).toBe("stdin-ended-after=2")
+  })
+
+  it("closes stdin on the first result once the model has produced output", async () => {
+    // happy-path.json: 7 events, the assistant speaks before the only result.
+    const proc = spawnFixture(ctx, "happy-path-stdin.json", JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "hi" }] } }))
+    await waitForExit(proc)
+    expect(stdinReport()).toBe("stdin-ended-after=7")
   })
 })

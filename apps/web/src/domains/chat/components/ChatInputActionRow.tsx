@@ -16,6 +16,7 @@ import { AgentSettingsPopover } from "./AgentSettingsPopover"
 import { HeadroomToggle } from "./HeadroomToggle"
 import { AgentLinker } from "./AgentLinker"
 import type { ChatInputBarProps } from "./chatInputBarTypes"
+import { isClaudeFamilyProvider } from "../config"
 
 function EffortSelect({ effort, setEffort, levels }: { effort: ChatInputBarProps["effort"]; setEffort: ChatInputBarProps["setEffort"]; levels: string[] }) {
   return (
@@ -127,7 +128,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
         {!hideChrome && capabilities.planMode !== false && (
           <PlanModeButton planMode={planMode} isInPlanMode={isInPlanMode} setPlanMode={setPlanMode} />
         )}
-        {agentProvider === "claude" && <HeadroomToggle agent={agent} />}
+        {isClaudeFamilyProvider(agentProvider) && <HeadroomToggle agent={agent} />}
       </div>
       <div className="flex items-center gap-1">
         <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={onFileSelect} />

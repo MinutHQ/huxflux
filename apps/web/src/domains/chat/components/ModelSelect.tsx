@@ -27,7 +27,7 @@ interface ModelSelectProps {
   onChange: (value: string) => void
 }
 
-const PROVIDER_ORDER = ["claude", "codex", "antigravity", "gemini", "pi"]
+const PROVIDER_ORDER = ["claude", "agent-sdk", "codex", "antigravity", "gemini", "pi"]
 
 function providerDisplayName(id: string, providers: Provider[]): string {
   return providers.find((p) => p.id === id)?.name ?? id

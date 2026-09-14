@@ -1,5 +1,5 @@
 import path from "node:path"
-import { type ChildProcess } from "node:child_process"
+import type { Writable } from "node:stream"
 import { eq } from "drizzle-orm"
 import { db } from "../../../db/index.js"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
@@ -7,8 +7,21 @@ import { getProvider } from "../../providers/registry.js"
 import { killWorktreeProcesses } from "../../git/processes.js"
 import { logger } from "../../../logger.js"
 
-// Registry of running agent processes
-export const runningProcesses = new Map<string, ChildProcess>()
+/**
+ * Handle on a running turn. A spawned CLI's `ChildProcess` satisfies this
+ * structurally; an in-process provider turn supplies an object whose `kill`
+ * aborts the turn (cooperative — the provider must honour the signal) and
+ * whose `stdin` is a Writable that parses the same stream-json lines the
+ * control protocol writes, so injection and control responses reach it.
+ */
+export interface RunningTurn {
+  pid?: number
+  stdin?: Writable | null
+  kill(signal?: NodeJS.Signals | number): boolean
+}
+
+// Registry of running agent turns (CLI processes or in-process turns)
+export const runningProcesses = new Map<string, RunningTurn>()
 
 // Promise of each in-flight turn (resolves once finalize has run). Lets the
 // shutdown path wait for the partial message to be persisted before exiting.
@@ -62,8 +75,10 @@ export function stopAgent(agentId: string, reason?: string): boolean {
   if (!proc) return false
   if (reason) stopReasons.set(agentId, reason)
   try {
-    // Kill the entire process group so child processes die too
+    // Kill the entire process group so child processes die too. An in-process
+    // turn has no pid; its kill() aborts the turn directly.
     if (proc.pid) process.kill(-proc.pid, "SIGTERM")
+    else proc.kill("SIGTERM")
   } catch {
     // Fallback to direct kill
     try { proc.kill("SIGTERM") } catch { /* dead */ }

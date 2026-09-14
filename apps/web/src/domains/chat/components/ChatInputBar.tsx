@@ -7,6 +7,7 @@ import { MentionPicker } from "./MentionPicker"
 import { SlashCommandPicker } from "./SlashCommandPicker"
 import { PlanPreview } from "./PlanPreview"
 import { ChatInputActionRow } from "./ChatInputActionRow"
+import { isClaudeFamilyProvider } from "../config"
 
 function inputContainerClass(isDragOver: boolean, showPlanApproval: boolean, isInPlanMode: boolean): string {
   if (isDragOver) return "border-2 border-dashed border-ring shadow-ring/10"
@@ -117,7 +118,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
           placeholder={
             showPlanApproval ? "Approve or dismiss the plan…"
             : agent.messages.length === 0 ? "Tell the agent what to work on…"
-            : props.isStreaming && (agent.provider ?? "claude") === "claude" ? "Message the running agent…"
+            : props.isStreaming && isClaudeFamilyProvider(agent.provider) ? "Message the running agent…"
             : "Add a follow up"
           }
           rows={2}

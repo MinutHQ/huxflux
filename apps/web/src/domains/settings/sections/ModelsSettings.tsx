@@ -12,6 +12,10 @@ const SUB_PROVIDER_LABELS: Record<string, string> = {
   azure: "Azure", nebius: "Nebius",
 }
 
+function modelKey(providerId: string, model: SharedProviderModel): string {
+  return `${providerId}:${model.api || model.id}`
+}
+
 function subProviderOf(modelApi: string): string | null {
   const slash = modelApi.indexOf("/")
   return slash > 0 ? modelApi.slice(0, slash) : null
@@ -98,9 +102,14 @@ export function ModelsSettings() {
               hiddenModels={settings?.hiddenModels ?? []}
               saving={updateSettings.isPending || !settings}
               onToggleModel={(model) => {
-                const key = `${provider.id}:${model.api || model.id}`
+                const key = modelKey(provider.id, model)
                 const hidden = settings?.hiddenModels ?? []
                 updateSettings.mutate({ hiddenModels: hidden.includes(key) ? hidden.filter((id) => id !== key) : [...hidden, key] })
+              }}
+              onSetModelsVisible={(models, visible) => {
+                const keys = new Set(models.map((m) => modelKey(provider.id, m)))
+                const hidden = (settings?.hiddenModels ?? []).filter((id) => !keys.has(id))
+                updateSettings.mutate({ hiddenModels: visible ? hidden : [...hidden, ...keys] })
               }}
               onSelectModel={(model) =>
                 updateSettings.mutate({ defaultProvider: provider.id, defaultModel: model })
@@ -145,31 +154,61 @@ function ModelRow({ model, isSelected, disabled, visible, onToggle, onSelect }: 
   )
 }
 
-function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels, saving, onToggleModel, onSelectModel }: {
+/** "Select all" / "Deselect all" for one section of models (a provider or a sub-provider group). */
+function SectionToggle({ label, models, hiddenModels, providerId, disabled, onSetModelsVisible }: {
+  label: string
+  models: SharedProviderModel[]
+  hiddenModels: string[]
+  providerId: string
+  disabled: boolean
+  onSetModelsVisible: (models: SharedProviderModel[], visible: boolean) => void
+}) {
+  const allVisible = models.every((m) => !hiddenModels.includes(modelKey(providerId, m)))
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled || models.length === 0}
+      onClick={() => onSetModelsVisible(models, !allVisible)}
+      aria-label={`${allVisible ? "Deselect" : "Select"} all ${label} models`}
+      className="h-6 px-2 text-[11px] text-muted-foreground"
+    >
+      {allVisible ? "Deselect all" : "Select all"}
+    </Button>
+  )
+}
+
+function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels, saving, onToggleModel, onSetModelsVisible, onSelectModel }: {
   provider: ProviderInfo
   isDefaultProvider: boolean
   defaultModel: string
   hiddenModels: string[]
   saving: boolean
   onToggleModel: (model: SharedProviderModel) => void
+  onSetModelsVisible: (models: SharedProviderModel[], visible: boolean) => void
   onSelectModel: (model: string) => void
 }) {
   const hasSubProviders = provider.models.some((m) => subProviderOf(m.api) !== null)
   const subGroups = hasSubProviders ? groupBySubProvider(provider.models) : null
+  const disabled = !provider.available || saving
+  const toggleProps = { hiddenModels, providerId: provider.id, disabled, onSetModelsVisible }
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
         <span className="text-sm font-medium text-foreground">{provider.name}</span>
-        <span
-          className={cn(
-            "text-[11px] px-2 py-0.5 rounded-full border",
-            provider.available
-              ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
-              : "bg-secondary text-muted-foreground border-border",
-          )}
-        >
-          {provider.available ? "Installed" : "Not installed"}
+        <span className="flex items-center gap-2">
+          {provider.models.length > 0 && <SectionToggle label={provider.name} models={provider.models} {...toggleProps} />}
+          <span
+            className={cn(
+              "text-[11px] px-2 py-0.5 rounded-full border",
+              provider.available
+                ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                : "bg-secondary text-muted-foreground border-border",
+            )}
+          >
+            {provider.available ? "Installed" : "Not installed"}
+          </span>
         </span>
       </div>
       {provider.models.length > 0 && (
@@ -177,10 +216,11 @@ function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels,
           {subGroups ? subGroups.map((group) => (
             <div key={group.sub ?? "root"}>
               {group.label && (
-                <div className="px-4 pt-2.5 pb-1 border-b border-border bg-accent/30">
+                <div className="flex items-center justify-between px-4 pt-1.5 pb-1 border-b border-border bg-accent/30">
                   <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">
                     {group.label}
                   </span>
+                  <SectionToggle label={group.label} models={group.models} {...toggleProps} />
                 </div>
               )}
               {group.models.map((model) => (
@@ -188,8 +228,8 @@ function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels,
                   key={model.id}
                   model={model}
                   isSelected={isDefaultProvider && model.label === defaultModel}
-                  disabled={!provider.available || saving}
-                  visible={!hiddenModels.includes(`${provider.id}:${model.api || model.id}`)}
+                  disabled={disabled}
+                  visible={!hiddenModels.includes(modelKey(provider.id, model))}
                   onToggle={() => onToggleModel(model)}
                   onSelect={() => onSelectModel(model.label)}
                 />
@@ -200,8 +240,8 @@ function ProviderCard({ provider, isDefaultProvider, defaultModel, hiddenModels,
               key={model.id}
               model={model}
               isSelected={isDefaultProvider && model.label === defaultModel}
-              disabled={!provider.available || saving}
-              visible={!hiddenModels.includes(`${provider.id}:${model.api || model.id}`)}
+              disabled={disabled}
+              visible={!hiddenModels.includes(modelKey(provider.id, model))}
               onToggle={() => onToggleModel(model)}
               onSelect={() => onSelectModel(model.label)}
             />

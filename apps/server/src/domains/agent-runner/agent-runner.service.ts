@@ -3,7 +3,7 @@ import { config } from "../../config.js"
 import { getProvider } from "../providers/registry.js"
 import { buildConversationContext } from "../providers/context.js"
 import { buildSandboxedCommand } from "../../sandbox.js"
-import type { ProviderAdapter, SpawnResult } from "../providers/providers.types.js"
+import type { ProviderAdapter, SpawnOptions, SpawnResult } from "../providers/providers.types.js"
 import type { StreamState } from "../agents/agents.types.js"
 import type { RunAgentOptions } from "./agent-runner.types.js"
 import { buildHeadroomEnv, ensureHeadroomProxy } from "../headroom/headroom.service.js"
@@ -12,6 +12,7 @@ import { createStreamState } from "./service/state.js"
 import { bootstrapTurn, type BootstrapResult } from "./service/bootstrapTurn.js"
 import { buildSystemPrompt } from "./service/systemPrompt.js"
 import { spawnAndStream, makeScheduleFlush, buildSpawnEnv } from "./service/streamLoop.js"
+import { ABORTED_EXIT_CODE, startInProcessTurn } from "./service/inProcessTurn.js"
 import { makeTurnSplitter, registerTurnSplitter, type TurnSegmentRef } from "./service/turnSegments.js"
 import { makeFinalize } from "./service/finalize.js"
 import { logger } from "../../logger.js"
@@ -66,19 +67,22 @@ export async function runAgent(userContent: string, opts: RunAgentOptions): Prom
 
   const headroomBaseUrl = await resolveHeadroomBaseUrl(opts, provider)
 
-  const turn = spawnAndAwaitExit({ userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl })
+  const turnArgs = { userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl }
+  const turn = provider.runTurn ? runInProcessAndAwait(turnArgs) : spawnAndAwaitExit(turnArgs)
   trackTurn(agentId, turn)
   return turn
 }
 
+const HEADROOM_PROVIDERS = new Set<string>(["claude", "agent-sdk"])
+
 /**
  * Base URL of the Headroom compression proxy when this agent opted in, or
- * null. Claude-only: it is the one provider whose CLI honours
- * ANTHROPIC_BASE_URL. A proxy that cannot start is reported into the chat and
- * the turn proceeds uncompressed rather than failing.
+ * null. Claude-family only: the Claude Code CLI (spawned directly or by the
+ * Agent SDK) is what honours ANTHROPIC_BASE_URL. A proxy that cannot start is
+ * reported into the chat and the turn proceeds uncompressed rather than failing.
  */
 async function resolveHeadroomBaseUrl(opts: RunAgentOptions, provider: ProviderAdapter): Promise<string | null> {
-  if (!opts.headroom || provider.id !== "claude") return null
+  if (!opts.headroom || !HEADROOM_PROVIDERS.has(provider.id)) return null
   try {
     return await ensureHeadroomProxy()
   } catch (err) {
@@ -99,6 +103,53 @@ interface SpawnAndAwaitArgs {
   state: StreamState
   startedAt: number
   headroomBaseUrl: string | null
+}
+
+/**
+ * In-process counterpart of `spawnAndAwaitExit` for providers that implement
+ * `runTurn`. Same plumbing (flush timer, turn segments, finalize); the
+ * provider's iterator stands in for the CLI's stdout and its exit code.
+ */
+async function runInProcessAndAwait(args: SpawnAndAwaitArgs): Promise<void> {
+  const { userContent, opts, provider, model, apiBase, bootstrap, state, startedAt, headroomBaseUrl } = args
+  const { agentId } = opts
+  if (!provider.runTurn) throw new Error(`${provider.id} has no in-process runner`)
+  const spawnOptions = buildSpawnOptions({ userContent, opts, provider, model, bootstrap })
+  const env = buildSpawnEnv({
+    agentId,
+    apiBase,
+    authToken: config.authToken,
+    cwd: bootstrap.cwd,
+    repoPath: bootstrap.repoRow?.path ?? null,
+    spawnEnvFromProvider: headroomBaseUrl ? buildHeadroomEnv(agentId, headroomBaseUrl) : {},
+  })
+  const flushTimer: { current: ReturnType<typeof setTimeout> | null } = { current: null }
+  const turnRef: TurnSegmentRef = { messageId: bootstrap.messageId, createdAt: bootstrap.skeletonCreatedAt, startedAt }
+  const scheduleFlush = makeScheduleFlush(state, turnRef, flushTimer)
+  const bufferRef = { current: "" }
+
+  registerTurnSplitter(agentId, makeTurnSplitter({ agentId, model, state, turnRef }))
+  const finalize = makeFinalize({
+    state, agentId, turnRef, model, provider,
+    cwd: bootstrap.cwd, branchFrom: bootstrap.branchFrom,
+    preRunStatus: bootstrap.preRunStatus, flushTimer, bufferRef, scheduleFlush, opts,
+    tags: opts.tags ?? [],
+  })
+
+  const rawCode = await startInProcessTurn({
+    provider: provider as ProviderAdapter & { runTurn: NonNullable<ProviderAdapter["runTurn"]> },
+    spawnOptions, env, state, agentId, turnRef, scheduleFlush,
+  })
+  // A stopped turn reports like a signal-killed CLI (null exit code): no
+  // "ended with code" message, and finalize applies a stop reason if any.
+  const code = rawCode === ABORTED_EXIT_CODE ? null : rawCode
+  logger.info({ agentId, rawCode, code, fullContentBytes: state.fullContent.length }, `[runner] ${provider.id} in-process turn ended code=${rawCode}`)
+  if (code && code !== 0 && state.fullContent.length === 0 && state.pendingText.length === 0) {
+    const errMsg = `${provider.name} ended with code ${code}. Check the terminal tab for details.`
+    state.pendingText = errMsg
+    agentsWs.errorEmit(agentId, errMsg)
+  }
+  await finalize(code)
 }
 
 function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
@@ -176,11 +227,8 @@ interface ResolveSpawnArgs {
   bootstrap: BootstrapResult
 }
 
-function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
-  // Returns { bin, args, env } — bin/args may come from the sandbox wrapper but
-  // env always comes from the unsandboxed provider result (the original code
-  // destructured `{ bin, args }` from the sandbox return and read `env` from
-  // the unsandboxed `spawnResult` independently).
+/** Provider-agnostic turn inputs: prompt, system prompt, session handling. */
+function buildSpawnOptions(args: ResolveSpawnArgs): SpawnOptions {
   const { userContent, opts, provider, model, bootstrap } = args
   const { agentId } = opts
   const { isContinuation, existingSessionId, useContinue, cwd, repoRow } = bootstrap
@@ -202,7 +250,7 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
 
   const prompt = opts.turnContext ? `${userContent}\n\n---\n\n${opts.turnContext}` : userContent
 
-  const spawnResult = provider.buildSpawnArgs({
+  return {
     prompt,
     model,
     planMode: opts.planMode ?? false,
@@ -212,7 +260,17 @@ function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
     systemPrompt,
     effort: opts.effort,
     conversationContext,
-  })
+  }
+}
+
+function resolveSpawnCommand(args: ResolveSpawnArgs): SpawnResult {
+  // Returns { bin, args, env } — bin/args may come from the sandbox wrapper but
+  // env always comes from the unsandboxed provider result (the original code
+  // destructured `{ bin, args }` from the sandbox return and read `env` from
+  // the unsandboxed `spawnResult` independently).
+  const { provider, bootstrap } = args
+  const { cwd, repoRow } = bootstrap
+  const spawnResult = provider.buildSpawnArgs(buildSpawnOptions(args))
 
   // Apply sandboxing if configured (currently Claude-only)
   if (config.sandbox && provider.id === "claude") {

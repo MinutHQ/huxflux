@@ -135,10 +135,12 @@ function resolveRefreshedWorktree(agentId: string, fallback: string): string | n
 // ── content extraction ─────────────────────────────────────────────────────
 
 function computeFinalContent(state: StreamState, providerId: string): string {
-  // For Claude: only text after the last tool call becomes content (pendingText).
-  // For other providers: use fullContent since they don't split text into precedingText.
+  // For the Claude family (CLI and Agent SDK): only text after the last tool
+  // call becomes content (pendingText); earlier text lives on each tool call's
+  // precedingText. For other providers: use fullContent.
   // If ExitPlanMode exists, use its precedingText as the plan content.
-  let finalContent = providerId === "claude" ? state.pendingText : (state.fullContent || state.pendingText)
+  const splitsPrecedingText = providerId === "claude" || providerId === "agent-sdk"
+  let finalContent = splitsPrecedingText ? state.pendingText : (state.fullContent || state.pendingText)
   const exitCall = state.collectedToolCalls.find((tc) => tc.tool === "ExitPlanMode")
   if (exitCall?.precedingText?.trim()) {
     finalContent = exitCall.precedingText.trim()

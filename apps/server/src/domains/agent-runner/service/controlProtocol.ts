@@ -10,10 +10,9 @@
 // running turn (stream-json input mode delivers them to the model at the next
 // step boundary).
 
-import type { ChildProcess } from "node:child_process"
 import { agentsWs } from "../../agents/agents.ws.js"
 import { setPendingQuestion, getPendingQuestion, clearPendingQuestion, type PendingQuestionEntry } from "../../../askStore.js"
-import { runningProcesses } from "./processRegistry.js"
+import { runningProcesses, type RunningTurn } from "./processRegistry.js"
 import { persistUserMessageRow } from "./userMessage.js"
 import { splitCurrentTurn } from "./turnSegments.js"
 import { logger } from "../../../logger.js"
@@ -29,7 +28,7 @@ export interface ControlRequestEvent {
   }
 }
 
-function writeStdinLine(proc: ChildProcess | undefined, line: string): boolean {
+function writeStdinLine(proc: RunningTurn | undefined, line: string): boolean {
   if (!proc?.stdin || proc.stdin.destroyed || !proc.stdin.writable) return false
   proc.stdin.write(line + "\n")
   return true
@@ -57,7 +56,7 @@ function buildControlResponseLine(requestId: string, response: Record<string, un
  * no permission host existed and anything that would prompt was auto-denied —
  * under `--dangerously-skip-permissions` nothing else prompts anyway).
  */
-export function handleControlRequest(event: ControlRequestEvent, agentId: string, proc: ChildProcess): void {
+export function handleControlRequest(event: ControlRequestEvent, agentId: string, proc: RunningTurn): void {
   if (event.type === "control_cancel_request") {
     resolvePendingQuestion(agentId)
     return

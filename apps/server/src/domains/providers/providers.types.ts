@@ -1,4 +1,4 @@
-export type ProviderId = "claude" | "codex" | "gemini" | "antigravity" | "pi"
+export type ProviderId = "claude" | "agent-sdk" | "codex" | "gemini" | "antigravity" | "pi"
 
 export interface ModelCapabilities {
   reasoning?: boolean
@@ -72,6 +72,37 @@ export interface SpawnResult {
   stdinInit?: string
 }
 
+/** Host decision for a tool that asked permission (AskUserQuestion round trip). */
+export type PermissionDecision =
+  | { behavior: "allow"; updatedInput?: Record<string, unknown> }
+  | { behavior: "deny"; message: string }
+
+export interface PermissionRequest {
+  toolName: string
+  input: Record<string, unknown>
+  /** The tool_use block that is asking, when the provider knows it. */
+  toolUseId?: string
+  /** Aborted when the provider no longer needs the answer (turn stopped). */
+  signal: AbortSignal
+}
+
+/** Runtime handles the runner passes to an in-process provider turn. */
+export interface RunTurnContext {
+  /** Aborted when the user stops the agent or the server shuts down. */
+  signal: AbortSignal
+  /** Environment for any subprocess the provider starts (HUXFLUX_* vars, PATH). */
+  env: NodeJS.ProcessEnv
+  /** Diagnostic output; the runner shows it in the agent's terminal tab. */
+  onStderr: (line: string) => void
+  /** User messages injected mid-run, in order. Ends once the runner closes
+   *  the turn's input (after the provider reports `done`). */
+  userMessages: AsyncIterable<string>
+  /** Ask the host to decide a tool permission. AskUserQuestion is parked
+   *  for the UI and resolved with the user's answers in `updatedInput`;
+   *  every other tool is denied. */
+  requestPermission(request: PermissionRequest): Promise<PermissionDecision>
+}
+
 export interface ProviderAdapter {
   id: ProviderId
   name: string
@@ -95,6 +126,12 @@ export interface ProviderAdapter {
 
   /** Parse a single line of stdout into a normalized event (or null to skip) */
   parseStreamLine(line: string): NormalizedStreamEvent | null
+
+  /** Run one turn in-process instead of spawning a CLI. When present the
+   *  runner consumes this iterator and never calls `buildSpawnArgs`. The
+   *  iterator must end (or throw) once the turn settles; aborting `signal`
+   *  must stop it promptly. */
+  runTurn?(opts: SpawnOptions, ctx: RunTurnContext): AsyncIterable<NormalizedStreamEvent>
 
   /** Resolve a display model name to the API model ID */
   resolveModel(model: string): string

@@ -5,6 +5,7 @@
 
 import type { ProviderId, ProviderAdapter } from "./providers.types.js"
 import { claudeProvider } from "./service/claude.js"
+import { agentSdkProvider } from "./service/agentSdk.js"
 import { codexProvider } from "./service/codex.js"
 import { geminiProvider } from "./service/gemini.js"
 import { piProvider } from "./service/pi.js"
@@ -13,6 +14,7 @@ import { fetchModelsCatalog } from "./service/modelsCatalog.js"
 
 const builtinProviders: Record<string, ProviderAdapter> = {
   claude: claudeProvider,
+  "agent-sdk": agentSdkProvider,
   codex: codexProvider,
   gemini: geminiProvider,
   antigravity: antigravityProvider,

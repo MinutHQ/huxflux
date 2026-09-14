@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { api, isAgentStreaming, queryKeys } from "@huxflux/shared"
 import type { Agent, Message, PRComment, AgentSummary } from "@huxflux/shared"
 import type { MentionAttachment } from "./useMentionsAndSlash"
+import { isClaudeFamilyProvider } from "../config"
 
 interface Attachment {
   name: string
@@ -128,12 +129,12 @@ export function useChatSend(args: UseChatSendArgs) {
     if (serverStreaming && isSending) setIsSending(false)
   }, [serverStreaming, isSending])
 
-  // Claude turns run with an open stdin pipe, so a message sent while the
-  // agent is streaming is injected into the running turn by the server
-  // (POST /messages returns "injected"). Plan-mode messages must start their
-  // own turn, and other providers have no injection path — those still go
-  // through the client-side queue.
-  const canInject = (agent.provider ?? "claude") === "claude"
+  // Claude-family turns (CLI stdin pipe, or the Agent SDK's streaming input)
+  // accept a message sent while the agent is streaming: the server injects it
+  // into the running turn (POST /messages returns "injected"). Plan-mode
+  // messages must start their own turn, and other providers have no injection
+  // path — those still go through the client-side queue.
+  const canInject = isClaudeFamilyProvider(agent.provider)
 
   const buildAndQueue = useCallback(async (text: string, isPlan: boolean, effort: string) => {
     const apiContent = await buildContent(args, text)

@@ -46,3 +46,12 @@ export const TEARDOWN_STEPS: SetupStep[] = [
   { label: "Removing worktree", icon: "⑂" },
   { label: "Cleaning up", icon: "✕" },
 ]
+
+/**
+ * Providers that drive Claude Code (the CLI directly, or the Agent SDK). Both
+ * accept messages injected into a running turn and honour the Headroom proxy.
+ */
+export function isClaudeFamilyProvider(provider: string | null | undefined): boolean {
+  const id = provider ?? "claude"
+  return id === "claude" || id === "agent-sdk"
+}

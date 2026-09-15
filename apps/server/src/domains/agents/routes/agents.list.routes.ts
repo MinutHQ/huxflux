@@ -67,6 +67,7 @@ async function listAgentsHandler(): Promise<unknown[]> {
       ...a,
       diffSummary: files.length > 0 ? { additions, deletions } : undefined,
       prStatus: parsePrStatus(a.prStatus),
+      pendingQuestion: getPendingQuestionPayload(a.id),
     }
   })
 }

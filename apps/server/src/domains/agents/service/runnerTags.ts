@@ -1,10 +1,14 @@
 import * as path from "node:path"
+import { existsSync, rmSync } from "node:fs"
 import { v4 as uuid } from "uuid"
 import { z } from "zod/v4"
-import { eq } from "drizzle-orm"
+import { eq, type InferSelectModel } from "drizzle-orm"
 import { simpleGit } from "simple-git"
 import { db } from "../../../db/index.js"
-import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
+import { agents as agentsTable, repos as reposTable, terminalTabs as terminalTabsTable } from "../../../db/schema.js"
+import { enqueue, drainQueue } from "./messageQueue.js"
+import { runSetupScript as runStreamingSetup } from "./setupScript.js"
+import { watchWorktree } from "../../git/watcher.js"
 import { agentsWs } from "../agents.ws.js"
 import { config } from "../../../config.js"
 import { getSettings } from "../../settings/settings.service.js"
@@ -100,26 +104,60 @@ export function agentDelegateHandler(agentId: string): TagHandler {
 
 /**
  * `<huxflux:agents.spawn repo="repo-name">task description</huxflux:agents.spawn>`
+ * or `<huxflux:agents.spawn repoId="...">task description</huxflux:agents.spawn>`
  *
- * Creates a new thread agent in the named repo, sets up its worktree, runs
- * the repo's setup script, and seeds the new agent's first message with the
- * parent's task description. Only active when `threadsEnabled` is set in
- * settings.
+ * Creates a new thread agent in the target repo, sets up its worktree, runs
+ * the repo's setup script (streamed to the agent's terminal), seeds the new
+ * agent's first message with the parent's task description, and starts that
+ * first turn. Any failure is reported back to the parent agent as a
+ * "system" message instead of being swallowed. Only active when
+ * `threadsEnabled` is enabled in settings (on by default).
  */
 export function agentSpawnHandler(parentAgentId: string): TagHandler {
   return defineTagHandler({
     id: "agents.spawn",
-    args: z.object({ repo: z.string().min(1) }),
+    args: z.object({
+      repo: z.string().min(1).optional(),
+      repoId: z.string().min(1).optional(),
+    }),
     onTag: async ({ args, body }) => {
-      if (!getSettings().threadsEnabled) return
-      const spawned = await spawnThreadAgent(args.repo, body.trim(), parentAgentId)
-      if (!spawned) return
+      if (!getSettings().threadsEnabled) {
+        return {
+          followUp: {
+            content:
+              'Cross-repo threads are disabled in settings. Enable the "Thread agents" toggle (Experimental section) to use this tag.',
+            sender: "system",
+          },
+        }
+      }
+      const task = body.trim()
+      if (!task) return
+      const repoName = args.repo?.trim() || undefined
+      const repoId = args.repoId?.trim() || undefined
+      if (!repoName && !repoId) {
+        return {
+          followUp: {
+            content: 'No target repo given. Address it by name (repo="repo-name") or by id (repoId="...").',
+            sender: "system",
+          },
+        }
+      }
+      const spawned = await spawnThreadAgent(repoName, repoId, task, parentAgentId)
+      if (!spawned.ok) {
+        return {
+          followUp: {
+            content: `Thread agent spawn failed: ${spawned.error}`,
+            sender: "system",
+          },
+        }
+      }
       return {
         followUp: {
           content: [
-            `Thread agent "${spawned.title}" spawned in ${args.repo}.`,
+            `Thread agent "${spawned.title}" spawned in "${repoName ?? repoId}".`,
             `Agent ID: ${spawned.id}`,
             ``,
+            `Your task description was seeded as its first message, so it will start working on it immediately.`,
             `To send it a message:`,
             `  <huxflux:agents.delegate agent="${spawned.id}">your message</huxflux:agents.delegate>`,
           ].join("\n"),
@@ -130,62 +168,179 @@ export function agentSpawnHandler(parentAgentId: string): TagHandler {
   })
 }
 
-async function spawnThreadAgent(repoName: string, taskDescription: string, parentAgentId: string): Promise<{ id: string; title: string } | null> {
-  try {
-    const allRepos = db.select().from(reposTable).all()
-    const repo = allRepos.find((r) => r.name === repoName || r.name.endsWith(`/${repoName}`))
-    if (!repo) {
-      logger.error(`[tags] agents.spawn: repo "${repoName}" not found`)
-      return null
-    }
-    const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
-    if (!parentAgent) return null
+type SpawnResult = { ok: true; id: string; title: string } | { ok: false; error: string }
 
-    const settings = getSettings()
-    const id = uuid()
-    const location = `thread-${id.slice(0, 8)}`
-    const cleanDesc = taskDescription.replace(/^[#*_\->\s]+/, "").split("\n")[0].trim()
-    const title = cleanDesc.slice(0, 60)
-    const slug = cleanDesc.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)
-    const branchPrefix = repo.branchPrefix ? `${repo.branchPrefix}/` : ""
-    const branch = `${branchPrefix}thread-${slug}`
-    const now = new Date().toISOString()
-    const worktreePath = path.join(repo.workspacesPath, location)
-    try {
-      await createWorktree(repo.path, branch, worktreePath, repo.branchFrom)
-    } catch (err) {
-      logger.error({ err }, `[tags] agents.spawn: failed to create worktree for ${repoName}`)
-      return null
+type RepoRow = InferSelectModel<typeof reposTable>
+type AgentRow = InferSelectModel<typeof agentsTable>
+
+interface ThreadRefs {
+  id: string
+  title: string
+  location: string
+  branch: string
+  worktreePath: string
+  model: string
+  provider: string
+}
+
+/**
+ * Resolve the target repo of a spawn tag. An exact `repoId` match takes
+ * precedence; otherwise the repo is matched by name (full name or
+ * trailing-segment match, mirroring the pre-existing name rule). Returns
+ * either the repo row or a human-readable error.
+ */
+function resolveSpawnTarget(repoName: string | undefined, repoId: string | undefined): { repo: RepoRow } | { error: string } {
+  const allRepos = db.select().from(reposTable).all()
+  const lookup = repoId ?? repoName
+  const repo = repoId
+    ? allRepos.find((r) => r.id === repoId)
+    : allRepos.find((r) => r.name === repoName || r.name.endsWith(`/${repoName}`))
+  if (!repo) return { error: `Unknown repo: "${lookup}"` }
+  if (repo.type === "folder") return { error: `Repo "${repo.name}" is a folder, not a git repo. Thread agents require a git repo.` }
+  if (!existsSync(repo.path)) return { error: `Repo path does not exist on disk: ${repo.path}` }
+  return { repo }
+}
+
+/**
+ * Derive the thread agent's identity from the parent and the task text.
+ *
+ * The slug is sanitized the same way as branch names (collapse repeated
+ * dashes, trim edge dashes); the id suffix keeps same-text spawns on distinct
+ * branches (mirrors forkAgent). The worktree location is the branch minus the
+ * repo prefix, so the pre-spawn `reconcileWorktreeLocation` sees a
+ * location/branch pair that is already aligned and does not move the
+ * worktree out from under the first turn.
+ */
+function buildThreadRefs(repo: RepoRow, taskDescription: string, parentAgent: AgentRow): ThreadRefs {
+  const settings = getSettings()
+  const id = uuid()
+  const cleanDesc = taskDescription.replace(/^[#*_\->\s]+/, "").split("\n")[0].trim()
+  const title = (cleanDesc.slice(0, 60) || `Thread of ${parentAgent.title}`).slice(0, 60)
+  const slug = (cleanDesc.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30)) || "unnamed"
+  const location = `thread-${slug}-${id.slice(0, 6)}`
+  const branch = `${repo.branchPrefix ? `${repo.branchPrefix}/` : ""}${location}`
+  return {
+    id,
+    title,
+    location,
+    branch,
+    worktreePath: path.join(repo.workspacesPath, location),
+    // Inherit from the parent, falling back to the profile's defaults
+    model: parentAgent.model ?? settings.defaultModel ?? "Sonnet 4.6",
+    provider: parentAgent.provider ?? (settings.defaultProvider ?? "claude"),
+  }
+}
+
+/** Insert the agent row plus the default t1 terminal tab. */
+function insertAgentRow(repo: RepoRow, parentAgentId: string, refs: ThreadRefs): void {
+  const now = new Date().toISOString()
+  db.insert(agentsTable).values({
+    id: refs.id,
+    repoId: repo.id,
+    title: refs.title,
+    status: "in-progress",
+    branch: refs.branch,
+    model: refs.model,
+    location: refs.location,
+    provider: refs.provider,
+    threadParentId: parentAgentId,
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  db.insert(terminalTabsTable).values({
+    id: uuid(),
+    agentId: refs.id,
+    terminalId: "t1",
+    label: null,
+    orderIdx: 0,
+  }).run()
+}
+
+/** Seed context the spawned agent starts with, before its task description. */
+function buildSpawnContext(parentAgent: AgentRow, parentAgentId: string): string {
+  return [
+    `You were spawned by "${parentAgent.title}" (${parentAgent.branch}) to handle cross-repo work.`,
+    `Parent agent ID: ${parentAgentId}`,
+    ``,
+    `To send a message back to your parent:`,
+    `  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>`,
+  ].join("\n")
+}
+
+/** Roll back a half-spawned thread agent (row + worktree + cascaded rows). */
+function rollBackThread(id: string, worktreePath: string): void {
+  db.delete(agentsTable).where(eq(agentsTable.id, id)).run()
+  try { rmSync(worktreePath, { recursive: true, force: true }) } catch { /* already gone */ }
+}
+
+/**
+ * Create a thread agent in the target repo for cross-repo work.
+ *
+ * The agent row is inserted before the setup script runs (the script
+ * streams terminal lines tied to the agent) and is rolled back on script
+ * failure. Every failure path returns a human-readable reason instead of
+ * silently failing.
+ */
+async function spawnThreadAgent(
+  repoName: string | undefined,
+  repoId: string | undefined,
+  taskDescription: string,
+  parentAgentId: string,
+): Promise<SpawnResult> {
+  try {
+    const target = resolveSpawnTarget(repoName, repoId)
+    if ("error" in target) {
+      logger.error(`[tags] agents.spawn: ${target.error}`)
+      return { ok: false, error: target.error }
     }
-    await runSetupScript(repo, worktreePath)
-    db.insert(agentsTable).values({
-      id,
-      repoId: repo.id,
-      title,
-      status: "in-progress",
-      branch,
-      model: settings.defaultModel ?? "Sonnet 4.6",
-      location,
-      provider: settings.defaultProvider ?? "claude",
-      threadParentId: parentAgentId,
-      createdAt: now,
-      updatedAt: now,
-    }).run()
-    const created = db.select().from(agentsTable).where(eq(agentsTable.id, id)).get()
+    const { repo } = target
+    const parentAgent = db.select().from(agentsTable).where(eq(agentsTable.id, parentAgentId)).get()
+    if (!parentAgent) {
+      logger.error(`[tags] agents.spawn: parent agent ${parentAgentId} not found`)
+      return { ok: false, error: `Parent agent not found: ${parentAgentId}` }
+    }
+    const refs = buildThreadRefs(repo, taskDescription, parentAgent)
+    try {
+      await createWorktree(repo.path, refs.branch, refs.worktreePath, repo.branchFrom)
+    } catch (err) {
+      logger.error({ err }, `[tags] agents.spawn: failed to create worktree for ${repo.name}`)
+      return { ok: false, error: `Failed to create worktree: ${(err as Error).message}` }
+    }
+
+    // Agent row (plus default terminal tab) goes in before the setup script
+    // runs: the script streams terminal lines tied to the agent.
+    insertAgentRow(repo, parentAgentId, refs)
+    const created = db.select().from(agentsTable).where(eq(agentsTable.id, refs.id)).get()
     if (created) agentsWs.agentUpdated(created as unknown as AgentSummary)
-    const spawnContext = [
-      `You were spawned by "${parentAgent.title}" (${parentAgent.branch}) to handle cross-repo work.`,
-      `Parent agent ID: ${parentAgentId}`,
-      ``,
-      `To send a message back to your parent:`,
-      `  <huxflux:agents.delegate agent="${parentAgentId}">message</huxflux:agents.delegate>`,
-    ].join("\n")
-    sendInitialMessage(id, parentAgent, parentAgentId, spawnContext, taskDescription)
-    logger.info(`[tags] agents.spawn: created thread agent ${id} in ${repoName} for parent ${parentAgentId}`)
-    return { id, title }
+    if (repo.setupScript) {
+      try {
+        await runStreamingSetup(repo.setupScript, refs.worktreePath, refs.id, repo.path)
+      } catch (err) {
+        rollBackThread(refs.id, refs.worktreePath)
+        logger.error({ err }, `[tags] agents.spawn: setup script failed for ${repo.name}`)
+        return { ok: false, error: `Setup script failed: ${(err as Error).message}` }
+      }
+    }
+    watchWorktree(refs.id, refs.worktreePath, repo.branchFrom)
+
+    enqueue(refs.id, {
+      content: `${buildSpawnContext(parentAgent, parentAgentId)}\n\n---\n\n${taskDescription.trim()}`,
+      worktreePath: refs.worktreePath,
+      model: refs.model,
+      sender: parentAgent.title,
+      delegateFrom: parentAgentId,
+      provider: refs.provider,
+    })
+    drainQueue(refs.id)
+    logger.info(`[tags] agents.spawn: created thread agent ${refs.id} in ${repo.name} for parent ${parentAgentId}`)
+    return { ok: true, id: refs.id, title: refs.title }
   } catch (err) {
     logger.error({ err }, `[tags] agents.spawn failed`)
-    return null
+    return { ok: false, error: `Spawn failed: ${(err as Error).message}` }
   }
 }
 
@@ -194,6 +349,11 @@ interface RepoForSetup {
   setupScript: string | null
 }
 
+/**
+ * Fork-only silent setup runner. Spawn uses the streaming version
+ * (`service/setupScript.ts`), which pipes output to the agent's terminal
+ * lines; forks are best-effort so their setup stays silent on purpose.
+ */
 async function runSetupScript(repo: RepoForSetup, worktreePath: string): Promise<void> {
   if (!repo.setupScript) return
   try {
@@ -212,6 +372,12 @@ async function runSetupScript(repo: RepoForSetup, worktreePath: string): Promise
   }
 }
 
+/**
+ * Fork-only fire-and-forget first message (HTTP POST to the messages
+ * route). Spawn seeds its first message in-process via
+ * `enqueue` + `drainQueue` instead, so the seeded turn starts
+ * immediately and delivery is not lost on request failure.
+ */
 function sendInitialMessage(
   targetAgentId: string,
   parentAgent: { title: string; branch: string },

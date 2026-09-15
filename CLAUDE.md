@@ -172,6 +172,7 @@ These conventions are already consistent across the codebase. Follow them so the
 - Do not introduce new state stores. Use TanStack Query for server state, React state for local UI state. If you think you need a global store, talk through it first.
 - Do not commit `console.log`. The lint config allows `console.info` (tracing), `console.warn` (non-fatal failures), and `console.error` (real errors).
 - Do not silence type errors with `as any` or `@ts-ignore`. If the type is wrong, fix the type. If you're stuck, ask.
+- In sandboxed agent environments, pnpm scripts can fail with `Operation not permitted` (denied write outside the workspace) or `ERR_PNPM_BAD_PM_VERSION` when the `pnpm` on PATH is a different version than the `packageManager` pin in `package.json`. Do NOT edit `package.json`/`.npmrc`/`pnpm-workspace.yaml` to paper over a version mismatch. Instead, shim the pinned version from the corepack cache: write `/tmp/<proj>-pnpm/bin/pnpm` containing `exec node $HOME/.cache/node/corepack/v1/<pm>/<version>/bin/pnpm.cjs "$@"`, chmod +x it, and run `PATH=/tmp/<proj>-pnpm/bin:$PATH corepack pnpm <script>`. (Verified working in this repo: pnpm@11.3.0 pinned, homebrew pnpm@12 on PATH.)
 
 ## Working With Humans
 

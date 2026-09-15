@@ -174,8 +174,12 @@ function buildThreadDirective(availableRepos: string[]): string[] {
   const lines = [
     `## Spawning thread agents`,
     ``,
-    `You can create a new agent in a different repository. The server creates a fresh workspace, runs the repo's setup script, and sends your task description as the first message. The spawned agent can reply back to you via delegation.`,
+    `You can create a new agent in a different repository. The server creates a fresh workspace, runs the repo's setup script, and sends your task description as the first message. The spawned agent starts working on that message immediately.`,
     `  <huxflux:agents.spawn repo="repo-name">Full task description with enough context for the new agent to work independently</huxflux:agents.spawn>`,
+    `  <huxflux:agents.spawn repoId="repo-id">Full task description with enough context for the new agent to work independently</huxflux:agents.spawn>`,
+    `Address the target repo by name (repo="repo-name") or by id (repoId="...").`,
+    `If the spawn fails (unknown repo, setup script failure), the server tells you why as a system message and no agent is created.`,
+    `The spawned agent can reply back to you via delegation.`,
     `Use this for cross-repo work: translations, shared libraries, documentation sites, etc.`,
   ]
   if (availableRepos.length > 0) {

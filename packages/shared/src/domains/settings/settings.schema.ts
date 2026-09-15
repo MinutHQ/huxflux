@@ -204,10 +204,10 @@ export const settingsSchema = {
   // ── Experimental ──────────────────────────────────────────────────────
   threadsEnabled: {
     type: "boolean",
-    default: false,
+    default: true,
     section: "experimental",
     label: "Thread agents",
-    description: "Allow agents to spawn thread agents in other repos",
+    description: "Allow agents to spawn thread agents in other repos. On by default; disable here to opt out.",
   },
 
   // ── Updates ──────────────────────────────────────────────────────────

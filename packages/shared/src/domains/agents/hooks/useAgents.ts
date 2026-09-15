@@ -48,10 +48,26 @@ export function useAgents() {
     if (event.type === "message:done" && !event.segment) {
       const agentId = (event as { agentId?: string }).agentId
       if (agentId) {
+        // The turn is over, so any question it was blocked on is gone too
+        // (the server clears its store on finalize without an ask:resolved).
         queryClient.setQueriesData<AgentSummary[]>({ queryKey: queryKeys.agents.all }, (old) =>
-          old ? old.map((a) => a.id === agentId ? { ...a, streaming: false } : a) : old
+          old ? old.map((a) => a.id === agentId ? { ...a, streaming: false, pendingQuestion: null } : a) : old
         )
       }
+    }
+    // Sidebar "needs input" marker. Both events are broadcast, so this list
+    // hears them for every agent, not only the open one.
+    if (event.type === "ask:question") {
+      const { agentId, toolUseId, questions } = event
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: queryKeys.agents.all }, (old) =>
+        old ? old.map((a) => a.id === agentId ? { ...a, pendingQuestion: { toolUseId, questions } } : a) : old
+      )
+    }
+    if (event.type === "ask:resolved") {
+      const { agentId } = event
+      queryClient.setQueriesData<AgentSummary[]>({ queryKey: queryKeys.agents.all }, (old) =>
+        old ? old.map((a) => a.id === agentId ? { ...a, pendingQuestion: null } : a) : old
+      )
     }
     if (event.type === "agent:deleted") {
       markAgentDeleted(event.agentId)

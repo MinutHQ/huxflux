@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import * as path from "node:path"
 import { buildChatTagInstructions, buildNamingTurnContext, PLACEHOLDER_NOTE_PREFIX } from "./tagInstructions.js"
+import { DATA_DIR } from "../../../config.js"
 
 const baseArgs = {
   branchPrefix: "ai",
@@ -29,6 +32,32 @@ describe("buildChatTagInstructions", () => {
   it("does not embed anything that changes when the agent is renamed", () => {
     const out = buildChatTagInstructions(baseArgs)
     expect(out).not.toMatch(/e\.g\. "/)
+  })
+
+  it("documents the spawn tag in both address forms when threads are enabled", () => {
+    // threadsEnabled defaults to true, so a fresh profile advertises the tag
+    const out = buildChatTagInstructions(baseArgs)
+    expect(out).toContain("## Spawning thread agents")
+    expect(out).toContain('<huxflux:agents.spawn repo="repo-name">')
+    expect(out).toContain('<huxflux:agents.spawn repoId="repo-id">')
+    expect(out).toContain('repo="repo-name"')
+    expect(out).toContain('repoId="..."')
+    expect(out).toContain("Available repos: huxflux")
+  })
+
+  it("omits the spawn directive when threadsEnabled is false", () => {
+    const settingsFile = DATA_DIR ? path.join(DATA_DIR, "settings.json") : null
+    if (!settingsFile) return
+    const prev = existsSync(settingsFile) ? readFileSync(settingsFile, "utf8") : null
+    writeFileSync(settingsFile, JSON.stringify({ threadsEnabled: false }))
+    try {
+      const out = buildChatTagInstructions(baseArgs)
+      expect(out).not.toContain("<huxflux:agents.spawn")
+      expect(out).not.toContain("## Spawning thread agents")
+    } finally {
+      if (prev === null) rmSync(settingsFile, { force: true })
+      else writeFileSync(settingsFile, prev)
+    }
   })
 })
 

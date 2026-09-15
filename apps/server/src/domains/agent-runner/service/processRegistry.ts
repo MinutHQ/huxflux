@@ -112,7 +112,11 @@ export function endTurn(agentId: string): boolean {
   if (!proc?.pid) return false
   try { proc.kill("SIGTERM") } catch { /* dead */ }
   setTimeout(() => {
-    if (proc.exitCode !== null || proc.signalCode !== null) return
+    // Escalate only while this exact handle is still the agent's running turn.
+    // `finalize` clears the registry on every exit path, so a missing or
+    // replaced entry means the process is gone and its pid may since have been
+    // reused — by the OS, or by the next turn for the same agent.
+    if (runningProcesses.get(agentId) !== proc) return
     try { proc.kill("SIGKILL") } catch { /* dead */ }
   }, 5000).unref()
   return true

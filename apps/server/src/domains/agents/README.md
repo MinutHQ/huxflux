@@ -47,6 +47,8 @@ None.
 
 ## Quirks
 
+- `ask:question` / `ask:resolved` are **broadcast**, not emitted to the agent's subscribers, because the sidebar list (subscribed to no agent) has to show a "needs input" marker for every agent. `GET /api/agents` also serves `pendingQuestion` per row so the marker survives a reload.
+
 - The runner was previously a single 1340-line file. It is now its own domain at `src/domains/agent-runner/` (peer of this domain, not a sub-system), with one file per responsibility. The orchestrator (`agent-runner/agent-runner.service.ts`) is ~135 lines and reads top-to-bottom.
 - `ClaudeStreamEvent` is defined here in `agents.types.ts` and consumed by the agent-runner domain. The previous flat file used `@ts-expect-error` at the call site because the type was never imported; the current code derives the union from the runner's field accesses (assistant blocks: text / thinking / tool_use; tool_result; result with usage; system with subtype init; unknown forwarded as subagent).
 - DB queries live inline in the routes, mirroring the legacy `routes/*.ts` files. The Drizzle table definitions for this domain were co-located into `agents.db.ts` (the per-domain schema split); the central `src/db/schema.ts` is now a backward-compatible barrel that re-exports every domain's tables. Per-domain *query helpers* are still pending — when they're introduced they'll be the consumer of this `agents.db.ts`.

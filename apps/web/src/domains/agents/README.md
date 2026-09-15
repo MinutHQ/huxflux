@@ -41,6 +41,8 @@ None.
 
 ## Quirks
 
+- `AgentRow` shows `NeedsInputIcon` (amber question bubble) when `agent.pendingQuestion` is set. It outranks the streaming dots: a parked AskUserQuestion means the agent is waiting on the user, not working.
+
 - Terminal sessions live in a module-level `Map` (`globalSessions` in `terminalSession.ts`). They survive component unmount/remount (e.g. when the maximize toggle remounts the panel) and are only torn down explicitly when the user closes the tab. The wrapper `<div>` is re-attached via a ref callback so the existing xterm DOM node moves into the new wrapper.
 - `useTerminalSession` carries two `// eslint-disable-next-line react-hooks/exhaustive-deps` comments: the activation effect intentionally re-runs only on `[activeTab, agentId, activeTerminalId, tabsLoaded]`, and the ResizeObserver effect intentionally runs once on mount. Both are load-bearing and preserved verbatim from the source.
 - `ANSI_RE` in `config.ts` carries `// eslint-disable-next-line no-control-regex` because port autodetection has to strip ESC + BEL control bytes from terminal output before regex-matching.

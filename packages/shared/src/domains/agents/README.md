@@ -89,6 +89,8 @@ None.
 
 ## Quirks
 
+- `useAgents` mirrors `ask:question` / `ask:resolved` into each summary's `pendingQuestion` and clears it on the final `message:done`, so sidebar rows can show a "waiting for input" state without subscribing to every agent.
+
 - `useAgent` is a thin orchestrator (`hooks/useAgent.ts`) over per-concern hooks that each handle one slice of WS-driven state: `useAgentQuery` (fetch + sub-agent merge), `useAgentPagination` (loadMore / hasMore), `useAgentMessageStream` (message / tool / subagent frames), `useAgentFileChanges`, `useAgentTerminal`, `useAgentPendingQuestion` (keeps the pending question on the detail cache entry, not in component state, so it survives the per-agent route remount and is re-hydrated by every refetch), `useAgentLifecycle` (agent:updated / messages:cleared / ws:reconnected / error). Each sub-hook returns a stable `handleEvent` callback so the orchestrator subscribes to `useAgentEvents` exactly once and dispatches by event type. Pure reducer helpers live alongside in `messageStreamReducers.ts` and `subagentEventReducer.ts`. None of the sub-hooks are public; consumers still call `useAgent` and get the same return shape.
 - `Agent.prStatus` is typed as `PRStatus` (from `../pull-requests/types`). This is the one cross-domain type reference in this domain — moving `PRStatus` into agents would invert the semantic ownership. The pull-requests domain owns the type; the agents domain just references it on its own type.
 - `agentsApi` includes `systemSshInfo` because the agent open-in-editor flow is the only consumer. If a future consumer outside agents needs SSH info, the method should move to its own slice; for now this avoids a one-method "system" domain.

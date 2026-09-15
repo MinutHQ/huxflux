@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { api, type AgentSummary, queryKeys, useHuxfluxMutation } from "@huxflux/shared"
 import { isPlaceholderTitle, modelColors, repoColor } from "../../agentListUtils"
 import { StreamingDots } from "./StreamingDots"
+import { NeedsInputIcon } from "./NeedsInputIcon"
 import { PrIcon } from "./PrIcon"
 import { StatusContextMenu } from "./StatusContextMenu"
 
@@ -52,6 +53,9 @@ export const AgentRow = React.memo(function AgentRow({
   const tablerIcons = TablerIcons as unknown as Record<string, React.ComponentType<{ size?: number }>>
   const RepoIconComp = repoIcon ? tablerIcons[repoIcon] : undefined
   const isCancelled = agent.status === "cancelled"
+  // A parked AskUserQuestion blocks the turn until the user answers, so it
+  // outranks the streaming dots: the agent is waiting, not working.
+  const needsInput = !!agent.pendingQuestion
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState("")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -121,7 +125,9 @@ export const AgentRow = React.memo(function AgentRow({
         <div className={cn("w-5 h-5 rounded-sm flex items-center justify-center text-[10px] font-bold shrink-0", avatarColor)}>
           {RepoIconComp ? <RepoIconComp size={11} /> : initials}
         </div>
-        {isStreaming ? <StreamingDots /> : <PrIcon agent={agent} repoType={repoType} />}
+        {needsInput
+          ? <NeedsInputIcon question={agent.pendingQuestion?.questions[0]?.question} />
+          : isStreaming ? <StreamingDots /> : <PrIcon agent={agent} repoType={repoType} />}
         {editing ? (
           <input
             ref={inputRef}

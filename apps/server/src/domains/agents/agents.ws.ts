@@ -79,15 +79,18 @@ const agentsEventsConfig = {
     channel: "emit",
     build: (agentId: string, files: FileChange[]) => ({ type: "file:changed" as const, agentId, files }),
   },
+  // Broadcast (not emit): the sidebar list is not subscribed to any single
+  // agent but has to flip the row into its "needs input" state for every
+  // agent, not just the one that is open.
   askQuestion: {
-    channel: "emit",
+    channel: "broadcast",
     build: (agentId: string, toolUseId: string, questions: AskQuestion[]) =>
       ({ type: "ask:question" as const, agentId, toolUseId, questions }),
   },
   // The pending question was answered (from any client) or cancelled by the
-  // CLI, so every client drops its question card.
+  // CLI, so every client drops its question card and sidebar marker.
   askResolved: {
-    channel: "emit",
+    channel: "broadcast",
     build: (agentId: string, toolUseId: string) => ({ type: "ask:resolved" as const, agentId, toolUseId }),
   },
   // `/clear` wiped the agent's transcript and provider session — every

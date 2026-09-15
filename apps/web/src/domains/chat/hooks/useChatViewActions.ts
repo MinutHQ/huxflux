@@ -81,6 +81,9 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     void chatSend.buildAndQueue(text, isPlan, effort)
   }
 
+  // One-click slash command (e.g. the ship button). Sent verbatim: skips buildContent so staged attachments, PR comments and mentions stay in the composer for the user's own next message.
+  function handleSendCommand(text: string) { if (!chatSend.isSending && !clearConversation.isPending) void chatSend.sendContent(text, text, effort ? { effort } : undefined) }
+
   function handlePlanApprove() {
     setAwaitingPlanApproval(false)
     setPlanMode(false)
@@ -113,15 +116,14 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     uploadFiles(files)
   }, [uploadFiles])
 
-  function toggleLinkedAgent(a: AgentSummary) {
-    setLinkedAgents((prev) => prev.some((x) => x.id === a.id) ? prev.filter((x) => x.id !== a.id) : [...prev, a])
-  }
+  function toggleLinkedAgent(a: AgentSummary) { setLinkedAgents((prev) => prev.some((x) => x.id === a.id) ? prev.filter((x) => x.id !== a.id) : [...prev, a]) }
 
   function broadcastSend(msg: string) { void chatSend.sendContent(msg, msg) }
 
   return {
     handleInputChange,
     handleSend,
+    handleSendCommand,
     handlePlanApprove,
     handleAnswerQuestion,
     handleModelChange,

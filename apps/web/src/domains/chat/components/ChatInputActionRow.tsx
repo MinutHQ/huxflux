@@ -15,6 +15,7 @@ import { ModelSelect } from "./ModelSelect"
 import { AgentSettingsPopover } from "./AgentSettingsPopover"
 import { HeadroomToggle } from "./HeadroomToggle"
 import { AgentLinker } from "./AgentLinker"
+import { ShipButton } from "./ShipButton"
 import type { ChatInputBarProps } from "./chatInputBarTypes"
 import { isClaudeFamilyProvider } from "../config"
 
@@ -138,6 +139,9 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
           <Button size="icon-xs" variant="destructive" onClick={() => api.agents.stop(agent.id).catch(() => {})}>
             <IconPlayerStop size={13} />
           </Button>
+        )}
+        {!props.showPlanApproval && (
+          <ShipButton agentId={agent.id} disabled={isStreaming} onSendCommand={props.onSendCommand} />
         )}
         <SendOrApprove {...props} />
       </div>

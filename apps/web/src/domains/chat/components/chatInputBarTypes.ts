@@ -57,6 +57,7 @@ export interface ChatInputBarProps {
   onToggleLinkedAgent: (a: AgentSummary) => void
   onModelChange: (value: string) => void
   onSend: () => void
+  onSendCommand: (text: string) => void
   onPlanApprove: () => void
   onPlanDismiss: () => void
   onUploadFiles: (files: File[]) => void

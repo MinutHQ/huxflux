@@ -135,18 +135,26 @@ function findThreadChild(ctx: Ctx, parentAgentId: string): any {
 }
 
 /**
- * Wait until the seeded first turn of the spawned agent has fully finalized:
- * streaming flips on at bootstrap and back off at finalize, which is the last
- * DB write of a turn. Cleaning up before that leaks the old turn into the
- * next test's fresh DB (FK failures on the old agent id).
+ * Wait until the seeded first turn of the spawned agent has fully finalized.
+ * Cleaning up before that leaks the old turn into the next test's fresh DB
+ * (FK failures on the old agent id).
+ *
+ * This waits on the turn's terminal state, not on the streaming flag's 1 -> 0
+ * edge. Polling for the edge means the wait only succeeds if a poll happens to
+ * land while the turn is in flight, so a turn that finished before the first
+ * poll hangs until the timeout. Callers that first wait for the assistant
+ * message hit exactly that, because finalize persists the message and then
+ * clears the flag. A finished turn is instead identified by both facts
+ * together: the flag is off AND the turn's message has landed, which is false
+ * before the turn starts and stays true afterwards.
  */
 async function awaitTurn(ctx: Ctx, agentId: string): Promise<void> {
-  const flag = (want: number) => () => {
-    const a: any = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-    return a?.streaming === want
-  }
-  await waitFor(flag(1), { timeoutMs: 10_000 })
-  await waitFor(flag(0), { timeoutMs: 10_000 })
+  await waitFor(() => {
+    const agent: any = ctx.testDb.db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (agent?.streaming !== 0) return false
+    return ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.agentId, agentId)).all()
+      .some((m: any) => m.role === "assistant")
+  }, { timeoutMs: 10_000 })
 }
 
 describe("agents.spawn (thread agents)", () => {

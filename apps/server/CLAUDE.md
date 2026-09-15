@@ -98,7 +98,7 @@ domains/agents/
     agents.create.routes.ts         — POST /api/agents (worktree + setup)
     agents.update.routes.ts         — PATCH /api/agents/:id (with rebase --onto)
     agents.branch.routes.ts         — switch-branch / rename-branch / stop / generate-title
-    agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes
+    agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes / background / end-turn
     agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / providers
     messages.routes.ts              — GET/POST /api/agents/:id/messages, POST /api/agents/:id/clear
     files.routes.ts                 — /api/agents/:id/files/*
@@ -117,15 +117,17 @@ domains/agents/
 domains/agent-runner/
   README.md
   agent-runner.service.ts           — public surface: runAgent (turn entrypoint), plus
-                                      runningProcesses, isAgentRunning, stopAgent,
-                                      resetStreamingFlags, getClaudeBin, resolveModelAlias
+                                      runningProcesses, isAgentRunning, stopAgent, endTurn,
+                                      resetStreamingFlags, getClaudeBin, resolveModelAlias,
+                                      getBackgroundState
   agent-runner.types.ts             — public surface: ParsedTag, TagHandler, RunAgentOptions
   agent-runner.service.test.ts      — end-to-end test for runAgent (sits next to the public
                                       surface; uses the fake-claude binary fixtures)
   service/
     state.ts                        — createStreamState
-    processRegistry.ts              — runningProcesses, stopAgent, isAgentRunning,
-                                      resetStreamingFlags, getClaudeBin, resolveModelAlias
+    processRegistry.ts              — runningProcesses, stopAgent, endTurn (CLI only),
+                                      isAgentRunning, resetStreamingFlags, getClaudeBin,
+                                      resolveModelAlias
     bootstrapTurn.ts                — pre-spawn setup: persist user msg, mark streaming,
                                       pre-rename, cwd/session resolution
     systemPrompt.ts                 — domain-free system prompt scaffolding builder
@@ -133,6 +135,8 @@ domains/agent-runner/
                                       for stream-json prompt, control responses, injection
     controlProtocol.ts              — stdin control protocol: AskUserQuestion round trip +
                                       mid-run user-message injection
+    backgroundTasks.ts              — tracks Monitor / background-Bash work per turn and the
+                                      lingering flag (CLI alive after result); emits background:state
     turnSegments.ts                 — splits a running turn into message segments on injection
     userMessage.ts                  — user-message display strip + injected-message persist
     finalize.ts                     — idempotent exit handler

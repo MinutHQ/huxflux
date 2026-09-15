@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm"
 import { db } from "../../../db/index.js"
 import { toolCalls as toolCallsTable, agents as agentsTable } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
+import { noteBackgroundToolUse, noteBackgroundToolResult } from "./backgroundTasks.js"
 import type { ToolCall } from "../../../types.js"
 import type { ClaudeModelUsage, ClaudeStreamEvent, ClaudeUsage, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
 
@@ -99,6 +100,7 @@ function handleToolResult(
 ): void {
   const tc = state.collectedToolCalls.find((t) => t.id === toolUseId)
   if (tc) tc.result = content
+  noteBackgroundToolResult(agentId, toolUseId, content)
   // Persist tool result to DB immediately
   db.update(toolCallsTable)
     .set({ result: content })
@@ -154,6 +156,7 @@ function recordToolUse(
     precedingText,
   })
   state.toolCallOrderIdx++
+  noteBackgroundToolUse(agentId, block)
   // Persist tool call to DB immediately so it survives reloads
   try {
     db.insert(toolCallsTable).values({

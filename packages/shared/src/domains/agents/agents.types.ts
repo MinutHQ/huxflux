@@ -285,6 +285,32 @@ export const agentPortEntrySchema = z.object({
 
 export type AgentPortEntry = z.infer<typeof agentPortEntrySchema>
 
+// ── Background tasks ─────────────────────────────────────────────────────────
+// Work the provider CLI started in the background during a turn (Monitor
+// watches, background Bash commands). The CLI stays alive while these run,
+// so a turn can look finished yet keep the agent "streaming".
+
+export const backgroundTaskSchema = z.object({
+  toolUseId: z.string(),
+  kind: z.enum(["monitor", "bash"]),
+  /** Human label: the tool's description, or the command when none was given. */
+  label: z.string(),
+  command: z.string().optional(),
+  /** CLI-side task id, parsed from the tool result when present. */
+  taskId: z.string().optional(),
+  persistent: z.boolean().optional(),
+  startedAt: z.string(),
+})
+
+export const backgroundStateSchema = z.object({
+  tasks: z.array(backgroundTaskSchema),
+  /** The CLI emitted its final result but the process is still alive. */
+  lingering: z.boolean(),
+})
+
+export type BackgroundTask = z.infer<typeof backgroundTaskSchema>
+export type BackgroundState = z.infer<typeof backgroundStateSchema>
+
 // ── Batched file diff payload ────────────────────────────────────────────────
 
 export const agentFileDiffSchema = z.object({
@@ -459,3 +485,6 @@ export type AgentsServerEvent =
   // `/clear` wiped the transcript and provider session — drop cached messages.
   | { type: "messages:cleared"; agentId: string }
   | { type: "ports:changed";    ports: Array<{ agentId: string; agentTitle: string; port: number }> }
+  // Background work the CLI is running for this agent changed (task started,
+  // stopped, or the CLI kept running after its final result).
+  | { type: "background:state"; agentId: string; state: BackgroundState }

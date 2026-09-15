@@ -15,6 +15,7 @@ import { spawnAndStream, makeScheduleFlush, buildSpawnEnv } from "./service/stre
 import { ABORTED_EXIT_CODE, startInProcessTurn } from "./service/inProcessTurn.js"
 import { makeTurnSplitter, registerTurnSplitter, type TurnSegmentRef } from "./service/turnSegments.js"
 import { makeFinalize } from "./service/finalize.js"
+import { clearBackgroundState } from "./service/backgroundTasks.js"
 import { logger } from "../../logger.js"
 
 export {
@@ -22,12 +23,14 @@ export {
   getClaudeBin,
   isAgentRunning,
   stopAgent,
+  endTurn,
   stopAllRunningTurns,
   resetStreamingFlags,
   resolveModelAlias,
 } from "./service/processRegistry.js"
 
 export { answerPendingQuestion, injectUserMessage } from "./service/controlProtocol.js"
+export { getBackgroundState } from "./service/backgroundTasks.js"
 
 export type { ParsedTag, TagHandler, RunAgentOptions } from "./agent-runner.types.js"
 
@@ -207,11 +210,13 @@ function spawnAndAwaitExit(args: SpawnAndAwaitArgs): Promise<void> {
         state.pendingText = errMsg
         agentsWs.errorEmit(agentId, errMsg)
       }
+      clearBackgroundState(agentId)
       await finalize(code)
       resolve()
     })
 
     proc.on("error", async (err) => {
+      clearBackgroundState(agentId)
       agentsWs.errorEmit(agentId, `Failed to spawn claude: ${err.message}`)
       await finalize()
       reject(err)

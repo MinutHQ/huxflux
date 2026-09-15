@@ -11,6 +11,7 @@ import { handleControlRequest, type ControlRequestEvent } from "./controlProtoco
 import type { TurnSegmentRef } from "./turnSegments.js"
 import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
+import { scheduleLingerCheck } from "./backgroundTasks.js"
 import { logger } from "../../../logger.js"
 
 interface StreamLoopArgs {
@@ -45,6 +46,7 @@ export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
 
   runningProcesses.set(agentId, proc)
   if (stdinInit != null) proc.stdin?.write(stdinInit + "\n")
+  const progress: TurnProgress = { sawAssistant: false, sawTaskNotification: false, skippedOrphanResult: false }
 
   logger.info(
     { repo, branch, pid: proc.pid },
@@ -52,7 +54,7 @@ export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
   )
 
   proc.stdout?.on("data", (chunk: Buffer) => {
-    processStdoutChunk(chunk, provider, bufferRef, state, agentId, turnRef, scheduleFlush, proc)
+    processStdoutChunk(chunk, provider, bufferRef, state, agentId, turnRef, scheduleFlush, proc, progress)
   })
 
   proc.stderr?.on("data", (chunk: Buffer) => {
@@ -67,6 +69,16 @@ export function spawnAndStream(args: StreamLoopArgs): ChildProcess {
   return proc
 }
 
+/** What this process has emitted so far; decides whether a `result` ends the turn. */
+interface TurnProgress {
+  /** The model has produced output (any `assistant` event). */
+  sawAssistant: boolean
+  /** The CLI reported background tasks from a previous process (`system task_notification`). */
+  sawTaskNotification: boolean
+  /** One pre-turn `result` was already ignored; the next one is terminal no matter what. */
+  skippedOrphanResult: boolean
+}
+
 function processStdoutChunk(
   chunk: Buffer,
   provider: ProviderAdapter,
@@ -76,6 +88,7 @@ function processStdoutChunk(
   turnRef: TurnSegmentRef,
   scheduleFlush: () => void,
   proc: ChildProcess,
+  progress: TurnProgress,
 ): void {
   const isClaudeFormat = provider.id === "claude"
   if (provider.id === "gemini") {
@@ -102,10 +115,9 @@ function processStdoutChunk(
           continue
         }
         handleStreamEvent(parsed, state, agentId, turnRef.messageId, scheduleFlush)
-        // The turn is over — close stdin so the CLI exits instead of waiting
-        // for more stream-json input. (An injection racing past this point is
-        // still processed by the CLI as a follow-up turn before it exits.)
-        if (parsed.type === "result" && proc.stdin && !proc.stdin.destroyed) proc.stdin.end()
+        if (parsed.type === "assistant") progress.sawAssistant = true
+        if (parsed.type === "system" && parsed.subtype === "task_notification") progress.sawTaskNotification = true
+        if (parsed.type === "result") handleResultEvent(parsed, proc, agentId, progress)
       } catch { /* non-JSON */ }
     } else {
       const event = provider.parseStreamLine(line) as NormalizedStreamEvent | null
@@ -113,6 +125,41 @@ function processStdoutChunk(
       if (event) handleNormalizedEvent(event, state, agentId, turnRef.messageId, scheduleFlush)
     }
   }
+}
+
+/**
+ * The turn is over — close stdin so the CLI exits instead of waiting for more
+ * stream-json input. (An injection racing past this point is still processed
+ * by the CLI as a follow-up turn before it exits.) A CLI holding background
+ * tasks (Monitor, background Bash) stays alive anyway; the linger check
+ * surfaces that to clients.
+ *
+ * Exception: when a resumed session has background tasks orphaned by the
+ * previous process, the CLI first emits `system task_notification` for them,
+ * runs that notification as its own query, and emits an empty `result` for it
+ * — before it has read our prompt. Closing stdin on that one leaves the real
+ * turn without a control channel (AskUserQuestion fails with "Stream closed",
+ * injected messages fall back to the queue). That exact signature — a task
+ * notification, then a non-error `result` before any `assistant` event — is
+ * ignored once. Any other `result` (no notification, an error, the model
+ * already spoke, or a second pre-turn result) ends the turn as before, so a
+ * turn that legitimately produces no output cannot hang on an open stdin.
+ */
+function handleResultEvent(
+  parsed: ClaudeStreamEvent & { is_error?: boolean },
+  proc: ChildProcess,
+  agentId: string,
+  progress: TurnProgress,
+): void {
+  const isOrphanNotificationResult =
+    progress.sawTaskNotification && !progress.sawAssistant && !parsed.is_error && !progress.skippedOrphanResult
+  if (isOrphanNotificationResult) {
+    progress.skippedOrphanResult = true
+    logger.info({ agentId }, "[runner] result for the orphaned-task notification before any assistant output; keeping stdin open")
+    return
+  }
+  if (proc.stdin && !proc.stdin.destroyed) proc.stdin.end()
+  scheduleLingerCheck(agentId, proc)
 }
 
 /**

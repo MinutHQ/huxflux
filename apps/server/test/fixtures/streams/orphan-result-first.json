@@ -1,0 +1,13 @@
+{
+  "exitCode": 0,
+  "stderr": [],
+  "reportStdin": true,
+  "events": [
+    { "type": "system", "subtype": "task_notification", "task_id": "orphan1", "status": "stopped" },
+    { "type": "system", "subtype": "init", "session_id": "test-session-orphan" },
+    { "type": "result", "subtype": "success", "is_error": false, "result": "" },
+    { "type": "system", "subtype": "init", "session_id": "test-session-orphan" },
+    { "type": "assistant", "message": { "content": [{ "type": "text", "text": "Real turn." }] } },
+    { "type": "result", "subtype": "success", "is_error": false, "result": "Real turn.", "usage": { "input_tokens": 5, "output_tokens": 2 } }
+  ]
+}

@@ -32,6 +32,7 @@ export const queryKeys = {
     sessions: (agentId: string) => ["agent-sessions", agentId] as const,
     ports: (agentId: string) => ["agent-ports", agentId] as const,
     allPorts: () => ["all-ports"] as const,
+    background: (agentId: string) => ["agent-background", agentId] as const,
     allDiffs: (agentId: string) => ["all-diffs", agentId] as const,
     diff: (agentId: string, filePath: string) => ["diff", agentId, filePath] as const,
     fileContent: (agentId: string, filePath: string) => ["file-content", agentId, filePath] as const,

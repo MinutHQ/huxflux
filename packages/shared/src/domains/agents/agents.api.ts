@@ -10,6 +10,7 @@ import {
   fileTreeNodeSchema,
   terminalTabSchema,
   agentPortEntrySchema,
+  backgroundStateSchema,
   agentFileDiffSchema,
   systemSshInfoSchema,
   createAgentBodySchema,
@@ -60,6 +61,10 @@ export const agentsApi = {
   allPorts: () => reqValidated(z.array(agentPortEntrySchema), "/api/ports"),
   killProcesses: (id: string) =>
     reqValidated(killedResponseSchema, `/api/agents/${id}/kill-processes`, { method: "POST" }),
+  backgroundState: (id: string) =>
+    reqValidated(backgroundStateSchema, `/api/agents/${id}/background`),
+  endTurn: (id: string) =>
+    reqValidated(stoppedResponseSchema, `/api/agents/${id}/end-turn`, { method: "POST" }),
   create: (body: CreateAgentBody) =>
     reqValidated(agentMutationResponseSchema, "/api/agents", {
       method: "POST",

@@ -26,9 +26,9 @@ describe("settingsDefaults", () => {
     expect(settingsDefaults.defaultProvider).toBe("claude")
   })
 
-  it("ships threadsEnabled as a boolean false by default", () => {
+  it("ships threadsEnabled as a boolean true by default", () => {
     expect(typeof settingsDefaults.threadsEnabled).toBe("boolean")
-    expect(settingsDefaults.threadsEnabled).toBe(false)
+    expect(settingsDefaults.threadsEnabled).toBe(true)
   })
 
   it("ships pollingIntervalMs as a number within the documented range", () => {

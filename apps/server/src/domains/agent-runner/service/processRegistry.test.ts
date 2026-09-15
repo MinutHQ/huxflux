@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { eq } from "drizzle-orm"
 import * as path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -11,7 +11,7 @@ import { registerProvider, _resetProviders } from "../../providers/registry.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import { runAgent } from "../agent-runner.service.js"
 import { spawn } from "node:child_process"
-import { endTurn, resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason } from "./processRegistry.js"
+import { endTurn, resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason, type RunningTurn } from "./processRegistry.js"
 
 const SERVER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..")
 const FAKE_BIN = path.join(SERVER_ROOT, "test", "fixtures", "fake-claude.mjs")
@@ -182,5 +182,58 @@ describe("endTurn", () => {
     try { process.kill(childPid, 0) } catch { childAlive = false }
     expect(childAlive).toBe(true)
     process.kill(childPid, "SIGKILL")
+  })
+
+  // The SIGKILL escalation fires 5s after the SIGTERM. By then the handle may
+  // be gone (finalize clears the registry on every exit path) and the pid may
+  // belong to something else, so the escalation must check the registry.
+  function trackKills(): { proc: RunningTurn, signals: (NodeJS.Signals | number | undefined)[] } {
+    const signals: (NodeJS.Signals | number | undefined)[] = []
+    return { proc: { pid: 999999, kill: (signal) => { signals.push(signal); return true } }, signals }
+  }
+
+  it("escalates to SIGKILL when the turn is still registered after the grace period", () => {
+    vi.useFakeTimers()
+    try {
+      const { proc, signals } = trackKills()
+      runningProcesses.set(agentId, proc)
+      expect(endTurn(agentId)).toBe(true)
+      expect(signals).toEqual(["SIGTERM"])
+      vi.advanceTimersByTime(5000)
+      expect(signals).toEqual(["SIGTERM", "SIGKILL"])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("skips the SIGKILL once the turn has left the registry", () => {
+    vi.useFakeTimers()
+    try {
+      const { proc, signals } = trackKills()
+      runningProcesses.set(agentId, proc)
+      expect(endTurn(agentId)).toBe(true)
+      // The CLI exited on its own and finalize cleared the registry.
+      runningProcesses.delete(agentId)
+      vi.advanceTimersByTime(5000)
+      expect(signals).toEqual(["SIGTERM"])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("skips the SIGKILL when a new turn has replaced the handle", () => {
+    vi.useFakeTimers()
+    try {
+      const first = trackKills()
+      runningProcesses.set(agentId, first.proc)
+      expect(endTurn(agentId)).toBe(true)
+      const second = trackKills()
+      runningProcesses.set(agentId, second.proc)
+      vi.advanceTimersByTime(5000)
+      expect(first.signals).toEqual(["SIGTERM"])
+      expect(second.signals).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

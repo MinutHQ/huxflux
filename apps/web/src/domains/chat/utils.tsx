@@ -6,7 +6,7 @@ import {
   IconSparkles,
   IconKey,
 } from "@tabler/icons-react"
-import { getActiveServer } from "@huxflux/shared"
+import { getActiveServer, type ToolCall } from "@huxflux/shared"
 
 export function isRemoteServer(): boolean {
   const server = getActiveServer()
@@ -60,23 +60,34 @@ function formatGrep(parsed: any, desc: string): { title: string; detail: string 
   return { title: desc || "grep", detail: truncateArgs(`for "${pat}"${where}`) }
 }
 
+export interface FormattedToolCall {
+  /** Prominent label: the tool's description if provided, else derived from the args. */
+  title: string
+  /** Monospace summary next to the title (command, path, pattern). */
+  detail: string
+  /** True when `title` is the model's own description of the call. */
+  hasDescription: boolean
+}
+
 // Returns a human-friendly { title, detail } for a tool call.
-// `title` is the prominent label (the tool's description if provided, else
-// something derived from the args). `detail` is the monospace summary next to it.
-export function formatToolCall(tool: string, args?: string): { title: string; detail: string } {
-  if (!args) return { title: tool, detail: "" }
+export function formatToolCall(tool: string, args?: string): FormattedToolCall {
+  if (!args) return { title: tool, detail: "", hasDescription: false }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let parsed: any
   try {
     parsed = JSON.parse(args)
   } catch {
-    return { title: tool, detail: truncateArgs(args) }
+    return { title: tool, detail: truncateArgs(args), hasDescription: false }
   }
 
   // If the tool input includes a description (e.g. Bash sometimes does), prefer
   // it as the title regardless of which tool it is.
   const desc = getDesc(parsed)
+  return { ...formatByTool(tool, parsed, desc), hasDescription: desc.length > 0 }
+}
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatByTool(tool: string, parsed: any, desc: string): { title: string; detail: string } {
   switch (tool) {
     case "Bash": return formatBash(parsed, desc)
     case "Grep": return formatGrep(parsed, desc)
@@ -119,6 +130,31 @@ export function stripHuxfluxTags(text: string): string {
     .replace(/<huxflux:[^>]*?\/>[\t ]*\n?/g, "")
     .replace(/<huxflux:([^\s>]+)\b[^>]*?>[\s\S]*?<\/huxflux:\1>[\t ]*\n?/g, "")
     .replace(/\n{3,}/g, "\n\n")
+}
+
+/** Flatten markdown to plain prose for a one-glance preview (collapsed
+ *  accordion). Drops fences, inline code markers, emphasis, headings and
+ *  list bullets; keeps the words. */
+export function markdownToPlainText(text: string): string {
+  return stripHuxfluxTags(text)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
+    // Emphasis only where CommonMark would see it: marker at a word edge and
+    // hugging non-space content. Leaves snake_case and `5 * 3` alone.
+    .replace(/(^|\s)(\*\*|__)(\S(?:.*?\S)?)\2(?=\s|$|[.,;:!?)])/g, "$1$3")
+    .replace(/(^|\s)([*_])(\S(?:[^*_]*?\S)?)\2(?=\s|$|[.,;:!?)])/g, "$1$3")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/** A tool call is in flight only while its message is still streaming AND
+ *  no result has landed. Without the streaming guard, a call that never got a
+ *  result (legacy rows) would look live forever. */
+export function isToolCallRunning(call: ToolCall, isStreaming: boolean | undefined): boolean {
+  return !!isStreaming && !call.result
 }
 
 /** The per-agent Headroom flag arrives as 0/1 from the DB, or a boolean from an optimistic cache patch. */

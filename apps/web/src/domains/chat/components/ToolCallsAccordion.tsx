@@ -6,7 +6,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react"
 import type { ToolCall } from "@huxflux/shared"
-import { formatToolCall, stripHuxfluxTags } from "../utils"
+import { formatToolCall, isToolCallRunning, markdownToPlainText, stripHuxfluxTags } from "../utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { ToolCallRow } from "./ToolCallRow"
 
@@ -20,15 +20,34 @@ interface ToolCallsAccordionProps {
   omitLastPrecedingText?: boolean
 }
 
-function computeSummary(calls: ToolCall[], isStreaming: boolean | undefined): string {
+/** Collapsed-header summary. Streaming: the last call, with the model's own
+ *  description (when it gave one) ahead of the muted command; it shimmers only
+ *  while that call is still running. Finished turn: the distinct tool names. */
+function Summary({ calls, isStreaming }: { calls: ToolCall[]; isStreaming: boolean | undefined }) {
   const lastCall = calls[calls.length - 1]
-  // When collapsed and streaming, show the last tool call; otherwise show distinct tool names
   if (isStreaming && lastCall) {
-    const { title, detail } = formatToolCall(lastCall.tool, lastCall.args)
-    return detail ? `${title} ${detail}` : title
+    const { title, detail, hasDescription } = formatToolCall(lastCall.tool, lastCall.args)
+    const running = isToolCallRunning(lastCall, isStreaming)
+    return (
+      <span className="ml-1 flex items-baseline gap-1.5 min-w-0">
+        <span className={cn("shrink-0", !hasDescription ? "text-muted-foreground/40" : running ? "text-shimmer" : "text-foreground/70")}>{title}</span>
+        {detail && <span className="text-muted-foreground/40 font-mono text-[11px] truncate min-w-0">{detail}</span>}
+      </span>
+    )
   }
   const distinct = [...new Set(calls.map((c) => c.tool))]
-  return distinct.slice(0, 4).join(", ") + (distinct.length > 4 ? ", …" : "")
+  return <span className="text-muted-foreground/40 ml-1 truncate">{distinct.slice(0, 4).join(", ") + (distinct.length > 4 ? ", …" : "")}</span>
+}
+
+/** The agent's latest mid-turn words: live text since the last tool call,
+ *  else, while that call is still running, the text that preceded it. Empty
+ *  between a finished call and the next token, and once the turn is done. */
+function latestThought(calls: ToolCall[], isStreaming: boolean | undefined, pendingText: string | undefined): string {
+  if (!isStreaming) return ""
+  if (pendingText?.trim()) return markdownToPlainText(pendingText)
+  const lastCall = calls[calls.length - 1]
+  if (!lastCall || !isToolCallRunning(lastCall, isStreaming)) return ""
+  return markdownToPlainText(lastCall.precedingText ?? "")
 }
 
 export function ToolCallsAccordion({ calls, isStreaming, pendingText, omitLastPrecedingText }: ToolCallsAccordionProps) {
@@ -39,7 +58,7 @@ export function ToolCallsAccordion({ calls, isStreaming, pendingText, omitLastPr
   const [open, setOpen] = useState(false)
 
   const label = calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
-  const summary = computeSummary(calls, isStreaming)
+  const thought = open ? "" : latestThought(calls, isStreaming, pendingText)
 
   return (
     <div className="mb-3">
@@ -52,10 +71,13 @@ export function ToolCallsAccordion({ calls, isStreaming, pendingText, omitLastPr
           ? <IconLoader2 size={12} className="text-muted-foreground/70 shrink-0 animate-spin" />
           : <IconBolt size={12} className="text-muted-foreground/50 shrink-0" />}
         <span className="font-medium text-foreground/70">{label}</span>
-        {!open && (
-          <span className="text-muted-foreground/40 ml-1 truncate">{summary}</span>
-        )}
+        {!open && <Summary calls={calls} isStreaming={isStreaming} />}
       </button>
+      {thought && (
+        <div className="ml-[18px] mt-1 text-[12px] leading-relaxed line-clamp-5 text-shimmer">
+          {thought}
+        </div>
+      )}
       {open && (
         <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
           {calls.map((tc, i) => (

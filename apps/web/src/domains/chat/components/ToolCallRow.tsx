@@ -6,7 +6,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react"
 import type { ToolCall } from "@huxflux/shared"
-import { toolIcon, formatToolCall, stripHuxfluxTags } from "../utils"
+import { toolIcon, formatToolCall, isToolCallRunning, stripHuxfluxTags } from "../utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { AgentPromptBlock } from "./AgentPromptBlock"
 import { ResultBlock } from "./ResultBlock"
@@ -22,11 +22,7 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
       prompt = parsed.prompt ?? ""
     } catch { /* raw string fallback */ }
   }
-  // A tool call is only "running" while the parent message is still
-  // streaming AND no result has come back yet. Without the streaming guard,
-  // any tool call that never received a result (e.g. legacy rows) would
-  // spin forever after the message finished.
-  const isRunning = isStreaming && !call.result
+  const isRunning = isToolCallRunning(call, isStreaming)
   const hasOutputText = !!(call.outputText && call.outputText.trim())
   const hasSubCalls = !!(call.subCalls && call.subCalls.length > 0)
   return (
@@ -77,12 +73,15 @@ export function ToolCallRow({ call, indent = false, isStreaming = false }: { cal
     return <AgentToolCallRow call={call} indent={indent} isStreaming={isStreaming} />
   }
 
-  const { title, detail } = formatToolCall(call.tool, call.args)
+  const { title, detail, hasDescription } = formatToolCall(call.tool, call.args)
+  // The model's own description of an in-flight call shimmers so the eye
+  // lands on what it is doing, not on the raw command next to it.
+  const isRunning = isToolCallRunning(call, isStreaming)
   return (
     <div className={cn("mt-0.5", indent && "ml-4")}>
       <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground py-0.5 min-w-0">
         {toolIcon(call.tool)}
-        <span className="font-medium text-foreground/70 shrink-0">{title}</span>
+        <span className={cn("font-medium shrink-0", isRunning && hasDescription ? "text-shimmer" : "text-foreground/70")}>{title}</span>
         {detail && (
           <span className="font-mono text-[11px] text-muted-foreground/60 truncate min-w-0">
             {detail}

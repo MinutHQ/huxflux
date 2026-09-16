@@ -4,11 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
+import { applyAppIcon, getAppIcon } from "./lib/appIcon"
 import "./index.css"
 
 // Apply theme before first render to avoid flash, then watch for OS changes
 applyTheme(getTheme())
 watchSystemTheme()
+applyAppIcon(getAppIcon())
 
 // Mark Tauri context so CSS can scope desktop-only styles
 if (!!import.meta.env.TAURI_PLATFORM || '__TAURI_INTERNALS__' in window) {

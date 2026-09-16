@@ -19,6 +19,42 @@ fn zoom_window(window: tauri::WebviewWindow) {
     { let _ = window; }
 }
 
+// Swaps the dock icon at runtime (macOS only). Pass "default" to restore the
+// bundled icon. Web calls this at startup and whenever the setting changes.
+#[tauri::command]
+fn set_app_icon(icon: String) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+        let bytes: Option<&'static [u8]> = match icon.as_str() {
+            "ship" => Some(include_bytes!("../icons/ship.png")),
+            _ => None,
+        };
+        unsafe {
+            // Tauri commands may run off the main thread with no ambient
+            // autorelease pool, so own one for the NSData factory call.
+            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+            let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+            let image: *mut Object = match bytes {
+                Some(b) => {
+                    let data: *mut Object = msg_send![class!(NSData), dataWithBytes: b.as_ptr() length: b.len()];
+                    let img: *mut Object = msg_send![class!(NSImage), alloc];
+                    msg_send![img, initWithData: data]
+                }
+                None => std::ptr::null_mut(),
+            };
+            let _: () = msg_send![app, setApplicationIconImage: image];
+            // The app retains the image; drop our alloc/init reference.
+            if !image.is_null() {
+                let _: () = msg_send![image, release];
+            }
+            let _: () = msg_send![pool, drain];
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    { let _ = icon; }
+}
+
 fn find_cli(name: &str) -> Option<String> {
     let candidates = [
         format!("/usr/local/bin/{}", name),
@@ -267,7 +303,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, open_url, read_local_connection, check_update, download_and_install_update])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, open_url, read_local_connection, check_update, download_and_install_update])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

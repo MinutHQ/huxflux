@@ -50,6 +50,7 @@ export function buildSystemPrompt(args: SystemPromptArgs): string {
     `Answer format:`,
     `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
     `- Start each new idea or action on its own line.`,
+    `- Your final message must stand on its own. If you answered the user's question earlier in the turn and then did more tool work, restate the answer in the final message instead of only summarising the follow-up work.`,
     ...buildPlanModeDirective(planMode, provider),
   ]
   if (tagInstructions && tagInstructions.trim()) {

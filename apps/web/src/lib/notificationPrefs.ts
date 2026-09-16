@@ -59,3 +59,15 @@ export function getDesktopNotif(): boolean {
 export function setDesktopNotif(v: boolean) {
   localStorage.setItem(DESKTOP_NOTIF_KEY, String(v))
 }
+
+const INLINE_TURN_TEXT_KEY = "huxflux:chat:inline-turn-text"
+
+/** Show every reply the agent writes between tool calls at full size (on),
+ *  or only the long / structured ones (off, default). */
+export function getInlineTurnText(): boolean {
+  return localStorage.getItem(INLINE_TURN_TEXT_KEY) === "true"
+}
+
+export function setInlineTurnText(v: boolean) {
+  localStorage.setItem(INLINE_TURN_TEXT_KEY, String(v))
+}

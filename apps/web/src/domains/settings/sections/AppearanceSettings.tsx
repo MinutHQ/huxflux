@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@huxflux/ui"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@huxflux/ui"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme } from "@/lib/colorThemes"
 import { getDiffViewMode, setDiffViewMode, type DiffViewMode } from "@/lib/diffPrefs"
 import { appIcons, getAppIcon, setAppIcon, type AppIconId } from "@/lib/appIcon"
+import { getInlineTurnText, setInlineTurnText } from "@/lib/notificationPrefs"
 import { isTauri, isMacOS } from "@/lib/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SettingInfo } from "../components/SettingInfo"
@@ -16,6 +17,7 @@ export function AppearanceSettings() {
   const [activeLightColorTheme, setActiveLightColorTheme] = useState(getLightColorTheme)
   const [diffViewMode, setDiffViewModeState] = useState(() => getDiffViewMode())
   const [appIcon, setAppIconState] = useState<AppIconId>(getAppIcon)
+  const [inlineTurnText, setInlineTurnTextState] = useState(getInlineTurnText)
 
   const isLight =
     theme === "light" ||
@@ -105,6 +107,14 @@ export function AppearanceSettings() {
             <SelectItem value="stacked">Stacked diffs</SelectItem>
           </SelectContent>
         </Select>
+      </SettingRow>
+
+      <SettingRow>
+        <SettingInfo
+          label="Show mid-turn replies inline"
+          description="Show everything the agent writes between tool calls at full size. When off, only long or structured replies are lifted out of the tool-call list."
+        />
+        <Switch checked={inlineTurnText} onCheckedChange={(v) => { setInlineTurnTextState(v); setInlineTurnText(v) }} />
       </SettingRow>
     </div>
   )

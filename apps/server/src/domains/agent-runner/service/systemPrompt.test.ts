@@ -48,6 +48,17 @@ describe("buildSystemPrompt", () => {
     expect(out).toContain("Quality checks")
   })
 
+  it("tells the model its final message must restate a mid-turn answer", () => {
+    const out = buildSystemPrompt({
+      agentId: "agent-1",
+      repo: { branchPrefix: null },
+      planMode: false,
+      provider: fakeProvider(false),
+    })
+    expect(out).toContain("Your final message must stand on its own.")
+    expect(out).toContain("restate the answer in the final message")
+  })
+
   it("stays byte-identical when the agent's title and branch change (prompt-cache stability)", () => {
     const before = buildSystemPrompt({
       agentId: "agent-1",

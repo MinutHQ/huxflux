@@ -24,7 +24,7 @@ User-facing settings page. Left nav with sections (General, Soundboard, Models, 
 - `@huxflux/shared` — `useRepos`, `api`, `parseConnectionString`, `Repo`, `HuxfluxServer`
 - `@huxflux/ui` — primitives (Button, Switch, Select, cn)
 - `@tabler/icons-react` — icons
-- `@/lib/theme`, `@/lib/colorThemes`, `@/lib/sounds`, `@/lib/notificationPrefs`, `@/lib/diffPrefs`, `@/lib/flags`, `@/lib/platform` — preference accessors
+- `@/lib/theme`, `@/lib/colorThemes`, `@/lib/appIcon`, `@/lib/sounds`, `@/lib/notificationPrefs`, `@/lib/diffPrefs`, `@/lib/flags`, `@/lib/platform` — preference accessors
 - `@/hooks/useServers`, `@/hooks/useServerStatus` — server registry (legacy; will move into a `servers` domain later)
 
 ## Sub-domains

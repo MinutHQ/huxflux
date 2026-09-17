@@ -5,6 +5,7 @@ use serde_json::Value;
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
+mod app_identity;
 
 #[tauri::command]
 fn zoom_window(window: tauri::WebviewWindow) {
@@ -19,40 +20,71 @@ fn zoom_window(window: tauri::WebviewWindow) {
     { let _ = window; }
 }
 
-// Swaps the dock icon at runtime (macOS only). Pass "default" to restore the
-// bundled icon. Web calls this at startup and whenever the setting changes.
+// AppKit must run on the main thread. Await completion so the picker only saves
+// a selection after both the bundle icon and running Dock icon have changed.
 #[tauri::command]
-fn set_app_icon(icon: String) {
+async fn set_app_icon(app: tauri::AppHandle, icon: String) -> Result<(), String> {
+    if !matches!(icon.as_str(), "default" | "ship") {
+        return Err("Unknown app icon".into());
+    }
     #[cfg(target_os = "macos")]
     {
-        use objc::{class, msg_send, runtime::Object, sel, sel_impl};
-        let bytes: Option<&'static [u8]> = match icon.as_str() {
-            "ship" => Some(include_bytes!("../icons/ship.png")),
-            _ => None,
-        };
-        unsafe {
-            // Tauri commands may run off the main thread with no ambient
-            // autorelease pool, so own one for the NSData factory call.
-            let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
-            let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
-            let image: *mut Object = match bytes {
-                Some(b) => {
-                    let data: *mut Object = msg_send![class!(NSData), dataWithBytes: b.as_ptr() length: b.len()];
-                    let img: *mut Object = msg_send![class!(NSImage), alloc];
-                    msg_send![img, initWithData: data]
-                }
-                None => std::ptr::null_mut(),
-            };
-            let _: () = msg_send![app, setApplicationIconImage: image];
-            // The app retains the image; drop our alloc/init reference.
-            if !image.is_null() {
-                let _: () = msg_send![image, release];
-            }
-            let _: () = msg_send![pool, drain];
-        }
+        let (sender, mut receiver) = tauri::async_runtime::channel(1);
+        app.run_on_main_thread(move || {
+            let _ = sender.try_send(apply_macos_app_icon(&icon));
+        }).map_err(|e| e.to_string())?;
+        receiver.recv().await.ok_or("App icon update was interrupted")?
     }
     #[cfg(not(target_os = "macos"))]
-    { let _ = icon; }
+    { let _ = app; Ok(()) }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_app_icon(icon: &str) -> Result<(), String> {
+    use objc::{class, msg_send, runtime::{Object, BOOL, NO}, sel, sel_impl};
+    unsafe {
+        let pool: *mut Object = msg_send![class!(NSAutoreleasePool), new];
+        let image: *mut Object = if icon == "ship" {
+            let bytes = include_bytes!("../icons/ship.png");
+            let data: *mut Object = msg_send![class!(NSData), dataWithBytes: bytes.as_ptr() length: bytes.len()];
+            let allocated: *mut Object = msg_send![class!(NSImage), alloc];
+            msg_send![allocated, initWithData: data]
+        } else {
+            std::ptr::null_mut()
+        };
+        let result = (|| {
+            if icon == "ship" && image.is_null() {
+                return Err("Could not load the selected app icon".into());
+            }
+            let bundle: *mut Object = msg_send![class!(NSBundle), mainBundle];
+            let bundle_path: *mut Object = msg_send![bundle, bundlePath];
+            let path: *const std::os::raw::c_char = msg_send![bundle_path, UTF8String];
+            let is_bundle = !path.is_null()
+                && Path::new(std::ffi::CStr::from_ptr(path).to_str().unwrap_or(""))
+                    .extension().is_some_and(|extension| extension == "app");
+            if is_bundle {
+                // Custom file metadata leaves the shipped resources and Info.plist
+                // intact. nil removes the override and restores this build's icon.
+                let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+                let changed: BOOL = msg_send![workspace, setIcon: image forFile: bundle_path options: 0usize];
+                if changed == NO {
+                    return Err("macOS could not change the app icon. Move the app to a writable folder and try again.".into());
+                }
+            } else if !tauri::is_dev() {
+                return Err("Could not locate the running app bundle".into());
+            }
+            // Unbundled `tauri dev` has no app file to customize, so only its Dock
+            // icon can change. Packaged debug builds take the bundle path above.
+            let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![app, setApplicationIconImage: image];
+            Ok(())
+        })();
+        if !image.is_null() {
+            let _: () = msg_send![image, release];
+        }
+        let _: () = msg_send![pool, drain];
+        result
+    }
 }
 
 fn find_cli(name: &str) -> Option<String> {
@@ -229,6 +261,9 @@ struct UpdateCheckResult {
 
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
+    if app.config().identifier == "com.huxflux.desktop.dev" {
+        return Err("Updates are disabled in Huxflux Dev".into());
+    }
     let channel = read_update_channel();
     let endpoint = updater_endpoint(&channel).await;
     let url: Url = endpoint.parse().map_err(|e: url::ParseError| e.to_string())?;
@@ -257,6 +292,9 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateCheckResult, String
 
 #[tauri::command]
 async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String> {
+    if app.config().identifier == "com.huxflux.desktop.dev" {
+        return Err("Updates are disabled in Huxflux Dev".into());
+    }
     let channel = read_update_channel();
     let endpoint = updater_endpoint(&channel).await;
     let url: Url = endpoint.parse().map_err(|e: url::ParseError| e.to_string())?;
@@ -279,7 +317,9 @@ async fn download_and_install_update(app: tauri::AppHandle) -> Result<(), String
 }
 
 #[tauri::command]
-fn read_local_connection() -> Option<String> {
+fn read_local_connection(app: tauri::AppHandle) -> Option<String> {
+    // The shared connection file may point to production. Dev connects explicitly.
+    if app.config().identifier == "com.huxflux.desktop.dev" { return None; }
     let home = huxflux_dir()?;
     let path = Path::new(&home).join("huxflux").join("connection.json");
     std::fs::read_to_string(path).ok()
@@ -292,9 +332,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
-            let home = huxflux_dir().unwrap_or_default();
-            let conn_path = Path::new(&home).join("huxflux").join("connection.json");
-            if let Ok(json) = std::fs::read_to_string(&conn_path) {
+            if let Some(json) = read_local_connection(app.handle().clone()) {
                 let escaped = json.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
                 let script = format!("window.__huxflux_connection = '{}';", escaped);
                 if let Some(window) = app.get_webview_window("main") {
@@ -303,7 +341,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, open_url, read_local_connection, check_update, download_and_install_update])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, app_identity::set_app_name, app_identity::send_desktop_notification, open_url, read_local_connection, check_update, download_and_install_update])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

@@ -10,7 +10,7 @@ const PUBLIC = new Set(["/health", "/api/config"])
 const PUBLIC_PREFIXES = ["/docs"]
 
 // Routes that require auth (everything else is public when web UI is bundled)
-const AUTH_PREFIXES = ["/api/", "/ws"]
+const AUTH_PREFIXES = ["/api/", "/ws", "/mcp"]
 
 function isPublicRoute(url: string): boolean {
   if (PUBLIC.has(url)) return true

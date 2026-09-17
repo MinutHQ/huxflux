@@ -3,20 +3,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch }
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme } from "@/lib/colorThemes"
 import { getDiffViewMode, setDiffViewMode, type DiffViewMode } from "@/lib/diffPrefs"
-import { appIcons, getAppIcon, setAppIcon, type AppIconId } from "@/lib/appIcon"
 import { getInlineTurnText, setInlineTurnText } from "@/lib/notificationPrefs"
-import { isTauri, isMacOS } from "@/lib/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SettingInfo } from "../components/SettingInfo"
 import { ThemeCard } from "../components/ThemeCard"
-import { AppIconCard } from "../components/AppIconCard"
+import { AppIdentitySettings } from "../components/AppIdentitySettings"
 
 export function AppearanceSettings() {
   const [theme, setTheme] = useState<Theme>(getTheme)
   const [activeColorTheme, setActiveColorTheme] = useState(getColorTheme)
   const [activeLightColorTheme, setActiveLightColorTheme] = useState(getLightColorTheme)
   const [diffViewMode, setDiffViewModeState] = useState(() => getDiffViewMode())
-  const [appIcon, setAppIconState] = useState<AppIconId>(getAppIcon)
   const [inlineTurnText, setInlineTurnTextState] = useState(getInlineTurnText)
 
   const isLight =
@@ -36,11 +33,6 @@ export function AppearanceSettings() {
       setActiveColorTheme(id)
     }
     setColorTheme(id)
-  }
-
-  function handleAppIconChange(id: AppIconId) {
-    setAppIconState(id)
-    setAppIcon(id)
   }
 
   const visibleThemes = colorThemes.filter((ct) => !!ct.light === isLight)
@@ -79,22 +71,7 @@ export function AppearanceSettings() {
         </div>
       </div>
 
-      <div className="py-5 border-b border-border">
-        <div className="text-sm font-medium text-foreground mb-1">App icon</div>
-        <div className="text-[13px] text-muted-foreground mb-4 leading-snug">
-          {isTauri && isMacOS ? "Shown in the Dock and as the browser tab icon" : "Shown as the browser tab icon"}
-        </div>
-        <div className="flex gap-3">
-          {appIcons.map((option) => (
-            <AppIconCard
-              key={option.id}
-              option={option}
-              active={option.id === appIcon}
-              onClick={() => handleAppIconChange(option.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <AppIdentitySettings />
 
       <SettingRow>
         <SettingInfo label="Diff view mode" description="How file changes are displayed in the workspace" />

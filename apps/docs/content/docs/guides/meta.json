@@ -1,4 +1,9 @@
 {
   "title": "Guides",
-  "pages": ["manual", "cli-reference", "security"]
+  "pages": [
+    "manual",
+    "cli-reference",
+    "mcp",
+    "security"
+  ]
 }

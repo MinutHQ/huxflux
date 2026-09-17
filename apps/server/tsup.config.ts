@@ -11,6 +11,8 @@ const fixNodeSqlite = "node scripts/fix-sqlite-import.mjs"
 const sharedExternal = [
   // All npm deps stay external (installed in node_modules alongside the package)
   /^@fastify/,
+  // MCP SDK pulls in @hono/node-server and friends; load from node_modules.
+  /^@modelcontextprotocol\//,
   /^fastify/,
   "dotenv",
   /^drizzle-orm/,

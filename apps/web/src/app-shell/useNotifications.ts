@@ -2,7 +2,7 @@ import { toast } from "sonner"
 import { useAgentEvents } from "@huxflux/shared"
 import { playSound } from "@/lib/sounds"
 import { getSoundPref, getSoundEnabled, getDesktopNotif } from "@/lib/notificationPrefs"
-import { isTauri } from "@/lib/platform"
+import { sendDesktopNotification } from "@/lib/desktopNotifications"
 import type { AgentSummary } from "@huxflux/shared"
 
 /**
@@ -15,19 +15,9 @@ function fireNotification(title: string, body: string) {
   }
 
   if (getDesktopNotif()) {
-    if (isTauri) {
-      import("@tauri-apps/plugin-notification").then(({ sendNotification, isPermissionGranted, requestPermission }) => {
-        isPermissionGranted().then(async (granted) => {
-          if (!granted) {
-            const permission = await requestPermission()
-            if (permission !== "granted") return
-          }
-          sendNotification({ title, body })
-        })
-      }).catch(() => {})
-    } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification(title, { body })
-    }
+    sendDesktopNotification(title, body).catch((error: unknown) => {
+      console.warn("Could not send desktop notification:", error)
+    })
   }
 }
 

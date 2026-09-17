@@ -1,4 +1,5 @@
-import type { ReactNode } from "react"
+import { useSyncExternalStore, type ReactNode } from "react"
+import { getAppName, subscribeAppName } from "@/lib/appName"
 import { IconFlame } from "@tabler/icons-react"
 
 interface HomeHeaderProps {
@@ -13,6 +14,7 @@ interface HomeHeaderProps {
  * whole header slides + fades down once stats finish loading.
  */
 export function HomeHeader({ loaded, streak, achievement }: HomeHeaderProps) {
+  const appName = useSyncExternalStore(subscribeAppName, getAppName) || "Huxflux"
   return (
     <div
       className="mb-10 transition-all duration-1000"
@@ -24,7 +26,7 @@ export function HomeHeader({ loaded, streak, achievement }: HomeHeaderProps) {
             className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-violet-400 to-emerald-400 tracking-tight pb-1"
             style={{ animation: "homeRainbow 8s linear infinite" }}
           >
-            Huxflux
+            {appName}
           </h1>
           <p className="text-sm text-muted-foreground/60 mt-1">Lifetime workspace stats</p>
         </div>

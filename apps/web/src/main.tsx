@@ -5,12 +5,21 @@ import { toast } from "sonner"
 import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
 import { applyAppIcon, getAppIcon } from "./lib/appIcon"
+import { applyAppName, getAppName } from "./lib/appName"
 import "./index.css"
 
 // Apply theme before first render to avoid flash, then watch for OS changes
 applyTheme(getTheme())
 watchSystemTheme()
-applyAppIcon(getAppIcon())
+applyAppIcon(getAppIcon()).catch((error: unknown) => {
+  console.warn("Could not restore app icon:", error)
+  toast.error("Could not restore app icon", { description: String(error) })
+})
+
+applyAppName(getAppName()).catch((error: unknown) => {
+  console.warn("Could not restore app name:", error)
+  toast.error("Could not restore app name", { description: String(error) })
+})
 
 // Mark Tauri context so CSS can scope desktop-only styles
 if (!!import.meta.env.TAURI_PLATFORM || '__TAURI_INTERNALS__' in window) {

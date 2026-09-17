@@ -55,6 +55,8 @@ interface Config {
   /** Public proxy the server tunnels through so clients reach it over the
    * Internet (e.g. wss://proxy.example.com). Empty/absent = direct only. */
   proxyUrl?: string
+  /** Name the built-in MCP server reports to clients. Absent = "huxflux". */
+  mcpServerName?: string
 }
 
 function ensureDataDir() {
@@ -111,6 +113,7 @@ function serverEnv(cfg: Config): NodeJS.ProcessEnv {
     WORKSPACES_BASE: process.env.WORKSPACES_BASE ?? path.join(DATA_DIR, "workspaces"),
     ...(cfg.sandbox ? { SANDBOX_CONFIG: JSON.stringify(cfg.sandbox) } : {}),
     ...(cfg.proxyUrl ? { PROXY_URL: cfg.proxyUrl } : {}),
+    ...(cfg.mcpServerName ? { MCP_SERVER_NAME: cfg.mcpServerName } : {}),
   }
 }
 
@@ -497,10 +500,13 @@ function runSupervisor() {
     }
     try { lastBinaryMtime = fs.statSync(SERVER_ENTRY).mtimeMs } catch { /* ignore */ }
 
-    const child = spawn(process.execPath, [SERVER_ENTRY], {
-      stdio: "inherit",
-      env: process.env,
-    })
+    // Re-read config.json on every (re)start so values the server takes from
+    // its environment (MCP server name) apply without restarting the supervisor.
+    const cfg = loadConfig()
+    const env = { ...process.env }
+    if (cfg.mcpServerName) env.MCP_SERVER_NAME = cfg.mcpServerName
+    else delete env.MCP_SERVER_NAME
+    const child = spawn(process.execPath, [SERVER_ENTRY], { stdio: "inherit", env })
     activeChild = child
 
     child.on("exit", (code, signal) => {
@@ -1743,6 +1749,20 @@ function cmdConfig(key?: string, value?: string) {
     return
   }
 
+  if (key === "mcp-name") {
+    const cfg = loadConfig()
+    if (value === undefined) {
+      console.info(`mcp server name: ${cfg.mcpServerName ?? "huxflux"}`)
+      return
+    }
+    const name = value.trim()
+    if (name && name !== "huxflux") cfg.mcpServerName = name
+    else delete cfg.mcpServerName
+    saveConfig(cfg)
+    console.info(`mcp server name: ${cfg.mcpServerName ?? "huxflux"} (restart the server to apply)`)
+    return
+  }
+
   // No key or unknown key: show all config
   console.info(`
 huxflux config — View and modify settings
@@ -1752,6 +1772,8 @@ Usage:
   huxflux config channel stable|beta  Switch update channel
   huxflux config auto-update          Show auto-update status
   huxflux config auto-update on|off   Enable/disable server auto-updates
+  huxflux config mcp-name             Show the name the MCP server reports
+  huxflux config mcp-name <name>      Set it (e.g. after renaming the app); "huxflux" resets
 `)
 }
 
@@ -1817,6 +1839,7 @@ Usage:
   huxflux update         Update huxflux to the latest version
   huxflux config channel [stable|beta]  View or switch update channel
   huxflux config auto-update [on|off]   View or set server auto-update
+  huxflux config mcp-name [name]        View or set the MCP server's reported name
   huxflux proxy [set]    Reach this server over the Internet through a proxy (sign in)
   huxflux proxy off      Stop tunneling through the proxy
   huxflux data copy dev-to-prod    Copy dev database to production

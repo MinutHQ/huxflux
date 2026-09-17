@@ -22,20 +22,20 @@ export function getAppIcon(): AppIconId {
   return appIcons.some((i) => i.id === stored) ? (stored as AppIconId) : "default"
 }
 
-export function setAppIcon(id: AppIconId) {
+export async function setAppIcon(id: AppIconId) {
+  await applyAppIcon(id)
   localStorage.setItem(KEY, id)
-  applyAppIcon(id)
 }
 
-/** Call once at startup and on every change. Swaps the favicon, and the dock
- *  icon when running in the macOS desktop app. */
-export function applyAppIcon(id: AppIconId) {
+/** Reapply on startup too: app updates may replace the bundle's custom icon. */
+export async function applyAppIcon(id: AppIconId) {
+  if (isTauri && isMacOS) {
+    const { invoke } = await import("@tauri-apps/api/core")
+    await invoke("set_app_icon", { icon: id })
+  }
   const option = appIcons.find((i) => i.id === id)
   // Default keeps the multi-resolution favicon.ico; the PNG previews are only
   // used for non-default icons.
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   if (link) link.href = id === "default" ? "/favicon.ico" : (option?.preview ?? "/favicon.ico")
-  if (isTauri && isMacOS) {
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("set_app_icon", { icon: id }))
-  }
 }

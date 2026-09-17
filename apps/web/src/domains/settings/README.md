@@ -24,7 +24,7 @@ User-facing settings page. Left nav with sections (General, Soundboard, Models, 
 - `@huxflux/shared` — `useRepos`, `api`, `parseConnectionString`, `Repo`, `HuxfluxServer`
 - `@huxflux/ui` — primitives (Button, Switch, Select, cn)
 - `@tabler/icons-react` — icons
-- `@/lib/theme`, `@/lib/colorThemes`, `@/lib/appIcon`, `@/lib/sounds`, `@/lib/notificationPrefs`, `@/lib/diffPrefs`, `@/lib/flags`, `@/lib/platform` — preference accessors
+- `@/lib/theme`, `@/lib/colorThemes`, `@/lib/appIcon`, `@/lib/appName`, `@/lib/desktopNotifications`, `@/lib/sounds`, `@/lib/notificationPrefs`, `@/lib/diffPrefs`, `@/lib/flags`, `@/lib/platform` — preference accessors
 - `@/hooks/useServers`, `@/hooks/useServerStatus` — server registry (legacy; will move into a `servers` domain later)
 
 ## Sub-domains
@@ -38,3 +38,8 @@ None.
 - `PathInput` lives in `components/` even though only the dialogs use it, because it's domain-internal and the size cap argued against inlining it into both dialog files.
 - The `MODELS` constant in `sections/ModelsSettings.tsx` is hardcoded for now. Eventually it should come from the provider capability data.
 - Git section only contains server-backed toggles (kill processes / PR comment monitoring / CI monitoring). The earlier localStorage toggles (auto-push, delete-branch-on-archive, archive-on-merge) were ghost UI and have been removed.
+
+- App icon changes persist per device after the native operation succeeds. Packaged macOS apps apply a custom bundle icon plus the running Dock icon; system views may cache it. Unbundled development only changes the Dock. Startup reapplies the choice after app updates.
+- App names are saved per device and applied to window titles, the home header, and macOS runtime identity/menu. Runtime rename uses dynamically resolved LaunchServices symbols; unsupported systems report an error. Installed bundle filenames remain unchanged.
+- macOS notifications use an independently signed sender bundle per name/icon combination in app data. This avoids modifying the installed app's signature and bypasses stale Notification Center identity caches. Each appearance can need its own notification permission; old notifications retain their old identity. The settings test and agent notifications use the same sender.
+- Tahoe still adds its rounded tile to notification icons. Custom file metadata and the legacy notification image override did not remove it in manual testing; notifications use a tightly framed ship variant to keep it legible, while the transparent ship remains unchanged for the Dock/switcher.

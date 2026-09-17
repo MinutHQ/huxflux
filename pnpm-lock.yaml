@@ -309,6 +309,9 @@ importers:
       '@lydell/node-pty':
         specifier: ^1.2.0-beta.12
         version: 1.2.0-beta.12
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.28.0
+        version: 1.28.0(zod@3.25.76)
       '@octokit/plugin-retry':
         specifier: ^7.2.1
         version: 7.2.1(@octokit/core@6.1.6)
@@ -15780,7 +15783,7 @@ snapshots:
 
   jest-message-util@29.7.0:
     dependencies:
-      '@babel/code-frame': 7.29.0
+      '@babel/code-frame': 7.29.7
       '@jest/types': 29.6.3
       '@types/stack-utils': 2.0.3
       chalk: 4.1.2

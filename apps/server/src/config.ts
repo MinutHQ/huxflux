@@ -61,5 +61,8 @@ export const config = {
   // configured here. PROXY_SERVER_NAME is the human label shown to clients
   // (defaults to the system hostname).
   proxyUrl: process.env.PROXY_URL ?? "",
+  // Name the MCP server reports in `serverInfo` (see src/domains/mcp). Lets a
+  // rebranded install (custom app name) identify itself to MCP clients.
+  mcpServerName: process.env.MCP_SERVER_NAME?.trim() || "huxflux",
   proxyServerName: process.env.PROXY_SERVER_NAME?.trim() || os.hostname(),
 }

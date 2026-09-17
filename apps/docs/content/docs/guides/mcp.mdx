@@ -1,0 +1,54 @@
+---
+title: MCP server
+description: Spawn and drive Huxflux agents from Claude Code, Cursor, Codex or any other MCP client.
+---
+
+The Huxflux server speaks the [Model Context Protocol](https://modelcontextprotocol.io) over Streamable HTTP at `/mcp`. Any assistant that supports MCP can list your repos, spawn a new agent in its own worktree, hand it a task, and read the answer back.
+
+## Connect
+
+Authentication is the same Bearer token the web and mobile clients use (`huxflux token` prints it).
+
+```sh
+claude mcp add --transport http huxflux http://127.0.0.1:4321/mcp \
+  --header "Authorization: Bearer <AUTH_TOKEN>"
+```
+
+For clients configured through JSON:
+
+```json
+{
+  "mcpServers": {
+    "huxflux": {
+      "type": "http",
+      "url": "http://127.0.0.1:4321/mcp",
+      "headers": { "Authorization": "Bearer <AUTH_TOKEN>" }
+    }
+  }
+}
+```
+
+Replace the host with your Tailscale IP when connecting from another machine.
+
+The name shown in your client comes from the key you register it under (`huxflux` above). The server also reports a name in its MCP `serverInfo`; run `huxflux config mcp-name <name>` and restart the server to change it from the default `huxflux`.
+
+## Tools
+
+| Tool | What it does |
+|------|--------------|
+| `list_repos` | Repositories registered in Huxflux. Returns the `repoId` used by `create_agent`. |
+| `create_agent` | Creates an agent and its git worktree. Pass `prompt` to start it working immediately. Branch defaults to `<prefix>/<slug of title>`. |
+| `send_message` | Sends a follow-up prompt to an existing agent. Delivers into the running turn if one is active. |
+| `list_agents` | All agents with status, branch and whether a turn is running. Optional `status` filter. |
+| `get_agent` | One agent plus its latest messages. Poll this until `running` is `false` to read the result. |
+
+## Typical flow
+
+1. `list_repos` to find the repository.
+2. `create_agent` with `repoId`, a `title`, and the task as `prompt`.
+3. `get_agent` with the returned id until `running` is `false`; the last `assistant` message is the answer.
+4. `send_message` for follow-ups on the same agent.
+
+<Callout type="warn">
+  The token grants the connected assistant the same power as the Huxflux UI: it can start agents that edit code and run commands on the host. Only connect assistants you trust with that access.
+</Callout>

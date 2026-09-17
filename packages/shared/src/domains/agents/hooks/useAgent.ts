@@ -94,8 +94,11 @@ export function useAgent(id: string | null) {
           handleQuestionResolvedEvent(event)
           return
         case "agent:updated":
-          // Sync streaming from server broadcast (covers stop, crash, queue drain)
-          if ("agent" in event && event.agent) {
+          // Sync streaming from server broadcast (covers stop, crash, queue
+          // drain). `agent:updated` is a broadcast with no top-level agentId,
+          // so `useAgentEvents` cannot filter it: guard on the id here or any
+          // other agent finishing a turn would clear this agent's stop button.
+          if ("agent" in event && event.agent && event.agent.id === id) {
             setIsStreaming(!!event.agent.streaming)
           }
           handleLifecycleEvent(event)
@@ -107,7 +110,7 @@ export function useAgent(id: string | null) {
           return
       }
     },
-    [handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleQuestionResolvedEvent, handleLifecycleEvent, clearPendingQuestion]
+    [id, handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleQuestionResolvedEvent, handleLifecycleEvent, clearPendingQuestion]
   )
 
   useAgentEvents(id, onEvent)

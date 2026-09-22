@@ -3,7 +3,7 @@ import { createTestDb, type TestDb } from "../../../../test/harness.js"
 import { buildSystemPrompt } from "./systemPrompt.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 
-function fakeProvider(planMode: boolean): ProviderAdapter {
+function fakeProvider(planMode: boolean, taskListTools = false): ProviderAdapter {
   return {
     id: "claude",
     name: "Claude",
@@ -11,7 +11,7 @@ function fakeProvider(planMode: boolean): ProviderAdapter {
       sessionResume: true, sessionContinue: true, planMode, streamingJson: true,
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion: true,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
-      effortLevels: [],
+      taskListTools, effortLevels: [],
     },
     resolveBinary: () => "claude",
     isAvailable: () => true,
@@ -110,6 +110,14 @@ describe("buildSystemPrompt", () => {
       repo: null, planMode: false, provider: fakeProvider(true),
     })
     expect(withoutPlan).not.toContain("plan mode")
+  })
+
+  it("adds the task-tracking nudge only for providers with task-list tools", () => {
+    const withTasks = buildSystemPrompt({ agentId: "a", repo: null, planMode: false, provider: fakeProvider(false, true) })
+    expect(withTasks).toContain("TaskCreate and TaskUpdate")
+
+    const withoutTasks = buildSystemPrompt({ agentId: "a", repo: null, planMode: false, provider: fakeProvider(false) })
+    expect(withoutTasks).not.toContain("TaskCreate")
   })
 
   it("identifies folder-style agents in the intro line", () => {

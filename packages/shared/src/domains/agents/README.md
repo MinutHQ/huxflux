@@ -35,6 +35,7 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `terminalTabSchema` — Zod schema for a terminal-tab row
 - `agentPortEntrySchema` — Zod schema for one entry in `/api/ports` and the `ports:changed` WS event
 - `backgroundTaskSchema` / `backgroundStateSchema` — Zod schemas for `GET /api/agents/:id/background` and the `background:state` WS event (Monitor / background-Bash work the CLI is running, plus the `lingering` flag)
+- `taskListItemSchema` / `taskListStateSchema` — Zod schemas for `GET /api/agents/:id/tasks` and the `tasks:state` WS event (Claude's TaskCreate / TaskUpdate list: id, subject, status, optional activeForm / description / owner, blockedBy ids)
 - `agentFileDiffSchema` — Zod schema for one entry of the batched `/api/agents/:id/files/diffs` response
 - `systemSshInfoSchema` — Zod schema for the `/api/system/ssh-info` response
 - `createAgentBodySchema` — Zod schema for the `POST /api/agents` request body

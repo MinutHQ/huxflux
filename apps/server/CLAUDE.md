@@ -98,7 +98,7 @@ domains/agents/
     agents.create.routes.ts         — POST /api/agents (worktree + setup)
     agents.update.routes.ts         — PATCH /api/agents/:id (with rebase --onto)
     agents.branch.routes.ts         — switch-branch / rename-branch / stop / generate-title
-    agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes / background / end-turn
+    agents.lifecycle.routes.ts      — DELETE / sync-files / kill-processes / background / tasks / end-turn
     agents.misc.routes.ts           — answer (AskUserQuestion) / open-in / worktree-path / providers
     messages.routes.ts              — GET/POST /api/agents/:id/messages, POST /api/agents/:id/clear
     files.routes.ts                 — /api/agents/:id/files/*
@@ -119,7 +119,7 @@ domains/agent-runner/
   agent-runner.service.ts           — public surface: runAgent (turn entrypoint), plus
                                       runningProcesses, isAgentRunning, stopAgent, endTurn,
                                       resetStreamingFlags, getClaudeBin, resolveModelAlias,
-                                      getBackgroundState
+                                      getBackgroundState, getTaskListState
   agent-runner.types.ts             — public surface: ParsedTag, TagHandler, RunAgentOptions
   agent-runner.service.test.ts      — end-to-end test for runAgent (sits next to the public
                                       surface; uses the fake-claude binary fixtures)
@@ -137,6 +137,8 @@ domains/agent-runner/
                                       mid-run user-message injection
     backgroundTasks.ts              — tracks Monitor / background-Bash work per turn and the
                                       lingering flag (CLI alive after result); emits background:state
+    taskList.ts                     — reads Claude's TaskCreate / TaskUpdate list from the CLI's
+                                      on-disk store after those tools return; emits tasks:state
     turnSegments.ts                 — splits a running turn into message segments on injection
     userMessage.ts                  — user-message display strip + injected-message persist
     finalize.ts                     — idempotent exit handler

@@ -31,6 +31,8 @@ export interface ProviderCapabilities {
   systemPromptFlag: boolean
   allowedToolsRestriction: boolean
   subAgentSupport: boolean
+  /** Exposes Claude's TaskCreate / TaskUpdate task-list tools (read back by the runner). */
+  taskListTools?: boolean
   effortLevels: string[]  // e.g. ["low","medium","high","max"] or [] if not supported
 }
 

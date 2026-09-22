@@ -11,6 +11,7 @@ import {
   terminalTabSchema,
   agentPortEntrySchema,
   backgroundStateSchema,
+  taskListStateSchema,
   agentFileDiffSchema,
   systemSshInfoSchema,
   createAgentBodySchema,
@@ -63,6 +64,8 @@ export const agentsApi = {
     reqValidated(killedResponseSchema, `/api/agents/${id}/kill-processes`, { method: "POST" }),
   backgroundState: (id: string) =>
     reqValidated(backgroundStateSchema, `/api/agents/${id}/background`),
+  taskList: (id: string) =>
+    reqValidated(taskListStateSchema, `/api/agents/${id}/tasks`),
   endTurn: (id: string) =>
     reqValidated(stoppedResponseSchema, `/api/agents/${id}/end-turn`, { method: "POST" }),
   create: (body: CreateAgentBody) =>

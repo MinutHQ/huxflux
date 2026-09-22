@@ -10,7 +10,7 @@
 // is composed into the central `ServerEvent` in `src/domains/ws/events.ts`.
 
 import type { AgentSummary, Message, FileChange, ToolCall } from "../../types.js"
-import type { BackgroundState } from "@huxflux/shared"
+import type { BackgroundState, TaskListState } from "@huxflux/shared"
 import { defineEvents, type InferEvents } from "../ws/define.js"
 
 type UserMessagePayload = { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean }
@@ -109,6 +109,12 @@ const agentsEventsConfig = {
   backgroundState: {
     channel: "emit",
     build: (agentId: string, state: BackgroundState) => ({ type: "background:state" as const, agentId, state }),
+  },
+  // Claude's TaskCreate / TaskUpdate task list changed; the runner re-read it
+  // from disk after one of those tools returned.
+  taskListState: {
+    channel: "emit",
+    build: (agentId: string, state: TaskListState) => ({ type: "tasks:state" as const, agentId, state }),
   },
   // Transport-level error. `agentId` is optional in the wire shape; emit
   // routes it to a single agent's subscribers when known.

@@ -9,7 +9,7 @@ import { killWorktreeProcesses } from "../../git/processes.js"
 import { agentsWs } from "../agents.ws.js"
 import { killAgentTerminals } from "../../ws/pty.js"
 import { clearQueue } from "../service/messageQueue.js"
-import { endTurn, getBackgroundState } from "../../agent-runner/agent-runner.service.js"
+import { endTurn, getBackgroundState, getTaskListState } from "../../agent-runner/agent-runner.service.js"
 import * as path from "node:path"
 
 const idParamsSchema = z.object({ id: z.string() })
@@ -85,6 +85,12 @@ export const agentsLifecycleRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get("/api/agents/:id/background", {
     schema: { params: idParamsSchema },
   }, async (req) => getBackgroundState(req.params.id))
+
+  // GET /api/agents/:id/tasks — Claude's TaskCreate / TaskUpdate list, read
+  // from the CLI's on-disk store. Empty when the agent never created one.
+  app.get("/api/agents/:id/tasks", {
+    schema: { params: idParamsSchema },
+  }, async (req) => getTaskListState(req.params.id))
 
   // POST /api/agents/:id/end-turn — terminate only the CLI process so a turn
   // held open by background tasks closes. Worktree processes are left alone

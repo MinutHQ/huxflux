@@ -3,6 +3,7 @@ import { db } from "../../../db/index.js"
 import { toolCalls as toolCallsTable, agents as agentsTable } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
 import { noteBackgroundToolUse, noteBackgroundToolResult } from "./backgroundTasks.js"
+import { noteTaskListToolResult } from "./taskList.js"
 import type { ToolCall } from "../../../types.js"
 import type { ClaudeModelUsage, ClaudeStreamEvent, ClaudeUsage, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
 
@@ -101,6 +102,7 @@ function handleToolResult(
   const tc = state.collectedToolCalls.find((t) => t.id === toolUseId)
   if (tc) tc.result = content
   noteBackgroundToolResult(agentId, toolUseId, content)
+  noteTaskListToolResult(agentId, tc?.tool)
   // Persist tool result to DB immediately
   db.update(toolCallsTable)
     .set({ result: content })

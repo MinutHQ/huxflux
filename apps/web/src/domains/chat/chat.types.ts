@@ -18,13 +18,6 @@ export interface TeamAgent {
   result?: string
 }
 
-export interface TodoItem {
-  id: string
-  content: string
-  status: "pending" | "in_progress" | "completed"
-  priority?: "low" | "medium" | "high"
-}
-
 export interface SetupStep {
   label: string
   icon: string

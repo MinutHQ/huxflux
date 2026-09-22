@@ -120,6 +120,7 @@ export const agentSdkProvider: ProviderAdapter = {
     systemPromptFlag: true,
     allowedToolsRestriction: true,
     subAgentSupport: true,
+    taskListTools: true,
     effortLevels: EFFORT_LEVELS,
   } satisfies ProviderCapabilities,
 

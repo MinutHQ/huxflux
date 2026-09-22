@@ -5,6 +5,7 @@ import { agentsWs } from "../../agents/agents.ws.js"
 import type { ToolCall } from "../../../types.js"
 import type { NormalizedStreamEvent } from "../../providers/providers.types.js"
 import type { StreamState } from "../../agents/agents.types.js"
+import { noteTaskListToolResult } from "./taskList.js"
 
 /** Handle a provider-agnostic normalized stream event */
 export function handleNormalizedEvent(
@@ -47,6 +48,7 @@ export function handleNormalizedEvent(
       if (event.toolUseId) {
         db.update(toolCallsTable).set({ result: event.content }).where(eq(toolCallsTable.id, event.toolUseId)).run()
       }
+      noteTaskListToolResult(agentId, tc?.tool)
       agentsWs.toolResult(agentId, messageId, event.toolUseId, event.content)
       break
     }

@@ -115,12 +115,14 @@ export function repoColor(name: string) {
 // ── Model color avatar (used when no repo) ────────────────────────────────────
 
 export const modelColors: Record<string, string> = {
+  "Opus 5.5":   "bg-primary text-primary-foreground",
   "Opus 4.8":   "bg-primary text-primary-foreground",
   "Opus 4.7":   "bg-primary text-primary-foreground",
   "Opus 4.6":   "bg-primary text-primary-foreground",
   "Sonnet 5":   "bg-secondary text-secondary-foreground",
   "Sonnet 4.6": "bg-secondary text-secondary-foreground",
   "Haiku 4.5":  "bg-muted text-muted-foreground",
+  "claude-opus-5-5":            "bg-primary text-primary-foreground",
   "claude-opus-4-8":            "bg-primary text-primary-foreground",
   "claude-opus-4-7":            "bg-primary text-primary-foreground",
   "claude-opus-4-6":            "bg-primary text-primary-foreground",

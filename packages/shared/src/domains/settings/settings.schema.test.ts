@@ -18,8 +18,8 @@ describe("settingsDefaults", () => {
     }
   })
 
-  it("has the expected default for defaultModel (Opus 4.8)", () => {
-    expect(settingsDefaults.defaultModel).toBe("Opus 4.8")
+  it("has the expected default for defaultModel (Opus 5.5)", () => {
+    expect(settingsDefaults.defaultModel).toBe("Opus 5.5")
   })
 
   it("has the expected default for defaultProvider (claude)", () => {

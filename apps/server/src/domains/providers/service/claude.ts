@@ -31,6 +31,7 @@ interface ClaudeRawEvent {
 }
 
 const MODEL_ALIASES: Record<string, string> = {
+  "Opus 5.5":   "claude-opus-5-5",
   "Opus 5":     "claude-opus-5",
   "Opus 4.8":   "claude-opus-4-8",
   "Opus 4.7":   "claude-opus-4-7",
@@ -44,6 +45,7 @@ const MODEL_ALIASES: Record<string, string> = {
 const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"]
 
 const FALLBACK_MODELS: ProviderModel[] = [
+  { id: "claude-opus-5-5",           label: "Opus 5.5",   api: "claude-opus-5-5",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-5",             label: "Opus 5",     api: "claude-opus-5",             effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },

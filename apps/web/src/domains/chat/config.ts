@@ -23,6 +23,7 @@ export const SSH_CAPABLE_EDITORS = ["vscode", "cursor"]
 const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"]
 
 export const FALLBACK_MODELS = [
+  { id: "claude-opus-5-5",           label: "Opus 5.5",   provider: "claude", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-4-8",           label: "Opus 4.8",   provider: "claude", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-4-7",           label: "Opus 4.7",   provider: "claude", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "claude-opus-4-6",           label: "Opus 4.6",   provider: "claude", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },

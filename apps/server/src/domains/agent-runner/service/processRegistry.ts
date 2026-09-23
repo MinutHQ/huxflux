@@ -147,6 +147,8 @@ export function resetStreamingFlags(): void {
 }
 
 const MODEL_ALIASES: Record<string, string> = {
+  "Opus 5.5":   "claude-opus-5-5",
+  "Opus 5":     "claude-opus-5",
   "Opus 4.8":   "claude-opus-4-8",
   "Opus 4.7":   "claude-opus-4-7",
   "Opus 4.6":   "claude-opus-4-6",

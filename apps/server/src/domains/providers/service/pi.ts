@@ -19,6 +19,7 @@ const PI_EFFORT_LEVELS = ["low", "medium", "high", "max"]
 
 const FALLBACK_MODELS: ProviderModel[] = [
   { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", api: "anthropic/claude-sonnet-4-6", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-opus-5-5", label: "Claude Opus 5.5", api: "anthropic/claude-opus-5-5", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8", api: "anthropic/claude-opus-4-8", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
   { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", api: "anthropic/claude-haiku-4-5-20251001", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
 ]

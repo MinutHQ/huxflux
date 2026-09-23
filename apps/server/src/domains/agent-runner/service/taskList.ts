@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync, readFileSync, rmSync } from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { taskListItemSchema, type TaskListItem, type TaskListState } from "@huxflux/shared"
 import { agentsWs } from "../../agents/agents.ws.js"
+import { logger } from "../../../logger.js"
 
 // Claude's TaskCreate / TaskUpdate task list. The CLI is the writer: it keeps
 // one JSON file per task under `<config dir>/tasks/<list id>/`, and the runner
@@ -49,19 +50,27 @@ export function readTaskList(agentId: string): TaskListState {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith(".")) continue
     const parsed = readTaskFile(path.join(dir, name))
-    if (parsed) tasks.push(parsed)
+    // `deleted` is the CLI's tombstone status (TaskUpdate status "deleted");
+    // the file may linger briefly, so drop it rather than render it.
+    if (parsed && parsed.status !== "deleted") tasks.push(parsed)
   }
   tasks.sort(compareTaskIds)
   return { tasks }
 }
 
 function readTaskFile(file: string): TaskListItem | null {
+  let raw: unknown
   try {
-    const result = taskListItemSchema.safeParse(JSON.parse(readFileSync(file, "utf8")))
-    return result.success ? result.data : null
+    raw = JSON.parse(readFileSync(file, "utf8"))
   } catch {
+    // Unreadable or half-written: the CLI is mid-write, the next result re-reads.
     return null
   }
+  const result = taskListItemSchema.safeParse(raw)
+  if (result.success) return result.data
+  // A well-formed file we cannot parse means the CLI's task shape drifted.
+  logger.warn({ file, issues: result.error.issues }, "[tasks] task file does not match the expected shape")
+  return null
 }
 
 /** Numeric ids ("1", "2", "10") in order; anything else falls back to string order. */
@@ -70,6 +79,16 @@ function compareTaskIds(a: TaskListItem, b: TaskListItem): number {
   const nb = Number(b.id)
   if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
   return a.id.localeCompare(b.id)
+}
+
+/**
+ * `/clear` wiped the transcript: drop the CLI's task files for this agent too,
+ * otherwise the bar keeps showing the pre-clear list until the model touches
+ * it again. Tells clients the list is now empty.
+ */
+export function clearTaskList(agentId: string): void {
+  rmSync(taskListDir(agentId), { recursive: true, force: true })
+  agentsWs.taskListState(agentId, { tasks: [] })
 }
 
 /**

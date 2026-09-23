@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { captureWsEvents, type CapturedWsEvents } from "../../../../test/harness.js"
-import { isTaskListTool, noteTaskListToolResult, readTaskList, taskListDir } from "./taskList.js"
+import { clearTaskList, isTaskListTool, noteTaskListToolResult, readTaskList, taskListDir } from "./taskList.js"
 
 const AGENT = "agent-tasks-1"
 
@@ -56,6 +56,12 @@ describe("readTaskList", () => {
     expect(tasks.map((t) => t.id)).toEqual(["1"])
   })
 
+  it("drops tasks the CLI marked deleted", () => {
+    writeTask(AGENT, "1", { subject: "Keep", status: "pending" })
+    writeTask(AGENT, "2", { subject: "Gone", status: "deleted" })
+    expect(readTaskList(AGENT).tasks.map((t) => t.id)).toEqual(["1"])
+  })
+
   it("keeps blockedBy ids so the UI can show dependencies", () => {
     writeTask(AGENT, "1", { subject: "A", status: "pending" })
     writeTask(AGENT, "2", { subject: "B", status: "pending", blockedBy: ["1"] })
@@ -87,6 +93,17 @@ describe("noteTaskListToolResult", () => {
     const event = events[0]
     expect(event?.type === "tasks:state" && event.agentId).toBe(AGENT)
     expect(event?.type === "tasks:state" && event.state.tasks.map((t) => t.subject)).toEqual(["Write hello file"])
+  })
+
+  it("clearTaskList removes the directory and announces an empty list", () => {
+    writeTask(AGENT, "1", { subject: "Old plan", status: "in_progress" })
+    clearTaskList(AGENT)
+    expect(existsSync(taskListDir(AGENT))).toBe(false)
+    const events = ws.events.filter((e) => e.type === "tasks:state")
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type === "tasks:state" && events[0].state.tasks).toEqual([])
+    // Idempotent when nothing is there.
+    expect(() => clearTaskList(AGENT)).not.toThrow()
   })
 
   it("does nothing for unrelated tool results", () => {

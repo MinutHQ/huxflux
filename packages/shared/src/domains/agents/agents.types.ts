@@ -321,7 +321,8 @@ export const taskListItemSchema = z.object({
   id: z.string(),
   subject: z.string(),
   description: z.string().optional(),
-  status: z.enum(["pending", "in_progress", "completed"]),
+  /** `deleted` is the CLI's tombstone; the server filters it out before sending. */
+  status: z.enum(["pending", "in_progress", "completed", "deleted"]),
   /** Present-continuous label the CLI shows while the task is in progress. */
   activeForm: z.string().optional(),
   owner: z.string().optional(),

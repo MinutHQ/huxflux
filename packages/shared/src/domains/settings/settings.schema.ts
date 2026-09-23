@@ -186,7 +186,7 @@ export const settingsSchema = {
   },
   defaultModel: {
     type: "select",
-    default: "Opus 4.8",
+    default: "Opus 5.5",
     section: "models",
     label: "Default model",
     description: "Used for new agents unless overridden",

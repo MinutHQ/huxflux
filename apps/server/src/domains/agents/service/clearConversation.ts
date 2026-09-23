@@ -12,7 +12,7 @@ import { eq, inArray } from "drizzle-orm"
 import { CLEAR_COMMAND } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents as agentsTable, messages as messagesTable, toolCalls as toolCallsTable } from "../../../db/schema.js"
-import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
+import { clearTaskList, isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { agentsWs } from "../agents.ws.js"
 import { clearQueue } from "./messageQueue.js"
 
@@ -48,6 +48,10 @@ export function clearConversation(agentId: string): ClearConversationResult {
     .set({ sessionId: null, updatedAt: new Date().toISOString() })
     .where(eq(agentsTable.id, agentId))
     .run()
+
+  // The CLI's task list is keyed by agent id, not session id, so it would
+  // otherwise survive the clear and keep showing the old plan.
+  clearTaskList(agentId)
 
   agentsWs.messagesCleared(agentId)
   return { ok: true, deletedMessages: msgIds.length }

@@ -311,6 +311,31 @@ export const backgroundStateSchema = z.object({
 export type BackgroundTask = z.infer<typeof backgroundTaskSchema>
 export type BackgroundState = z.infer<typeof backgroundStateSchema>
 
+// ── Task list ────────────────────────────────────────────────────────────────
+// The structured task list Claude keeps with its TaskCreate / TaskUpdate
+// tools. The CLI stores one JSON file per task under
+// `~/.claude/tasks/<list id>/`; the runner pins the list id to the agent id
+// and re-reads the directory whenever one of those tools returns.
+
+export const taskListItemSchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  description: z.string().optional(),
+  /** `deleted` is the CLI's tombstone; the server filters it out before sending. */
+  status: z.enum(["pending", "in_progress", "completed", "deleted"]),
+  /** Present-continuous label the CLI shows while the task is in progress. */
+  activeForm: z.string().optional(),
+  owner: z.string().optional(),
+  blockedBy: z.array(z.string()).default([]),
+})
+
+export const taskListStateSchema = z.object({
+  tasks: z.array(taskListItemSchema),
+})
+
+export type TaskListItem = z.infer<typeof taskListItemSchema>
+export type TaskListState = z.infer<typeof taskListStateSchema>
+
 // ── Batched file diff payload ────────────────────────────────────────────────
 
 export const agentFileDiffSchema = z.object({
@@ -488,3 +513,6 @@ export type AgentsServerEvent =
   // Background work the CLI is running for this agent changed (task started,
   // stopped, or the CLI kept running after its final result).
   | { type: "background:state"; agentId: string; state: BackgroundState }
+  // Claude's TaskCreate / TaskUpdate task list changed (re-read from disk
+  // after one of those tools returned).
+  | { type: "tasks:state";      agentId: string; state: TaskListState }

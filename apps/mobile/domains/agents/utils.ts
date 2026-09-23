@@ -65,8 +65,10 @@ export function formatToolCall(tool: string, args?: string): { title: string; de
       return { title: desc || "Write", detail: basename(String(parsed.file_path ?? "")) }
     case "Edit":
       return { title: desc || "Edit", detail: basename(String(parsed.file_path ?? "")) }
-    case "TodoWrite":
-      return { title: desc || "TodoWrite", detail: `${parsed.todos?.length ?? 0} todos` }
+    case "TaskCreate":
+      return { title: desc || "Add task", detail: truncateArgs(String(parsed.subject ?? "")) }
+    case "TaskUpdate":
+      return { title: desc || "Update task", detail: [parsed.taskId ? `#${parsed.taskId}` : "", parsed.status ?? ""].filter(Boolean).join(" ") }
     case "WebFetch":
       return { title: desc || "WebFetch", detail: truncateArgs(String(parsed.url ?? "")) }
     case "WebSearch":

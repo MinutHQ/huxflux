@@ -73,6 +73,7 @@ export const claudeProvider: ProviderAdapter = {
     systemPromptFlag: true,
     allowedToolsRestriction: true,
     subAgentSupport: true,
+    taskListTools: true,
     effortLevels: ["low", "medium", "high", "max"],
   } satisfies ProviderCapabilities,
 

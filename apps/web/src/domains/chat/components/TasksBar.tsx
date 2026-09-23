@@ -6,15 +6,16 @@ import {
   IconLoader2,
   IconX,
 } from "@tabler/icons-react"
-import type { TodoItem } from "../chat.types"
+import type { TaskListItem } from "@huxflux/shared"
+import { useTaskList } from "../hooks/useTaskList"
 
 interface TasksBarProps {
-  todos: TodoItem[]
   agentId: string
   isStreaming?: boolean
 }
 
-function TodoRow({ todo }: { todo: TodoItem }) {
+function TaskRow({ todo }: { todo: TaskListItem }) {
+  const label = todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.subject
   return (
     <div className="flex items-start gap-2">
       <div className={cn(
@@ -32,13 +33,14 @@ function TodoRow({ todo }: { todo: TodoItem }) {
         "text-[12px] leading-snug",
         todo.status === "completed" ? "text-muted-foreground/50 line-through" : "text-foreground/80"
       )}>
-        {todo.content}
+        {label}
       </span>
     </div>
   )
 }
 
-export function TasksBar({ todos, agentId, isStreaming }: TasksBarProps) {
+export function TasksBar({ agentId, isStreaming }: TasksBarProps) {
+  const { tasks: todos } = useTaskList(agentId)
   const storageKey = `huxflux-tasks-dismissed-${agentId}`
   const [collapsed, setCollapsed] = useState(false)
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === "true")
@@ -80,7 +82,7 @@ export function TasksBar({ todos, agentId, isStreaming }: TasksBarProps) {
       </div>
       {!collapsed && (
         <div className="border-t border-border/60 px-3 py-2 space-y-1">
-          {todos.map((todo) => <TodoRow key={todo.id} todo={todo} />)}
+          {todos.map((todo) => <TaskRow key={todo.id} todo={todo} />)}
         </div>
       )}
     </div>

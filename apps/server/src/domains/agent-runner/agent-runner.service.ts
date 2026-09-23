@@ -31,6 +31,7 @@ export {
 
 export { answerPendingQuestion, injectUserMessage } from "./service/controlProtocol.js"
 export { getBackgroundState } from "./service/backgroundTasks.js"
+export { readTaskList as getTaskListState, clearTaskList } from "./service/taskList.js"
 
 export type { ParsedTag, TagHandler, RunAgentOptions } from "./agent-runner.types.js"
 

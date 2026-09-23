@@ -9,7 +9,6 @@ import { BackgroundTasksStrip } from "./BackgroundTasksStrip"
 import { AskUserQuestionCard } from "./AskUserQuestionCard"
 import { ChatInputBar } from "./ChatInputBar"
 import { extractTeamAgents } from "../extract/teamAgents"
-import { extractLatestTodos } from "../extract/todos"
 import type { PendingQuestion } from "../chat.types"
 import type { ChatInputBarProps } from "./chatInputBarTypes"
 
@@ -40,7 +39,7 @@ export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBo
       <div className="px-5 py-4">
         {getFlag("threads") && <ThreadAgentsBar agentId={agent.id} />}
         <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
-        <TasksBar todos={extractLatestTodos(agent.messages)} agentId={agent.id} isStreaming={uiIsStreaming} />
+        <TasksBar agentId={agent.id} isStreaming={uiIsStreaming} />
         <BackgroundTasksStrip agentId={agent.id} />
         {pendingQuestion && pendingQuestion.agentId === agent.id && Array.isArray(pendingQuestion.questions) && pendingQuestion.questions.length > 0 && (
           <AskUserQuestionCard questions={pendingQuestion.questions} onSubmit={onAnswerQuestion} />

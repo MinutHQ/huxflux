@@ -203,6 +203,9 @@ export function buildSpawnEnv(args: SpawnEnvArgs): NodeJS.ProcessEnv {
     HUXFLUX_REPO: args.repoPath ?? "",
     HUXFLUX_API_BASE: args.apiBase,
     HUXFLUX_AUTH: args.authToken,
+    // Pin Claude's TaskCreate / TaskUpdate list to the agent so the runner can
+    // find it on disk (`~/.claude/tasks/<agentId>/`) and it survives resumes.
+    CLAUDE_CODE_TASK_LIST_ID: args.agentId,
     ...(args.spawnEnvFromProvider ?? {}),
   }
 }

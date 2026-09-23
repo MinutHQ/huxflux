@@ -46,6 +46,7 @@ export function buildSystemPrompt(args: SystemPromptArgs): string {
     `- If any check fails, fix the issue and re-run. Do not declare work complete with failing checks.`,
     `- If you are unsure what commands to run, check package.json scripts or CLAUDE.md for guidance.`,
     ...buildAskUserQuestionDirective(provider),
+    ...buildTaskListDirective(provider),
     ``,
     `Answer format:`,
     `- Use newlines to separate thoughts, steps, and observations — not colons or semicolons.`,
@@ -75,6 +76,15 @@ function buildAskUserQuestionDirective(provider: ProviderAdapter): string[] {
     `- You have the AskUserQuestion tool. Call it directly — do NOT use ToolSearch to find it, it will not appear there. It is a built-in tool handled by the system.`,
     `- Use it when you need clarification, want the user to choose between options, or need confirmation before proceeding. Prefer it over guessing when the task is ambiguous.`,
     `- The user will see your question in the Hive UI and can answer at their own pace. The tool call will block until they respond.`,
+  ]
+}
+
+function buildTaskListDirective(provider: ProviderAdapter): string[] {
+  if (!provider.capabilities.taskListTools) return []
+  return [
+    ``,
+    `Tracking your work:`,
+    `- For any task with three or more distinct steps, track them with the TaskCreate and TaskUpdate tools (load them via ToolSearch if they are not already available). Mark a task in_progress before starting it and completed as soon as it is done. The user sees this list live in the Huxflux UI.`,
   ]
 }
 

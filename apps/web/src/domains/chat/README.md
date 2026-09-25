@@ -38,6 +38,8 @@ None. Components, hooks, view shells, and pure helpers are all flat inside `comp
 
 ## Quirks
 
+- ⌘I focus arrives as the `huxflux:focus-input` window event from the root route's global key listener; `useFocusComposerShortcut` (in `hooks/useChatViewEffects.ts`) owns the subscription and parks the caret at the end of the existing draft instead of selecting it, so the chord never clobbers text in progress. It no-ops when the composer is unmounted (chat hidden behind a maximised file viewer).
+
 - `ChatView` keeps per-agent state (input draft, plan mode, linked agents, attachments) in `useAgentStateCache` keyed by agent id, so switching tabs restores the right composer state. The hook flushes the outgoing agent's draft to the server before swapping.
 - `useChatSend` is the single owner of `isSending` + `messageQueue`. Sending while streaming pushes onto the queue; `isAgentStreaming(agent)` driven from the server's websocket flag drains it. `isSending` deliberately stays true for a beat after `api.sendMessage` resolves so the spinner doesn't flicker.
 - Typing exactly `/clear` in the composer never reaches the model. `useChatViewActions.handleSend` short-circuits to `api.agents.clearConversation`, empties the cached message list, and toasts the result (409 while the agent is running). The server intercepts the same text on `POST /messages` for clients that don't short-circuit.

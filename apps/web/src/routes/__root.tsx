@@ -70,6 +70,20 @@ function RootComponent() {
         e.preventDefault()
         setCmdkOpen((v) => !v)
       }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:focus-input"))
+      }
+      // ⌘⇧D / ⌘⇧⌫ act on the agent the route currently shows. preventDefault
+      // matters even while typing: without it ⌘⇧⌫ would also wipe the line.
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:agent-done"))
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "Backspace") {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent("huxflux:archive-agent"))
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

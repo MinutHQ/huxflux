@@ -5,6 +5,7 @@ import type { PanelImperativeHandle } from "react-resizable-panels"
 import { useDefaultLayout } from "react-resizable-panels"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@huxflux/ui"
 import { Sidebar } from "@/app-shell/sidebar/Sidebar"
+import { AgentShortcuts } from "@/domains/agents/AgentShortcuts"
 import { useAgents, useServerConfig, getServers as getServersList } from "@huxflux/shared"
 import { useNotifications } from "@/app-shell/useNotifications"
 
@@ -143,6 +144,7 @@ function AppLayout() {
   return (
     <AppContext.Provider value={appCtx}>
       <WorkspaceProvider agents={agents}>
+        <AgentShortcuts />
         <div className="relative flex flex-1 min-h-0 w-full overflow-hidden">
           {/* Collapsed-only expand button - floats right of the traffic lights so
               the sidebar can be reopened. Hidden while the floating overlay is

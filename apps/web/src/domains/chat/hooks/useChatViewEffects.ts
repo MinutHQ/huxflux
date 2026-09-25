@@ -76,6 +76,25 @@ export function useInitialDraft(initialDraft: string | null | undefined, onConsu
   }, [initialDraft])
 }
 
+/**
+ * ⌘I focuses the composer. The root route's global key listener turns the
+ * chord into `huxflux:focus-input`; the caret is parked at the end of whatever
+ * draft is already in the box so the shortcut never clobbers in-progress text.
+ * No-ops when the textarea isn't mounted (chat hidden behind the file viewer).
+ */
+export function useFocusComposerShortcut(textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
+  useEffect(() => {
+    function onFocusInput() {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    }
+    window.addEventListener("huxflux:focus-input", onFocusInput)
+    return () => window.removeEventListener("huxflux:focus-input", onFocusInput)
+  }, [textareaRef])
+}
+
 export function useResetOnAgentSwitch(agentId: string, setActiveTab: (t: ActiveTab) => void, resetToBottom: () => void) {
   useEffect(() => {
     setActiveTab("chat")

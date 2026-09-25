@@ -23,6 +23,7 @@ import {
   useInitialMessage,
   useInitialDraft,
   useResetOnAgentSwitch,
+  useFocusComposerShortcut,
 } from "../hooks/useChatViewEffects"
 import { hasExitPlanModeUnapproved, claudeInPlanMode, extractPlanContent } from "../extract/planMode"
 import type { ChatViewProps } from "../chat.types"
@@ -116,6 +117,7 @@ export function ChatView(props: ChatViewProps) {
   useInitialMessage(initialMessage, onConsumeInitialMessage, chatSend.sendContent)
   useInitialDraft(initialDraft, onConsumeInitialDraft, setInput)
   useResetOnAgentSwitch(agent.id, setActiveTab, resetToBottom)
+  useFocusComposerShortcut(textareaRef)
 
   useEffect(() => {
     if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")

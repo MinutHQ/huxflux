@@ -101,7 +101,7 @@ async function createAgent({ repoId, title, branch, direct, existingBranch, repo
   }
 }
 
-interface DeleteAgentArgs {
+export interface DeleteAgentArgs {
   agent: AgentSummary
   repos: Repo[]
   queryClient: QueryClient
@@ -109,7 +109,11 @@ interface DeleteAgentArgs {
   workspace: WorkspaceCtx
 }
 
-function deleteAgent({ agent, repos, queryClient, navigate, workspace }: DeleteAgentArgs) {
+/**
+ * Shared by the context menu's delete item and the ⌘⇧⌫ archive shortcut, so
+ * both run the same teardown animation and the same optimistic cache removal.
+ */
+export function deleteAgent({ agent, repos, queryClient, navigate, workspace }: DeleteAgentArgs) {
   const { onAgentDeleting, clearDeletingAgent } = workspace
   const repoName = agent.repoId ? (repos.find(r => r.id === agent.repoId)?.name ?? "") : ""
   onAgentDeleting(agent.id, { title: agent.title, branch: agent.branch, repoName })

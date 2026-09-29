@@ -76,6 +76,7 @@ export const queryKeys = {
     providers: () => ["providers"] as const,
     serverConfig: () => ["server-config"] as const,
     githubStatus: () => ["github-status"] as const,
+    serverVersion: () => ["server-version"] as const,
   },
   repos: {
     all: ["repos"] as const,
@@ -84,6 +85,10 @@ export const queryKeys = {
         ? ["repos"] as const
         : ["repos", serverUrl] as const,
     branches: (repoId: string) => ["repo-branches", repoId] as const,
+    // Filesystem lookups behind the add-repo flow (mobile).
+    discover: (q: string) => ["fs-repos", q] as const,
+    browse: (dir: string) => ["fs-browse", dir] as const,
+    defaultBranch: (repoPath: string) => ["fs-default-branch", repoPath] as const,
   },
   tasks: {
     all: ["tasks"] as const,

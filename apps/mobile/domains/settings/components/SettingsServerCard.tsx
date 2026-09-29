@@ -1,14 +1,13 @@
 import { View, Text, TouchableOpacity } from "react-native"
 import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
-import { getActiveServer, getServers } from "@huxflux/shared"
+import { useServersStore } from "@huxflux/shared"
 import { c } from "@/theme"
 import { SectionLabel } from "./SettingsRow"
 
 export function SettingsServerCard() {
   const router = useRouter()
-  const server = getActiveServer()
-  const servers = getServers()
+  const { activeServer: server, servers } = useServersStore()
 
   return (
     <View>

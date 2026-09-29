@@ -17,6 +17,11 @@ import { DATA_DIR } from "./config.js"
 const AUDIT_LOG = path.join(DATA_DIR, "audit.log")
 const SKIP_PATHS = new Set(["/health"])
 
+/** Mask credentials carried in the query string (WS connects, image loads). */
+export function redactUrl(url: string): string {
+  return url.replace(/([?&](?:token|proxy_token)=)[^&]*/g, "$1***")
+}
+
 export function registerAuditLog(app: FastifyInstance) {
   // Write a log entry after each response
   app.addHook("onResponse", async (req, reply) => {
@@ -26,7 +31,7 @@ export function registerAuditLog(app: FastifyInstance) {
     const entry = JSON.stringify({
       t: new Date().toISOString(),
       method: req.method,
-      url: req.url,
+      url: redactUrl(req.url),
       ip: req.ip,
       status: reply.statusCode,
     })

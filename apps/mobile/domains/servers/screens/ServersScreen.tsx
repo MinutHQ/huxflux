@@ -3,8 +3,8 @@ import { Text, TouchableOpacity, ScrollView, KeyboardAvoidingView } from "react-
 import { useRouter, Stack } from "expo-router"
 import { useCameraPermissions } from "expo-camera"
 import {
-  getServers, addServer, removeServer, updateServer, setActiveServerId,
-  getActiveServerId, parseConnectionString, useServerStatus,
+  addServer, removeServer, updateServer, setActiveServerId,
+  parseConnectionString, useServerStatus, useServersStore,
   type HuxfluxServer,
 } from "@huxflux/shared"
 import { c } from "@/theme"
@@ -13,10 +13,6 @@ import { ServerRow } from "../components/ServerRow"
 import { ServerEditForm } from "../components/ServerEditForm"
 import { AddServerForm, AddServerButtons } from "../components/AddServerForm"
 import { QRScannerModal } from "../components/QRScannerModal"
-
-// `c.accent` is not defined in theme.ts (pre-existing bug, see agents README) —
-// preserved verbatim from source via a typed cast.
-const accent = (c as Record<string, string>).accent
 
 async function validateAuth(url: string, token?: string): Promise<"ok" | "unauthorized" | "unreachable"> {
   const controller = new AbortController()
@@ -44,7 +40,7 @@ interface AddState {
   loading: boolean
 }
 
-function useAddServer(refresh: () => void, currentLen: () => number) {
+function useAddServer(currentLen: () => number) {
   const [adding, setAdding] = useState(false)
   const [state, setState] = useState<AddState>({ input: "", name: "", token: "", error: null, loading: false })
   const modal = useModal()
@@ -72,7 +68,6 @@ function useAddServer(refresh: () => void, currentLen: () => number) {
       const server = addServer({ name: serverName, url: parsed.url, token })
       if (currentLen() === 0) setActiveServerId(server.id)
       reset()
-      refresh()
     } finally {
       setState((s) => ({ ...s, loading: false }))
     }
@@ -90,7 +85,7 @@ interface EditState {
   loading: boolean
 }
 
-function useEditServer(refresh: () => void) {
+function useEditServer() {
   const [state, setState] = useState<EditState>({ id: null, name: "", url: "", token: "", error: null, loading: false })
 
   function start(server: HuxfluxServer) {
@@ -118,7 +113,6 @@ function useEditServer(refresh: () => void) {
         token: trimmedToken || undefined,
       })
       setState((s) => ({ ...s, id: null, loading: false }))
-      refresh()
     } finally {
       setState((s) => ({ ...s, loading: false }))
     }
@@ -127,7 +121,7 @@ function useEditServer(refresh: () => void) {
   return { state, setState, start, cancel, save }
 }
 
-function useQRScanner(servers: HuxfluxServer[], refresh: () => void) {
+function useQRScanner(servers: HuxfluxServer[]) {
   const modal = useModal()
   const [scanning, setScanning] = useState(false)
   const [scanned, setScanned] = useState(false)
@@ -167,7 +161,6 @@ function useQRScanner(servers: HuxfluxServer[], refresh: () => void) {
     const serverName = new URL(parsed.url).hostname
     const server = addServer({ name: serverName, url: parsed.url, token })
     if (servers.length === 0) setActiveServerId(server.id)
-    refresh()
     modal.showAlert("Connected", `Server "${serverName}" added successfully.`)
   }
 
@@ -177,29 +170,17 @@ function useQRScanner(servers: HuxfluxServer[], refresh: () => void) {
 export function ServersScreen() {
   const router = useRouter()
   const modal = useModal()
-  const [servers, setServers] = useState<HuxfluxServer[]>(getServers)
-  const [activeId, setActiveId] = useState<string | null>(getActiveServerId)
+  // Reactive: every mutation below re-renders this screen through the store
+  // subscription, so no manual refresh is needed.
+  const { servers, activeId } = useServersStore()
   const statuses = useServerStatus(servers)
 
-  function refresh() {
-    setServers(getServers())
-    setActiveId(getActiveServerId())
-  }
-
-  const add = useAddServer(refresh, () => servers.length)
-  const edit = useEditServer(refresh)
-  const qr = useQRScanner(servers, refresh)
+  const add = useAddServer(() => servers.length)
+  const edit = useEditServer()
+  const qr = useQRScanner(servers)
 
   function handleRemove(id: string) {
-    modal.showConfirm("Remove server", "Are you sure?", "Remove", () => {
-      removeServer(id)
-      refresh()
-    }, true)
-  }
-
-  function handleSetActive(id: string) {
-    setActiveServerId(id)
-    refresh()
+    modal.showConfirm("Remove server", "Are you sure?", "Remove", () => removeServer(id), true)
   }
 
   return (
@@ -209,7 +190,7 @@ export function ServersScreen() {
           title: "Servers",
           headerRight: () => (
             <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
-              <Text style={{ color: accent, fontSize: 16, fontWeight: "600" }}>Done</Text>
+              <Text style={{ color: c.accent, fontSize: 16, fontWeight: "600" }}>Done</Text>
             </TouchableOpacity>
           ),
         }}
@@ -245,7 +226,7 @@ export function ServersScreen() {
               server={server}
               status={statuses[server.id] ?? "checking"}
               isActive={server.id === activeId}
-              onSelect={() => handleSetActive(server.id)}
+              onSelect={() => setActiveServerId(server.id)}
               onEdit={() => edit.start(server)}
               onRemove={() => handleRemove(server.id)}
             />

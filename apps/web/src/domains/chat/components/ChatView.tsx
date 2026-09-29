@@ -109,7 +109,7 @@ export function ChatView(props: ChatViewProps) {
     : null
   const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
   const { setScrollContainer, setScrollContent, isAtBottom, jumpToBottom, resetToBottom } = useChatScroll()
-  const { fileInputRef, uploadFiles } = useFileUpload(agent.id, setAttachments)
+  const { fileInputRef, uploadFiles, uploadingCount } = useFileUpload(agent.id, setAttachments)
   const openInApps = useOpenInApps(agent.id)
 
   useDraftAutosave(agent.id, input)
@@ -129,13 +129,15 @@ export function ChatView(props: ChatViewProps) {
     agent, input, setInput, textareaRef, pendingComments, attachments, setAttachments,
     setLinkedAgents, planMode, setPlanMode, setAwaitingPlanApproval, effort,
     mentionsSlash, chatSend, onClearComments, pendingQuestion, onClearPendingQuestion, uploadFiles,
+    uploadingCount,
   })
 
   const showPlanApproval = !isStreaming && (awaitingPlanApproval || hasExitPlanModeUnapproved(agent.messages))
   const planContent = showPlanApproval ? extractPlanContent(agent.messages) : null
   const isInPlanMode = planMode || claudeInPlanMode(agent.messages)
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
-  const canSend = hasInput && !chatSend.isSending
+  // Sending mid-upload would drop the file that has not landed yet.
+  const canSend = hasInput && !chatSend.isSending && uploadingCount === 0
   const closeFileTab = () => { setActiveTab("chat"); onClearFileTab() }
 
   const inputBarProps = buildInputBarProps({

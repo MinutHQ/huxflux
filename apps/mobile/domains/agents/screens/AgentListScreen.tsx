@@ -1,7 +1,7 @@
 import { View, FlatList, RefreshControl } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, markAgentDeleted, type AgentSummary, type AgentStatus, getActiveServer, getServers, setActiveServerId, queryKeys } from "@huxflux/shared"
+import { useAgents, useRepos, useServerStatus, useWsConnected, statusConfig, api, markAgentDeleted, type AgentSummary, type AgentStatus, useServersStore, setActiveServerId, queryKeys } from "@huxflux/shared"
 import { c } from "@/theme"
 import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -70,8 +70,7 @@ export function AgentListScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const { collapsed, repoFilter, groupBy, setRepoFilter, setGroupBy, toggleCollapsed } = useAgentListPrefs(hydrated)
 
-  const server = getActiveServer()
-  const allServers = getServers()
+  const { activeServer: server, servers: allServers } = useServersStore()
   const serverStatuses = useServerStatus(server ? [server] : [])
   const serverStatus = server ? (serverStatuses[server.id] ?? "checking") : null
   const isUnauthorized = serverStatus === "unauthorized"

@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { useAgents, useRepos, api, getActiveServer, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
+import { useAgents, useRepos, api, useActiveServer, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { useState } from "react"
 import { c } from "@/theme"
 import { useHydrated } from "@/lib/hydration"
@@ -16,7 +16,7 @@ import { RepoPanel } from "../components/dashboard/RepoPanel"
 export function AgentDashboardScreen() {
   const insets = useSafeAreaInsets()
   const hydrated = useHydrated()
-  const server = getActiveServer()
+  const server = useActiveServer()
   const { data: agents = [] } = useAgents()
   const { data: repos = [] } = useRepos()
   const [refreshing, setRefreshing] = useState(false)
@@ -37,10 +37,6 @@ export function AgentDashboardScreen() {
     setRefreshing(false)
   }
 
-  // `c.accent` is not defined in theme.ts (pre-existing bug) — resolves to undefined at runtime,
-  // which Ionicons/ActivityIndicator treat as the platform default color. Preserved verbatim from source.
-  const accent: string | undefined = (c as Record<string, string>).accent
-
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       {/* Header */}
@@ -55,7 +51,7 @@ export function AgentDashboardScreen() {
 
       {!hydrated || isLoading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={accent} />
+          <ActivityIndicator color={c.accent} />
         </View>
       ) : !server ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
@@ -63,7 +59,7 @@ export function AgentDashboardScreen() {
         </View>
       ) : !stats ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator color={accent} />
+          <ActivityIndicator color={c.accent} />
         </View>
       ) : (
         <View style={{ flex: 1 }}>
@@ -72,7 +68,7 @@ export function AgentDashboardScreen() {
           <FloatingParticles />
 
           <ScrollView
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
             contentContainerStyle={{ padding: 12, paddingBottom: 40, gap: 10 }}
           >
             {/* Hero stat cards */}

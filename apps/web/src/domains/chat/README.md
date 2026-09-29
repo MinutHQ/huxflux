@@ -38,6 +38,8 @@ None. Components, hooks, view shells, and pure helpers are all flat inside `comp
 
 ## Quirks
 
+- Attachments: `useFileUpload` size-checks before reading the file, shows a loading toast per upload, and turns failures into a specific message via `describeUploadError`. `AttachmentThumb` renders image thumbnails (composer and sent `UserBubble`) from the server's attachments route and opens them full size in a dialog; non-images and images whose temp file is gone fall back to a filename chip.
+
 - ⌘I focus arrives as the `huxflux:focus-input` window event from the root route's global key listener; `useFocusComposerShortcut` (in `hooks/useChatViewEffects.ts`) owns the subscription and parks the caret at the end of the existing draft instead of selecting it, so the chord never clobbers text in progress. It no-ops when the composer is unmounted (chat hidden behind a maximised file viewer).
 
 - `ChatView` keeps per-agent state (input draft, plan mode, linked agents, attachments) in `useAgentStateCache` keyed by agent id, so switching tabs restores the right composer state. The hook flushes the outgoing agent's draft to the server before swapping.

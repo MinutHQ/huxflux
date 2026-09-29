@@ -197,6 +197,10 @@ export const c = {
   fgBright: defaultPalette.fgBright,
   fgBrightFg: defaultPalette.fgBrightFg,
   placeholder: defaultPalette.placeholder,
+  // Accent = the theme's bright color, with its matching foreground for text
+  // drawn on top of it. Kept in sync by applyTheme().
+  accent: defaultPalette.fgBright,
+  accentFg: defaultPalette.fgBrightFg,
 
   // Semantic — constant across themes
   success: diffColors.addition,
@@ -211,6 +215,8 @@ export const c = {
 export function applyTheme(id: string) {
   const theme = themes.find((t) => t.id === id) ?? themes[0]
   Object.assign(c, theme.palette)
+  c.accent = theme.palette.fgBright
+  c.accentFg = theme.palette.fgBrightFg
 }
 
 // Context — provider lives in _layout.tsx, components re-render when version bumps

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../../api.js"
 import { queryKeys } from "../../../queryKeys.js"
 import { useAgentEvents } from "../../../ws.js"
-import { getActiveServer } from "../../servers/servers.store.js"
+import { useActiveServer } from "../../servers/servers.hooks.js"
 import type { AgentSummary } from "../agents.types.js"
 
 // Tombstones for agents that were just deleted client-side. Prevents a
@@ -19,7 +19,7 @@ export function markAgentDeleted(id: string) {
 
 export function useAgents() {
   const queryClient = useQueryClient()
-  const serverUrl = getActiveServer()?.url ?? null
+  const serverUrl = useActiveServer()?.url ?? null
 
   const query = useQuery({
     queryKey: queryKeys.agents.list(serverUrl),

@@ -1,5 +1,7 @@
-import { AddRepoScreen } from "@/domains/settings/AddRepoScreen"
+import { useLocalSearchParams } from "expo-router"
+import { AddRepoScreen, isAddRepoMode } from "@/domains/settings/AddRepoScreen"
 
 export default function AddRepoRoute() {
-  return <AddRepoScreen />
+  const { mode } = useLocalSearchParams<{ mode?: string }>()
+  return <AddRepoScreen mode={isAddRepoMode(mode) ? mode : "open"} />
 }

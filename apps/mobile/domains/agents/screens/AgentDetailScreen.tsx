@@ -28,7 +28,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
     queuedMessage, setQueuedMessage,
     thinking, setThinking, planMode, setPlanMode,
     attachments, setAttachments,
-    handleSend, pickImage,
+    handleSend, pickImage, uploadingCount,
   } = chat
 
   const { isLoading, isError, refetch, loadMore, hasMore, isLoadingMore } = agentState
@@ -153,6 +153,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
           setInput={setInput}
           attachments={attachments}
           setAttachments={setAttachments}
+          uploadingCount={uploadingCount}
           queuedMessage={queuedMessage}
           setQueuedMessage={setQueuedMessage}
           sending={sending}

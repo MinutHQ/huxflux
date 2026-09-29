@@ -1,11 +1,13 @@
 import { getStorage } from "@huxflux/shared"
 
+// Local-only preferences. Server-side settings (git toggles, review prompt,
+// models, integrations, updates) live in the `/api/settings` blob and are read
+// through `useServerSettings` in the settings domain, not here.
+
 const STRIP_KEY = "huxflux:strip:youre-right"
 const ALWAYS_CONTEXT_KEY = "huxflux:always:context"
-const AUTO_CONVERT_KEY = "huxflux:auto:convert"
-const GIT_AUTO_PUSH_KEY = "huxflux:git:auto-push"
-const GIT_DELETE_BRANCH_KEY = "huxflux:git:delete-branch-on-archive"
-const GIT_ARCHIVE_ON_MERGE_KEY = "huxflux:git:archive-on-merge"
+const NOTIF_ENABLED_KEY = "huxflux:notif:enabled"
+const NOTIF_SOUND_KEY = "huxflux:notif:sound"
 export const COLLAPSED_SECTIONS_KEY = "huxflux:mobile:collapsed-sections"
 export const REPO_FILTER_KEY = "huxflux:mobile:repo-filter"
 export const GROUP_BY_KEY = "huxflux:mobile:group-by"
@@ -14,10 +16,8 @@ export const DOWNLOAD_DIR_KEY = "huxflux:mobile:download-dir"
 export const PREF_KEYS = [
   STRIP_KEY,
   ALWAYS_CONTEXT_KEY,
-  AUTO_CONVERT_KEY,
-  GIT_AUTO_PUSH_KEY,
-  GIT_DELETE_BRANCH_KEY,
-  GIT_ARCHIVE_ON_MERGE_KEY,
+  NOTIF_ENABLED_KEY,
+  NOTIF_SOUND_KEY,
   COLLAPSED_SECTIONS_KEY,
   REPO_FILTER_KEY,
   GROUP_BY_KEY,
@@ -41,17 +41,13 @@ export const prefs = {
   getAlwaysContext: () => get(ALWAYS_CONTEXT_KEY, false),
   setAlwaysContext: (v: boolean) => set(ALWAYS_CONTEXT_KEY, v),
 
-  getAutoConvert: () => get(AUTO_CONVERT_KEY, true),
-  setAutoConvert: (v: boolean) => set(AUTO_CONVERT_KEY, v),
+  // Local notification when an agent finishes a turn, and whether it plays a
+  // sound. Same keys as the web client's notification prefs.
+  getNotificationsEnabled: () => get(NOTIF_ENABLED_KEY, true),
+  setNotificationsEnabled: (v: boolean) => set(NOTIF_ENABLED_KEY, v),
 
-  getGitAutoPush: () => get(GIT_AUTO_PUSH_KEY, false),
-  setGitAutoPush: (v: boolean) => set(GIT_AUTO_PUSH_KEY, v),
-
-  getGitDeleteBranch: () => get(GIT_DELETE_BRANCH_KEY, false),
-  setGitDeleteBranch: (v: boolean) => set(GIT_DELETE_BRANCH_KEY, v),
-
-  getGitArchiveOnMerge: () => get(GIT_ARCHIVE_ON_MERGE_KEY, true),
-  setGitArchiveOnMerge: (v: boolean) => set(GIT_ARCHIVE_ON_MERGE_KEY, v),
+  getNotificationSound: () => get(NOTIF_SOUND_KEY, true),
+  setNotificationSound: (v: boolean) => set(NOTIF_SOUND_KEY, v),
 
   // The Android folder the user picked for saved files, as a Storage Access
   // Framework tree URI. Remembered so only the first download has to ask.

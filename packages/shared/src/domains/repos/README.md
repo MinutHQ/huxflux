@@ -42,6 +42,7 @@ None.
 
 ## Quirks
 
+- `repoSchema.type` defaults to `"git"` so responses from servers that predate the folder feature (no `type` column) still validate on newer clients (the mobile app is updated independently of the server). `updateRepoBodySchema` rebuilds `type` as plain optional so a PATCH never gets a `type` it did not set.
 - The `/api/fs/*` endpoints (`findRepos`, `browseFs`, `getDefaultBranch`) live here even though the URL prefix is `/api/fs/...` rather than `/api/repos/...`. They drive the add-repo path picker and have no other consumer, so the repos domain is their natural home; a separate "filesystem" domain would have one consumer.
 - `getRepoBranches` lives in `reposApi` even though it talks to GitHub via the server. The endpoint is `/api/repos/:id/branches` and the response is a list of branch names; from the client's perspective it's repo-shaped.
 - `useRepos` uses `getActiveServer()?.url` in its query key so switching servers re-fetches (same pattern as `useAgents`).

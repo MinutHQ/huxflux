@@ -1,9 +1,8 @@
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
+import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native"
 import { useRouter } from "expo-router"
 import { useState, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRepos, api, type Repo, queryKeys } from "@huxflux/shared"
-import { FlashList } from "@shopify/flash-list"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { setSetupMessage } from "@/lib/setupMessage"
@@ -49,7 +48,7 @@ export function NewAgentScreen() {
   const router = useRouter()
   const modal = useModal()
   const queryClient = useQueryClient()
-  const { data: repos = [], isLoading } = useRepos()
+  const { data: repos = [], isLoading, error, refetch } = useRepos()
   const [creating, setCreating] = useState<CreatingState | null>(null)
   const [direct, setDirect] = useState(false)
   const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
@@ -99,19 +98,24 @@ export function NewAgentScreen() {
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={c.link} />
         </View>
+      ) : error ? (
+        <View style={{ padding: 32, alignItems: "center", gap: 12 }}>
+          <Text style={{ color: c.error, fontSize: 14, textAlign: "center" }}>Could not load repositories.{"\n"}{error.message}</Text>
+          <TouchableOpacity onPress={() => refetch()}>
+            <Text style={{ color: c.link, fontSize: 14, fontWeight: "500" }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : repos.length === 0 ? (
+        <View style={{ padding: 32, alignItems: "center" }}>
+          <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center" }}>No repositories configured.{"\n"}Add one via the desktop app.</Text>
+        </View>
       ) : (
-        <FlashList
-          data={repos}
-          keyExtractor={(r) => r.id}
-          renderItem={({ item: repo }) => (
-            <RepoRow repo={repo} disabled={!!creating} onPress={() => handleSelectRepo(repo)} />
-          )}
-          ListEmptyComponent={
-            <View style={{ padding: 32, alignItems: "center" }}>
-              <Text style={{ color: c.fgSub, fontSize: 14, textAlign: "center" }}>No repositories configured.{"\n"}Add one via the desktop app.</Text>
-            </View>
-          }
-        />
+        // Plain ScrollView: FlashList rendered no rows here on Android, and the repo list is short.
+        <ScrollView style={{ flex: 1 }}>
+          {repos.map((repo) => (
+            <RepoRow key={repo.id} repo={repo} disabled={!!creating} onPress={() => handleSelectRepo(repo)} />
+          ))}
+        </ScrollView>
       )}
 
       {creating && <SetupOverlay creating={creating} onQueueMessage={handleQueueMessage} queuedMessage={queuedMessage} />}

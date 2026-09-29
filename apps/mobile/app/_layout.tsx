@@ -1,14 +1,14 @@
-import { useState, useEffect, useContext, useMemo } from "react"
+import { useState, useEffect, useContext, useMemo, useRef } from "react"
 import { Platform } from "react-native"
 import { Stack, useRouter } from "expo-router"
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { configureStorage, configureAgentErrorHandler, useAgentEvents, getActiveServer, queryKeys } from "@huxflux/shared"
+import { configureStorage, configureAgentErrorHandler, useAgentEvents, getActiveServer, notifyServersChanged, subscribeServers, queryKeys } from "@huxflux/shared"
 import type { AgentSummary } from "@huxflux/shared"
 import { ModalProvider, useModal } from "@/ui"
 import { StatusBar } from "expo-status-bar"
 import { ThemeContext, applyTheme, themes, c } from "../theme"
-import { PREF_KEYS } from "../lib/prefs"
+import { PREF_KEYS, prefs } from "../lib/prefs"
 import { HydrationContext } from "../lib/hydration"
 import { setGlobalAlert, getGlobalAlert } from "../lib/globalAlert"
 import * as Notifications from "expo-notifications"
@@ -76,6 +76,17 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
     return () => setGlobalAlert(null)
   }, [modal])
 
+  // Drop every cached query when the active server changes. Most keys are not
+  // scoped by server URL (settings, providers, filesystem lookups), and web
+  // side-steps this with a full page reload, which mobile does not have.
+  const activeUrlRef = useRef<string | null>(getActiveServer()?.url ?? null)
+  useEffect(() => subscribeServers(() => {
+    const url = getActiveServer()?.url ?? null
+    if (url === activeUrlRef.current) return
+    activeUrlRef.current = url
+    queryClient.resetQueries()
+  }), [queryClient])
+
   // Request notification permission once after hydration
   useEffect(() => {
     if (!hydrated) return
@@ -104,6 +115,7 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
   // closes (mid-run injection splits) are not the end of the turn.
   useAgentEvents(null, (event) => {
     if (event.type !== "message:done" || event.segment) return
+    if (!prefs.getNotificationsEnabled()) return
     const serverUrl = getActiveServer()?.url ?? null
     const agents = queryClient.getQueryData<AgentSummary[]>(queryKeys.agents.list(serverUrl))
     const agent = agents?.find((a) => a.id === event.agentId)
@@ -112,7 +124,7 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
         title: agent?.title ?? "Agent",
         body: "Finished",
         data: { agentId: event.agentId },
-        sound: true,
+        sound: prefs.getNotificationSound(),
       },
       trigger: null,
     })
@@ -134,7 +146,9 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
         <Stack.Screen name="agent/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="servers" options={{ title: "Servers", presentation: "modal" }} />
         <Stack.Screen name="new-agent" options={{ title: "New Agent", presentation: "modal" }} />
-        <Stack.Screen name="add-repo" options={{ title: "Add Repo", presentation: "modal" }} />
+        <Stack.Screen name="add-repo" options={{ title: "Add workspace", presentation: "modal" }} />
+        <Stack.Screen name="repo/[id]" options={{ title: "Repository" }} />
+        <Stack.Screen name="settings/[section]" options={{ title: "Settings" }} />
       </Stack>
     </HydrationContext.Provider>
   )
@@ -168,6 +182,8 @@ export default function RootLayout() {
         setThemeIdState(savedTheme)
       }
       setHydrated(true)
+      // Storage was written behind the store's back; wake its subscribers.
+      notifyServersChanged()
       queryClient.invalidateQueries()
     })
   // Mount-only effect; queryClient is created once via the lazy initializer

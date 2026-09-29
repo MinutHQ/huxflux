@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useSyncExternalStore } from "react"
 import { z } from "zod/v4"
-import { getActiveServer, serverWsUrl } from "./domains/servers/servers.store.js"
+import { getActiveServer, serverWsUrl, subscribeServers } from "./domains/servers/servers.store.js"
 import type { AgentsServerEvent } from "./domains/agents/agents.types.js"
 import type { TasksServerEvent } from "./domains/tasks/tasks.types.js"
 
@@ -133,6 +133,17 @@ function connect() {
     setTimeout(connect, 2000)
   }
 }
+
+// Follow the active server. When it changes while a socket is open, `connect()`
+// sees the new URL, closes the old socket and opens one against the new
+// server; subscriptions are replayed in `onopen`. Nothing to do when no socket
+// exists yet: the first hook mount opens one against whatever is active then.
+subscribeServers(() => {
+  if (!socket) return
+  if (getActiveWsUrl() === connectedWsUrl) return
+  setWsConnected(false)
+  connect()
+})
 
 export function useAgentEvents(agentId: string | null, onEvent: Handler) {
   // Keep the latest handler in a ref so the subscription doesn't churn when

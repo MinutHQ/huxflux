@@ -13,6 +13,7 @@ The server-side surface for registered git repositories: list, create, patch, de
 ## Public surface
 
 - `repos.routes.ts` — exposes `reposPlugin`, the Fastify plugin registering every `/api/repos*` HTTP route. Wired through the registry at `src/domains/index.ts`.
+- `repos.service.ts` — `buildRepoInsert` / `buildRepoPatch` map validated request bodies onto table columns (tested in `repos.service.test.ts`), plus the path, branch-detection and reserve-maintenance helpers.
 
 ## Depends on
 
@@ -30,6 +31,9 @@ The server-side surface for registered git repositories: list, create, patch, de
 None.
 
 ## Quirks
+
+- `buildRepoInsert` carries every optional column the client may send (`type`, `icon`, `archiveScript`, `preferences`, `poolSize`). Before it existed the create handler dropped `type`, so "Add folder" from the web silently stored a git repo.
+- `buildRepoPatch` only copies keys that are present in the body, so `undefined` never clears a column while an explicit `null` does.
 
 - DELETE manually deletes the dependent `agents` rows because the SQLite FK constraint was created without `ON DELETE CASCADE` and SQLite cannot alter that after the fact.
 - The PATCH handler's reserve-worktree refresh is fire-and-forget — the route returns immediately, the drain/recreate runs in the background. Errors are logged to console but never surface to the API caller. Verbatim from the source.

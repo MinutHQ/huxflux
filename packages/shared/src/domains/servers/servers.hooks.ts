@@ -1,9 +1,36 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useSyncExternalStore } from "react"
 import { api } from "../../api.js"
 import { queryKeys } from "../../queryKeys.js"
-import { serverAuthHeaders } from "./servers.store.js"
+import {
+  serverAuthHeaders, subscribeServers, getServersSnapshot, parseServersSnapshot,
+} from "./servers.store.js"
 import type { HuxfluxServer, ServerStatus } from "./servers.types.js"
+
+export interface ServersStoreState {
+  servers: HuxfluxServer[]
+  activeId: string | null
+  activeServer: HuxfluxServer | null
+}
+
+/**
+ * Reactive view of the server registry. Re-renders on every mutation through
+ * the store (add / update / remove / set active) and on any storage change that
+ * alters the raw snapshot, such as async hydration on mobile.
+ */
+export function useServersStore(): ServersStoreState {
+  const snapshot = useSyncExternalStore(subscribeServers, getServersSnapshot, getServersSnapshot)
+  return useMemo(() => {
+    const { servers, activeId } = parseServersSnapshot(snapshot)
+    const activeServer = servers.find((s) => s.id === activeId) ?? servers[0] ?? null
+    return { servers, activeId, activeServer }
+  }, [snapshot])
+}
+
+/** The active server, or the first one, or null. Reactive. */
+export function useActiveServer(): HuxfluxServer | null {
+  return useServersStore().activeServer
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController()

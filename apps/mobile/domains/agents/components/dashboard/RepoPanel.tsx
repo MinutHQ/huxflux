@@ -23,8 +23,7 @@ export function RepoPanel({ repos, agents }: { repos: Repo[]; agents: AgentSumma
             ],
           }}>
             <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: c.secondary, alignItems: "center", justifyContent: "center" }}>
-              {/* `c.accent` is not defined in theme.ts (pre-existing bug) — preserved verbatim from source. */}
-              <Ionicons name="code-slash-outline" size={14} color={(c as Record<string, string>).accent} />
+              <Ionicons name="code-slash-outline" size={14} color={c.accent} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: c.fg, fontSize: 13, fontWeight: "600" }}>{repo.name}</Text>

@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, statusConfig, getActiveServer, queryKeys, type AgentSummary, type AgentStatus } from "@huxflux/shared"
+import { api, statusConfig, useActiveServer, queryKeys, type AgentSummary, type AgentStatus } from "@huxflux/shared"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { StreamingDots } from "./StreamingDots"
@@ -17,7 +17,7 @@ export function AgentRow({ agent, isStreaming, repoName }: {
   const router = useRouter()
   const queryClient = useQueryClient()
   const modal = useModal()
-  const agentsKey = queryKeys.agents.list(getActiveServer()?.url ?? null)
+  const agentsKey = queryKeys.agents.list(useActiveServer()?.url ?? null)
 
   function handleLongPress() {
     modal.showActionSheet(agent.title, [

@@ -1,31 +1,21 @@
 import React from "react"
-import { IconBolt, IconPaperclip } from "@tabler/icons-react"
-import type { Message } from "@huxflux/shared"
+import { IconBolt } from "@tabler/icons-react"
+import { parseAttachedFiles, type AttachedFile, type Message } from "@huxflux/shared"
 import { AssistantBubble } from "./AssistantBubble"
 import { LinkedWorkspaceMessage } from "./LinkedWorkspaceMessage"
+import { AttachmentThumb } from "./AttachmentThumb"
 
 interface UserMessageParts {
-  files: { name: string }[]
+  files: AttachedFile[]
   displayText: string
 }
 
 function parseUserContent(content: string): UserMessageParts {
-  // Parse out "Attached files:\n- name: /path\n...\n\n---\n\n" prefix
-  const attachmentMatch = content.match(/^Attached files:\n([\s\S]*?)\n\n---\n\n([\s\S]*)$/)
-  const remainder = attachmentMatch ? attachmentMatch[2] : content
-  const linkedAgentMatch = remainder.match(/^([\s\S]*?)\n\n---\n\nLinked agents for cross-repo collaboration:\n[\s\S]*$/)
-
-  const files: { name: string }[] = attachmentMatch
-    ? (attachmentMatch[1].split("\n").filter(Boolean).map((line) => {
-        const m = line.match(/^- (.+?): /)
-        return m ? { name: m[1] } : null
-      }).filter(Boolean) as { name: string }[])
-    : []
-
+  const { files, text } = parseAttachedFiles(content)
+  const linkedAgentMatch = text.match(/^([\s\S]*?)\n\n---\n\nLinked agents for cross-repo collaboration:\n[\s\S]*$/)
   const displayText = linkedAgentMatch
-    ? linkedAgentMatch[1].trim()
-    : remainder.replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
-
+    ? (linkedAgentMatch[1] ?? "").trim()
+    : text.replace(/\n\n---\n\nLinked agents[\s\S]*$/, "").trim()
   return { files, displayText }
 }
 
@@ -41,13 +31,8 @@ function UserBubble({ content, injected }: { content: string; injected?: boolean
       )}
     <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {files.map((f) => (
-            <div key={f.name} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-secondary border border-border text-[11px]">
-              <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
-              <span className="font-medium text-foreground/80 max-w-[160px] truncate">{f.name}</span>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {files.map((f) => <AttachmentThumb key={f.path} file={f} />)}
         </div>
       )}
       {displayText && (

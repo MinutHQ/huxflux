@@ -4,6 +4,60 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { ensureReserve, drainReserves } from "../git/pool.js"
 import { logger } from "../../logger.js"
+import { config } from "../../config.js"
+import type { Repo } from "../../types.js"
+import type { repos } from "./repos.db.js"
+
+type RepoInsert = typeof repos.$inferInsert
+type RepoPatch = Partial<Omit<RepoInsert, "id" | "createdAt">>
+
+export type CreateRepoInput = Omit<Repo, "id" | "createdAt" | "workspacesPath"> & { workspacesPath?: string }
+
+/**
+ * Maps a validated POST /api/repos body onto the insert row. Every optional
+ * column the client may send is carried across; missing ones fall back to the
+ * same defaults the schema declares, so a folder stays a folder and an icon
+ * chosen at creation is not silently dropped.
+ */
+export function buildRepoInsert(body: CreateRepoInput, id: string, now: string): RepoInsert {
+  return {
+    id,
+    name: body.name,
+    path: body.path,
+    workspacesPath: body.workspacesPath ?? path.join(config.workspacesBase, body.name),
+    branchFrom: body.branchFrom ?? "origin/main",
+    branchPrefix: body.branchPrefix ?? null,
+    remote: body.remote ?? "origin",
+    previewUrl: body.previewUrl ?? null,
+    setupScript: body.setupScript ?? null,
+    runScript: body.runScript ?? null,
+    archiveScript: body.archiveScript ?? null,
+    preferences: body.preferences ?? null,
+    icon: body.icon ?? null,
+    poolSize: body.poolSize ?? 0,
+    type: body.type ?? "git",
+    createdAt: now,
+  }
+}
+
+const PATCHABLE_COLUMNS = [
+  "name", "path", "workspacesPath", "branchFrom", "branchPrefix", "remote", "previewUrl",
+  "setupScript", "runScript", "archiveScript", "preferences", "icon", "poolSize", "type",
+] as const satisfies readonly (keyof RepoPatch)[]
+
+/**
+ * Maps a PATCH body onto the columns to update. Only keys the client actually
+ * sent are included, so `undefined` never overwrites a stored value, while an
+ * explicit `null` clears a nullable column.
+ */
+export function buildRepoPatch(body: Partial<Repo>): RepoPatch {
+  const patch: RepoPatch = {}
+  for (const key of PATCHABLE_COLUMNS) {
+    const value = body[key]
+    if (value !== undefined) (patch as Record<string, unknown>)[key] = value
+  }
+  return patch
+}
 
 const execFileAsync = promisify(execFile)
 

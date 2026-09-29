@@ -2,6 +2,7 @@ import { View, Text, Pressable } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useRouter } from "expo-router"
 import { c } from "@/theme"
+import { useAddRepoMenu } from "@/domains/settings/AddRepoMenu"
 
 export function AgentListHeader({
   insetsTop,
@@ -25,6 +26,7 @@ export function AgentListHeader({
   onShowRepoFilter: () => void
 }) {
   const router = useRouter()
+  const openAddRepo = useAddRepoMenu()
 
   return (
     <View style={{
@@ -54,7 +56,7 @@ export function AgentListHeader({
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <Pressable
-          onPress={() => router.push("/add-repo")}
+          onPress={openAddRepo}
           style={{ width: 34, height: 34, borderRadius: 8, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="folder-open-outline" size={16} color={c.fgSub} />

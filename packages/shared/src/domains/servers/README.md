@@ -9,7 +9,7 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 - The `huxflux://` and `http(s)://` connection-string parser used by the onboarding / add-server flow
 - The `useServerStatus` hook that polls `/health` + `/api/config` per server every 20s and exposes `online | offline | checking | unauthorized` per id
 - The `useServerConfig` hook that fetches `/api/config` for the currently active server and exposes the feature flags (githubEnabled, feedbackEnabled)
-- The `huxflux:servers-changed` window event dispatched on every list / active-id mutation (consumed by the server switcher)
+- The change subscription (`subscribeServers` + `getServersSnapshot`) fired on every list / active-id mutation, and the `useServersStore` / `useActiveServer` hooks built on it. The websocket singleton in `ws.ts` subscribes too, so switching the active server reconnects the socket without a reload
 
 ## Public surface
 
@@ -18,7 +18,12 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 - `updateServer` — patches name / url / token on an existing entry by id
 - `removeServer` — drops an entry; if it was active, promotes the next server or clears the active pointer
 - `getActiveServerId` — current active server id (null if none)
-- `setActiveServerId` — switches the active server and broadcasts the change
+- `setActiveServerId` — switches the active server and notifies subscribers
+- `subscribeServers` — registers a change listener; returns the unsubscribe function
+- `getServersSnapshot` — value-comparable string of the raw storage state, for `useSyncExternalStore`
+- `notifyServersChanged` — wakes subscribers after a host wrote the storage keys directly (mobile's async hydration)
+- `useServersStore` — reactive `{ servers, activeId, activeServer }`; re-renders on every store change
+- `useActiveServer` — reactive active server (or first, or null)
 - `getActiveServer` — returns the active server, or the first server, or null
 - `parseConnectionString` — parses a `huxflux://` or `http(s)://` URL into `{ url, token }` (returns null on failure)
 - `normalizeServerUrl` — trims a user-entered server URL, strips trailing slashes, and prepends `http://` when no scheme is given (a scheme-less URL would resolve relative to the page origin)
@@ -40,6 +45,9 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 None.
 
 ## Quirks
+
+- Change notification is a plain listener set, not a DOM event. React Native defines `window` as the global object but has no `Event` constructor or `dispatchEvent`, so the earlier `window.dispatchEvent(new Event(...))` threw inside tap handlers and closed the app on every server switch. Do not reintroduce DOM events here.
+- `getServersSnapshot` re-reads storage on every call. That is what makes hydration (a write that bypasses the mutators) visible: the next render sees a different string. Mobile still calls `notifyServersChanged()` after hydration so subscribers wake without waiting for an unrelated render.
 
 - `parseConnectionString` swaps the `huxflux://` scheme for `http://` before handing the string to the URL constructor — `huxflux://` is an unknown scheme to the parser. The original scheme is not preserved; callers should not assume the returned URL begins with `huxflux://`.
 - `addServer` returns the existing duplicate when a server with the same URL already exists. If the caller supplied a different token, the existing entry is updated in place and the new token is reflected in the returned object.

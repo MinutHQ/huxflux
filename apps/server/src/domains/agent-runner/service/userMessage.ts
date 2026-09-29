@@ -7,14 +7,14 @@ import { messages as messagesTable } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
 
 /**
- * Strip internal metadata (linked workspaces, attached files, linked agents)
- * from a user message so the chat displays cleanly. The full content is still
- * what the model receives.
+ * Strip internal metadata (linked workspaces, linked agents) from a user
+ * message so the chat displays cleanly. The full content is still what the
+ * model receives. The "Attached files" block is kept: clients parse it to
+ * render attachment previews on the sent message.
  */
 export function stripDisplayContent(userContent: string): string {
   return userContent
     .replace(/\n\n---\n\nLinked workspaces[\s\S]*$/, "")
-    .replace(/^Attached files:\n[\s\S]*?\n\n---\n\n/, "")
     .replace(/\n\n---\n\nLinked agents[\s\S]*$/, "")
     .trim()
 }

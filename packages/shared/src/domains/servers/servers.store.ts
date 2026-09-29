@@ -26,15 +26,53 @@ export function getServers(): HuxfluxServer[] {
   return getServersRaw()
 }
 
-function notifyChange() {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event("huxflux:servers-changed"))
+// ── Change subscription ──────────────────────────────────────────────────────
+// Platform-neutral listener set. React Native has no `window.dispatchEvent` /
+// `Event`, so a DOM event here throws inside tap handlers and takes the app
+// down. Consumers subscribe via `subscribeServers` (or the `useServersStore`
+// hook in servers.hooks.ts) instead.
+
+type ServersListener = () => void
+const listeners = new Set<ServersListener>()
+
+export function subscribeServers(listener: ServersListener): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+const SNAPSHOT_SEPARATOR = "\u0000"
+
+/**
+ * Cheap, value-comparable snapshot of the raw storage state. Used as the
+ * `useSyncExternalStore` snapshot so a change to either key (including an
+ * async storage hydration that bypasses the mutators) re-renders subscribers.
+ * Decode with `parseServersSnapshot`.
+ */
+export function getServersSnapshot(): string {
+  const storage = getStorage()
+  return `${storage.getItem(SERVERS_KEY) ?? ""}${SNAPSHOT_SEPARATOR}${storage.getItem(ACTIVE_KEY) ?? ""}`
+}
+
+export function parseServersSnapshot(snapshot: string): { servers: HuxfluxServer[]; activeId: string | null } {
+  const sep = snapshot.indexOf(SNAPSHOT_SEPARATOR)
+  const rawServers = sep >= 0 ? snapshot.slice(0, sep) : snapshot
+  const rawActive = sep >= 0 ? snapshot.slice(sep + 1) : ""
+  let servers: HuxfluxServer[] = []
+  try {
+    if (rawServers) servers = JSON.parse(rawServers) as HuxfluxServer[]
+  } catch {
+    servers = []
   }
+  return { servers, activeId: rawActive || null }
+}
+
+export function notifyServersChanged(): void {
+  for (const listener of listeners) listener()
 }
 
 function saveServers(servers: HuxfluxServer[]): void {
   getStorage().setItem(SERVERS_KEY, JSON.stringify(servers))
-  notifyChange()
+  notifyServersChanged()
 }
 
 export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer {
@@ -102,12 +140,13 @@ export function serverAuthHeaders(server: AuthFields | null | undefined): Record
 }
 
 /**
- * WebSocket URL for a SPECIFIC server + path, carrying the right token as a
- * query param (WS can't set headers). Proxied servers use `proxy_token`; direct
- * servers use `token`. Handles a `path` that already contains a query string.
+ * HTTP URL for a SPECIFIC server + path with the credential carried as a query
+ * param, for loads that cannot set headers (`<img src>`, RN `Image`).
+ * Proxied servers use `proxy_token`; direct servers use `token`. Handles a
+ * `path` that already contains a query string.
  */
-export function serverWsUrl(server: AuthFields, path: string): string {
-  const base = server.url.replace(/^http/, "ws") + path
+export function serverAuthedUrl(server: AuthFields, path: string): string {
+  const base = server.url + path
   const sep = path.includes("?") ? "&" : "?"
   if (isProxiedServer(server)) {
     return server.proxyAccessToken
@@ -115,6 +154,15 @@ export function serverWsUrl(server: AuthFields, path: string): string {
       : base
   }
   return server.token ? `${base}${sep}token=${encodeURIComponent(server.token)}` : base
+}
+
+/**
+ * WebSocket URL for a SPECIFIC server + path, carrying the right token as a
+ * query param (WS can't set headers). Same credential rules as
+ * `serverAuthedUrl`.
+ */
+export function serverWsUrl(server: AuthFields, path: string): string {
+  return serverAuthedUrl(server, path).replace(/^http/, "ws")
 }
 
 export function removeServer(id: string): void {
@@ -126,6 +174,7 @@ export function removeServer(id: string): void {
       setActiveServerId(first.id)
     } else {
       getStorage().removeItem(ACTIVE_KEY)
+      notifyServersChanged()
     }
   }
 }
@@ -136,7 +185,7 @@ export function getActiveServerId(): string | null {
 
 export function setActiveServerId(id: string): void {
   getStorage().setItem(ACTIVE_KEY, id)
-  notifyChange()
+  notifyServersChanged()
 }
 
 export function getActiveServer(): HuxfluxServer | null {

@@ -52,6 +52,17 @@ export { useAgent, configureAgentErrorHandler } from "./domains/agents/hooks/use
 export { useAgents, markAgentDeleted } from "./domains/agents/hooks/useAgents.js"
 export { isAgentStreaming } from "./domains/agents/agents.state.js"
 export {
+  MAX_ATTACHMENT_BYTES,
+  buildAttachedFilesBlock,
+  parseAttachedFiles,
+  isImageAttachment,
+  attachmentUrl,
+  formatBytes,
+  checkAttachmentSize,
+  describeUploadError,
+} from "./domains/agents/attachments.js"
+export type { AttachedFile, ParsedUserContent } from "./domains/agents/attachments.js"
+export {
   statusConfig,
   statusOrder,
   agentSchema,
@@ -278,8 +289,14 @@ export {
   proxyOriginOf,
   serverAuthHeaders,
   serverWsUrl,
+  serverAuthedUrl,
+  subscribeServers,
+  getServersSnapshot,
+  parseServersSnapshot,
+  notifyServersChanged,
 } from "./domains/servers/servers.store.js"
-export { useServerStatus, useServerConfig } from "./domains/servers/servers.hooks.js"
+export { useServerStatus, useServerConfig, useServersStore, useActiveServer } from "./domains/servers/servers.hooks.js"
+export type { ServersStoreState } from "./domains/servers/servers.hooks.js"
 export { huxfluxServerSchema, serverStatusSchema } from "./domains/servers/servers.types.js"
 export type { HuxfluxServer, ServerStatus } from "./domains/servers/servers.types.js"
 

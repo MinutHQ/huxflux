@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/beta') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'beta')
@@ -115,7 +116,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
         if: steps.changes.outputs.server_changed == 'true'
@@ -153,22 +153,43 @@ jobs:
             exit 1
           fi
 
+      - name: Upgrade npm for trusted publishing
+        if: steps.changes.outputs.server_changed == 'true'
+        run: npm install -g "npm@^11.5.1"
+
       - name: Publish to npm (beta tag)
         if: steps.changes.outputs.server_changed == 'true'
+        # Trusted publishing (OIDC): no token. The trusted publisher registered on
+        # npmjs names this repo and this file (release-beta.yml) and allows direct
+        # publish. Renaming this file breaks publishing until it is re-registered.
+        #
+        # The registry is set via the scope key, not --registry: for a scoped
+        # package npm reads @scope:registry first and only falls back to
+        # --registry, so --registry loses to any inherited scope pin.
         run: |
-          echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
-          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
           cd apps/server
-          npm publish --access public --tag beta
+          npm publish --@minuthq:registry=https://registry.npmjs.org/ --access public --tag beta
+
+      - name: Publish to GitHub Packages (beta tag)
+        if: steps.changes.outputs.server_changed == 'true'
+        # Deliberately not `if: always()`: when the npmjs publish above fails this
+        # step is skipped, so the two registries stay on the same version.
+        # Advancing GitHub Packages alone is exactly the drift that makes them
+        # disagree, and the release is re-cut rather than half-published.
+        run: |
+          NPMRC="${RUNNER_TEMP}/.npmrc-github"
+          printf '@minuthq:registry=https://npm.pkg.github.com/\n//npm.pkg.github.com/:_authToken=%s\n' "$GITHUB_PACKAGES_TOKEN" > "$NPMRC"
+          cd apps/server
+          NPM_CONFIG_USERCONFIG="$NPMRC" npm publish --access public --tag beta
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
           echo "## Beta Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.changes.outputs.server_changed }}" = "true" ]; then
-            echo "Published \`@minuthq/huxflux@${{ steps.version.outputs.version }}\` to npm with \`beta\` tag." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published \`@minuthq/huxflux@${{ steps.version.outputs.version }}\` with the \`beta\` tag to npmjs and GitHub Packages." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Server publish skipped (no server changes since last tag)." >> "$GITHUB_STEP_SUMMARY"
           fi

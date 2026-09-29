@@ -233,7 +233,9 @@ All commits use conventional commit format. The type prefix determines automatic
 1. Work on feature branches, merge PRs into `beta`.
 2. When ready to test: "Release Beta" workflow dispatch bumps version and publishes to npm `@beta` tag + GitHub pre-release.
 3. Test on real machines.
-4. When stable: merge `beta` into `main`. CI publishes to npm `@latest` + GitHub release.
+4. When stable: merge `beta` into `main`. CI stages the npm `@latest` release (a maintainer approves it with `npm stage approve`) and publishes the GitHub release.
+
+Both release workflows publish the server to npmjs and to GitHub Packages. The npmjs side uses trusted publishing (OIDC), so there is no npm token: npmjs authorises it from the workflow's identity, which includes the workflow's **filename**. Renaming `release-beta.yml` or `release-production.yml` breaks publishing until the trusted publisher is re-registered on npmjs. Beta publishes directly; production is stage-only, so a stable version is not installable from npmjs until a maintainer approves it.
 
 Agents should always branch from and PR into `beta`, never `main`.
 

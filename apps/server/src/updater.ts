@@ -1,8 +1,6 @@
 import { spawn } from "node:child_process"
-import * as fs from "node:fs"
-import * as os from "node:os"
-import * as path from "node:path"
 import { SERVER_VERSION } from "./version.js"
+import { dropGithubPackagesPin } from "./npmRegistry.js"
 import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
@@ -78,19 +76,9 @@ function isIdle(): boolean {
 }
 
 
-function ensureNpmRegistry() {
-  const npmrc = path.join(os.homedir(), ".npmrc")
-  try {
-    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
-    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
-      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
-    }
-  } catch { /* best-effort */ }
-}
-
 export function triggerServerUpdate(): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
-    ensureNpmRegistry()
+    dropGithubPackagesPin()
     const tag = getNpmTag()
     const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@${tag}`], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -117,6 +105,10 @@ export function triggerServerUpdate(): Promise<{ success: boolean; error?: strin
 let checkInterval: ReturnType<typeof setInterval> | null = null
 
 export function startUpdateChecker() {
+  // Migrate installs that still pin our scope to GitHub Packages, so both the
+  // version check and the update itself work without a token from here on.
+  dropGithubPackagesPin()
+
   // Initial check after 30 seconds (let server boot first)
   setTimeout(() => {
     checkForUpdate().then((info) => {

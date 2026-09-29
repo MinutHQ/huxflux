@@ -28,6 +28,7 @@ import { isFirejailAvailable, sandboxStatus } from "./sandbox.js"
 import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
 import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
+import { dropGithubPackagesPin } from "./npmRegistry.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -818,18 +819,8 @@ function getUpdateChannel(): string {
   return "latest"
 }
 
-function ensureNpmRegistry() {
-  const npmrc = path.join(os.homedir(), ".npmrc")
-  try {
-    const content = fs.existsSync(npmrc) ? fs.readFileSync(npmrc, "utf8") : ""
-    if (!content.includes("@minuthq:registry=https://npm.pkg.github.com")) {
-      fs.appendFileSync(npmrc, "\n@minuthq:registry=https://npm.pkg.github.com\n")
-    }
-  } catch { /* best-effort */ }
-}
-
 function cmdUpdate() {
-  ensureNpmRegistry()
+  dropGithubPackagesPin()
   const tag = getUpdateChannel()
   const label = tag === "beta" ? " (beta channel)" : ""
   console.info(`\nUpdating huxflux${label} (current: ${VERSION})...\n`)

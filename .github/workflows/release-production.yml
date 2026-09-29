@@ -55,6 +55,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,7 +73,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://npm.pkg.github.com
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -132,15 +132,35 @@ jobs:
           mkdir -p apps/server/dist/web
           cp -r apps/web/dist/* apps/server/dist/web/
 
-      - name: Publish to npm (latest tag)
+      - name: Upgrade npm for trusted publishing
         if: steps.changes.outputs.server_changed == 'true'
+        run: npm install -g "npm@^11.5.1"
+
+      - name: Stage npm release (latest tag)
+        if: steps.changes.outputs.server_changed == 'true'
+        # Trusted publishing (OIDC): no token. The publisher registered on npmjs
+        # for this file (release-production.yml) is stage-only, which REJECTS a
+        # plain `npm publish`. Stable versions wait for a maintainer to approve
+        # them with 2FA. Renaming this file breaks publishing until it is
+        # re-registered. The scope key, not --registry, decides the registry for
+        # a scoped package.
         run: |
-          echo "@minuthq:registry=https://npm.pkg.github.com" > apps/server/.npmrc
-          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> apps/server/.npmrc
           cd apps/server
-          npm publish --access public --tag latest
+          npm stage publish --@minuthq:registry=https://registry.npmjs.org/ --access public --tag latest
+
+      - name: Publish to GitHub Packages (latest tag)
+        if: steps.changes.outputs.server_changed == 'true'
+        # Deliberately not `if: always()`: when the npmjs publish above fails this
+        # step is skipped, so the two registries stay on the same version.
+        # Advancing GitHub Packages alone is exactly the drift that makes them
+        # disagree, and the release is re-cut rather than half-published.
+        run: |
+          NPMRC="${RUNNER_TEMP}/.npmrc-github"
+          printf '@minuthq:registry=https://npm.pkg.github.com/\n//npm.pkg.github.com/:_authToken=%s\n' "$GITHUB_PACKAGES_TOKEN" > "$NPMRC"
+          cd apps/server
+          NPM_CONFIG_USERCONFIG="$NPMRC" npm publish --access public --tag latest
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
@@ -148,7 +168,12 @@ jobs:
           echo "## Production Release" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.changes.outputs.server_changed }}" = "true" ]; then
-            echo "Published \`@minuthq/huxflux@${VERSION}\` to npm as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "Published \`@minuthq/huxflux@${VERSION}\` to GitHub Packages as \`latest\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**The npmjs release is STAGED, not published.** Nobody can install it and the \`latest\` tag has not moved yet. Approve it with 2FA:" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "    npm stage list @minuthq/huxflux" >> "$GITHUB_STEP_SUMMARY"
+            echo "    npm stage approve <stage-id>" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Server publish skipped (no server changes since last production tag)." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -406,12 +431,12 @@ jobs:
               gh release create "$TAG" \
                 --repo "${{ github.repository }}" \
                 --title "Huxflux ${TAG}" \
-                --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`" \
+                --notes "Server-only release. The npm release is staged and installable once a maintainer approves it with 2FA." \
                 $EXTRA_FILES
             else
               gh release create "$TAG" \
                 --repo "${{ github.repository }}" \
                 --title "Huxflux ${TAG}" \
-                --notes "Server-only release. Install with: \`npm install -g @minuthq/huxflux@latest\`"
+                --notes "Server-only release. The npm release is staged and installable once a maintainer approves it with 2FA."
             fi
           fi

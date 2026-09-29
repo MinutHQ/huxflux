@@ -185,29 +185,17 @@ if [ "$CHANNEL" = "latest" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
 fi
 
 # ── Configure npm registry ───────────────────────────────────────────────────
-# GitHub Packages requires the scope registry and an auth token
+# Huxflux is on public npm, so no auth is needed. Earlier versions were only on
+# GitHub Packages and pinned the scope there (with a token); drop that pin so
+# the install resolves against npmjs. Any other pin is left as the user set it.
 NPMRC="$HOME/.npmrc"
-if ! grep -q "@minuthq:registry=https://npm.pkg.github.com" "$NPMRC" 2>/dev/null; then
-  echo "@minuthq:registry=https://npm.pkg.github.com" >> "$NPMRC"
-fi
-
-if ! grep -q '//npm.pkg.github.com/:_authToken=.' "$NPMRC" 2>/dev/null; then
-  echo ""
-  warn "GitHub Packages requires a personal access token with ${BOLD}read:packages${RESET} scope."
-  echo -e "     Create one at: ${DIM}https://github.com/settings/tokens/new?scopes=read:packages${RESET}"
-  echo ""
-  if [ -t 0 ] || [ -e /dev/tty ]; then
-    printf "  Paste your GitHub token: "
-    read -rs GH_TOKEN </dev/tty
-    echo ""
-    if [ -z "$GH_TOKEN" ]; then
-      fail "No token provided. Add it manually to ~/.npmrc:\n\n     //npm.pkg.github.com/:_authToken=YOUR_TOKEN\n"
-    fi
-    printf '//npm.pkg.github.com/:_authToken=%s\n' "${GH_TOKEN}" >> "$NPMRC"
-    ok "Token saved to ~/.npmrc"
-  else
-    fail "No GitHub token configured and no TTY available for prompt.\n\n     Add it manually to ~/.npmrc:\n\n     //npm.pkg.github.com/:_authToken=YOUR_TOKEN\n"
-  fi
+if grep -qE '^[[:space:]]*@minuthq:registry[[:space:]]*=.*npm\.pkg\.github\.com' "$NPMRC" 2>/dev/null; then
+  # Temp file next to the target so the replacement is an atomic rename: this
+  # file holds registry credentials and must never be left half-written.
+  TMP_NPMRC=$(mktemp "${NPMRC}.XXXXXX")
+  grep -vE '^[[:space:]]*@minuthq:registry[[:space:]]*=.*npm\.pkg\.github\.com' "$NPMRC" > "$TMP_NPMRC" || true
+  mv "$TMP_NPMRC" "$NPMRC"
+  info "Switched @minuthq to the public npm registry in ~/.npmrc"
 fi
 
 # ── Install ──────────────────────────────────────────────────────────────────

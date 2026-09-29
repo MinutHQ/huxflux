@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "../../api.js"
 import { queryKeys } from "../../queryKeys.js"
-import { getActiveServer } from "../servers/servers.store.js"
+import { useActiveServer } from "../servers/servers.hooks.js"
 
 export function useRepos() {
-  const serverUrl = getActiveServer()?.url ?? null
+  const serverUrl = useActiveServer()?.url ?? null
 
   return useQuery({
     queryKey: queryKeys.repos.list(serverUrl),

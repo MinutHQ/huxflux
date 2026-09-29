@@ -1,15 +1,15 @@
 import { View, Text, TouchableOpacity, ScrollView } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { useRouter } from "expo-router"
 import { useServerConfig } from "@huxflux/shared"
 import { useState } from "react"
 import { c } from "@/theme"
 import { FeedbackModal } from "../components/FeedbackModal"
-import { SectionLabel } from "../components/SettingsRow"
+import { SectionLabel, SettingsCard, SettingsNavRow } from "../components/SettingsRow"
 import { SettingsServerCard } from "../components/SettingsServerCard"
-import { GeneralSection, GitSection } from "../components/GeneralSection"
-import { ReviewPromptSection } from "../components/ReviewPromptSection"
-import { ThemePicker } from "../components/ThemePicker"
+import { ReposSection } from "../components/ReposSection"
+import { SETTINGS_SECTIONS } from "./SettingsSectionScreen"
 
 function FeedbackCard({ onOpen }: { onOpen: () => void }) {
   return (
@@ -25,6 +25,30 @@ function FeedbackCard({ onOpen }: { onOpen: () => void }) {
         </View>
         <Ionicons name="chevron-forward" size={16} color={c.fgSub} />
       </TouchableOpacity>
+    </View>
+  )
+}
+
+const DEVICE_SECTIONS = new Set(["general", "notifications", "appearance"])
+
+function SectionList({ group }: { group: "device" | "server" }) {
+  const router = useRouter()
+  const items = SETTINGS_SECTIONS.filter((s) => DEVICE_SECTIONS.has(s.id) === (group === "device"))
+  return (
+    <View>
+      <SectionLabel label={group === "device" ? "This device" : "Server"} />
+      <SettingsCard>
+        {items.map((s, i) => (
+          <SettingsNavRow
+            key={s.id}
+            icon={s.icon as React.ComponentProps<typeof Ionicons>["name"]}
+            label={s.title}
+            description={s.description}
+            onPress={() => router.push(`/settings/${s.id}`)}
+            last={i === items.length - 1}
+          />
+        ))}
+      </SettingsCard>
     </View>
   )
 }
@@ -47,12 +71,11 @@ export function SettingsScreen() {
         <Text style={{ color: c.fg, fontSize: 17, fontWeight: "700", letterSpacing: -0.4 }}>Settings</Text>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 20 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 40 }}>
         <SettingsServerCard />
-        <GeneralSection />
-        <GitSection />
-        <ReviewPromptSection />
-        <ThemePicker />
+        <ReposSection />
+        <SectionList group="server" />
+        <SectionList group="device" />
         {feedbackEnabled && <FeedbackCard onOpen={() => setFeedbackVisible(true)} />}
       </ScrollView>
 

@@ -192,7 +192,10 @@ export interface Repo {
   previewUrl?: string
   setupScript?: string
   runScript?: string
+  archiveScript?: string
+  preferences?: string
   icon?: string
+  poolSize?: number
   type?: "git" | "folder"
   createdAt: string
 }

@@ -1,14 +1,41 @@
-import { useMemo, useCallback } from "react"
+import { useMemo, useCallback, useState } from "react"
 import { Alert } from "react-native"
 import { File as ExpoFile } from "expo-file-system"
 import * as ImagePicker from "expo-image-picker"
-import { useAgent, api } from "@huxflux/shared"
+import { useAgent, api, checkAttachmentSize, describeUploadError } from "@huxflux/shared"
 import type { Attachment } from "../agents.types"
 import { extractTeamAgents } from "../utils"
 import { useChatSession } from "./useChatSession"
 import { useChatSend } from "./useChatSend"
 
-async function pickAndUploadImages(activeSessionId: string, setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>) {
+type SetAttachments = React.Dispatch<React.SetStateAction<Attachment[]>>
+type SetUploading = React.Dispatch<React.SetStateAction<number>>
+
+async function uploadAsset(sessionId: string, asset: ImagePicker.ImagePickerAsset, setAttachments: SetAttachments) {
+  const mimeType = asset.mimeType ?? "image/jpeg"
+  const name = asset.fileName ?? `image-${Date.now()}.jpg`
+  try {
+    const file = new ExpoFile(asset.uri)
+    const tooBig = checkAttachmentSize(name, asset.fileSize ?? file.size)
+    if (tooBig) {
+      Alert.alert("Image too large", tooBig)
+      return
+    }
+    const base64 = await file.base64()
+    // fire-and-forget; intentional: native image picker upload chained off a callback, not render-time
+    // eslint-disable-next-line no-restricted-syntax
+    const uploaded = await api.agents.uploadFile(sessionId, name, `data:${mimeType};base64,${base64}`, mimeType)
+    setAttachments((prev) => [...prev, { ...uploaded, localUri: asset.uri }])
+  } catch (err) {
+    Alert.alert("Upload failed", describeUploadError(name, err))
+  }
+}
+
+async function pickAndUploadImages(sessionId: string | null, setAttachments: SetAttachments, setUploading: SetUploading) {
+  if (!sessionId) {
+    Alert.alert("No chat yet", "Wait for the chat to finish loading, then attach the image again.")
+    return
+  }
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
   if (status !== "granted") {
     Alert.alert("Permission needed", "Allow photo access to attach images.")
@@ -20,20 +47,12 @@ async function pickAndUploadImages(activeSessionId: string, setAttachments: Reac
     allowsMultipleSelection: true,
   })
   if (result.canceled || !result.assets.length) return
+  // One at a time: each upload holds the whole photo as a base64 string, and
+  // several large photos at once can exhaust memory on low-end phones.
+  setUploading((n) => n + result.assets.length)
   for (const asset of result.assets) {
-    try {
-      const file = new ExpoFile(asset.uri)
-      const base64 = await file.base64()
-      const mimeType = asset.mimeType ?? "image/jpeg"
-      const name = asset.fileName ?? `image-${Date.now()}.jpg`
-      const dataUrl = `data:${mimeType};base64,${base64}`
-      // fire-and-forget; intentional: native image picker upload chained off a callback, not render-time
-      // eslint-disable-next-line no-restricted-syntax
-      const uploaded = await api.agents.uploadFile(activeSessionId, name, dataUrl, mimeType)
-      setAttachments((prev) => [...prev, { ...uploaded, localUri: asset.uri }])
-    } catch {
-      Alert.alert("Upload failed", "Could not upload the selected image.")
-    }
+    await uploadAsset(sessionId, asset, setAttachments)
+    setUploading((n) => n - 1)
   }
 }
 
@@ -62,9 +81,9 @@ export function useAgentChat(rootId: string) {
     if (agent) session.createSession(agent)
   }, [agent, session])
 
+  const [uploadingCount, setUploadingCount] = useState(0)
   const pickImage = useCallback(() => {
-    if (!session.activeSessionId) return
-    pickAndUploadImages(session.activeSessionId, send.setAttachments)
+    pickAndUploadImages(session.activeSessionId, send.setAttachments, setUploadingCount)
   }, [session.activeSessionId, send.setAttachments])
 
   return {
@@ -77,5 +96,6 @@ export function useAgentChat(rootId: string) {
     messages, teamAgents, isStreaming,
     ...send,
     pickImage,
+    uploadingCount,
   }
 }

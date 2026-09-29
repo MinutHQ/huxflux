@@ -5,11 +5,10 @@
 //     (consumed by `apps/server/.../settings/service.ts#getSettings`)
 //   - the TypeScript shape (`HuxfluxSettings`) consumed by every settings
 //     reader / writer on web, server, and mobile
-//   - human-readable metadata (label / description / section) reserved for a
-//     future generic settings-UI renderer. The metadata is NOT consumed yet;
-//     the existing hand-written sections under
-//     `apps/web/src/domains/settings/sections/*` continue to render themselves
-//     and remain the authoritative client UI for now.
+//   - human-readable metadata (label / description / section) consumed by the
+//     mobile settings renderer (`apps/mobile/.../server-settings/SchemaField.tsx`).
+//     The web sections under `apps/web/src/domains/settings/sections/*` are
+//     still hand-written and do not read the metadata yet.
 //
 // Adding a new server setting: add an entry below. `HuxfluxSettings` and
 // `settingsDefaults` derive automatically — no other file needs to change.

@@ -1,12 +1,11 @@
 import {
   IconFolderSymlink,
   IconMessageCircle,
-  IconPaperclip,
-  IconPhoto,
   IconX,
 } from "@tabler/icons-react"
 import type { AgentSummary, PRComment, FileChange } from "@huxflux/shared"
 import { TerminalChip } from "./TerminalChip"
+import { AttachmentThumb } from "./AttachmentThumb"
 
 interface Attachment {
   name: string
@@ -59,21 +58,6 @@ function CommentChip({ c, fileChanges, onRemoveComment, onOpenDiffFile }: {
   )
 }
 
-function FileChip({ f, onRemove }: { f: Attachment; onRemove: () => void }) {
-  return (
-    <div className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-secondary border border-border text-[11px]">
-      {f.mimeType.startsWith("image/")
-        ? <IconPhoto size={12} className="text-muted-foreground/60 shrink-0" />
-        : <IconPaperclip size={12} className="text-muted-foreground/60 shrink-0" />
-      }
-      <span className="font-medium text-foreground/80 max-w-[120px] truncate">{f.name}</span>
-      <button onClick={onRemove} className="text-muted-foreground/40 hover:text-foreground transition-colors ml-0.5">
-        <IconX size={11} />
-      </button>
-    </div>
-  )
-}
-
 function LinkedAgentChip({ a, onRemove }: { a: AgentSummary; onRemove: () => void }) {
   return (
     <div className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px]">
@@ -105,12 +89,12 @@ export function AttachmentChips({
     || mentionAttachments.some((m) => m.type === "terminal")
   if (!hasChips) return null
   return (
-    <div className="flex flex-wrap gap-2 px-4 pt-3">
+    <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
       {pendingComments.map((c) => (
         <CommentChip key={c.id} c={c} fileChanges={fileChanges} onRemoveComment={onRemoveComment} onOpenDiffFile={onOpenDiffFile} />
       ))}
       {attachments.map((f) => (
-        <FileChip key={f.path} f={f} onRemove={() => onRemoveAttachment(f.path)} />
+        <AttachmentThumb key={f.path} file={f} size="sm" onRemove={() => onRemoveAttachment(f.path)} />
       ))}
       {linkedAgents.map((a) => (
         <LinkedAgentChip key={a.id} a={a} onRemove={() => onRemoveLinkedAgent(a.id)} />

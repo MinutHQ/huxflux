@@ -1,10 +1,30 @@
 import { View, Text } from "react-native"
 import { memo } from "react"
-import type { Message } from "@huxflux/shared"
+import { parseAttachedFiles, type Message } from "@huxflux/shared"
 import { c } from "@/theme"
 import { MessageContent } from "./MessageContent"
 import { ThinkingBlock } from "./ThinkingBlock"
 import { ToolCallsList } from "./ToolCallsList"
+import { AttachmentImage } from "./AttachmentImage"
+
+function UserBubble({ content }: { content: string }) {
+  const { files, text } = parseAttachedFiles(content)
+  const displayText = text.trim()
+  return (
+    <View style={{ alignItems: "flex-end", gap: 6, maxWidth: "80%" }}>
+      {files.length > 0 && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6 }}>
+          {files.map((f) => <AttachmentImage key={f.path} file={f} size={112} />)}
+        </View>
+      )}
+      {displayText ? (
+        <View style={{ backgroundColor: c.secondary, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }}>
+          <Text style={{ color: c.fg, fontSize: 14, lineHeight: 20 }}>{displayText}</Text>
+        </View>
+      ) : null}
+    </View>
+  )
+}
 
 export const MessageBubble = memo(function MessageBubble({ message, isStreaming: isStreamingProp }: {
   message: Message
@@ -22,9 +42,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isStreaming:
   return (
     <View style={{ paddingHorizontal: 16, paddingVertical: 6, alignItems: isUser ? "flex-end" : "flex-start" }}>
       {isUser ? (
-        <View style={{ backgroundColor: c.secondary, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10, maxWidth: "80%" }}>
-          <Text style={{ color: c.fg, fontSize: 14, lineHeight: 20 }}>{message.content}</Text>
-        </View>
+        <UserBubble content={message.content} />
       ) : (
         <View style={{ maxWidth: "94%" }}>
           {/* Thinking block */}

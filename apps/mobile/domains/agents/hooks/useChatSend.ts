@@ -1,14 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, queryKeys, type Agent } from "@huxflux/shared"
+import { api, buildAttachedFilesBlock, queryKeys, type Agent } from "@huxflux/shared"
 import { consumeSetupMessage } from "@/lib/setupMessage"
 import type { Attachment } from "../agents.types"
-
-function buildContent(text: string, attachments: Attachment[]) {
-  if (attachments.length === 0) return text
-  const fileBlock = attachments.map((f) => `- ${f.name}: ${f.path}`).join("\n")
-  return `Attached files:\n${fileBlock}\n\n---\n\n${text}`
-}
 
 /**
  * Owns the message-send pipeline: input draft, queued-while-streaming, attachments,
@@ -51,7 +45,7 @@ export function useChatSend(rootId: string, activeSessionId: string | null, isSt
   function handleSend() {
     const text = input.trim()
     if ((!text && attachments.length === 0) || !rootId || sending) return
-    const content = buildContent(text, attachments)
+    const content = buildAttachedFilesBlock(text, attachments)
     setInput("")
     setAttachments([])
     if (isStreaming) {

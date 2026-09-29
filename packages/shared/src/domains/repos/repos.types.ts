@@ -21,7 +21,8 @@ export const repoSchema = z.object({
   preferences: z.string().nullish(),  // JSON blob: Record<string, string>
   icon: z.string().nullish(),
   poolSize: z.number().nullish(),
-  type: z.enum(["git", "folder"]),
+  // Older servers predate the folder feature and omit `type`; treat those rows as git.
+  type: z.enum(["git", "folder"]).default("git"),
   createdAt: z.string(),
 })
 
@@ -39,7 +40,12 @@ export const createRepoBodySchema = repoSchema
 
 export type CreateRepoBody = z.infer<typeof createRepoBodySchema>
 
-export const updateRepoBodySchema = repoSchema.partial()
+// `.partial()` keeps the `type` default, which would stamp "git" onto every
+// PATCH and silently convert folder repos. Keep `type` truly optional here.
+export const updateRepoBodySchema = repoSchema
+  .omit({ type: true })
+  .partial()
+  .extend({ type: z.enum(["git", "folder"]).optional() })
 
 export type UpdateRepoBody = z.infer<typeof updateRepoBodySchema>
 

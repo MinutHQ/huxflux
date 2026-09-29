@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native"
 import { useState, useEffect, useMemo } from "react"
 import { WebView } from "react-native-webview"
-import { api, getActiveServer, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
+import { api, useActiveServer, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import { c } from "@/theme"
 
 function buildTerminalHtml(wsUrl: string) {
@@ -111,7 +111,7 @@ export function TerminalPane({ agentId }: { agentId: string }) {
   const activeTerminal = tabs.find((t) => t.id === activeTermTab)
   const terminalId = activeTerminal?.terminalId ?? "t1"
 
-  const server = getActiveServer()
+  const server = useActiveServer()
   const base = server?.url ?? "http://localhost:4321"
   const wsBase = base.replace(/^http/, "ws")
   const wsUrl = `${wsBase}/ws/pty/${agentId}?terminalId=${encodeURIComponent(terminalId)}&fresh=1${server?.token ? `&token=${server.token}` : ""}`

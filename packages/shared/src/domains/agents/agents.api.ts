@@ -196,6 +196,8 @@ export const agentsApi = {
     reqValidated(uploadResponseSchema, `/api/agents/${agentId}/upload`, {
       method: "POST",
       body: JSON.stringify(uploadFileBodySchema.parse({ name, data, mimeType })),
+      // Large photos over a tunnel take well past the default 15s.
+      timeoutMs: 180_000,
     }),
 
   // System (used by agent open-in-editor)

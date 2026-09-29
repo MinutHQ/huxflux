@@ -29,13 +29,14 @@ interface UseChatViewActionsArgs {
   pendingQuestion?: PendingQuestion | null
   onClearPendingQuestion?: () => void
   uploadFiles: (files: File[]) => void
+  uploadingCount: number
 }
 
 export function useChatViewActions(args: UseChatViewActionsArgs) {
   const queryClient = useQueryClient()
   const { agent, input, setInput, textareaRef, pendingComments, attachments, setAttachments,
     setLinkedAgents, planMode, setPlanMode, setAwaitingPlanApproval, effort, mentionsSlash,
-    chatSend, onClearComments, pendingQuestion, onClearPendingQuestion, uploadFiles } = args
+    chatSend, onClearComments, pendingQuestion, onClearPendingQuestion, uploadFiles, uploadingCount } = args
 
   function handleInputChange(value: string) {
     setInput(() => value)
@@ -65,7 +66,7 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
   function handleSend() {
     const text = input.trim()
     if ((!text && pendingComments.length === 0 && attachments.length === 0) || chatSend.isSending) return
-    if (clearConversation.isPending) return
+    if (clearConversation.isPending || uploadingCount > 0) return
     const isPlan = planMode
     setInput(() => "")
     if (textareaRef.current) textareaRef.current.style.height = "auto"

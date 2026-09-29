@@ -22,6 +22,9 @@ import {
   resolvePath,
   detectBranchFrom,
   maintainReserveOnSetupScriptChange,
+  buildRepoInsert,
+  buildRepoPatch,
+  type CreateRepoInput,
 } from "./repos.service.js"
 
 const idParamsSchema = z.object({ id: z.string() })
@@ -41,7 +44,7 @@ const reposRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post("/api/repos", {
     schema: { body: createRepoBodySchema },
   }, async (req, reply) => {
-    return createRepoHandler(req.body as Omit<Repo, "id" | "createdAt">, reply)
+    return createRepoHandler(req.body as CreateRepoInput, reply)
   })
 
   app.patch("/api/repos/:id", {
@@ -76,7 +79,7 @@ const reposRoutes: FastifyPluginAsyncZod = async (app) => {
   })
 }
 
-async function createRepoHandler(body: Omit<Repo, "id" | "createdAt">, reply: FastifyReply): Promise<unknown> {
+async function createRepoHandler(body: CreateRepoInput, reply: FastifyReply): Promise<unknown> {
   const existing = db.select().from(repos).where(eq(repos.path, body.path)).get()
   if (existing) {
     reply.code(409)
@@ -84,37 +87,15 @@ async function createRepoHandler(body: Omit<Repo, "id" | "createdAt">, reply: Fa
   }
   const now = new Date().toISOString()
   const id = uuid()
-  await db.insert(repos).values({
-    id,
-    name: body.name,
-    path: body.path,
-    workspacesPath: body.workspacesPath ?? path.join(config.workspacesBase, body.name),
-    branchFrom: body.branchFrom ?? "origin/main",
-    branchPrefix: body.branchPrefix ?? null,
-    remote: body.remote ?? "origin",
-    previewUrl: body.previewUrl,
-    setupScript: body.setupScript,
-    runScript: body.runScript,
-    createdAt: now,
-  })
+  await db.insert(repos).values(buildRepoInsert(body, id, now))
   reply.code(201)
   return db.select().from(repos).where(eq(repos.id, id)).get()
 }
 
 async function patchRepoHandler(id: string, body: Partial<Repo>, reply: FastifyReply): Promise<unknown> {
   const before = db.select().from(repos).where(eq(repos.id, id)).get()
-  await db.update(repos).set({
-    ...(body.name !== undefined && { name: body.name }),
-    ...(body.path !== undefined && { path: body.path }),
-    ...(body.workspacesPath !== undefined && { workspacesPath: body.workspacesPath }),
-    ...(body.branchFrom !== undefined && { branchFrom: body.branchFrom }),
-    ...(body.branchPrefix !== undefined && { branchPrefix: body.branchPrefix }),
-    ...(body.remote !== undefined && { remote: body.remote }),
-    ...(body.previewUrl !== undefined && { previewUrl: body.previewUrl }),
-    ...(body.setupScript !== undefined && { setupScript: body.setupScript }),
-    ...(body.runScript !== undefined && { runScript: body.runScript }),
-    ...(body.icon !== undefined && { icon: body.icon }),
-  }).where(eq(repos.id, id))
+  const patch = buildRepoPatch(body)
+  if (Object.keys(patch).length > 0) await db.update(repos).set(patch).where(eq(repos.id, id))
   const updated = db.select().from(repos).where(eq(repos.id, id)).get()
   if (!updated) return reply.code(404).send({ error: "Not found" })
 

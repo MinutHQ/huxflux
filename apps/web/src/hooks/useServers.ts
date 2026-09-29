@@ -7,6 +7,7 @@ import {
   getActiveServerId,
   setActiveServerId,
   getActiveServer,
+  subscribeServers,
   type HuxfluxServer,
 } from "@huxflux/shared"
 
@@ -19,16 +20,13 @@ export function useServers() {
     setActiveIdState(getActiveServerId())
   }, [])
 
-  // Keep all useServers instances in sync via the serverStore event
-  useEffect(() => {
-    window.addEventListener("huxflux:servers-changed", refresh)
-    return () => window.removeEventListener("huxflux:servers-changed", refresh)
-  }, [refresh])
+  // Keep all useServers instances in sync via the store subscription
+  useEffect(() => subscribeServers(refresh), [refresh])
 
   const add = useCallback(
     (s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServer => {
       const server = addServer(s)
-      // refresh is handled by the huxflux:servers-changed event
+      // refresh is handled by the store subscription
       return server
     },
     []

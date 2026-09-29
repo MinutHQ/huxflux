@@ -1,18 +1,21 @@
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, ActivityIndicator } from "react-native"
+import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { api, queryKeys, type Agent } from "@huxflux/shared"
+import { api, parseAttachedFiles, queryKeys, type Agent } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { MODELS, shortModel } from "../utils"
 import type { Attachment } from "../agents.types"
+import { AttachmentImage } from "./AttachmentImage"
 
 function QueuedMessagePreview({ queuedMessage, onClear }: { queuedMessage: string; onClear: () => void }) {
+  const { files, text } = parseAttachedFiles(queuedMessage)
+  const label = text.trim() || `${files.length} attachment${files.length === 1 ? "" : "s"}`
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, paddingHorizontal: 4 }}>
       <Ionicons name="time-outline" size={12} color={c.fgSub} />
       <Text style={{ color: c.fgSub, fontSize: 11, flex: 1 }} numberOfLines={1}>
-        Queued: {queuedMessage}
+        Queued: {label}
       </Text>
       <TouchableOpacity onPress={onClear}>
         <Ionicons name="close" size={14} color={c.fgSub} />
@@ -21,24 +24,27 @@ function QueuedMessagePreview({ queuedMessage, onClear }: { queuedMessage: strin
   )
 }
 
-function AttachmentStrip({ attachments, onRemove }: { attachments: Attachment[]; onRemove: (path: string) => void }) {
+function AttachmentStrip({ attachments, uploadingCount, onRemove }: {
+  attachments: Attachment[]
+  uploadingCount: number
+  onRemove: (path: string) => void
+}) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 8 }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }} contentContainerStyle={{ gap: 8, paddingTop: 4, paddingRight: 4 }}>
       {attachments.map((f) => (
         <View key={f.path} style={{ position: "relative" }}>
-          {f.mimeType.startsWith("image/") ? (
-            <Image source={{ uri: f.localUri }} style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: c.card }} />
-          ) : (
-            <View style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="document-outline" size={24} color={c.fgSub} />
-            </View>
-          )}
+          <AttachmentImage file={f} />
           <TouchableOpacity
             onPress={() => onRemove(f.path)}
             style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: c.fg, alignItems: "center", justifyContent: "center" }}
           >
             <Ionicons name="close" size={11} color={c.bg} />
           </TouchableOpacity>
+        </View>
+      ))}
+      {Array.from({ length: uploadingCount }, (_, i) => (
+        <View key={`uploading-${i}`} style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: c.card, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={c.fgSub} />
         </View>
       ))}
     </ScrollView>
@@ -105,7 +111,7 @@ function SendOrStopButton({ canSend, sending, isStreaming, queuedMessage, active
 export function ChatInputBar({
   agent, activeSessionId,
   input, setInput,
-  attachments, setAttachments,
+  attachments, setAttachments, uploadingCount,
   queuedMessage, setQueuedMessage,
   sending, thinking, setThinking, planMode, setPlanMode,
   isStreaming, hasMessages,
@@ -118,6 +124,7 @@ export function ChatInputBar({
   setInput: (s: string) => void
   attachments: Attachment[]
   setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
+  uploadingCount: number
   queuedMessage: string | null
   setQueuedMessage: (s: string | null) => void
   sending: boolean
@@ -146,7 +153,7 @@ export function ChatInputBar({
     })))
   }
 
-  const canSend = !!(input.trim() || attachments.length > 0) && !sending
+  const canSend = !!(input.trim() || attachments.length > 0) && !sending && uploadingCount === 0
   const placeholder = isStreaming
     ? (queuedMessage ? "Replace queued message…" : "Queue a follow-up…")
     : !hasMessages ? "Tell the agent what to work on…" : "Add a follow up"
@@ -154,9 +161,10 @@ export function ChatInputBar({
   return (
     <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + bottomInset }}>
       {queuedMessage && <QueuedMessagePreview queuedMessage={queuedMessage} onClear={() => setQueuedMessage(null)} />}
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || uploadingCount > 0) && (
         <AttachmentStrip
           attachments={attachments}
+          uploadingCount={uploadingCount}
           onRemove={(path) => setAttachments((prev) => prev.filter((a) => a.path !== path))}
         />
       )}

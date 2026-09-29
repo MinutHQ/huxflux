@@ -43,7 +43,7 @@ None.
 ## Quirks
 
 - `settingsSchema` is the single source of truth for the settings blob: the `HuxfluxSettings` type, `settingsDefaults`, and the UI metadata all derive from one object literal. Adding a new setting means adding one entry there; no other file needs to change.
-- The `label` / `description` / `section` metadata is **forward-compatible**: a future generic settings-UI renderer will consume it. Today the hand-written sections under `apps/web/src/domains/settings/sections/*` still render themselves and remain the authoritative client UI. Updating the schema's metadata does NOT change what the current UI displays.
+- The `label` / `description` / `section` metadata drives the mobile settings screens (`apps/mobile/domains/settings/components/server-settings/SchemaField.tsx` renders an entry by its `type`). The web sections under `apps/web/src/domains/settings/sections/*` are still hand-written, so a metadata change shows up on mobile but not on web until those are migrated.
 - `ProviderInfo` is intentionally private to this domain (not exported from `index.ts`). Consumers don't need to import the type directly — they work through `settingsApi`.
 - `getServerConfig` and `getProviders` live here even though they're consumed by the servers / chat / settings UI surfaces. They are server-level configuration endpoints, not agent or repo endpoints, so settings is their natural home.
 - `submitFeedback` lives here because the in-app feedback dialog ships with the settings / about surface. The endpoint creates a GitHub issue server-side but the client surface is settings-shaped.

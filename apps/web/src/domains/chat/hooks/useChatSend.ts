@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, isAgentStreaming, queryKeys } from "@huxflux/shared"
+import { api, buildAttachedFilesBlock, isAgentStreaming, queryKeys } from "@huxflux/shared"
 import type { Agent, Message, PRComment, AgentSummary } from "@huxflux/shared"
 import type { MentionAttachment } from "./useMentionsAndSlash"
 import { isClaudeFamilyProvider } from "../config"
@@ -41,10 +41,7 @@ async function buildContent(args: UseChatSendArgs, text: string): Promise<string
     content = `PR review comments:\n\n${commentContext}\n\n---\n\n${content}`
   }
 
-  if (attachments.length > 0) {
-    const fileBlock = attachments.map((f) => `- ${f.name}: ${f.path}`).join("\n")
-    content = `Attached files:\n${fileBlock}\n\n---\n\n${content}`
-  }
+  content = buildAttachedFilesBlock(content, attachments)
 
   // Replace @name mentions inline with their full paths
   const fileMentions = mentionAttachments.filter((m): m is { type: "file"; path: string; name: string } => m.type === "file")

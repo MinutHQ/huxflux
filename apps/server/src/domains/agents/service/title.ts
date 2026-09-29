@@ -1,5 +1,13 @@
 // eslint-disable-next-line no-restricted-imports -- cached one-shot: which claude runs once then caches
 import { execFileSync, spawn } from "node:child_process"
+import { parseAttachedFiles } from "@huxflux/shared"
+
+// Titles come from what the user wrote, not the attachments block in front of
+// it. An attachment-only message falls back to the first file's name.
+function titleSource(content: string): string {
+  const { files, text } = parseAttachedFiles(content)
+  return text.trim() || files[0]?.name || content
+}
 
 let _claudeBin: string | null = null
 function getClaudeBin(): string {
@@ -11,7 +19,8 @@ function getClaudeBin(): string {
 }
 
 /** Use an LLM to generate a short, descriptive title for a conversation. */
-export async function generateTitle(content: string): Promise<string> {
+export async function generateTitle(rawContent: string): Promise<string> {
+  const content = titleSource(rawContent)
   const prompt = `Generate a short title (max 6 words) for a coding conversation that starts with this message. Return ONLY the title, nothing else. No quotes, no punctuation at the end.\n\nMessage: ${content.slice(0, 500)}`
 
   return new Promise((resolve, reject) => {
@@ -41,7 +50,7 @@ export async function generateTitle(content: string): Promise<string> {
 
 /** Fallback: derive a short title from the first user message. */
 export function deriveTitle(content: string): string {
-  const first = content.replace(/\s+/g, " ").trim().split(/[.\n!?]/)[0].trim()
+  const first = titleSource(content).replace(/\s+/g, " ").trim().split(/[.\n!?]/)[0].trim()
   if (first.length <= 52) return first
   const cut = first.slice(0, 52)
   const lastSpace = cut.lastIndexOf(" ")

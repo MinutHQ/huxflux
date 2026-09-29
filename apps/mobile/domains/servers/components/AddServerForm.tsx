@@ -2,10 +2,6 @@ import { View, Text, TextInput, TouchableOpacity } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { c } from "@/theme"
 
-// `c.accent` is not defined in theme.ts (pre-existing bug, see agents README) —
-// preserved verbatim from source via a typed cast.
-const accent = (c as Record<string, string>).accent
-
 export function AddServerForm({
   name, setName, input, setInput, token, setToken,
   error, loading, onCancel, onAdd,
@@ -65,9 +61,9 @@ export function AddServerForm({
         <TouchableOpacity
           onPress={onAdd}
           disabled={disabled}
-          style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: accent, alignItems: "center", opacity: disabled ? 0.5 : 1 }}
+          style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: c.accent, alignItems: "center", opacity: disabled ? 0.5 : 1 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "600" }}>{loading ? "Verifying…" : "Add"}</Text>
+          <Text style={{ color: c.accentFg, fontWeight: "600" }}>{loading ? "Verifying…" : "Add"}</Text>
         </TouchableOpacity>
       </View>
     </View>

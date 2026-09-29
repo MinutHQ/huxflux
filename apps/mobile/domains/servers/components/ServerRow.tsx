@@ -3,10 +3,6 @@ import { Ionicons } from "@expo/vector-icons"
 import type { HuxfluxServer, ServerStatus } from "@huxflux/shared"
 import { c } from "@/theme"
 
-// `c.accent` is not defined in theme.ts (pre-existing bug, see agents README) —
-// preserved verbatim from source via a typed cast.
-const accent = (c as Record<string, string>).accent
-
 export function StatusDot({ status }: { status: ServerStatus }) {
   const color =
     status === "online" ? c.success :
@@ -42,7 +38,7 @@ export function ServerRow({
       style={{
         backgroundColor: c.card,
         borderWidth: 1,
-        borderColor: isActive ? accent : c.border,
+        borderColor: isActive ? c.accent : c.border,
         borderRadius: 12,
         padding: 14,
         marginBottom: 10,
@@ -60,7 +56,7 @@ export function ServerRow({
         }
       </View>
       {isActive && status !== "unauthorized" && (
-        <Text style={{ color: accent, fontSize: 12, fontWeight: "600" }}>Active</Text>
+        <Text style={{ color: c.accent, fontSize: 12, fontWeight: "600" }}>Active</Text>
       )}
       <TouchableOpacity onPress={onEdit} hitSlop={8} style={{ padding: 4 }}>
         <Ionicons name="pencil-outline" size={15} color={status === "unauthorized" ? c.warning : c.fgSub} />

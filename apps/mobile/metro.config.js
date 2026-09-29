@@ -52,6 +52,22 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     const target = path.resolve(projectRoot, rest)
     return context.resolveRequest(context, target, platform)
   }
+  // packages/shared is ESM-style TypeScript: relative imports carry a `.js`
+  // suffix that TypeScript maps to the `.ts` source. Metro does not, so retry
+  // with the TypeScript extensions when the `.js` path does not exist.
+  if (moduleName.startsWith(".") && moduleName.endsWith(".js")) {
+    try {
+      return context.resolveRequest(context, moduleName, platform)
+    } catch (err) {
+      const base = moduleName.slice(0, -3)
+      for (const ext of [".ts", ".tsx"]) {
+        try {
+          return context.resolveRequest(context, base + ext, platform)
+        } catch { /* try next */ }
+      }
+      throw err
+    }
+  }
   return context.resolveRequest(context, moduleName, platform)
 }
 

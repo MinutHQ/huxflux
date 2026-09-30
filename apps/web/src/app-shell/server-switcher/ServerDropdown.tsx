@@ -13,12 +13,12 @@ interface DropdownProps {
 
 /**
  * Portal-rendered dropdown anchored above the ServerSwitcher trigger button.
- * Lists every configured server (with status), exposes Switch/Remove/edit-token
+ * Lists every configured server (with status), exposes switch and edit-token
  * affordances, and folds in `AddServerForm` for new entries. Closes on
  * outside click.
  */
 export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
-  const { servers, activeId, setActive, remove, update, refresh } = useServers()
+  const { servers, activeId, setActive, update, refresh } = useServers()
   const statuses = useServerStatus(servers)
   const [showAdd, setShowAdd] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -80,7 +80,6 @@ export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
             status={statuses[server.id] ?? "checking"}
             isActive={server.id === activeId}
             onSetActive={() => { setActive(server.id); onClose() }}
-            onRemove={() => remove(server.id)}
             onUpdateToken={(token) => update(server.id, { token })}
           />
         ))}

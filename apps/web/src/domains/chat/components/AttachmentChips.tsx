@@ -6,6 +6,8 @@ import {
 import type { AgentSummary, PRComment, FileChange } from "@huxflux/shared"
 import { TerminalChip } from "./TerminalChip"
 import { AttachmentThumb } from "./AttachmentThumb"
+import { UploadingThumb } from "./UploadingThumb"
+import type { PendingUpload } from "./chatInputBarTypes"
 
 interface Attachment {
   name: string
@@ -19,6 +21,7 @@ interface AttachmentChipsProps {
   agentId: string
   pendingComments: PRComment[]
   attachments: Attachment[]
+  pendingUploads: PendingUpload[]
   linkedAgents: AgentSummary[]
   mentionAttachments: MentionAttachment[]
   fileChanges: FileChange[]
@@ -74,6 +77,7 @@ export function AttachmentChips({
   agentId,
   pendingComments,
   attachments,
+  pendingUploads,
   linkedAgents,
   mentionAttachments,
   fileChanges,
@@ -85,6 +89,7 @@ export function AttachmentChips({
 }: AttachmentChipsProps) {
   const hasChips = pendingComments.length > 0
     || attachments.length > 0
+    || pendingUploads.length > 0
     || linkedAgents.length > 0
     || mentionAttachments.some((m) => m.type === "terminal")
   if (!hasChips) return null
@@ -96,6 +101,7 @@ export function AttachmentChips({
       {attachments.map((f) => (
         <AttachmentThumb key={f.path} file={f} size="sm" onRemove={() => onRemoveAttachment(f.path)} />
       ))}
+      {pendingUploads.map((u) => <UploadingThumb key={u.id} upload={u} />)}
       {linkedAgents.map((a) => (
         <LinkedAgentChip key={a.id} a={a} onRemove={() => onRemoveLinkedAgent(a.id)} />
       ))}

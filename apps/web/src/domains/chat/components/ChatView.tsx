@@ -37,6 +37,7 @@ function buildInputBarProps(args: any): ChatInputBarProps {
     agent: args.agent, allAgents: args.allAgents, providers: args.providers,
     allModels: args.allModels, capabilities: args.capabilities,
     pendingComments: args.pendingComments, attachments: args.attachments,
+    pendingUploads: args.pendingUploads,
     linkedAgents: args.linkedAgents,
     mentionAttachments: args.mentionsSlash.mentionAttachments,
     mentionQuery: args.mentionsSlash.mentionQuery,
@@ -109,7 +110,7 @@ export function ChatView(props: ChatViewProps) {
     : null
   const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
   const { setScrollContainer, setScrollContent, isAtBottom, jumpToBottom, resetToBottom } = useChatScroll()
-  const { fileInputRef, uploadFiles, uploadingCount } = useFileUpload(agent.id, setAttachments)
+  const { fileInputRef, uploadFiles, pendingUploads, uploadingCount } = useFileUpload(agent.id, setAttachments)
   const openInApps = useOpenInApps(agent.id)
 
   useDraftAutosave(agent.id, input)
@@ -143,7 +144,7 @@ export function ChatView(props: ChatViewProps) {
   const inputBarProps = buildInputBarProps({
     agent, allAgents, providers, allModels, capabilities,
     pendingComments: pendingComments as PRComment[],
-    attachments, linkedAgents, mentionsSlash,
+    attachments, pendingUploads, linkedAgents, mentionsSlash,
     input, handleInputChange: actions.handleInputChange, textareaRef,
     isInPlanMode, planMode, setPlanMode,
     showPlanApproval, planContent,

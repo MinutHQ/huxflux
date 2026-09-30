@@ -53,7 +53,7 @@ export function ServerRow({ server, status, isActive, onSetActive, onUpdateToken
           disabled={isActive}
           className="flex-1 min-w-0 flex items-center gap-2 px-2.5 py-2 text-left cursor-pointer disabled:cursor-default"
         >
-          <StatusDot status={status} />
+          <StatusDot status={status} fixedWidth />
           <div className="flex-1 min-w-0">
             <div className="text-[12px] font-medium text-foreground truncate">{server.name}</div>
             {status === "unauthorized"

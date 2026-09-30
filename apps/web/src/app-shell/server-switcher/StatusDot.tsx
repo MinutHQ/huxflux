@@ -12,9 +12,10 @@ const STATUS_LABEL: Record<ServerStatus, string> = {
  * Small colored dot indicating connection state for a server, paired with a
  * status label. Colors come from the Tailwind palette (amber/red/emerald)
  * deliberately, these are status hues, not theme tokens, and need to be
- * consistent across light/dark.
+ * consistent across light/dark. `fixedWidth` reserves room for the longest
+ * label so rows in a list stay aligned while statuses change.
  */
-export function StatusDot({ status }: { status: ServerStatus }) {
+export function StatusDot({ status, fixedWidth }: { status: ServerStatus; fixedWidth?: boolean }) {
   return (
     <span className="flex items-center gap-1.5 shrink-0">
       <span
@@ -26,7 +27,7 @@ export function StatusDot({ status }: { status: ServerStatus }) {
           status === "unauthorized" && "bg-amber-400"
         )}
       />
-      <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[status]}</span>
+      <span className={cn("text-[11px] text-muted-foreground", fixedWidth && "min-w-[72px]")}>{STATUS_LABEL[status]}</span>
     </span>
   )
 }

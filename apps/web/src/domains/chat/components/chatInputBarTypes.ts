@@ -4,6 +4,9 @@ import type { MentionAttachment, MentionOption } from "../hooks/useMentionsAndSl
 
 export interface Attachment { name: string; path: string; mimeType: string }
 
+/** A file still being read and sent to the server, shown as a placeholder in the composer. */
+export interface PendingUpload { id: string; name: string; isImage: boolean }
+
 export interface Capabilities {
   effortLevels?: string[]
   planMode?: boolean
@@ -19,6 +22,7 @@ export interface ChatInputBarProps {
   capabilities: Capabilities
   pendingComments: PRComment[]
   attachments: Attachment[]
+  pendingUploads: PendingUpload[]
   linkedAgents: AgentSummary[]
   mentionAttachments: MentionAttachment[]
   mentionQuery: string | null

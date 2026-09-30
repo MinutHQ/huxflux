@@ -69,7 +69,7 @@ export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-50 w-64 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
+      className="fixed z-50 w-80 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
       style={{ bottom, left }}
     >
       <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">

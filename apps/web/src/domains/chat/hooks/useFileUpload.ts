@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
-import { api, checkAttachmentSize, describeUploadError } from "@huxflux/shared"
+import { api, checkAttachmentSize, describeUploadError, isImageAttachment } from "@huxflux/shared"
+import type { PendingUpload } from "../components/chatInputBarTypes"
 
 interface Attachment {
   name: string
@@ -19,7 +20,8 @@ function readAsDataUrl(file: File): Promise<string> {
 
 export function useFileUpload(agentId: string, setAttachments: (updater: (prev: Attachment[]) => Attachment[]) => void) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploadingCount, setUploadingCount] = useState(0)
+  const nextUploadId = useRef(0)
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
 
   const uploadFile = useCallback(async (file: File) => {
     const tooBig = checkAttachmentSize(file.name, file.size)
@@ -27,19 +29,19 @@ export function useFileUpload(agentId: string, setAttachments: (updater: (prev: 
       toast.error(tooBig)
       return
     }
-    const toastId = toast.loading(`Uploading ${file.name}…`)
-    setUploadingCount((n) => n + 1)
+    const mimeType = file.type || "application/octet-stream"
+    const pending: PendingUpload = { id: String(nextUploadId.current++), name: file.name, isImage: isImageAttachment({ name: file.name, mimeType: file.type || undefined }) }
+    setPendingUploads((prev) => [...prev, pending])
     try {
       const data = await readAsDataUrl(file)
       // fire-and-forget; intentional: user-triggered upload chained off file selection, not render-time
       // eslint-disable-next-line no-restricted-syntax
-      const result = await api.agents.uploadFile(agentId, file.name, data, file.type || "application/octet-stream")
+      const result = await api.agents.uploadFile(agentId, file.name, data, mimeType)
       setAttachments((prev) => [...prev, result])
-      toast.dismiss(toastId)
     } catch (err) {
-      toast.error(describeUploadError(file.name, err), { id: toastId })
+      toast.error(describeUploadError(file.name, err))
     } finally {
-      setUploadingCount((n) => n - 1)
+      setPendingUploads((prev) => prev.filter((u) => u.id !== pending.id))
     }
   }, [agentId, setAttachments])
 
@@ -47,5 +49,5 @@ export function useFileUpload(agentId: string, setAttachments: (updater: (prev: 
     for (const file of files) uploadFile(file)
   }, [uploadFile])
 
-  return { fileInputRef, uploadFiles, uploadingCount }
+  return { fileInputRef, uploadFiles, pendingUploads, uploadingCount: pendingUploads.length }
 }

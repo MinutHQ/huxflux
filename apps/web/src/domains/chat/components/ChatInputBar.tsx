@@ -102,6 +102,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
           agentId={agent.id}
           pendingComments={props.pendingComments}
           attachments={props.attachments}
+          pendingUploads={props.pendingUploads}
           linkedAgents={props.linkedAgents}
           mentionAttachments={props.mentionAttachments}
           fileChanges={props.fileChanges}

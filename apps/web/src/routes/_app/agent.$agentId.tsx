@@ -308,6 +308,8 @@ function AgentRoute() {
                   onConsumeInitialMessage={() => workspace.setQueuedSetupMessage(null)}
                   initialDraft={workspace.setupDraft || null}
                   onConsumeInitialDraft={() => workspace.setSetupDraft("")}
+                  initialFocus={workspace.setupInputFocused}
+                  onConsumeInitialFocus={() => workspace.setSetupInputFocused(false)}
                 />
               </div>
             </ResizablePanel>}

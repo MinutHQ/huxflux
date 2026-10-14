@@ -80,6 +80,8 @@ export function useWorkspace(agents: AgentSummary[]) {
     setQueuedSetupMessage: pending.setQueuedSetupMessage,
     setupDraft: pending.setupDraft,
     setSetupDraft: pending.setSetupDraft,
+    setupInputFocused: pending.setupInputFocused,
+    setSetupInputFocused: pending.setSetupInputFocused,
     deletingAgent: deleting.deletingAgent,
     onAgentDeleting,
     clearDeletingAgent: deleting.clearDeleting,

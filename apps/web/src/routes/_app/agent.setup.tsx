@@ -25,6 +25,7 @@ function SetupRoute() {
         queuedMessage={workspace.queuedSetupMessage}
         draft={workspace.setupDraft}
         onDraftChange={workspace.setSetupDraft}
+        onInputFocusChange={workspace.setSetupInputFocused}
       />
     </div>
   )

@@ -85,6 +85,10 @@ export interface ChatViewProps {
   initialDraft?: string | null
   /** Called after the initial draft is consumed */
   onConsumeInitialDraft?: () => void
+  /** The setup screen's input had focus when it was replaced — focus the composer on mount */
+  initialFocus?: boolean
+  /** Called after the initial focus is consumed */
+  onConsumeInitialFocus?: () => void
 }
 
 export type { Agent, AgentSummary, FileChange, PRComment, ToolCall }

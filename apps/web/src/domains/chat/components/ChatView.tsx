@@ -22,6 +22,7 @@ import {
   useFlushDraftOnSwitch,
   useInitialMessage,
   useInitialDraft,
+  useInitialFocus,
   useResetOnAgentSwitch,
   useFocusComposerShortcut,
 } from "../hooks/useChatViewEffects"
@@ -88,7 +89,7 @@ export function ChatView(props: ChatViewProps) {
     onTabTitleChange, pendingComments = [], onAddComment, onOpenDiffFile, onRemoveComment,
     onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion,
     hideChrome = false, hideHeader = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage,
-    initialDraft, onConsumeInitialDraft,
+    initialDraft, onConsumeInitialDraft, initialFocus, onConsumeInitialFocus,
   } = props
 
   const { data: allAgents = [] } = useAgents()
@@ -119,6 +120,7 @@ export function ChatView(props: ChatViewProps) {
   useInitialDraft(initialDraft, onConsumeInitialDraft, setInput)
   useResetOnAgentSwitch(agent.id, setActiveTab, resetToBottom)
   useFocusComposerShortcut(textareaRef)
+  useInitialFocus(initialFocus, onConsumeInitialFocus, textareaRef)
 
   useEffect(() => {
     if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")

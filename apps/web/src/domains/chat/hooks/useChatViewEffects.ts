@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { api, queryKeys, useHuxfluxQuery } from "@huxflux/shared"
 import type { Agent } from "@huxflux/shared"
 import { FALLBACK_MODELS } from "../config"
@@ -74,6 +74,24 @@ export function useInitialDraft(initialDraft: string | null | undefined, onConsu
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft])
+}
+
+/**
+ * Keep focus in the session when the setup screen's input is replaced by this
+ * composer. Without it focus falls to <body> and keystrokes typed across the
+ * route flip are dropped. A layout effect so the composer is focused before
+ * the first paint; the draft lands afterwards, which moves the caret to its end.
+ */
+export function useInitialFocus(initialFocus: boolean | undefined, onConsume: (() => void) | undefined, textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
+  const applied = useRef(false)
+  useLayoutEffect(() => {
+    if (initialFocus && !applied.current) {
+      applied.current = true
+      textareaRef.current?.focus()
+      onConsume?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFocus])
 }
 
 /**

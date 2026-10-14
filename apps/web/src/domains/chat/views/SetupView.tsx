@@ -150,9 +150,10 @@ interface SetupInputProps {
   onQueueMessage: (msg: string) => void
   draft: string
   onDraftChange: (next: string) => void
+  onFocusChange?: (focused: boolean) => void
 }
 
-function SetupInput({ queuedMessage, onQueueMessage, draft, onDraftChange }: SetupInputProps) {
+function SetupInput({ queuedMessage, onQueueMessage, draft, onDraftChange, onFocusChange }: SetupInputProps) {
   const setupTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Sync the textarea height with the (workspace-owned) draft so it auto-grows
@@ -185,6 +186,8 @@ function SetupInput({ queuedMessage, onQueueMessage, draft, onDraftChange }: Set
             ref={setupTextareaRef}
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
+            onFocus={() => onFocusChange?.(true)}
+            onBlur={() => onFocusChange?.(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
@@ -221,9 +224,10 @@ interface SetupViewProps {
   queuedMessage?: string | null
   draft?: string
   onDraftChange?: (next: string) => void
+  onInputFocusChange?: (focused: boolean) => void
 }
 
-export function SetupView({ pending, onQueueMessage, queuedMessage, draft, onDraftChange }: SetupViewProps) {
+export function SetupView({ pending, onQueueMessage, queuedMessage, draft, onDraftChange, onInputFocusChange }: SetupViewProps) {
   const typedTitle = useTypewriter(pending.title, 50)
   const { visibleSteps, completedSteps } = useSetupStepProgress(pending.estimatedMs)
   const progress = Math.min(((completedSteps + 0.5) / SETUP_STEPS.length) * 100, 95)
@@ -282,6 +286,7 @@ export function SetupView({ pending, onQueueMessage, queuedMessage, draft, onDra
           onQueueMessage={onQueueMessage}
           draft={draft ?? ""}
           onDraftChange={onDraftChange}
+          onFocusChange={onInputFocusChange}
         />
       )}
     </div>

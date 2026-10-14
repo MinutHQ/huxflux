@@ -7,6 +7,7 @@ import { db } from "../../../db/index.js"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { SlashCommand } from "../agents.types.js"
+import { loadRecentCommandNames, orderCommandsByRecency, sortCommandsByName } from "../service/slashCommandOrder.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 const qQuerySchema = z.object({ q: z.string().optional() })
@@ -92,11 +93,15 @@ async function getAllCommands(extraSkillsDirs: string[] = []): Promise<SlashComm
   return all
 }
 
+// Empty query (the user just typed `/`): recently used commands first, then
+// the rest alphabetically. With a query: name matches, then description
+// matches, each alphabetical.
 function filterCommands(commands: SlashCommand[], q: string | undefined): SlashCommand[] {
-  if (!q) return commands
+  if (!q) return orderCommandsByRecency(commands, loadRecentCommandNames())
+  const sorted = sortCommandsByName(commands)
   const lower = q.toLowerCase()
-  const nameMatches = commands.filter((c) => c.name.includes(lower))
-  const descMatches = commands.filter((c) => !c.name.includes(lower) && c.description.toLowerCase().includes(lower))
+  const nameMatches = sorted.filter((c) => c.name.includes(lower))
+  const descMatches = sorted.filter((c) => !c.name.includes(lower) && c.description.toLowerCase().includes(lower))
   return [...nameMatches, ...descMatches]
 }
 

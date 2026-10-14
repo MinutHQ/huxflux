@@ -92,6 +92,7 @@ export function useChatSend(args: UseChatSendArgs) {
       // fire-and-forget; intentional: optimistic-rollback send with custom cache mutations and isSending bridged via WS streaming state
       // eslint-disable-next-line no-restricted-syntax
       await api.agents.sendMessage(agent.id, apiContent, opts)
+      if (displayText.trimStart().startsWith("/")) void queryClient.invalidateQueries({ queryKey: queryKeys.agents.slashCommandsRoot })
       return true
     } catch {
       queryClient.setQueryData<Agent>(queryKeys.agents.detail(agent.id), (old) => {

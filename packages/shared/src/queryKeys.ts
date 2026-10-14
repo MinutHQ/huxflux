@@ -47,6 +47,9 @@ export const queryKeys = {
     slashCommands: (agentId: string | undefined, q: string | null) =>
       ["slash-commands", agentId, q] as const,
     slashCommandsGlobal: (q: string | null) => ["slash-commands", q] as const,
+    // Prefix root for every slash-command query. The empty-query list is
+    // ordered by recent use, so sending a command invalidates it.
+    slashCommandsRoot: ["slash-commands"] as const,
     stats: (serverUrl: string | undefined) => ["stats", serverUrl] as const,
   },
   prs: {

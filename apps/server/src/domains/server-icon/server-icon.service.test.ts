@@ -74,6 +74,12 @@ describe("buildIconPrompt", () => {
     expect(prompt).toContain("icon.png")
     expect(prompt).toContain("ONLY raw <svg>")
   })
+
+  it("lets the description choose the style instead of forcing flat art", () => {
+    const prompt = buildIconPrompt("an owl")
+    expect(prompt).toContain("photorealistic")
+    expect(prompt).not.toContain("Flat style")
+  })
 })
 
 describe("buildIconPrompt fencing", () => {

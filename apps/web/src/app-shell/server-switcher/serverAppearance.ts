@@ -43,3 +43,11 @@ export function getServerIcon(key: string | undefined): Icon | null {
 export function getServerTileClass(key: string | undefined): string | null {
   return key ? (SERVER_COLORS[key]?.tile ?? null) : null
 }
+
+/**
+ * Mutation key for a server's in-flight icon generation. The generation
+ * outlives the appearance editor, so the tile reads its pending state by key.
+ */
+export function serverIconMutationKey(serverId: string): readonly unknown[] {
+  return ["server-icon", serverId]
+}

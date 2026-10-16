@@ -2,7 +2,7 @@
 /**
  * Dev daemon — start/stop/logs for the huxflux server in dev mode.
  * Equivalent to `huxflux start/stop/logs` but uses dev env vars:
- *   - No AUTH_TOKEN (auth disabled)
+ *   - AUTH_TOKEN "dev" unless set (the web dev build connects with it)
  *   - Port 3002
  *   - ~/huxflux/huxflux-dev.db
  *   - ~/huxflux/workspaces-dev
@@ -29,6 +29,7 @@ const DEV_ENV = {
   // Match the server's runtime: a roomy libuv threadpool so concurrent DNS/fs
   // work (the GitHub poller) doesn't starve getaddrinfo into connect timeouts.
   UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE ?? "64",
+  AUTH_TOKEN: process.env.AUTH_TOKEN ?? "dev",
   PORT: "3002",
   DB_PATH: path.join(DATA_DIR, "huxflux-dev.db"),
   WORKSPACES_BASE: path.join(DATA_DIR, "workspaces-dev"),
@@ -69,7 +70,7 @@ function cmdStart() {
   fs.writeFileSync(PID_FILE, String(child.pid))
 
   console.log(`\nhuxflux dev started  (PID ${child.pid})\n`)
-  console.log(`  URL:   http://localhost:3002  (no auth token needed)`)
+  console.log(`  URL:   http://localhost:3002  (token: ${DEV_ENV.AUTH_TOKEN === "dev" ? "dev" : "from AUTH_TOKEN"})`)
   console.log(`  DB:    ${DEV_ENV.DB_PATH}`)
   console.log(`  Logs:  ${LOG_FILE}`)
   console.log(`\n  pnpm dev:logs   — tail the server log`)

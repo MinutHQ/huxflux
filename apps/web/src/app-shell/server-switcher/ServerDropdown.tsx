@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useServers } from "@/hooks/useServers"
-import { useServerStatus, setActiveServerId, addServer } from "@huxflux/shared"
+import { useServerStatus, useServerAttention, setActiveServerId, addServer } from "@huxflux/shared"
 import { IconPlus, IconServer } from "@tabler/icons-react"
 import { AddServerForm } from "./AddServerForm"
 import { ServerRow } from "./ServerRow"
+import { RowAttention } from "./RowAttention"
+import { LayoutPicker } from "./LayoutPicker"
 
 interface DropdownProps {
   anchorRect: DOMRect
+  // "above" opens upward from the footer trigger; "right" opens beside a
+  // vertical rail, bottom-aligned with the anchor.
+  placement?: "above" | "right"
   onClose: () => void
 }
 
@@ -17,9 +22,10 @@ interface DropdownProps {
  * affordances, and folds in `AddServerForm` for new entries. Closes on
  * outside click.
  */
-export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
+export function ServerDropdown({ anchorRect, placement = "above", onClose }: DropdownProps) {
   const { servers, activeId, setActive, update, refresh } = useServers()
   const statuses = useServerStatus(servers)
+  const attention = useServerAttention(servers)
   const [showAdd, setShowAdd] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -63,8 +69,8 @@ export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [onClose])
 
-  const bottom = window.innerHeight - anchorRect.top + 6
-  const left = anchorRect.left
+  const bottom = placement === "right" ? window.innerHeight - anchorRect.bottom : window.innerHeight - anchorRect.top + 6
+  const left = placement === "right" ? anchorRect.right + 6 : anchorRect.left
 
   return createPortal(
     <div
@@ -72,16 +78,20 @@ export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
       className="fixed z-50 w-80 bg-card border border-border rounded-xl shadow-xl overflow-hidden"
       style={{ bottom, left }}
     >
-      <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+      <div className="p-1.5 space-y-0.5 max-h-80 overflow-y-auto">
         {servers.map((server) => (
-          <ServerRow
-            key={server.id}
-            server={server}
-            status={statuses[server.id] ?? "checking"}
-            isActive={server.id === activeId}
-            onSetActive={() => { setActive(server.id); onClose() }}
-            onUpdateToken={(token) => update(server.id, { token })}
-          />
+          <div key={server.id}>
+            <ServerRow
+              server={server}
+              status={statuses[server.id] ?? "checking"}
+              isActive={server.id === activeId}
+              onSetActive={() => { setActive(server.id); onClose() }}
+              onUpdateToken={(token) => update(server.id, { token })}
+            />
+            {server.id !== activeId && (
+              <RowAttention attention={attention[server.id]} onOpenAgent={(agentId) => { setActive(server.id, agentId); onClose() }} />
+            )}
+          </div>
         ))}
         {servers.length === 0 && (
           <div className="px-3 py-4 text-center text-[12px] text-muted-foreground/50">
@@ -126,6 +136,7 @@ export function ServerDropdown({ anchorRect, onClose }: DropdownProps) {
           </button>
         </div>
       )}
+      <LayoutPicker />
     </div>,
     document.body
   )

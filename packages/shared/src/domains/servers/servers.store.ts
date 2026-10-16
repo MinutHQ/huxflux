@@ -99,7 +99,7 @@ export function addServer(s: Omit<HuxfluxServer, "id" | "addedAt">): HuxfluxServ
 
 export function updateServer(
   id: string,
-  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token" | "proxyAccessToken" | "proxyRefreshToken" | "proxyAccountEmail">>
+  patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token" | "proxyAccessToken" | "proxyRefreshToken" | "proxyAccountEmail" | "icon" | "color" | "iconImage">>
 ): void {
   saveServers(getServers().map((s) => (s.id === id ? { ...s, ...patch } : s)))
 }

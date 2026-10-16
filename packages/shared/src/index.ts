@@ -295,10 +295,13 @@ export {
   parseServersSnapshot,
   notifyServersChanged,
 } from "./domains/servers/servers.store.js"
-export { useServerStatus, useServerConfig, useServersStore, useActiveServer } from "./domains/servers/servers.hooks.js"
+export { useServerStatus, useServerConfig, useServersStore, useActiveServer, useServerAttention } from "./domains/servers/servers.hooks.js"
 export type { ServersStoreState } from "./domains/servers/servers.hooks.js"
-export { huxfluxServerSchema, serverStatusSchema } from "./domains/servers/servers.types.js"
-export type { HuxfluxServer, ServerStatus } from "./domains/servers/servers.types.js"
+export { useIconGeneratorServers, generateServerIconOn } from "./domains/server-icon/server-icon.hooks.js"
+export { serverIconCapabilitiesSchema, generateServerIconBodySchema, generateServerIconResponseSchema } from "./domains/server-icon/server-icon.types.js"
+export type { ServerIconCapabilities, GenerateServerIconBody, GenerateServerIconResponse } from "./domains/server-icon/server-icon.types.js"
+export { huxfluxServerSchema, serverStatusSchema, serverAttentionSchema, attentionItemSchema, attentionReasonSchema } from "./domains/servers/servers.types.js"
+export type { HuxfluxServer, ServerStatus, ServerAttention, AttentionItem, AttentionReason } from "./domains/servers/servers.types.js"
 
 // ── proxy (tunnel wire protocol) ─────────────────────────────────────────────
 // Also available via the `@huxflux/shared/proxy` subpath, which Node consumers

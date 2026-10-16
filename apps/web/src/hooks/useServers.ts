@@ -73,7 +73,7 @@ export function useServers() {
   )
 
   const update = useCallback(
-    (id: string, patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token">>) => {
+    (id: string, patch: Partial<Pick<HuxfluxServer, "name" | "url" | "token" | "icon" | "color" | "iconImage">>) => {
       updateServer(id, patch)
       // Reload if connection details changed so WS reconnects with new settings
       if (patch.url !== undefined || patch.token !== undefined) {
@@ -102,21 +102,28 @@ export function useServers() {
     }
   }, [refresh])
 
-  const setActive = useCallback((id: string) => {
+  // `agentId` opens that agent on the new server instead of its last route.
+  const setActive = useCallback((id: string, agentId?: string) => {
     const prev = getActiveServer()
     setActiveServerId(id)
     // Reload only when switching to a different server URL so WS reconnects
     const next = getServers().find((s) => s.id === id)
-    if (prev?.url === next?.url) return
+    const home = isTauri ? "#/" : "/"
+    const agentRoute = agentId ? `${home}agent/${encodeURIComponent(agentId)}` : null
+    if (prev?.url === next?.url) {
+      // Same backend: no reconnect needed, but still open the requested agent.
+      if (agentRoute) reloadAtRoute(agentRoute)
+      return
+    }
     const route = currentRoute()
     // Switching from Settings stays in Settings; its route is not per-server.
-    if (isSettingsRoute(route)) {
+    if (isSettingsRoute(route) && !agentId) {
       window.location.reload()
       return
     }
     const routes = loadServerRoutes()
     if (prev) writeServerRoutes({ ...routes, [prev.id]: route })
-    reloadAtRoute(routes[id] ?? (isTauri ? "#/" : "/"))
+    reloadAtRoute(agentRoute ?? routes[id] ?? home)
   }, [])
 
   const activeServer = servers.find((s) => s.id === activeId) ?? servers[0] ?? null

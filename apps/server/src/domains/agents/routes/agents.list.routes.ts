@@ -7,6 +7,7 @@ import { agents, messages, toolCalls, fileChanges, terminalLines } from "../../.
 import { parsePrStatus } from "../../pull-requests/prStatus.js"
 import { getAgentPortsFromDB, getAllPortsFromDB } from "../../git/processes.js"
 import { getPendingQuestionPayload } from "../../../askStore.js"
+import { loadAttention } from "../service/attention.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -17,6 +18,10 @@ const idParamsSchema = z.object({ id: z.string() })
 export const agentsListRoutes: FastifyPluginAsyncZod = async (app) => {
   // GET /api/agents — list (excludes child tabs, soft-deleted, and task refine agents)
   app.get("/api/agents", listAgentsHandler)
+
+  // GET /api/attention — counts of agents waiting on the user, polled by other
+  // servers' switchers to badge this one
+  app.get("/api/attention", async () => loadAttention())
 
   // GET /api/agents/:id/ports — get listening ports from DB (instant)
   app.get("/api/agents/:id/ports", {

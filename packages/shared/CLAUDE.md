@@ -9,8 +9,8 @@ Read the root CLAUDE.md first.
 ```
 src/
   domains/<name>/    Per-domain shared code. Mirrors app-side domain names.
-                     Seven domains: agents, settings, repos, pull-requests,
-                     tasks, servers, wrapped.
+                     Includes agents, settings, repos, pull-requests,
+                     tasks, servers, server-icon, wrapped, and others.
   index.ts           Top-level barrel — the public surface of the package.
                      Re-exports every domain so consumers import from
                      `@huxflux/shared`, never from internal paths.

@@ -12,7 +12,7 @@ interface UseDiffCommentsArgs {
  * Owns the per-line comment-form state for `DiffView`:
  * - `commentLine` / `commentText`: the open composer (if any)
  * - `lineAnnotations`: persisted + draft annotations to feed to the pierre/diffs gutter
- * - `handleLineClick`: opens the composer when the user clicks a line gutter
+ * - `handleGutterClick`: opens the composer when the user clicks the gutter `+` (on the last line of a dragged range)
  * - `submit` / `cancel`: composer actions
  */
 export function useDiffComments({ filePath, pendingComments, onAddComment }: UseDiffCommentsArgs) {
@@ -42,10 +42,10 @@ export function useDiffComments({ filePath, pendingComments, onAddComment }: Use
     return annotations.length > 0 ? annotations : undefined
   }, [fileComments, commentLine])
 
-  const handleLineClick = useCallback(
-    (props: { lineNumber: number }) => {
+  const handleGutterClick = useCallback(
+    (range: { start: number; end: number }) => {
       if (!onAddComment) return
-      setCommentLine(props.lineNumber)
+      setCommentLine(range.end)
       setCommentText("")
       setTimeout(() => inputRef.current?.focus(), 50)
     },
@@ -79,7 +79,7 @@ export function useDiffComments({ filePath, pendingComments, onAddComment }: Use
     setCommentText,
     inputRef,
     lineAnnotations,
-    handleLineClick,
+    handleGutterClick,
     submit,
     cancel,
   }

@@ -1,12 +1,13 @@
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { api, parseAttachedFiles, queryKeys, type Agent } from "@huxflux/shared"
+import { api, parseAttachedFiles, queryKeys, type Agent, type PRComment } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { MODELS, shortModel } from "../utils"
 import type { Attachment } from "../agents.types"
 import { AttachmentImage } from "./AttachmentImage"
+import { CommentStrip } from "./files/CommentStrip"
 
 function QueuedMessagePreview({ queuedMessage, onClear }: { queuedMessage: string; onClear: () => void }) {
   const { files, text } = parseAttachedFiles(queuedMessage)
@@ -112,6 +113,7 @@ export function ChatInputBar({
   agent, activeSessionId,
   input, setInput,
   attachments, setAttachments, uploadingCount,
+  comments, onRemoveComment,
   queuedMessage, setQueuedMessage,
   sending, thinking, setThinking, planMode, setPlanMode,
   isStreaming, hasMessages,
@@ -125,6 +127,8 @@ export function ChatInputBar({
   attachments: Attachment[]
   setAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>
   uploadingCount: number
+  comments: PRComment[]
+  onRemoveComment: (id: string) => void
   queuedMessage: string | null
   setQueuedMessage: (s: string | null) => void
   sending: boolean
@@ -153,7 +157,7 @@ export function ChatInputBar({
     })))
   }
 
-  const canSend = !!(input.trim() || attachments.length > 0) && !sending && uploadingCount === 0
+  const canSend = !!(input.trim() || attachments.length > 0 || comments.length > 0) && !sending && uploadingCount === 0
   const placeholder = isStreaming
     ? (queuedMessage ? "Replace queued message…" : "Queue a follow-up…")
     : !hasMessages ? "Tell the agent what to work on…" : "Add a follow up"
@@ -161,6 +165,7 @@ export function ChatInputBar({
   return (
     <View style={{ borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12 + bottomInset }}>
       {queuedMessage && <QueuedMessagePreview queuedMessage={queuedMessage} onClear={() => setQueuedMessage(null)} />}
+      {comments.length > 0 && <CommentStrip comments={comments} onRemove={onRemoveComment} />}
       {(attachments.length > 0 || uploadingCount > 0) && (
         <AttachmentStrip
           attachments={attachments}

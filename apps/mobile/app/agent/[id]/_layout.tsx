@@ -42,10 +42,7 @@ export default function AgentLayout() {
           ),
         }}
       />
-      <Stack.Screen name="files" options={{ title: "Files" }} />
       <Stack.Screen name="pr" options={{ title: "Pull Request" }} />
-      <Stack.Screen name="diff" options={{ title: "Diff" }} />
-      <Stack.Screen name="file-content" options={{ title: "File" }} />
     </Stack>
   )
 }

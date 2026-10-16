@@ -75,8 +75,6 @@ function TaskChatPanelInner({
         loadMore={loadMore}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
-        openFileTab={null}
-        onClearFileTab={() => {}}
         hideChrome
       />
     </div>

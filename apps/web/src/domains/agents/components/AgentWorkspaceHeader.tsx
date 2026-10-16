@@ -4,6 +4,7 @@ import { isTauri } from "@/lib/platform"
 import { AgentIdentity } from "./header/AgentIdentity"
 import { BranchRow } from "./header/BranchRow"
 import { HeaderActions } from "./header/HeaderActions"
+import type { SidePaneLayout, SidePaneSection } from "../agents.types"
 
 interface AgentWorkspaceHeaderProps {
   agent: Agent
@@ -12,8 +13,11 @@ interface AgentWorkspaceHeaderProps {
   onCreatePR?: () => void
   onReview?: () => void
   onRun?: () => void
-  rightPanelVisible?: boolean
-  onToggleRightPanel?: () => void
+  sidePane?: {
+    layout: SidePaneLayout
+    onToggleTop: (section: SidePaneSection) => void
+    onToggleTerminal: () => void
+  }
   sidebarCollapsed?: boolean
 }
 
@@ -21,7 +25,7 @@ interface AgentWorkspaceHeaderProps {
  * Top bar above the per-agent chat. Three regions:
  *  - left identity (repo / title / task link)
  *  - branch line (current branch + base branch, both pickable)
- *  - right action cluster (PR badges, create PR / review / run, open-in, panel toggle)
+ *  - right action cluster (PR badges, create PR / review / run, open-in, side-pane toggles)
  */
 export function AgentWorkspaceHeader({
   agent,
@@ -30,8 +34,7 @@ export function AgentWorkspaceHeader({
   onCreatePR,
   onReview,
   onRun,
-  rightPanelVisible = true,
-  onToggleRightPanel,
+  sidePane,
   sidebarCollapsed,
 }: AgentWorkspaceHeaderProps) {
   const { data: repos = [] } = useRepos()
@@ -59,11 +62,10 @@ export function AgentWorkspaceHeader({
         repo={repo}
         isStreaming={isStreaming}
         githubEnabled={githubEnabled}
-        rightPanelVisible={rightPanelVisible}
         onCreatePR={onCreatePR}
         onReview={onReview}
         onRun={onRun}
-        onToggleRightPanel={onToggleRightPanel}
+        sidePane={sidePane}
       />
     </div>
   )

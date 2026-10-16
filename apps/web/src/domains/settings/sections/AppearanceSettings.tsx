@@ -2,7 +2,6 @@ import { useState } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@huxflux/ui"
 import { getTheme, setTheme as applyThemeSetting, type Theme } from "@/lib/theme"
 import { colorThemes, getColorTheme, getLightColorTheme, setColorTheme } from "@/lib/colorThemes"
-import { getDiffViewMode, setDiffViewMode, type DiffViewMode } from "@/lib/diffPrefs"
 import { getInlineTurnText, setInlineTurnText } from "@/lib/notificationPrefs"
 import { SettingRow } from "../components/SettingRow"
 import { SettingInfo } from "../components/SettingInfo"
@@ -13,7 +12,6 @@ export function AppearanceSettings() {
   const [theme, setTheme] = useState<Theme>(getTheme)
   const [activeColorTheme, setActiveColorTheme] = useState(getColorTheme)
   const [activeLightColorTheme, setActiveLightColorTheme] = useState(getLightColorTheme)
-  const [diffViewMode, setDiffViewModeState] = useState(() => getDiffViewMode())
   const [inlineTurnText, setInlineTurnTextState] = useState(getInlineTurnText)
 
   const isLight =
@@ -72,19 +70,6 @@ export function AppearanceSettings() {
       </div>
 
       <AppIdentitySettings />
-
-      <SettingRow>
-        <SettingInfo label="Diff view mode" description="How file changes are displayed in the workspace" />
-        <Select value={diffViewMode} onValueChange={(v: DiffViewMode) => { setDiffViewModeState(v); setDiffViewMode(v) }}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="tree">File tree</SelectItem>
-            <SelectItem value="stacked">Stacked diffs</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingRow>
 
       <SettingRow>
         <SettingInfo

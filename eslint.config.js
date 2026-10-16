@@ -17,9 +17,6 @@ const SIZE_OVERRIDES = [
   // system and have a single coherent responsibility.
   'apps/server/src/cli.ts',
   'apps/server/src/db/index.ts',
-  // Agent route hosts inline FileViewerPanel/terminalPanel scaffolding.
-  // Eligible for further split if it keeps growing, but stays flat for now.
-  'apps/web/src/routes/_app/agent.$agentId.tsx',
 ]
 
 // PERMANENT_EXCEPTIONS: code that stays flat by design. Framework conventions

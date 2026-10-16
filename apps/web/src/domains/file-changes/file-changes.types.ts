@@ -1,30 +1,4 @@
-import type { Agent, FileChange, PRComment } from "@huxflux/shared"
-
-/** A node in the unified file tree (either a directory or a file). */
-export interface FileTreeEntry {
-  name: string
-  path: string
-  type: "file" | "directory"
-  children?: FileTreeEntry[]
-}
-
-/** Props for the top-level `FileChangesView`. */
-export interface FileChangesViewProps {
-  agent: Agent
-  selectedFile: string | null
-  onFileSelect: (file: FileChange | null) => void
-  onFileContentSelect: (path: string) => void
-  onAddComment: (c: PRComment) => void
-  pendingComments?: PRComment[]
-  onRemoveComment?: (id: string) => void
-  onOpenDiffBrowser?: (scrollToPath?: string) => void
-  onOpenPRTab?: () => void
-  /** When provided, tab state is controlled externally */
-  tab?: "files" | "changes" | "pr"
-  onTabChange?: (tab: "files" | "changes" | "pr") => void
-  /** Hide the internal tab header (when tabs are rendered elsewhere) */
-  hideHeader?: boolean
-}
+import type { PRComment } from "@huxflux/shared"
 
 /** Annotation metadata for inline comment forms and persisted comments. */
 export type CommentAnnotation =
@@ -40,3 +14,25 @@ export interface PreloadedDiff {
 
 /** Merge methods supported by the PR merge dropdown. */
 export type MergeMethod = "merge" | "squash" | "rebase"
+
+/** A tab in the Files section. Preview tabs are replaced by the next single-click open. */
+export interface OpenFileTab {
+  path: string
+  preview: boolean
+}
+
+/** Unsaved editor state for one open file, kept while switching tabs. */
+export interface FileBuffer {
+  /** Current editor text. */
+  draft: string
+  /** Text as last loaded from or saved to disk. Dirty when `draft !== baseline`. */
+  baseline: string
+  scrollTop: number
+}
+
+/** Ask the Files section to open a file, optionally at a line. Bump `nonce` to repeat. */
+export interface OpenFileRequest {
+  path: string
+  line?: number
+  nonce: number
+}

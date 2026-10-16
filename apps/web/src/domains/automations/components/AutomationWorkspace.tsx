@@ -240,8 +240,6 @@ function BuilderPane({ automation, builderAgent, isStreaming, loadMore, hasMore,
         loadMore={loadMore}
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
-        openFileTab={null}
-        onClearFileTab={() => {}}
         hideChrome
         hideHeader
       />

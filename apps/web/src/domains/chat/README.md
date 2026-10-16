@@ -1,6 +1,6 @@
 # chat
 
-The agent chat view. Renders the conversation between the user and a Huxflux agent: message list (user + assistant turns with tool calls, thinking, diff summaries, todos, team agents), composer with model/effort/plan controls, @mention and slash command pickers, file/PR/diff-browser tabs, branch + open-in toolbar. Also owns the lightweight setup and teardown placeholder views shown while a worktree is being created or removed.
+The agent chat view. Renders the conversation between the user and a Huxflux agent: message list (user + assistant turns with tool calls, thinking, diff summaries, todos, team agents), composer with model/effort/plan controls, @mention and slash command pickers, branch + open-in toolbar. Also owns the lightweight setup and teardown placeholder views shown while a worktree is being created or removed.
 
 ## Owns
 
@@ -8,7 +8,7 @@ The agent chat view. Renders the conversation between the user and a Huxflux age
 - Message rendering (user bubbles, assistant bubbles, system events, thinking, tool calls, turn diff summary, PR cards)
 - Composer (input, attachments, mentions, slash commands, model picker, plan mode, effort, queued messages)
 - Top metadata bar (repo / branch / base branch / PR status / open-in)
-- Tab bar (multi-agent tabs, file / diff-browser / PR tabs)
+- Tab bar (multi-agent tabs)
 - Team agent and thread agent bars, Tasks bar (`components/TasksBar.tsx`: Claude's TaskCreate / TaskUpdate list, fed by `hooks/useTaskList.ts`), Background tasks strip (`components/BackgroundTasksStrip.tsx`: Monitor / background-Bash work the CLI is running, the "turn finished, CLI still running" state, and an End turn button that terminates only the CLI), ContextRing (context-window ring plus chat stats popover, derived from `agent.messages`; no server probe; shows the Headroom savings block when the agent has compression on), AskUserQuestion card
 - Headroom compression toggle in the composer toolbar and its install dialog (`components/HeadroomToggle.tsx`, `dialogs/HeadroomInstallDialog.tsx`)
 - Setup view shown while a worktree is being scaffolded
@@ -28,7 +28,7 @@ The agent chat view. Renders the conversation between the user and a Huxflux age
 - `@pierre/diffs` and `@pierre/diffs/react` — inline file diff rendering inside `TurnDiffSummary`
 - `react-markdown`, `remark-gfm`, `remark-breaks` — markdown rendering
 - `sonner` — toast notifications
-- `@/domains/file-changes` — provides `DiffView`, `FileContentView`, `StackedDiffView`, `AgentPRTab` (rendered when the user switches to the file / diff-browser / PR tab), and `getDiffTheme` (consumed by `useDiffTheme`).
+- `@/domains/file-changes` — provides `getDiffTheme` (consumed by `useDiffTheme`). Diffs, files and the PR tab now live in the agent workspace side pane, not in chat.
 - `@/app-shell/workspace` — `OpenFile`, `ChatTab` types from the workspace context
 - `@/lib/platform`, `@/lib/flags`, `@/lib/notificationPrefs` — platform detection, feature flags, and send-key / strip-youre-right / auto-convert / inline-turn-text preferences
 

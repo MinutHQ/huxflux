@@ -4,7 +4,7 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 
 ## Owns
 
-- The per-agent workspace header rendered above the chat: repo / agent name + task link, branch picker + base-branch picker, PR badges (review state, CI checks popover, PR number link), action buttons (Create PR, Review, Run), the "Open in editor" split-button (with SSH-aware behavior when running against a remote server) and the right-panel toggle
+- The per-agent workspace header rendered above the chat: repo / agent name + task link, branch picker + base-branch picker, PR badges (review state, CI checks popover, PR number link), action buttons (Create PR, Review, Run), the "Open in editor" split-button (with SSH-aware behavior when running against a remote server) and the side-pane section toggles
 - The per-agent terminal viewer: persisted multi-tab strip backed by the server's terminal-tab table, long-lived xterm sessions kept in a module-level store so they survive component remounts, Cmd+F search, port autodetection, and the "setup" / "run" top-tab overlays
 - The sidebar agent list: status-grouped or repo-grouped rows with thread-child nesting, inline rename, status context menu (set status, generate title, rename branch, delete with confirm), hover popover, repo + group-by filter, the new-agent flow (random bee names → branches) and add-workspace flows, plus the empty state
 - The active-processes panel rendered at the bottom of the sidebar: lists every running dev-server port across all agents, click-through to open the URL or kill the process
@@ -18,7 +18,8 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 - `ActiveProcesses` — the bottom-of-sidebar collapsible panel listing every running dev-server port across all agents
 - `HomeView` — the agent-centric landing dashboard (lifetime workspace stats, status breakdown, AI "Wrapped" summary, animated background)
 - `AgentShortcuts` — headless component that wires the agent-level keyboard shortcuts (⌘⇧D mark done, ⌘⇧⌫ archive); mounted once by `routes/_app.tsx` inside the workspace provider
-- `useAgentWorkspaceLayout` — layout + visibility state for the per-agent route (maximize toggle, right-panel + terminal visibility, Cmd/Ctrl+U / Cmd/Ctrl+J shortcuts, `useDefaultLayout` for both resizable groups)
+- `AgentWorkspace` — the per-agent workspace rendered by the agent route: header, chat, and the side pane (one top section of Diff / Files / PR over an optional terminal, each maximizable), wrapped in an error boundary
+- `useAgentWorkspaceLayout` — side pane layout state persisted per agent (open section, terminal, maximized), terminal position, Cmd/Ctrl+U / Cmd/Ctrl+J shortcuts, `useDefaultLayout` for the resizable groups
 
 ## Depends on
 

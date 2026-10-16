@@ -54,3 +54,16 @@ export interface SshInfo {
   user: string
   configured: boolean
 }
+
+/** A top section of the agent workspace side pane. Only one shows at a time. */
+export type SidePaneSection = "diff" | "files" | "pr"
+
+/** Persisted per-agent side pane layout. */
+export interface SidePaneLayout {
+  /** Visible top section, or null when only the terminal (or nothing) shows. */
+  top: SidePaneSection | null
+  /** Last opened top section, reopened by Cmd/Ctrl+U. */
+  lastTop: SidePaneSection
+  terminal: boolean
+  maximized: "top" | "terminal" | null
+}

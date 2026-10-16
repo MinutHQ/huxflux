@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, buildAttachedFilesBlock, isAgentStreaming, queryKeys } from "@huxflux/shared"
+import { api, buildAttachedFilesBlock, buildLineCommentsBlock, isAgentStreaming, queryKeys } from "@huxflux/shared"
 import type { Agent, Message, PRComment, AgentSummary } from "@huxflux/shared"
 import type { MentionAttachment } from "./useMentionsAndSlash"
 import { isClaudeFamilyProvider } from "../config"
@@ -33,13 +33,7 @@ async function buildContent(args: UseChatSendArgs, text: string): Promise<string
   let content = text
   const { agent, pendingComments, attachments, linkedAgents, mentionAttachments } = args
 
-  if (pendingComments.length > 0) {
-    const commentContext = pendingComments.map((c) => {
-      const loc = c.path ? `${c.path.split("/").pop()}${c.line ? `:${c.line}` : ""}` : null
-      return `@${c.author}${loc ? ` on \`${loc}\`` : ""}:\n> ${c.body.trim().replace(/\n/g, "\n> ")}`
-    }).join("\n\n")
-    content = `PR review comments:\n\n${commentContext}\n\n---\n\n${content}`
-  }
+  content = buildLineCommentsBlock(pendingComments, content)
 
   content = buildAttachedFilesBlock(content, attachments)
 

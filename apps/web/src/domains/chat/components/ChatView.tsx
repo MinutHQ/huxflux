@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { useAgents, useRepos } from "@huxflux/shared"
 import type { AgentSummary, PRComment } from "@huxflux/shared"
 import { CreationView } from "../views/CreationView"
 import { ChatHeaderBar } from "./ChatHeaderBar"
 import { ChatTabBar } from "./ChatTabBar"
-import { ChatFileContent } from "./ChatFileContent"
 import { ChatMessageList } from "./ChatMessageList"
 import { ChatBottomPanel } from "./ChatBottomPanel"
 import { SshSetupModal } from "./SshSetupModal"
@@ -85,8 +84,8 @@ function useChatViewState(agent: ChatViewProps["agent"]) {
 export function ChatView(props: ChatViewProps) {
   const {
     agent, isStreaming, loadMore, hasMore = false, isLoadingMore = false,
-    openFileTab, onClearFileTab, tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab,
-    onTabTitleChange, pendingComments = [], onAddComment, onOpenDiffFile, onRemoveComment,
+    tabs = [], activeTabId, onTabSelect, onTabClose, onNewTab,
+    onTabTitleChange, pendingComments = [], onOpenDiffFile, onRemoveComment,
     onClearComments, githubEnabled = false, pendingQuestion = null, onClearPendingQuestion,
     hideChrome = false, hideHeader = false, onNewTabWithMessage, initialMessage, onConsumeInitialMessage,
     initialDraft, onConsumeInitialDraft, initialFocus, onConsumeInitialFocus,
@@ -122,12 +121,6 @@ export function ChatView(props: ChatViewProps) {
   useFocusComposerShortcut(textareaRef)
   useInitialFocus(initialFocus, onConsumeInitialFocus, textareaRef)
 
-  useEffect(() => {
-    if (openFileTab?.type === "diff-browser") setActiveTab("diff-browser")
-    else if (openFileTab?.type === "pr") { /* keep chat tab active */ }
-    else if (openFileTab) setActiveTab("file")
-  }, [openFileTab, setActiveTab])
-
   const actions = useChatViewActions({
     agent, input, setInput, textareaRef, pendingComments, attachments, setAttachments,
     setLinkedAgents, planMode, setPlanMode, setAwaitingPlanApproval, effort,
@@ -141,7 +134,6 @@ export function ChatView(props: ChatViewProps) {
   const hasInput = input.trim().length > 0 || pendingComments.length > 0 || attachments.length > 0
   // Sending mid-upload would drop the file that has not landed yet.
   const canSend = hasInput && !chatSend.isSending && uploadingCount === 0
-  const closeFileTab = () => { setActiveTab("chat"); onClearFileTab() }
 
   const inputBarProps = buildInputBarProps({
     agent, allAgents, providers, allModels, capabilities,
@@ -165,8 +157,6 @@ export function ChatView(props: ChatViewProps) {
     uploadFiles, fileInputRef, handleFileSelect: actions.handleFileSelect,
   })
 
-  const isFileMode = activeTab === "pr" || activeTab === "diff-browser" || (activeTab === "file" && openFileTab)
-
   return (
     <div className="flex flex-col flex-1 min-h-0 relative">
       {!hideChrome && !hideHeader && (
@@ -185,43 +175,34 @@ export function ChatView(props: ChatViewProps) {
       {!hideChrome && (
         <ChatTabBar
           agent={agent} tabs={tabs} activeTab={activeTab} activeTabId={activeTabId}
-          openFileTab={openFileTab}
           onTabSelect={onTabSelect} onTabClose={onTabClose} onTabTitleChange={onTabTitleChange}
-          onNewTab={onNewTab} onSetActiveTab={setActiveTab} onCloseFileTab={closeFileTab}
+          onNewTab={onNewTab} onSetActiveTab={setActiveTab}
         />
       )}
-      {isFileMode ? (
-        <ChatFileContent
-          agent={agent} activeTab={activeTab} openFileTab={openFileTab}
-          pendingComments={pendingComments}
-          onAddComment={onAddComment} onRemoveComment={onRemoveComment}
-        />
-      ) : (
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
-          {agent.messages.length === 0 && !uiIsStreaming ? (
-            <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
-          ) : (
-            <ChatMessageList
-              agent={agent} uiIsStreaming={uiIsStreaming} elapsedSeconds={elapsedSeconds}
-              hasMore={hasMore} isLoadingMore={isLoadingMore} loadMore={loadMore}
-              setScrollContainer={setScrollContainer} setScrollContent={setScrollContent}
-              messageQueue={chatSend.messageQueue}
-              onEditQueued={(qm) => {
-                setInput(() => qm.display)
-                chatSend.setMessageQueue((prev) => prev.filter((m) => m.id !== qm.id))
-              }}
-              onRemoveQueued={(id) => chatSend.setMessageQueue((prev) => prev.filter((m) => m.id !== id))}
-            />
-          )}
-          <ChatBottomPanel
-            agent={agent} uiIsStreaming={uiIsStreaming} isAtBottom={isAtBottom}
-            onScrollToBottom={jumpToBottom}
-            pendingQuestion={pendingQuestion}
-            onAnswerQuestion={actions.handleAnswerQuestion}
-            inputBarProps={inputBarProps}
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
+        {agent.messages.length === 0 && !uiIsStreaming ? (
+          <div className="flex-1 min-h-0"><CreationView agent={agent} /></div>
+        ) : (
+          <ChatMessageList
+            agent={agent} uiIsStreaming={uiIsStreaming} elapsedSeconds={elapsedSeconds}
+            hasMore={hasMore} isLoadingMore={isLoadingMore} loadMore={loadMore}
+            setScrollContainer={setScrollContainer} setScrollContent={setScrollContent}
+            messageQueue={chatSend.messageQueue}
+            onEditQueued={(qm) => {
+              setInput(() => qm.display)
+              chatSend.setMessageQueue((prev) => prev.filter((m) => m.id !== qm.id))
+            }}
+            onRemoveQueued={(id) => chatSend.setMessageQueue((prev) => prev.filter((m) => m.id !== id))}
           />
-        </div>
-      )}
+        )}
+        <ChatBottomPanel
+          agent={agent} uiIsStreaming={uiIsStreaming} isAtBottom={isAtBottom}
+          onScrollToBottom={jumpToBottom}
+          pendingQuestion={pendingQuestion}
+          onAnswerQuestion={actions.handleAnswerQuestion}
+          inputBarProps={inputBarProps}
+        />
+      </div>
       {openInApps.showSshSetup && <SshSetupModal onClose={() => openInApps.setShowSshSetup(false)} />}
     </div>
   )

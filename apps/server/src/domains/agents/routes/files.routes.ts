@@ -7,10 +7,26 @@ import { saveFileContentBodySchema } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, fileChanges, repos } from "../../../db/schema.js"
 import { getFileChanges, getDiff, getFileTree, getFileContent, saveFileContent, getBaseFileContent } from "../../git/worktrees.js"
+import { resolveDiffBase, type DiffBase } from "../../git/worktrees.js"
+import { getDiffBundle } from "../../git/diffBundle.js"
+import {
+  PathOutsideWorktreeError, listDirectory, listAllFilePaths, readWorktreeFile, searchFileContents,
+} from "../../git/files.js"
 import * as path from "node:path"
 
 const idParamsSchema = z.object({ id: z.string() })
-const pathQuerySchema = z.object({ path: z.string().optional() })
+const diffBaseSchema = z.enum(["branch", "uncommitted"]).optional()
+const pathQuerySchema = z.object({ path: z.string().optional(), base: diffBaseSchema })
+const baseQuerySchema = z.object({ base: diffBaseSchema })
+const readQuerySchema = z.object({ path: z.string().min(1), force: z.enum(["0", "1"]).optional() })
+const searchQuerySchema = z.object({ q: z.string() })
+
+/** Map containment and missing-file errors to 400/404; rethrow everything else. */
+function sendFsError(err: unknown, reply: FastifyReply): unknown {
+  if (err instanceof PathOutsideWorktreeError) return reply.code(400).send({ error: err.message })
+  if ((err as { code?: string }).code === "ENOENT") return reply.code(404).send({ error: "Not found" })
+  throw err
+}
 
 /** Resolve the agent + repo + worktreePath triple, or send the appropriate 4xx and return null. */
 function resolveAgentWorktree(id: string, reply: FastifyReply):
@@ -40,8 +56,20 @@ export const filesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.put("/api/agents/:id/files/content", {
     schema: { params: idParamsSchema, body: saveFileContentBodySchema },
   }, saveContent)
-  app.get("/api/agents/:id/files/diffs", { schema: { params: idParamsSchema } }, batchFileDiffs)
+  app.get("/api/agents/:id/files/diffs", {
+    schema: { params: idParamsSchema, querystring: baseQuerySchema },
+  }, batchFileDiffs)
   app.post("/api/agents/:id/files/refresh", { schema: { params: idParamsSchema } }, refreshFiles)
+  app.get("/api/agents/:id/files/list", {
+    schema: { params: idParamsSchema, querystring: pathQuerySchema },
+  }, listDirectoryHandler)
+  app.get("/api/agents/:id/files/paths", { schema: { params: idParamsSchema } }, listPathsHandler)
+  app.get("/api/agents/:id/files/search", {
+    schema: { params: idParamsSchema, querystring: searchQuerySchema },
+  }, searchHandler)
+  app.get("/api/agents/:id/files/read", {
+    schema: { params: idParamsSchema, querystring: readQuerySchema },
+  }, readHandler)
 }
 
 // GET /api/agents/:id/files — list file changes from DB
@@ -56,13 +84,13 @@ async function listFiles(
 
 // GET /api/agents/:id/files/diff?path=src/foo.ts
 async function getFileDiff(
-  req: { params: { id: string }; query: { path?: string } },
+  req: { params: { id: string }; query: { path?: string; base?: DiffBase } },
   reply: FastifyReply,
 ): Promise<unknown> {
   const ctx = resolveAgentWorktree(req.params.id, reply)
   if (!ctx) return
   const filePath = req.query.path ?? ""
-  const diff = await getDiff(ctx.worktreePath, filePath, ctx.agent.baseBranch ?? ctx.repo.branchFrom)
+  const diff = await getDiff(ctx.worktreePath, filePath, ctx.agent.baseBranch ?? ctx.repo.branchFrom, req.query.base)
   reply.header("Content-Type", "text/plain")
   return diff
 }
@@ -94,14 +122,14 @@ async function getContent(
 
 // GET /api/agents/:id/files/base-content
 async function getBaseContent(
-  req: { params: { id: string }; query: { path?: string } },
+  req: { params: { id: string }; query: { path?: string; base?: DiffBase } },
   reply: FastifyReply,
 ): Promise<unknown> {
   const ctx = resolveAgentWorktree(req.params.id, reply)
   if (!ctx) return
   const filePath = req.query.path ?? ""
   if (!filePath) return reply.code(400).send({ error: "path query parameter required" })
-  const content = await getBaseFileContent(ctx.worktreePath, filePath, ctx.agent.baseBranch ?? ctx.repo.branchFrom)
+  const content = await getBaseFileContent(ctx.worktreePath, filePath, ctx.agent.baseBranch ?? ctx.repo.branchFrom, req.query.base)
   reply.header("Content-Type", "text/plain")
   return content
 }
@@ -114,32 +142,31 @@ async function saveContent(
   const ctx = resolveAgentWorktree(req.params.id, reply)
   if (!ctx) return
   const { path: filePath, content } = req.body
-  await saveFileContent(ctx.worktreePath, filePath, content)
+  try {
+    await saveFileContent(ctx.worktreePath, filePath, content)
+  } catch (err) {
+    return sendFsError(err, reply)
+  }
   return { ok: true }
 }
 
 // GET /api/agents/:id/files/diffs — batch fetch all diffs + file contents for changed files
 async function batchFileDiffs(
-  req: { params: { id: string } },
+  req: { params: { id: string }; query: { base?: DiffBase } },
   reply: FastifyReply,
 ): Promise<unknown> {
   const ctx = resolveAgentWorktree(req.params.id, reply)
   if (!ctx) return
   const branchFrom = ctx.agent.baseBranch ?? ctx.repo.branchFrom
-  const files = db.select().from(fileChanges).where(eq(fileChanges.agentId, req.params.id)).all()
+  const mode = req.query.base ?? "branch"
+  // The DB rows track the branch-base view; the uncommitted view is cheap enough to scan live.
+  const files = mode === "branch"
+    ? db.select().from(fileChanges).where(eq(fileChanges.agentId, req.params.id)).all()
+    : await getFileChanges(ctx.worktreePath, branchFrom, "uncommitted")
 
-  return Promise.all(files.map(async (f) => {
-    try {
-      const [diff, newContent, oldContent] = await Promise.all([
-        getDiff(ctx.worktreePath, f.path, branchFrom),
-        getFileContent(ctx.worktreePath, f.path).catch(() => ""),
-        getBaseFileContent(ctx.worktreePath, f.path, branchFrom).catch(() => ""),
-      ])
-      return { path: f.path, additions: f.additions, deletions: f.deletions, diff, newContent, oldContent }
-    } catch {
-      return { path: f.path, additions: f.additions, deletions: f.deletions, diff: "", newContent: "", oldContent: "" }
-    }
-  }))
+  const base = await resolveDiffBase(ctx.worktreePath, branchFrom, mode)
+  const bundles = await getDiffBundle(ctx.worktreePath, base, files.map((f) => f.path))
+  return files.map((f, i) => ({ additions: f.additions, deletions: f.deletions, ...bundles[i], path: f.path }))
 }
 
 // POST /api/agents/:id/files/refresh — re-scan worktree and update DB
@@ -163,4 +190,52 @@ async function refreshFiles(
     })
   }
   return files
+}
+
+// GET /api/agents/:id/files/list?path=dir — one directory level, ignored entries flagged
+async function listDirectoryHandler(
+  req: { params: { id: string }; query: { path?: string } },
+  reply: FastifyReply,
+): Promise<unknown> {
+  const ctx = resolveAgentWorktree(req.params.id, reply)
+  if (!ctx) return
+  try {
+    return await listDirectory(ctx.worktreePath, req.query.path ?? "")
+  } catch (err) {
+    return sendFsError(err, reply)
+  }
+}
+
+// GET /api/agents/:id/files/paths — flat list of non-ignored files for the name filter
+async function listPathsHandler(
+  req: { params: { id: string } },
+  reply: FastifyReply,
+): Promise<unknown> {
+  const ctx = resolveAgentWorktree(req.params.id, reply)
+  if (!ctx) return
+  return listAllFilePaths(ctx.worktreePath)
+}
+
+// GET /api/agents/:id/files/search?q= — content search across non-ignored files
+async function searchHandler(
+  req: { params: { id: string }; query: { q: string } },
+  reply: FastifyReply,
+): Promise<unknown> {
+  const ctx = resolveAgentWorktree(req.params.id, reply)
+  if (!ctx) return
+  return searchFileContents(ctx.worktreePath, req.query.q)
+}
+
+// GET /api/agents/:id/files/read?path=&force=1 — content plus binary / size flags
+async function readHandler(
+  req: { params: { id: string }; query: { path: string; force?: "0" | "1" } },
+  reply: FastifyReply,
+): Promise<unknown> {
+  const ctx = resolveAgentWorktree(req.params.id, reply)
+  if (!ctx) return
+  try {
+    return await readWorktreeFile(ctx.worktreePath, req.query.path, req.query.force === "1")
+  } catch (err) {
+    return sendFsError(err, reply)
+  }
 }

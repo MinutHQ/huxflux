@@ -1,5 +1,6 @@
 import { z } from "zod/v4"
 import { reqValidated, req, getApiBase, authHeaders } from "../../apiBase.js"
+import { directoryEntrySchema, fileReadResultSchema, fileSearchMatchSchema, type DiffBase } from "../file-changes/file-changes.types.js"
 import {
   agentSchema,
   agentSummarySchema,
@@ -132,8 +133,8 @@ export const agentsApi = {
   files: (agentId: string) =>
     reqValidated(z.array(fileChangeSchema), `/api/agents/${agentId}/files`),
   // Plain-text endpoints — no JSON schema to validate.
-  diff: (agentId: string, path: string) =>
-    fetch(`${getApiBase()}/api/agents/${agentId}/files/diff?path=${encodeURIComponent(path)}`, {
+  diff: (agentId: string, path: string, base: DiffBase = "branch") =>
+    fetch(`${getApiBase()}/api/agents/${agentId}/files/diff?path=${encodeURIComponent(path)}&base=${base}`, {
       headers: authHeaders(),
     }).then((r) => r.text()),
   fileTree: (agentId: string, subPath?: string) =>
@@ -145,8 +146,18 @@ export const agentsApi = {
     ),
   fileContent: (agentId: string, path: string) =>
     fetch(`${getApiBase()}/api/agents/${agentId}/files/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
-  baseFileContent: (agentId: string, path: string) =>
-    fetch(`${getApiBase()}/api/agents/${agentId}/files/base-content?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then((r) => r.text()),
+  baseFileContent: (agentId: string, path: string, base: DiffBase = "branch") =>
+    fetch(`${getApiBase()}/api/agents/${agentId}/files/base-content?path=${encodeURIComponent(path)}&base=${base}`, { headers: authHeaders() }).then((r) => r.text()),
+  // One directory level, gitignored entries included and flagged.
+  listDirectory: (agentId: string, dir = "") =>
+    reqValidated(z.array(directoryEntrySchema), `/api/agents/${agentId}/files/list?path=${encodeURIComponent(dir)}`),
+  // Every non-ignored file path, for the browser's name filter.
+  filePaths: (agentId: string) =>
+    reqValidated(z.array(z.string()), `/api/agents/${agentId}/files/paths`),
+  searchFiles: (agentId: string, q: string) =>
+    reqValidated(z.array(fileSearchMatchSchema), `/api/agents/${agentId}/files/search?q=${encodeURIComponent(q)}`, { timeoutMs: 15_000 }),
+  readFile: (agentId: string, path: string, force = false) =>
+    reqValidated(fileReadResultSchema, `/api/agents/${agentId}/files/read?path=${encodeURIComponent(path)}${force ? "&force=1" : ""}`),
   saveFileContent: (agentId: string, path: string, content: string) =>
     reqValidated(okResponseSchema, `/api/agents/${agentId}/files/content`, {
       method: "PUT",
@@ -161,8 +172,8 @@ export const agentsApi = {
       method: "POST",
       body: JSON.stringify(openInBodySchema.parse({ app })),
     }),
-  allDiffs: (agentId: string) =>
-    reqValidated(z.array(agentFileDiffSchema), `/api/agents/${agentId}/files/diffs`, { timeoutMs: 30_000 }),
+  allDiffs: (agentId: string, base: DiffBase = "branch") =>
+    reqValidated(z.array(agentFileDiffSchema), `/api/agents/${agentId}/files/diffs?base=${base}`, { timeoutMs: 30_000 }),
   worktreePath: (agentId: string) =>
     reqValidated(worktreePathResponseSchema, `/api/agents/${agentId}/worktree-path`),
 

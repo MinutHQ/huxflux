@@ -2,18 +2,18 @@ import { useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { queryKeys } from "@huxflux/shared"
 import type { AgentSummary, PRComment } from "@huxflux/shared"
+import type { FileBuffer } from "@/domains/file-changes/file-changes.types"
 import { useChatTabs } from "./useChatTabs"
-import { useFileTabs } from "./useFileTabs"
 import { usePendingAgent } from "./usePendingAgent"
 import { useDeletingAgent } from "./useDeletingAgent"
 import { useTabActions } from "./useTabActions"
 import type { DeletingAgent, PendingAgent } from "./types"
 
-export type { ChatTab, DeletingAgent, OpenFile, PendingAgent, FileTab } from "./types"
+export type { ChatTab, DeletingAgent, PendingAgent } from "./types"
 
 /**
  * Composite hook orchestrating the workspace state. Internally split into
- * per-concern hooks (chat tabs, file tabs, pending/deleting lifecycle) plus
+ * per-concern hooks (chat tabs, pending/deleting lifecycle) plus
  * a tab-actions hook that owns the cross-slice flows. This function only
  * wires the lifecycle handlers that touch every slice (delete, create-done)
  * and exposes the unified public surface.
@@ -21,11 +21,21 @@ export type { ChatTab, DeletingAgent, OpenFile, PendingAgent, FileTab } from "./
 export function useWorkspace(agents: AgentSummary[]) {
   const queryClient = useQueryClient()
   const chat = useChatTabs(agents)
-  const files = useFileTabs(chat.activeTabId ?? "")
   const pending = usePendingAgent()
   const deleting = useDeletingAgent()
   const [pendingComments, setPendingComments] = useState<PRComment[]>([])
-  const tabActions = useTabActions({ agents, chat, files, deleting, setPendingComments })
+  // Unsaved editor drafts per agent. Lives here, above the per-agent view
+  // (which remounts on agent switch), so switching agents does not drop edits.
+  const [draftStores] = useState(() => new Map<string, Map<string, FileBuffer>>())
+  const fileDraftsFor = useCallback((agentId: string) => {
+    let store = draftStores.get(agentId)
+    if (!store) {
+      store = new Map()
+      draftStores.set(agentId, store)
+    }
+    return store
+  }, [draftStores])
+  const tabActions = useTabActions({ agents, chat, deleting, setPendingComments })
 
   const onAgentDeleting = useCallback((agentId: string, info: DeletingAgent) => {
     deleting.startDeleting(info)
@@ -35,9 +45,8 @@ export function useWorkspace(agents: AgentSummary[]) {
       setPendingComments([])
     }
     if (chat.rootAgentId === agentId) chat.setRootAgentId(null)
-    files.clearForAgent(agentId)
     queryClient.removeQueries({ queryKey: queryKeys.agents.detail(agentId) })
-  }, [chat, deleting, queryClient, files])
+  }, [chat, deleting, queryClient])
 
   const onAgentCreating = useCallback((info: PendingAgent) => pending.startPending(info), [pending])
   const clearPendingAgent = useCallback(() => pending.clearPending(), [pending])
@@ -64,17 +73,9 @@ export function useWorkspace(agents: AgentSummary[]) {
     rootAgentId: chat.rootAgentId,
     resolvedActiveId,
     sidebarSelectedId,
-    openFileTab: files.openFileTab,
-    fileTabs: files.fileTabs,
-    activeFileTabId: files.activeFileTabId,
-    activeFileTab: files.activeFileTab,
-    openFile: files.openFile,
-    closeFileTab: files.closeFileTab,
-    closeAllFileTabs: files.closeAllFileTabs,
-    selectFileTab: files.selectFileTab,
-    setOpenFileTab: files.setOpenFileTab,
     pendingComments,
     setPendingComments,
+    fileDraftsFor,
     pendingAgent: pending.pendingAgent,
     queuedSetupMessage: pending.queuedSetupMessage,
     setQueuedSetupMessage: pending.setQueuedSetupMessage,

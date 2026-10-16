@@ -1,9 +1,17 @@
 import { simpleGit } from "simple-git"
 import type { DiffResultBinaryFile, DiffResultNameStatusFile, DiffResultTextFile } from "simple-git"
-import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { readFile, mkdir } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import * as path from "node:path"
 import type { FileChange } from "../../types.js"
+import { resolveInsideWorktree, writeWorktreeFile } from "./files.js"
+
+/**
+ * What a diff is measured against. `branch`: the merge-base with the agent's
+ * base branch (committed + uncommitted work). `uncommitted`: HEAD, so only
+ * working-tree changes show.
+ */
+export type DiffBase = "branch" | "uncommitted"
 
 type SimpleGitDiffFile = DiffResultTextFile | DiffResultBinaryFile | DiffResultNameStatusFile
 
@@ -127,6 +135,11 @@ export async function moveWorktree(repoPath: string, oldPath: string, newPath: s
   await git.raw(["worktree", "move", oldPath, newPath])
 }
 
+/** The commit a `DiffBase` compares against: the merge-base for `branch`, HEAD for `uncommitted`. */
+export async function resolveDiffBase(worktreePath: string, branchFrom: string, mode: DiffBase): Promise<string> {
+  return mode === "branch" ? resolveBase(worktreePath, branchFrom) : "HEAD"
+}
+
 /** Resolve the merge-base commit between HEAD and the base branch. */
 async function resolveBase(worktreePath: string, branchFrom: string): Promise<string> {
   const git = simpleGit(worktreePath)
@@ -149,11 +162,10 @@ async function resolveBase(worktreePath: string, branchFrom: string): Promise<st
   return "HEAD"
 }
 
-export async function getFileChanges(worktreePath: string, branchFrom: string): Promise<FileChange[]> {
+export async function getFileChanges(worktreePath: string, branchFrom: string, mode: DiffBase = "branch"): Promise<FileChange[]> {
   const git = simpleGit(worktreePath)
 
   try {
-    const base = await resolveBase(worktreePath, branchFrom)
     const fileMap = new Map<string, FileChange>()
 
     const addDiff = (files: SimpleGitDiffFile[]) => {
@@ -171,13 +183,13 @@ export async function getFileChanges(worktreePath: string, branchFrom: string): 
       }
     }
 
-    // Committed changes on this branch since it diverged from base
-    const committed = await git.diffSummary([`${base}..HEAD`]).catch(() => null)
-    if (committed) addDiff(committed.files)
-
-    // Uncommitted changes (staged + unstaged) on top of HEAD
-    const uncommitted = await git.diffSummary(["HEAD"]).catch(() => null)
-    if (uncommitted) addDiff(uncommitted.files)
+    // One diff from the base to the working tree, so the counts match what the
+    // diff pane renders. Summing "base..HEAD" and "HEAD..worktree" separately
+    // double-counts edits to a file that is new on the branch (it showed
+    // deletions for a file that is a pure addition against the base).
+    const base = mode === "branch" ? await resolveBase(worktreePath, branchFrom) : "HEAD"
+    const summary = await git.diffSummary([base]).catch(() => null)
+    if (summary) addDiff(summary.files)
 
     // Untracked new files not yet in any diff
     const untrackedRaw = await git.raw(["ls-files", "--others", "--exclude-standard"])
@@ -200,14 +212,15 @@ export async function getFileChanges(worktreePath: string, branchFrom: string): 
   }
 }
 
-export async function getDiff(worktreePath: string, filePath: string, branchFrom: string): Promise<string> {
+export async function getDiff(worktreePath: string, filePath: string, branchFrom: string, mode: DiffBase = "branch"): Promise<string> {
   const git = simpleGit(worktreePath)
   try {
-    const base = await resolveBase(worktreePath, branchFrom)
+    const absPath = await resolveInsideWorktree(worktreePath, filePath)
+    const base = mode === "branch" ? await resolveBase(worktreePath, branchFrom) : "HEAD"
     const diff = await git.diff([base, "-U2", "--", filePath])
     if (diff) return diff
     // Untracked new file — render as full addition
-    const content = await readFile(path.join(worktreePath, filePath), "utf8")
+    const content = await readFile(absPath, "utf8")
     const lines = content.split("\n")
     const added = lines.map((l) => `+${l}`).join("\n")
     return `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n${added}\n`
@@ -283,16 +296,17 @@ export async function getFileTree(worktreePath: string): Promise<FileTreeEntry[]
 
 export async function getFileContent(worktreePath: string, filePath: string): Promise<string> {
   try {
-    return await readFile(path.join(worktreePath, filePath), "utf8")
+    return await readFile(await resolveInsideWorktree(worktreePath, filePath), "utf8")
   } catch {
     return ""
   }
 }
 
-export async function getBaseFileContent(worktreePath: string, filePath: string, branchFrom: string): Promise<string> {
+export async function getBaseFileContent(worktreePath: string, filePath: string, branchFrom: string, mode: DiffBase = "branch"): Promise<string> {
   const git = simpleGit(worktreePath)
   try {
-    const base = await resolveBase(worktreePath, branchFrom)
+    await resolveInsideWorktree(worktreePath, filePath)
+    const base = mode === "branch" ? await resolveBase(worktreePath, branchFrom) : "HEAD"
     return await git.raw(["show", `${base}:${filePath}`])
   } catch {
     return ""
@@ -300,9 +314,7 @@ export async function getBaseFileContent(worktreePath: string, filePath: string,
 }
 
 export async function saveFileContent(worktreePath: string, filePath: string, content: string): Promise<void> {
-  const fullPath = path.join(worktreePath, filePath)
-  await mkdir(path.dirname(fullPath), { recursive: true })
-  await writeFile(fullPath, content, "utf8")
+  await writeWorktreeFile(worktreePath, filePath, content)
 }
 
 export async function getDiffSummary(worktreePath: string, branchFrom: string) {

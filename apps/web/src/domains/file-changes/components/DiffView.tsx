@@ -19,6 +19,8 @@ interface DiffViewProps {
   pendingComments?: PRComment[]
   onRemoveComment?: (id: string) => void
   preloadedDiff?: PreloadedDiff
+  /** Controlled diff style (the diff pane sets it for every file at once). */
+  diffStyle?: "unified" | "split"
 }
 
 /** Syntax-highlighted unified/split diff for a single file, with optional inline comments. */
@@ -30,9 +32,11 @@ export const DiffView = React.memo(function DiffView({
   pendingComments = [],
   onRemoveComment,
   preloadedDiff,
+  diffStyle: controlledDiffStyle,
 }: DiffViewProps) {
   const [viewed, setViewed] = useState(false)
-  const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
+  const [localDiffStyle, setDiffStyle] = useState<"unified" | "split">("unified")
+  const diffStyle = controlledDiffStyle ?? localDiffStyle
   const diffTheme = useDiffTheme()
   const [expandedHunks, setExpandedHunks] = useState<Map<number, HunkExpansionRegion>>(new Map())
 
@@ -127,9 +131,10 @@ export const DiffView = React.memo(function DiffView({
       expandedHunks,
       onHunkExpand,
       unsafeCSS: `pre { background-color: transparent !important; } :host { background-color: transparent !important; }`,
-      ...(useGutter ? { enableGutterUtility: true, onLineClick: comments.handleLineClick } : {}),
+      // Only the gutter "+" opens the composer; plain clicks stay free for selecting and copying text.
+      ...(useGutter ? { enableGutterUtility: true, onGutterUtilityClick: comments.handleGutterClick } : {}),
     }),
-    [diffTheme, diffStyle, expandedHunks, comments.handleLineClick, hideHeader, useGutter],
+    [diffTheme, diffStyle, expandedHunks, comments.handleGutterClick, hideHeader, useGutter],
   )
 
   return (
@@ -169,6 +174,7 @@ export const DiffView = React.memo(function DiffView({
   if (prev.hideHeader !== next.hideHeader) return false
   if (prev.preloadedDiff !== next.preloadedDiff) return false
   if (prev.agentId !== next.agentId) return false
+  if (prev.diffStyle !== next.diffStyle) return false
   if (prev.pendingComments?.length !== next.pendingComments?.length) return false
   return true
 })

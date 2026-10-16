@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api, buildAttachedFilesBlock, queryKeys, type Agent } from "@huxflux/shared"
+import { api, buildAttachedFilesBlock, buildLineCommentsBlock, queryKeys, type Agent, type PRComment } from "@huxflux/shared"
 import { consumeSetupMessage } from "@/lib/setupMessage"
 import type { Attachment } from "../agents.types"
 
@@ -16,6 +16,16 @@ export function useChatSend(rootId: string, activeSessionId: string | null, isSt
   const [thinking, setThinking] = useState(false)
   const [planMode, setPlanMode] = useState(false)
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  // Line comments added from the Files tab; sent as a block ahead of the next message.
+  const [comments, setComments] = useState<PRComment[]>([])
+
+  function addComment(comment: PRComment) {
+    setComments((prev) => (prev.some((p) => p.id === comment.id) ? prev : [...prev, comment]))
+  }
+
+  function removeComment(id: string) {
+    setComments((prev) => prev.filter((p) => p.id !== id))
+  }
 
   async function doSend(content: string) {
     if (!activeSessionId || !content.trim()) return
@@ -44,10 +54,11 @@ export function useChatSend(rootId: string, activeSessionId: string | null, isSt
 
   function handleSend() {
     const text = input.trim()
-    if ((!text && attachments.length === 0) || !rootId || sending) return
-    const content = buildAttachedFilesBlock(text, attachments)
+    if ((!text && attachments.length === 0 && comments.length === 0) || !rootId || sending) return
+    const content = buildAttachedFilesBlock(buildLineCommentsBlock(comments, text), attachments)
     setInput("")
     setAttachments([])
+    setComments([])
     if (isStreaming) {
       setQueuedMessage(content)
       return
@@ -82,6 +93,7 @@ export function useChatSend(rootId: string, activeSessionId: string | null, isSt
     queuedMessage, setQueuedMessage,
     thinking, setThinking, planMode, setPlanMode,
     attachments, setAttachments,
+    comments, addComment, removeComment,
     handleSend,
   }
 }

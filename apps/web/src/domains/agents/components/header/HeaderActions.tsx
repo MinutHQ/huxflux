@@ -1,12 +1,13 @@
-import { Button, cn } from "@huxflux/ui"
+import { Button } from "@huxflux/ui"
 import {
   IconEye,
   IconGitPullRequest,
-  IconLayoutSidebarRightCollapse,
   IconPlayerPlayFilled,
 } from "@tabler/icons-react"
 import type { Agent, Repo } from "@huxflux/shared"
+import type { SidePaneLayout, SidePaneSection } from "../../agents.types"
 import { PRBadges } from "./PRBadges"
+import { SidePaneToggles } from "./SidePaneToggles"
 import { OpenInEditor } from "./OpenInEditor"
 import { useOpenInEditor } from "../../hooks/useOpenInEditor"
 
@@ -15,24 +16,26 @@ interface HeaderActionsProps {
   repo: Repo | undefined
   isStreaming: boolean
   githubEnabled: boolean
-  rightPanelVisible: boolean
   onCreatePR?: () => void
   onReview?: () => void
   onRun?: () => void
-  onToggleRightPanel?: () => void
+  sidePane?: {
+    layout: SidePaneLayout
+    onToggleTop: (section: SidePaneSection) => void
+    onToggleTerminal: () => void
+  }
 }
 
-/** Right side of the header: PR badges + the action buttons + open-in + panel-toggle. */
+/** Right side of the header: PR badges + the action buttons + open-in + side-pane toggles. */
 export function HeaderActions({
   agent,
   repo,
   isStreaming,
   githubEnabled,
-  rightPanelVisible,
   onCreatePR,
   onReview,
   onRun,
-  onToggleRightPanel,
+  sidePane,
 }: HeaderActionsProps) {
   const openIn = useOpenInEditor({ agentId: agent.id })
 
@@ -81,16 +84,16 @@ export function HeaderActions({
         onOpen={openIn.handleOpenIn}
       />
 
-      {onToggleRightPanel && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onToggleRightPanel}
-          title={rightPanelVisible ? "Hide panel (⌘U)" : "Show panel (⌘U)"}
-          className={cn(!rightPanelVisible && "text-muted-foreground/40")}
-        >
-          <IconLayoutSidebarRightCollapse size={14} />
-        </Button>
+      {sidePane && (
+        <>
+          <div className="w-px h-4 bg-border" />
+          <SidePaneToggles
+            layout={sidePane.layout}
+            showPR={isGitRepo && githubEnabled && !!agent.prStatus}
+            onToggleTop={sidePane.onToggleTop}
+            onToggleTerminal={sidePane.onToggleTerminal}
+          />
+        </>
       )}
     </div>
   )

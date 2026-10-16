@@ -4,18 +4,15 @@ import { toast } from "sonner"
 import { api, queryKeys } from "@huxflux/shared"
 import type { Agent, AgentSummary, PRComment } from "@huxflux/shared"
 import type { useChatTabs } from "./useChatTabs"
-import type { useFileTabs } from "./useFileTabs"
 import type { useDeletingAgent } from "./useDeletingAgent"
 import type { ChatTab } from "./types"
 
 type ChatHandle = ReturnType<typeof useChatTabs>
-type FilesHandle = ReturnType<typeof useFileTabs>
 type DeletingHandle = ReturnType<typeof useDeletingAgent>
 
 interface UseTabActionsArgs {
   agents: AgentSummary[]
   chat: ChatHandle
-  files: FilesHandle
   deleting: DeletingHandle
   setPendingComments: (next: PRComment[]) => void
 }
@@ -26,7 +23,7 @@ interface UseTabActionsArgs {
  * a late session fetch doesn't re-open them) and the most recently selected
  * agent (debug-only today, kept for parity with the original hook).
  */
-export function useTabActions({ agents, chat, files, deleting, setPendingComments }: UseTabActionsArgs) {
+export function useTabActions({ agents, chat, deleting, setPendingComments }: UseTabActionsArgs) {
   const queryClient = useQueryClient()
   const closedTabIdsRef = useRef(new Set<string>())
   const lastAgentIdRef = useRef<string | null>(null)
@@ -66,8 +63,7 @@ export function useTabActions({ agents, chat, files, deleting, setPendingComment
       const fallback = nextTabs.length > 0 ? nextTabs[nextTabs.length - 1]!.agentId : (agents[0]?.id ?? null)
       chat.setIntentActiveTabId(fallback)
     }
-    files.clearForAgent(agentId)
-  }, [chat, queryClient, agents, files])
+  }, [chat, queryClient, agents])
 
   const createTab = useCallback(
     (agent: Agent) => createChildTab({ agent, title: "Untitled", chat, queryClient, setPendingComments }),

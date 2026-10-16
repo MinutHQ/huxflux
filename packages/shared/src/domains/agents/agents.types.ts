@@ -349,6 +349,7 @@ export const agentFileDiffSchema = z.object({
 
 export type AgentFileDiff = z.infer<typeof agentFileDiffSchema>
 
+
 // ── System SSH info (consumed by agent open-in-editor flow) ──────────────────
 
 export const systemSshInfoSchema = z.object({

@@ -1,5 +1,5 @@
 import type { Agent, AgentSummary, PRComment, FileChange, ToolCall } from "@huxflux/shared"
-import type { OpenFile, ChatTab } from "@/app-shell/workspace"
+import type { ChatTab } from "@/app-shell/workspace"
 
 export interface TurnFileEdit {
   path: string
@@ -55,8 +55,6 @@ export interface ChatViewProps {
   loadMore?: () => Promise<void>
   hasMore?: boolean
   isLoadingMore?: boolean
-  openFileTab: OpenFile | null
-  onClearFileTab: () => void
   tabs?: ChatTab[]
   activeTabId?: string | null
   onTabSelect?: (agentId: string) => void
@@ -64,7 +62,6 @@ export interface ChatViewProps {
   onNewTab?: () => void
   onTabTitleChange?: (agentId: string, title: string) => void
   pendingComments?: PRComment[]
-  onAddComment?: (c: PRComment) => void
   onOpenDiffFile?: (file: FileChange) => void
   onRemoveComment?: (id: string) => void
   onClearComments?: () => void

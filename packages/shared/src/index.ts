@@ -371,3 +371,31 @@ export {
   type HeadroomAgentSavings,
   type HeadroomProxyCache,
 } from "./domains/headroom/headroom.types.js"
+
+// ── file-changes ──────────────────────────────────────────────────────────────
+export {
+  buildChangedFileTree,
+  flattenChangedTree,
+  orderChangedFiles,
+  matchPath,
+  fuzzyFilterPaths,
+  groupSearchMatches,
+  ancestorDirs,
+  buildLineCommentsBlock,
+  type ChangedTreeNode,
+  type ChangedFileNode,
+  type ChangedDirNode,
+  type TreeRow,
+  type PathMatch,
+  type SearchMatchGroup,
+} from "./domains/file-changes/file-changes.state.js"
+export {
+  diffBaseSchema,
+  directoryEntrySchema,
+  fileSearchMatchSchema,
+  fileReadResultSchema,
+  type DiffBase,
+  type DirectoryEntry,
+  type FileSearchMatch,
+  type FileReadResult,
+} from "./domains/file-changes/file-changes.types.js"

@@ -2,16 +2,13 @@ import { useRef, useState, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { cn } from "@huxflux/ui"
 import {
-  IconFileCode,
-  IconGitPullRequest,
   IconPencil,
   IconPlus,
   IconSparkles,
-  IconX,
 } from "@tabler/icons-react"
 import { api, queryKeys, useHuxfluxMutation } from "@huxflux/shared"
 import type { Agent } from "@huxflux/shared"
-import type { OpenFile, ChatTab } from "@/app-shell/workspace"
+import type { ChatTab } from "@/app-shell/workspace"
 import { CloseTabButton } from "./CloseTabButton"
 
 type ActiveTab = "chat" | "file" | "diff-browser" | "pr"
@@ -21,13 +18,11 @@ interface ChatTabBarProps {
   tabs: ChatTab[]
   activeTab: ActiveTab
   activeTabId: string | null | undefined
-  openFileTab: OpenFile | null
   onTabSelect?: (agentId: string) => void
   onTabClose?: (agentId: string) => void
   onTabTitleChange?: (agentId: string, title: string) => void
   onNewTab?: () => void
   onSetActiveTab: (tab: ActiveTab) => void
-  onCloseFileTab: () => void
 }
 
 function useTitleEdit(agent: Agent, onTabTitleChange?: (agentId: string, title: string) => void) {
@@ -115,54 +110,16 @@ function MultiTabItem({ tab, isActive, isEditing, draft, setDraft, inputRef, onS
   )
 }
 
-interface FileTabButtonProps {
-  active: boolean
-  label: React.ReactNode
-  icon: React.ReactNode
-  onClick: () => void
-  onClose: () => void
-}
-
-function FileTabButton({ active, label, icon, onClick, onClose }: FileTabButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap shrink-0",
-        active ? "bg-accent text-foreground" : "text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
-      )}
-    >
-      {icon}
-      <span>{label}</span>
-      <span
-        role="button"
-        onClick={(e) => { e.stopPropagation(); onClose() }}
-        className="ml-1 text-muted-foreground/40 hover:text-foreground transition-colors"
-      >
-        <IconX size={11} />
-      </span>
-    </button>
-  )
-}
-
-function getFileTabLabel(openFileTab: OpenFile): string {
-  if (openFileTab.type === "diff") return openFileTab.file.path.split("/").pop() ?? ""
-  if (openFileTab.type === "content") return openFileTab.path.split("/").pop() ?? ""
-  return ""
-}
-
 export function ChatTabBar({
   agent,
   tabs,
   activeTab,
   activeTabId,
-  openFileTab,
   onTabSelect,
   onTabClose,
   onTabTitleChange,
   onNewTab,
   onSetActiveTab,
-  onCloseFileTab,
 }: ChatTabBarProps) {
   const { editing, draft, setDraft, setEditing, inputRef, commit } = useTitleEdit(agent, onTabTitleChange)
 
@@ -224,34 +181,6 @@ export function ChatTabBar({
             </button>
           )}
         </div>
-      )}
-
-      {openFileTab?.type === "diff-browser" && (
-        <FileTabButton
-          active={activeTab === "diff-browser"}
-          label="All changes"
-          icon={<IconFileCode size={12} />}
-          onClick={() => onSetActiveTab("diff-browser")}
-          onClose={onCloseFileTab}
-        />
-      )}
-      {openFileTab?.type === "pr" && (
-        <FileTabButton
-          active={activeTab === "pr"}
-          label="Pull request"
-          icon={<IconGitPullRequest size={12} />}
-          onClick={() => onSetActiveTab("pr")}
-          onClose={onCloseFileTab}
-        />
-      )}
-      {openFileTab && openFileTab.type !== "diff-browser" && openFileTab.type !== "pr" && (
-        <FileTabButton
-          active={activeTab === "file"}
-          label={getFileTabLabel(openFileTab)}
-          icon={<IconFileCode size={12} />}
-          onClick={() => onSetActiveTab("file")}
-          onClose={onCloseFileTab}
-        />
       )}
 
       <button

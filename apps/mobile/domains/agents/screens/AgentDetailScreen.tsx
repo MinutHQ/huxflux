@@ -28,6 +28,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
     queuedMessage, setQueuedMessage,
     thinking, setThinking, planMode, setPlanMode,
     attachments, setAttachments,
+    comments, addComment, removeComment,
     handleSend, pickImage, uploadingCount,
   } = chat
 
@@ -141,7 +142,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
           {teamAgents.length > 1 && <TeamBar agents={teamAgents} isStreaming={isStreaming} />}
         </>
       )}
-      {activeTab === "files" && <AgentFilesScreen agentId={agentId} />}
+      {activeTab === "files" && <AgentFilesScreen agentId={agentId} comments={comments} onAddComment={addComment} />}
       {activeTab === "pr" && prPaneSlot}
       {activeTab === "terminal" && <TerminalPane agentId={agentId} />}
 
@@ -154,6 +155,8 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
           attachments={attachments}
           setAttachments={setAttachments}
           uploadingCount={uploadingCount}
+          comments={comments}
+          onRemoveComment={removeComment}
           queuedMessage={queuedMessage}
           setQueuedMessage={setQueuedMessage}
           sending={sending}

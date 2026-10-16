@@ -1,105 +1,100 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useDefaultLayout } from "react-resizable-panels"
+import { usePersistentState } from "@/hooks/usePersistentState"
+import type { SidePaneLayout, SidePaneSection, TerminalTopTab } from "../agents.types"
 
-type MaximizedPane = "files" | "terminal" | null
-type RightPane = "files" | "terminal"
-type TerminalTab = "setup" | "run" | "terminal"
+const defaultLayout: SidePaneLayout = { top: "diff", lastTop: "diff", terminal: true, maximized: null }
 
-function readMaximized(agentId: string): MaximizedPane {
-  try {
-    const stored = localStorage.getItem(`huxflux:maximized:${agentId}`)
-    return stored === "files" || stored === "terminal" ? stored : null
-  } catch {
-    return null
-  }
+const sections: readonly string[] = ["diff", "files", "pr"]
+
+function isLayout(raw: unknown): raw is SidePaneLayout {
+  if (!raw || typeof raw !== "object") return false
+  const r = raw as Record<string, unknown>
+  return (r.top === null || sections.includes(String(r.top)))
+    && sections.includes(String(r.lastTop))
+    && typeof r.terminal === "boolean"
+    && (r.maximized === null || r.maximized === "top" || r.maximized === "terminal")
 }
 
-function writeMaximized(agentId: string, next: MaximizedPane): void {
-  try {
-    if (next) localStorage.setItem(`huxflux:maximized:${agentId}`, next)
-    else localStorage.removeItem(`huxflux:maximized:${agentId}`)
-  } catch {
-    /* storage unavailable */
-  }
+function isPosition(raw: unknown): raw is "right" | "bottom" {
+  return raw === "right" || raw === "bottom"
 }
 
 /**
- * Layout + visibility state for the per-agent workspace route.
+ * Layout state for the per-agent workspace: chat on the left, one side pane
+ * on the right with a top section (Diff / Files / PR, one at a time) and an
+ * optional terminal stacked under it. Persisted per agent.
  *
- * Owns:
- *  - terminal top-tab (setup / run / terminal)
- *  - maximized-pane toggle (files / terminal / none), persisted per agent
- *  - active right pane (drives the maximize target)
- *  - right-panel visibility (Cmd/Ctrl+U)
- *  - terminal-row visibility (Cmd/Ctrl+J)
- *  - the two `useDefaultLayout` invocations for the main + right resizable groups
- *  - the `huxflux:toggle-terminal-maximize` window event handler
+ * Shortcuts: Cmd/Ctrl+U toggles the top section (reopening the last one),
+ * Cmd/Ctrl+J toggles the terminal. `huxflux:toggle-terminal-maximize`
+ * maximizes the terminal.
  */
 export function useAgentWorkspaceLayout(agentId: string) {
-  const [terminalTab, setTerminalTab] = useState<TerminalTab>("terminal")
-  const [maximizedPane, setMaximizedPane] = useState<MaximizedPane>(() => readMaximized(agentId))
-  const [activeRightPane, setActiveRightPane] = useState<RightPane>("files")
-  const [rightPanelVisible, setRightPanelVisible] = useState(true)
-  const [terminalVisible, setTerminalVisible] = useState(true)
+  const [terminalTab, setTerminalTab] = useState<TerminalTopTab>("terminal")
+  const [layout, setLayout] = usePersistentState(`huxflux:side-pane:${agentId}`, defaultLayout, isLayout)
+  const [terminalPosition, setTerminalPosition] = usePersistentState<"right" | "bottom">("huxflux:terminal-position", "right", isPosition)
 
-  // Reset maximized state when switching agents
-  useEffect(() => {
-    setMaximizedPane(readMaximized(agentId))
-  }, [agentId])
+  const mainLayout = useDefaultLayout({ id: "huxflux-main", panelIds: ["huxflux-main-chat", "huxflux-main-side"] })
+  const sideLayout = useDefaultLayout({ id: "huxflux-side", panelIds: ["huxflux-side-top", "huxflux-side-terminal"] })
 
-  const mainLayout = useDefaultLayout({
-    id: "huxflux-main",
-    panelIds: ["huxflux-main-chat", "huxflux-main-right"],
-  })
-  const rightLayout = useDefaultLayout({
-    id: "huxflux-right",
-    panelIds: ["huxflux-right-files", "huxflux-right-terminal"],
-  })
+  const openTop = useCallback((section: SidePaneSection) => {
+    setLayout((l) => ({ ...l, top: section, lastTop: section }))
+  }, [setLayout])
 
-  // Mirror activeRightPane into a ref so `toggleMaximize` can read the
-  // current value without taking it as a dep (which would recreate the
-  // handler every time the user clicks into a different right-side pane).
-  const activeRightPaneRef = useRef(activeRightPane)
-  useEffect(() => { activeRightPaneRef.current = activeRightPane }, [activeRightPane])
+  const toggleTop = useCallback((section: SidePaneSection) => {
+    setLayout((l) => (l.top === section
+      ? { ...l, top: null, maximized: l.maximized === "top" ? null : l.maximized }
+      : { ...l, top: section, lastTop: section }))
+  }, [setLayout])
 
-  const toggleMaximize = useCallback(() => {
-    setMaximizedPane((v) => {
-      const next = v ? null : activeRightPaneRef.current
-      writeMaximized(agentId, next)
-      return next
-    })
-  }, [agentId])
+  const closeTop = useCallback(() => {
+    setLayout((l) => ({ ...l, top: null, maximized: l.maximized === "top" ? null : l.maximized }))
+  }, [setLayout])
+
+  const toggleTerminal = useCallback(() => {
+    setLayout((l) => ({ ...l, terminal: !l.terminal, maximized: l.maximized === "terminal" ? null : l.maximized }))
+  }, [setLayout])
+
+  const toggleMaximize = useCallback((which: "top" | "terminal") => {
+    setLayout((l) => ({ ...l, maximized: l.maximized === which ? null : which }))
+  }, [setLayout])
 
   useEffect(() => {
-    window.addEventListener("huxflux:toggle-terminal-maximize", toggleMaximize)
-    return () => window.removeEventListener("huxflux:toggle-terminal-maximize", toggleMaximize)
+    const onMaximizeTerminal = () => toggleMaximize("terminal")
+    window.addEventListener("huxflux:toggle-terminal-maximize", onMaximizeTerminal)
+    return () => window.removeEventListener("huxflux:toggle-terminal-maximize", onMaximizeTerminal)
   }, [toggleMaximize])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "u") {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key === "u") {
         e.preventDefault()
-        setRightPanelVisible((v) => !v)
+        setLayout((l) => (l.top ? { ...l, top: null } : { ...l, top: l.lastTop }))
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+      if (e.key === "j") {
         e.preventDefault()
-        setTerminalVisible((v) => !v)
+        toggleTerminal()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [setLayout, toggleTerminal])
 
   return {
     terminalTab,
     setTerminalTab,
-    maximizedPane,
-    activeRightPane,
-    setActiveRightPane,
-    rightPanelVisible,
-    setRightPanelVisible,
-    terminalVisible,
+    layout,
+    openTop,
+    toggleTop,
+    closeTop,
+    toggleTerminal,
+    toggleMaximize,
+    terminalPosition,
+    setTerminalPosition,
     mainLayout,
-    rightLayout,
+    sideLayout,
   }
 }
+
+export type AgentWorkspaceLayout = ReturnType<typeof useAgentWorkspaceLayout>

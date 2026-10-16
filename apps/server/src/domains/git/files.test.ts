@@ -5,8 +5,8 @@ import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { createGitTmpRepo, type GitTmpRepo } from "../../../test/harness.js"
 import {
-  PathOutsideWorktreeError, listAllFilePaths, listDirectory, readWorktreeFile,
-  resolveInsideWorktree, searchFileContents, writeWorktreeFile,
+  PathOutsideWorktreeError, listAllFilePaths, listDirectory, parseGrepLine, readWorktreeFile,
+  resolveInsideWorktree, searchFileContents as search, writeWorktreeFile,
 } from "./files.js"
 
 let repo: GitTmpRepo
@@ -112,7 +112,29 @@ describe("listAllFilePaths", () => {
   })
 })
 
-describe("searchFileContents", () => {
+describe("parseGrepLine", () => {
+  it("parses rg output (colon after the line number)", () => {
+    expect(parseGrepLine("src/a.ts\u00002:const x = 1")).toEqual({ path: "src/a.ts", line: 2, preview: "const x = 1" })
+  })
+
+  it("parses git grep output (NUL after the line number)", () => {
+    expect(parseGrepLine("src/a.ts\u00002\u0000const x: number = 1")).toEqual({ path: "src/a.ts", line: 2, preview: "const x: number = 1" })
+  })
+
+  it("rejects lines without a path separator or line number", () => {
+    expect(parseGrepLine("no nul here")).toBeNull()
+    expect(parseGrepLine("a.ts\u0000x:y")).toBeNull()
+  })
+})
+
+// Run every search case with the default tool order (rg when installed) and
+// with git grep only, so the fallback CI uses is covered on every machine.
+describe.each([
+  ["default tools", ["rg", "git"] as const],
+  ["git grep only", ["git"] as const],
+])("searchFileContents (%s)", (_label, tools) => {
+  const searchFileContents = (root: string, q: string) => search(root, q, 200, tools)
+
   it("finds case-insensitive fixed-string matches with line numbers", async () => {
     write("src/a.ts", "const one = 1\nconst NeedLE = 2\n")
     write("src/b.ts", "nothing here\n")

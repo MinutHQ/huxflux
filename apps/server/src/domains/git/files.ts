@@ -106,16 +106,16 @@ export interface SearchMatch {
 
 const MAX_PREVIEW = 240
 
-function parseGrepLine(raw: string): SearchMatch | null {
-  // Both rg and git grep emit `path\0line:text` with -0/--null.
+/**
+ * Parse one `--null` grep line. rg writes `path\0line:text`; git grep writes
+ * `path\0line\0text` (a NUL after the line number too). Accept both.
+ */
+export function parseGrepLine(raw: string): SearchMatch | null {
   const nul = raw.indexOf("\0")
   if (nul < 0) return null
-  const rest = raw.slice(nul + 1)
-  const colon = rest.indexOf(":")
-  if (colon < 0) return null
-  const line = Number(rest.slice(0, colon))
-  if (!Number.isFinite(line)) return null
-  return { path: raw.slice(0, nul), line, preview: rest.slice(colon + 1).trim().slice(0, MAX_PREVIEW) }
+  const m = /^(\d+)[\0:]([\s\S]*)$/.exec(raw.slice(nul + 1))
+  if (!m) return null
+  return { path: raw.slice(0, nul), line: Number(m[1]), preview: (m[2] ?? "").trim().slice(0, MAX_PREVIEW) }
 }
 
 /**
@@ -123,7 +123,13 @@ function parseGrepLine(raw: string): SearchMatch | null {
  * Uses ripgrep when on PATH (fast, respects .gitignore) and falls back to
  * `git grep` (tracked + untracked). Binary files are skipped.
  */
-export async function searchFileContents(worktreePath: string, query: string, limit = 200): Promise<SearchMatch[]> {
+export async function searchFileContents(
+  worktreePath: string,
+  query: string,
+  limit = 200,
+  /** Tools to try in order. Tests pin `["git"]` to cover the fallback on machines that have rg. */
+  tools: ReadonlyArray<"rg" | "git"> = ["rg", "git"],
+): Promise<SearchMatch[]> {
   if (!query.trim()) return []
   // --hidden + !.git so rg sees dotfiles like git grep does; results should not depend on which tool is installed.
   const rgArgs = ["--null", "--line-number", "--no-heading", "--color", "never", "-i", "-F", "--hidden", "--glob", "!.git", "--max-count", "20", "--max-columns", "400", "-e", query, "--", "."]
@@ -139,11 +145,14 @@ export async function searchFileContents(worktreePath: string, query: string, li
       return e.stdout ?? ""
     }
   }
-  let out: string
-  try {
-    out = await run("rg", rgArgs)
-  } catch {
-    out = await run("git", gitArgs).catch(() => "")
+  let out = ""
+  for (const tool of tools) {
+    try {
+      out = tool === "rg" ? await run("rg", rgArgs) : await run("git", gitArgs)
+      break
+    } catch {
+      // Not installed (ENOENT): try the next tool.
+    }
   }
   const matches: SearchMatch[] = []
   for (const raw of out.split("\n")) {

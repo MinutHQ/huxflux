@@ -15,7 +15,7 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 
 - `getServers` — returns the persisted server list (empty array if storage is missing)
 - `addServer` — appends a new server, deduplicating by normalized URL; updates the existing entry's token if it changed
-- `updateServer` — patches name / url / token on an existing entry by id
+- `updateServer` — patches name / url / token / switcher appearance (`icon`, `color`, `iconImage`) on an existing entry by id
 - `removeServer` — drops an entry; if it was active, promotes the next server or clears the active pointer
 - `getActiveServerId` — current active server id (null if none)
 - `setActiveServerId` — switches the active server and notifies subscribers
@@ -24,6 +24,8 @@ Cross-platform registry of huxflux server instances. Persists the list of known 
 - `notifyServersChanged` — wakes subscribers after a host wrote the storage keys directly (mobile's async hydration)
 - `useServersStore` — reactive `{ servers, activeId, activeServer }`; re-renders on every store change
 - `useActiveServer` — reactive active server (or first, or null)
+- `useServerAttention` — polls every server's `GET /api/attention` through one shared TanStack query; offline, unauthorized, or older servers map to null
+- `serverAttentionSchema`, `attentionItemSchema`, `attentionReasonSchema` and their types — the attention payload
 - `getActiveServer` — returns the active server, or the first server, or null
 - `parseConnectionString` — parses a `huxflux://` or `http(s)://` URL into `{ url, token }` (returns null on failure)
 - `normalizeServerUrl` — trims a user-entered server URL, strips trailing slashes, and prepends `http://` when no scheme is given (a scheme-less URL would resolve relative to the page origin)

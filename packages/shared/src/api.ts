@@ -16,6 +16,7 @@ import { wrappedApi } from "./domains/wrapped/wrapped.api.js"
 import { automationsApi } from "./domains/automations/automations.api.js"
 import { claudeUsageApi } from "./domains/claude-usage/claude-usage.api.js"
 import { headroomApi } from "./domains/headroom/headroom.api.js"
+import { serverIconApi } from "./domains/server-icon/server-icon.api.js"
 
 export const api = {
   agents: agentsApi,
@@ -28,6 +29,7 @@ export const api = {
   claudeUsage: claudeUsageApi,
   codexUsage: codexUsageApi,
   headroom: headroomApi,
+  serverIcon: serverIconApi,
 }
 
 export { getApiBase } from "./apiBase.js"

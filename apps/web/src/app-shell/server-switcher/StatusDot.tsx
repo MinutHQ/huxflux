@@ -1,12 +1,6 @@
 import { cn } from "@huxflux/ui"
 import type { ServerStatus } from "@huxflux/shared"
-
-const STATUS_LABEL: Record<ServerStatus, string> = {
-  online: "Online",
-  offline: "Offline",
-  checking: "Checking...",
-  unauthorized: "Unauthorized",
-}
+import { STATUS_DOT_CLASS, STATUS_LABEL } from "./statusColor"
 
 /**
  * Small colored dot indicating connection state for a server, paired with a
@@ -15,19 +9,11 @@ const STATUS_LABEL: Record<ServerStatus, string> = {
  * consistent across light/dark. `fixedWidth` reserves room for the longest
  * label so rows in a list stay aligned while statuses change.
  */
-export function StatusDot({ status, fixedWidth }: { status: ServerStatus; fixedWidth?: boolean }) {
+export function StatusDot({ status, fixedWidth, hideLabel }: { status: ServerStatus; fixedWidth?: boolean; hideLabel?: boolean }) {
   return (
     <span className="flex items-center gap-1.5 shrink-0">
-      <span
-        className={cn(
-          "w-2 h-2 rounded-full shrink-0",
-          status === "online" && "bg-emerald-400",
-          status === "offline" && "bg-red-400",
-          status === "checking" && "bg-amber-400 animate-pulse",
-          status === "unauthorized" && "bg-amber-400"
-        )}
-      />
-      <span className={cn("text-[11px] text-muted-foreground", fixedWidth && "min-w-[72px]")}>{STATUS_LABEL[status]}</span>
+      <span className={cn("w-2 h-2 rounded-full shrink-0", STATUS_DOT_CLASS[status])} />
+      {!hideLabel && <span className={cn("text-[11px] text-muted-foreground", fixedWidth && "min-w-[72px]")}>{STATUS_LABEL[status]}</span>}
     </span>
   )
 }

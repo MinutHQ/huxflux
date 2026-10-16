@@ -37,9 +37,23 @@ app-shell/
     DisconnectedBanner.tsx
     UpdateBanner.tsx
   server-switcher/          Sidebar-footer server picker (split for size cap)
-    ServerSwitcher.tsx      Trigger + open/close state
+    ServerSwitcher.tsx      Trigger + open/close state, badge for other servers' attention
     ServerDropdown.tsx      Portal-rendered list of servers
     ServerRow.tsx           Single row with inline token-edit
+    RowAttention.tsx        Agents a server is waiting on, under its dropdown row
+    ServerRail.tsx          One-click avatar strip (vertical beside sidebar, or footer)
+    ServerChips.tsx         Footer trigger plus chips for the other servers
+    ServerAvatar.tsx        Icon/initials tile: active ring, attention badge, status dot
+    ServerAppearanceEditor.tsx  Right-click popover to pick a server's icon and color
+    serverAppearance.ts     Icon and color choices, keyed for storage
+    IconImagePicker.tsx     Upload or Codex-generate a tile image
+    downscaleImage.ts       Crop and scale any image to a 96px PNG data URL
+    statusColor.ts          Status dot classes and labels
+    AttentionBadge.tsx      Waiting count / unread dot
+    LayoutPicker.tsx        Prototype toggle between switcher layouts
+    switcherLayout.ts       Persisted layout choice + hook
+    useSwitcherServers.ts   Servers + status + attention for the layouts
+    describeAttention.ts    Attention summary text and server initials
     AddServerForm.tsx       Inline new-server form
     StatusDot.tsx           Status indicator dot
     validateAuth.ts         /api/config probe helper

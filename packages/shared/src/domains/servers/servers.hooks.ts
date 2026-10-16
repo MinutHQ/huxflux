@@ -5,7 +5,7 @@ import { queryKeys } from "../../queryKeys.js"
 import {
   serverAuthHeaders, subscribeServers, getServersSnapshot, parseServersSnapshot,
 } from "./servers.store.js"
-import type { HuxfluxServer, ServerStatus } from "./servers.types.js"
+import { serverAttentionSchema, type HuxfluxServer, type ServerAttention, type ServerStatus } from "./servers.types.js"
 
 export interface ServersStoreState {
   servers: HuxfluxServer[]
@@ -128,4 +128,37 @@ export function useServerConfig() {
     githubEnabled: data?.githubEnabled ?? false,
     feedbackEnabled: data?.feedbackEnabled ?? false,
   }
+}
+
+async function fetchAttention(server: HuxfluxServer): Promise<ServerAttention | null> {
+  try {
+    const res = await fetchWithTimeout(`${server.url}/api/attention`, { headers: serverAuthHeaders(server) }, 5000)
+    // 404 means the server predates the endpoint; show no badge rather than an error.
+    if (!res.ok) return null
+    const parsed = serverAttentionSchema.safeParse(await res.json())
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Polls every server's GET /api/attention so switchers can badge servers with
+ * agents waiting on the user. A server that is offline, unauthorized, or too
+ * old for the endpoint maps to null. Backed by one TanStack query keyed on the
+ * server list, so every mounted switcher shares a single poll; it also
+ * refetches on window focus so badges are fresh when the user comes back.
+ */
+export function useServerAttention(servers: HuxfluxServer[], intervalMs = 10_000): Record<string, ServerAttention | null> {
+  const key = servers.map((s) => `${s.id}|${s.url}`).join(",")
+  const { data } = useQuery({
+    queryKey: ["server-attention", key],
+    queryFn: async () => {
+      const results = await Promise.all(servers.map(async (s) => [s.id, await fetchAttention(s)] as const))
+      return Object.fromEntries(results) as Record<string, ServerAttention | null>
+    },
+    enabled: servers.length > 0,
+    refetchInterval: intervalMs,
+  })
+  return data ?? {}
 }

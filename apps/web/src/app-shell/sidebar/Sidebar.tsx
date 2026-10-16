@@ -12,6 +12,8 @@ import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog"
 import { PRPane } from "./pr-list/PRPane"
 import { RefinePane } from "@/domains/tasks/RefinePane"
 import { SidebarFooter } from "./SidebarFooter"
+import { ServerRail } from "@/app-shell/server-switcher/ServerRail"
+import { useSwitcherLayout } from "@/app-shell/server-switcher/switcherLayout"
 import { SidebarNav } from "./SidebarNav"
 import { SidebarTabs } from "./SidebarTabs"
 import type { SidebarTab } from "./types"
@@ -60,6 +62,7 @@ export function Sidebar({
   const prReviewEnabled = getFlag("prReview")
   const refineEnabled = getFlag("refine")
   const unreadPrCount = prs.filter((p) => p.unread).length
+  const switcherLayout = useSwitcherLayout()
 
   const [tab, setTabRaw] = useState<SidebarTab>(() => (localStorage.getItem("hive:sidebar:tab") as SidebarTab) || "agents")
   const setTab = (v: SidebarTab) => { setTabRaw(v); localStorage.setItem("hive:sidebar:tab", v) }
@@ -87,40 +90,43 @@ export function Sidebar({
 
   return (
     <>
-      <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl w-full overflow-hidden">
-        <SidebarHeader sidebarCollapsed={sidebarCollapsed} onToggleSidebar={onToggleSidebar} />
+      <div className="flex h-full w-full overflow-hidden">
+        {switcherLayout === "rail" && <ServerRail orientation="vertical" />}
+        <div ref={sidebarContainerRef} className="flex flex-col h-full bg-sidebar/80 backdrop-blur-xl flex-1 min-w-0 overflow-hidden">
+          <SidebarHeader sidebarCollapsed={sidebarCollapsed} onToggleSidebar={onToggleSidebar} />
 
-        <SidebarNav />
-        <SidebarTabs
-          tab={effectiveTab}
-          onTabChange={setTab}
-          prReviewEnabled={prReviewEnabled}
-          refineEnabled={refineEnabled}
-          unreadPrCount={unreadPrCount}
-        />
-
-        {effectiveTab === "refine" && refineEnabled ? (
-          <RefinePane refineSessions={refineSessions} onNewRefine={onNewRefine} />
-        ) : effectiveTab === "review" && prReviewEnabled ? (
-          <PRPane
-            prs={prs}
-            prsLoading={prsLoading}
-            onRefetchPRs={onRefetchPRs}
-            containerRef={sidebarContainerRef}
+          <SidebarNav />
+          <SidebarTabs
+            tab={effectiveTab}
+            onTabChange={setTab}
+            prReviewEnabled={prReviewEnabled}
+            refineEnabled={refineEnabled}
+            unreadPrCount={unreadPrCount}
           />
-        ) : (
-          <AgentList agents={agents} containerRef={sidebarContainerRef} />
-        )}
 
-        <ActiveProcesses />
+          {effectiveTab === "refine" && refineEnabled ? (
+            <RefinePane refineSessions={refineSessions} onNewRefine={onNewRefine} />
+          ) : effectiveTab === "review" && prReviewEnabled ? (
+            <PRPane
+              prs={prs}
+              prsLoading={prsLoading}
+              onRefetchPRs={onRefetchPRs}
+              containerRef={sidebarContainerRef}
+            />
+          ) : (
+            <AgentList agents={agents} containerRef={sidebarContainerRef} />
+          )}
 
-        {!sidebarCollapsed ? <div className="shrink-0"><ClaudeUsage /></div> : null}
+          <ActiveProcesses />
 
-        <SidebarFooter
-          helpBtnRef={helpBtnRef}
-          onToggleHelp={() => setShowHelp((v) => !v)}
-          onOpenSettings={onOpenSettings}
-        />
+          {!sidebarCollapsed ? <div className="shrink-0"><ClaudeUsage /></div> : null}
+
+          <SidebarFooter
+            helpBtnRef={helpBtnRef}
+            onToggleHelp={() => setShowHelp((v) => !v)}
+            onOpenSettings={onOpenSettings}
+          />
+        </div>
       </div>
 
       {showFeedback && <FeedbackDialog onClose={() => setShowFeedback(false)} />}

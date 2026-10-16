@@ -6,6 +6,7 @@ import { configureStorage, configureAgentErrorHandler } from "@huxflux/shared"
 import { applyTheme, getTheme, watchSystemTheme } from "./lib/theme"
 import { applyAppIcon, getAppIcon } from "./lib/appIcon"
 import { applyAppName, getAppName } from "./lib/appName"
+import { ensureDevServer } from "./lib/devServer"
 import "./index.css"
 
 // Apply theme before first render to avoid flash, then watch for OS changes
@@ -31,6 +32,7 @@ import { ErrorBoundary } from "@/app-shell/ErrorBoundary"
 
 // Initialize shared library with web-specific platform adapters
 configureStorage(localStorage)
+ensureDevServer()
 configureAgentErrorHandler((message) => {
   if (/abort/i.test(message)) return
   toast.error("Agent error", { description: message, duration: 6000 })

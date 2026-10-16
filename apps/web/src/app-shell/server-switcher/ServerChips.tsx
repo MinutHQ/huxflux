@@ -14,7 +14,7 @@ export function ServerChips() {
       <div className="flex-1 min-w-0">
         <ServerSwitcher compact />
       </div>
-      <div className="flex items-center gap-1.5 pr-1 shrink-0">
+      <div className="flex items-center gap-2 pr-1 shrink-0">
         {others.map((server) => (
           <ServerAvatar
             key={server.id}
@@ -25,7 +25,7 @@ export function ServerChips() {
             onSelect={() => setActive(server.id)}
             onChangeAppearance={(patch) => update(server.id, patch)}
             tooltipSide="top"
-            size="sm"
+            size="lg"
           />
         ))}
       </div>

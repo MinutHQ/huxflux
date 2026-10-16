@@ -1,8 +1,11 @@
 import { useRef, useState } from "react"
-import { generateServerIconOn, useHuxfluxMutation, useIconGeneratorServers } from "@huxflux/shared"
+import { useIsMutating } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { generateServerIconOn, getServers, updateServer, useHuxfluxMutation, useIconGeneratorServers } from "@huxflux/shared"
 import { useServers } from "@/hooks/useServers"
 import { IconLoader2, IconSparkles, IconTrash, IconUpload } from "@tabler/icons-react"
 import { downscaleImage, readFileAsDataUrl } from "./downscaleImage"
+import { serverIconMutationKey } from "./serverAppearance"
 
 interface IconImagePickerProps {
   // The server whose tile is being edited; its own Codex is preferred.
@@ -16,7 +19,8 @@ interface IconImagePickerProps {
  * an icon and let Codex draw it. Any configured server with Codex installed
  * can do the drawing: the edited server first, then the active one, then any
  * other. The prompt is hidden when none has it. Every result is downscaled
- * before it is saved.
+ * before it is saved. Generation keeps running after the editor closes: the
+ * result is written straight to the server and failures surface as a toast.
  */
 export function IconImagePicker({ serverId, hasImage, onImage }: IconImagePickerProps) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -27,19 +31,27 @@ export function IconImagePicker({ serverId, hasImage, onImage }: IconImagePicker
   const generator = generators.find((s) => s.id === serverId)
     ?? generators.find((s) => s.id === activeId)
     ?? generators[0]
+  const mutationKey = serverIconMutationKey(serverId)
+  const isDrawing = useIsMutating({ mutationKey }) > 0
   const generate = useHuxfluxMutation({
+    mutationKey,
     mutationFn: (text: string) => {
       if (!generator) throw new Error("No server with Codex")
       return generateServerIconOn(generator, { description: text })
     },
-    onSuccess: async ({ dataUrl }) => {
+    // Snapshot the look at start: a pick made while Codex draws wins.
+    onMutate: () => appearanceOf(serverId),
+    onSuccess: async ({ dataUrl }, _text, before) => {
       try {
-        onImage(await downscaleImage(dataUrl))
+        const iconImage = await downscaleImage(dataUrl)
+        if (appearanceOf(serverId) !== before) return
+        // Straight to the store: the editor may have closed by now.
+        updateServer(serverId, { iconImage })
       } catch {
-        setError("Codex returned an image that could not be read.")
+        toast.error("Codex returned an image that could not be read.")
       }
     },
-    onError: () => setError("Generation failed. Try a different description."),
+    onError: () => { toast.error("Icon generation failed. Try a different description.") },
   })
 
   async function handleFile(file: File | undefined) {
@@ -54,8 +66,7 @@ export function IconImagePicker({ serverId, hasImage, onImage }: IconImagePicker
 
   function handleGenerate() {
     const text = description.trim()
-    if (!text || generate.isPending) return
-    setError(null)
+    if (!text || isDrawing) return
     generate.mutate(text)
   }
 
@@ -87,26 +98,31 @@ export function IconImagePicker({ serverId, hasImage, onImage }: IconImagePicker
             onChange={(e) => setDescription(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleGenerate() }}
             placeholder="Describe an icon…"
-            disabled={generate.isPending}
+            disabled={isDrawing}
             className="flex-1 min-w-0 text-[11px] bg-background border border-input rounded px-2 py-1 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring"
           />
           <button
             onClick={handleGenerate}
-            disabled={generate.isPending || !description.trim()}
+            disabled={isDrawing || !description.trim()}
             title={`Generate with Codex on ${generator.name}`}
             className="text-[11px] bg-primary text-primary-foreground rounded px-2 py-1 font-medium disabled:opacity-50 flex items-center gap-1"
           >
-            {generate.isPending ? <IconLoader2 size={11} className="animate-spin" /> : <IconSparkles size={11} />}
-            {generate.isPending ? "Drawing…" : "Generate"}
+            {isDrawing ? <IconLoader2 size={11} className="animate-spin" /> : <IconSparkles size={11} />}
+            {isDrawing ? "Drawing…" : "Generate"}
           </button>
         </div>
       )}
       {generator && (
         <div className="text-[11px] text-muted-foreground/70">
-          {generate.isPending ? `Codex on ${generator.name} is drawing, this can take up to a minute.` : `Drawn by Codex on ${generator.name}`}
+          {isDrawing ? `Codex on ${generator.name} is drawing, this can take up to a minute.` : `Drawn by Codex on ${generator.name}`}
         </div>
       )}
       {error && <div className="text-[11px] text-red-400">{error}</div>}
     </div>
   )
+}
+
+function appearanceOf(serverId: string): string {
+  const server = getServers().find((s) => s.id === serverId)
+  return `${server?.icon ?? ""}|${server?.iconImage ?? ""}`
 }

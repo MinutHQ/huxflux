@@ -47,6 +47,7 @@ export function ServerRail({ orientation }: ServerRailProps) {
           onSelect={() => setActive(server.id)}
           onChangeAppearance={(patch) => update(server.id, patch)}
           tooltipSide={vertical ? "right" : "top"}
+          size={vertical ? "md" : "lg"}
         />
       ))}
       <button

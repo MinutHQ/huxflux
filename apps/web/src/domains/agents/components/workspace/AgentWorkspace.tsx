@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { WorkerPoolContextProvider } from "@pierre/diffs/react"
-import { useAgent, api, queryKeys, useHuxfluxQuery, type FileChange, type PRComment } from "@huxflux/shared"
+import { useAgent, api, queryKeys, useHuxfluxQuery, useRepos, type FileChange, type PRComment } from "@huxflux/shared"
 import { ChatView } from "@/domains/chat/ChatView"
 import { getDiffTheme } from "@/domains/file-changes/getDiffTheme"
 import { useFileBuffers } from "@/domains/file-changes/useFileBuffers"
@@ -9,6 +9,7 @@ import { useAppContext } from "@/hooks/useAppContext"
 import { AgentWorkspaceHeader } from "../AgentWorkspaceHeader"
 import { HomeView } from "../../HomeView"
 import { useAgentWorkspaceLayout } from "../../hooks/useAgentWorkspaceLayout"
+import { isGitRepo } from "../../utils"
 import { useQuestionNotice, useWorkspaceActions } from "../../hooks/useWorkspaceActions"
 import { SideTopSection, type PaneRequests } from "./SideTopSection"
 import { WorkspacePanels } from "./WorkspacePanels"
@@ -29,8 +30,6 @@ const workerPoolOptions = {
 export function AgentWorkspace({ agentId }: { agentId: string }) {
   const workspace = useWorkspaceContext()
   const { githubEnabled, sidebarCollapsed } = useAppContext()
-  const ui = useAgentWorkspaceLayout(agentId)
-  const { layout } = ui
   const buffers = useFileBuffers(agentId, workspace.fileDraftsFor(agentId))
   const [requests, setRequests] = useState<PaneRequests>({ diffFocus: null, fileOpen: null })
 
@@ -59,6 +58,10 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
     staleTime: 10_000,
   })
   const rootAgent = (sameAsActive ? activeAgent : rootQueryData) ?? activeAgent
+  const { data: repos = [] } = useRepos()
+  const hasDiff = !rootAgent || isGitRepo(rootAgent, repos.find((r) => r.id === rootAgent.repoId))
+  const ui = useAgentWorkspaceLayout(agentId, { hasDiff })
+  const { layout } = ui
 
   const { pendingComments, setPendingComments } = workspace
   const comments = useMemo(() => ({
@@ -69,7 +72,12 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
 
   if (!activeAgent || !rootAgent) return <HomeView />
 
+  const openFileAt = (path: string) => {
+    ui.openTop("files")
+    setRequests((r) => ({ ...r, fileOpen: { path, nonce: Date.now() } }))
+  }
   const openDiffAt = (file: FileChange) => {
+    if (!hasDiff) { openFileAt(file.path); return }
     ui.openTop("diff")
     setRequests((r) => ({ ...r, diffFocus: { path: file.path, nonce: Date.now() } }))
   }
@@ -77,10 +85,6 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
   const toggleTop = (section: Parameters<typeof ui.toggleTop>[0]) => {
     setRequests({ diffFocus: null, fileOpen: null })
     ui.toggleTop(section)
-  }
-  const openFileAt = (path: string) => {
-    ui.openTop("files")
-    setRequests((r) => ({ ...r, fileOpen: { path, nonce: Date.now() } }))
   }
 
   const top = layout.top && (

@@ -402,3 +402,4 @@ export {
   type FileSearchMatch,
   type FileReadResult,
 } from "./domains/file-changes/file-changes.types.js"
+export { getMediaType, type MediaKind, type MediaType } from "./domains/file-changes/mediaType.js"

@@ -1,5 +1,10 @@
-import { getActiveServer, serverWsUrl } from "@huxflux/shared"
+import { getActiveServer, serverWsUrl, type Agent, type Repo } from "@huxflux/shared"
 import { ANSI_RE, PORT_PATTERNS, TERMINAL_ACTIVE_TAB_KEY } from "./config"
+
+/** False for folder repos (and their `local` sentinel branch): no branches, diffs or PRs there. */
+export function isGitRepo(agent: Pick<Agent, "branch">, repo: Pick<Repo, "type"> | undefined): boolean {
+  return repo?.type !== "folder" && agent.branch !== "local"
+}
 
 /** True when the active server is not `localhost`. Tauri + remote flips the header into SSH mode. */
 export function isRemoteServer(): boolean {

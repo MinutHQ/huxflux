@@ -1,6 +1,7 @@
 export { AnchoredPopover } from "./anchored-popover"
 export { Badge, badgeVariants } from "./badge"
 export { Button, buttonVariants } from "./button"
+export { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./context-menu"
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./dialog"
 export { Modal, ModalActions } from "./modal"
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from "./popover"

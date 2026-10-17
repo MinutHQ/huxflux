@@ -175,6 +175,48 @@ fn open_url(url: String) {
     let _ = Command::new("xdg-open").arg(&url).spawn();
 }
 
+/// Ask where to save `file_name`, then stream `url` there. Returns false when
+/// the user cancels the dialog. Used by the file browser's "Download" item,
+/// because the webview does not handle `<a download>` the way a browser does.
+#[tauri::command]
+async fn download_file(app: tauri::AppHandle, url: String, file_name: String) -> Result<bool, String> {
+    use std::io::Write;
+    use tauri_plugin_dialog::DialogExt;
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only http(s) URLs can be downloaded".into());
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().set_file_name(&file_name).blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(false) };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    // The URL carries the auth token, so errors are reported without it.
+    let mut resp = reqwest::get(&url).await.map_err(|e| e.without_url().to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Server responded {}", resp.status()));
+    }
+    // Stream into a sibling temp file and rename on success, so a failed
+    // download never truncates a file the user chose to overwrite.
+    let tmp = path.with_file_name(format!(
+        ".{}.huxflux-download",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+    ));
+    let result = async {
+        let mut file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        while let Some(chunk) = resp.chunk().await.map_err(|e| e.without_url().to_string())? {
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    }
+    .await;
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result.map(|_| true)
+}
+
 fn huxflux_dir() -> Option<String> {
     std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok()
 }
@@ -331,6 +373,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(json) = read_local_connection(app.handle().clone()) {
                 let escaped = json.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n");
@@ -341,7 +384,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, app_identity::set_app_name, app_identity::send_desktop_notification, open_url, read_local_connection, check_update, download_and_install_update])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, app_identity::set_app_name, app_identity::send_desktop_notification, open_url, download_file, read_local_connection, check_update, download_and_install_update])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

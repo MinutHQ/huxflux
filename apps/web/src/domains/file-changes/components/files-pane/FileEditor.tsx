@@ -2,10 +2,11 @@ import { useState } from "react"
 import type { EditorView } from "@codemirror/view"
 import { Button } from "@huxflux/ui"
 import { IconFileUnknown } from "@tabler/icons-react"
-import { api, queryKeys, useHuxfluxQuery, type PRComment } from "@huxflux/shared"
+import { api, getMediaType, queryKeys, useHuxfluxQuery, type PRComment } from "@huxflux/shared"
 import { useFileBuffer } from "../../hooks/useFileBuffer"
 import type { FileBuffer } from "../../file-changes.types"
 import { CodeEditor } from "./CodeEditor"
+import { MediaPreview } from "./MediaPreview"
 
 interface FileEditorProps {
   agentId: string
@@ -26,11 +27,21 @@ function formatSize(bytes: number): string {
 }
 
 /**
+ * Shows one worktree file: images, video and audio as media previews,
+ * everything else in the text editor.
+ */
+export function FileEditor(props: FileEditorProps) {
+  const media = getMediaType(props.path)
+  if (media) return <MediaPreview agentId={props.agentId} path={props.path} kind={media.kind} />
+  return <TextFileEditor {...props} />
+}
+
+/**
  * Loads one worktree file and shows it in the editor. Binary and very large
  * files get a placeholder with "View as text anyway"; a forced binary view is
  * read-only so a save cannot corrupt the file.
  */
-export function FileEditor({ agentId, path, jump, restored, onBufferChange, comments, onAddComment, onRemoveComment, onView }: FileEditorProps) {
+function TextFileEditor({ agentId, path, jump, restored, onBufferChange, comments, onAddComment, onRemoveComment, onView }: FileEditorProps) {
   const [force, setForce] = useState(false)
   const { data, isLoading, error } = useHuxfluxQuery({
     queryKey: queryKeys.agents.fileRead(agentId, path, force),

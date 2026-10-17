@@ -8,6 +8,7 @@ import type { Agent, Repo } from "@huxflux/shared"
 import type { SidePaneLayout, SidePaneSection } from "../../agents.types"
 import { PRBadges } from "./PRBadges"
 import { SidePaneToggles } from "./SidePaneToggles"
+import { isGitRepo } from "../../utils"
 import { OpenInEditor } from "./OpenInEditor"
 import { useOpenInEditor } from "../../hooks/useOpenInEditor"
 
@@ -39,19 +40,18 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const openIn = useOpenInEditor({ agentId: agent.id })
 
-  // Folder-type repos don't have branches or PRs.
-  const isGitRepo = repo?.type !== "folder" && agent.branch !== "local"
-  const showCreatePR = isGitRepo && githubEnabled && !agent.prStatus && !isStreaming && agent.messages.length > 0 && !!onCreatePR
-  const showReview = isGitRepo && !isStreaming && agent.messages.length > 0 && !!onReview
+  const hasGit = isGitRepo(agent, repo)
+  const showCreatePR = hasGit && githubEnabled && !agent.prStatus && !isStreaming && agent.messages.length > 0 && !!onCreatePR
+  const showReview = hasGit && !isStreaming && agent.messages.length > 0 && !!onReview
   const showRun = !!repo?.runScript && !!onRun
 
   return (
     <div className="ml-auto flex items-center gap-2 shrink-0">
-      {isGitRepo && githubEnabled && agent.prStatus && (
+      {hasGit && githubEnabled && agent.prStatus && (
         <PRBadges prStatus={agent.prStatus} agentId={agent.id} />
       )}
 
-      {isGitRepo && githubEnabled && agent.prStatus && (
+      {hasGit && githubEnabled && agent.prStatus && (
         <div className="w-px h-4 bg-border" />
       )}
 
@@ -89,7 +89,8 @@ export function HeaderActions({
           <div className="w-px h-4 bg-border" />
           <SidePaneToggles
             layout={sidePane.layout}
-            showPR={isGitRepo && githubEnabled && !!agent.prStatus}
+            showDiff={hasGit}
+            showPR={hasGit && githubEnabled && !!agent.prStatus}
             onToggleTop={sidePane.onToggleTop}
             onToggleTerminal={sidePane.onToggleTerminal}
           />

@@ -8,6 +8,7 @@ Cross-platform types and pure logic behind the diff pane and the file browser on
 - Ordering a list of changed files the same way the tree shows them, so a stacked diff and its tree agree
 - Fuzzy path matching for the file browser's name filter
 - Grouping content-search hits by file
+- Deciding which files preview as image, video or audio, and their MIME types
 
 ## Public surface
 
@@ -19,6 +20,7 @@ Cross-platform types and pure logic behind the diff pane and the file browser on
   - `groupSearchMatches` and `SearchMatchGroup`: content-search results grouped per file
   - `ancestorDirs`: every parent folder of a path, used to reveal a file in a lazy tree
   - `buildLineCommentsBlock`: prefixes a chat message with pending line comments (`path:line` plus quoted body), shared by web and mobile
+- `mediaType.ts`: `getMediaType` and the `MediaKind` / `MediaType` types: extension to media kind and MIME, used by the server's raw-file route and the web viewer
 
 ## Depends on
 

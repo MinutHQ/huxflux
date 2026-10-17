@@ -5,7 +5,7 @@ Right-pane viewers for an agent's file changes: the unified file tree, the stack
 ## Owns
 
 - The side pane's Diff section (`DiffPane`): changed-files tree with +/- counts on the left, every changed file stacked on the right with sticky collapsible headers, lazily mounted diff bodies, a `base › branch` crumb that switches between "all branch changes" and "uncommitted changes", unified/split toggle, hover-`+` line comments
-- The side pane's Files section (`FilesPane`): lazily loaded worktree tree (gitignored entries dimmed), a filter box that fuzzy-matches file names or, with a leading `?`, searches contents, preview/pinned tabs persisted per agent, and a CodeMirror editor with Cmd+S save, Cmd+F search, folding, on-disk conflict handling, binary placeholder, and hover-`+` line comments
+- The side pane's Files section (`FilesPane`): lazily loaded worktree tree (gitignored entries dimmed), a filter box that fuzzy-matches file names or, with a leading `?`, searches contents, preview/pinned tabs persisted per agent, and a CodeMirror editor with Cmd+S save, Cmd+F search, folding, on-disk conflict handling, binary placeholder, image / video / audio previews streamed from the raw-file route, a right-click menu on tree rows (Download, Copy path), and hover-`+` line comments
 - Unsaved editor buffers (`useFileBuffers`), owned by the workspace so drafts survive the pane remounting
 - Syntax-highlighted unified/split diff for a single file (`DiffView`), with the inline comment composer
 - Per-agent PR tab body (`AgentPRTab`): reviews / checks / merge status cards, merge actions, review threads, discussion list
@@ -32,7 +32,7 @@ Right-pane viewers for an agent's file changes: the unified file tree, the stack
 - `sonner` — toast notifications for PR mutations
 - `@tanstack/react-query` — file tree / diff / PR details fetching and invalidation
 - `@/hooks/usePersistentState` — per-agent persisted pane state
-- `@/lib/platform` — `handleExternalClick` for external PR links
+- `@/lib/platform` — `handleExternalClick` for external PR links, `isTauri` for the desktop download path
 - `@/lib/theme` — resolved theme used by `getDiffTheme`
 
 ## Sub-domains
@@ -45,6 +45,7 @@ None.
 - `DiffView` uses a manual `React.memo` comparator (path, preloaded diff, style, comment count) so the stacked diff does not re-render every file on unrelated parent renders. It has three `any` casts at the pierre/diffs boundary.
 - The Diff and Files sections refetch when the agent's `fileChanges` signature changes (the watcher pushes it over WebSocket), instead of polling.
 - Editor comment widgets are CodeMirror block widgets whose DOM nodes are handed to React through `PortalRegistry` (`components/files-pane/editor/commentExtensions.ts`), so the bubble and composer are ordinary React components.
+- Downloads go through the raw-file route with the token in the query string. The browser saves via `Content-Disposition: attachment`; the desktop app calls the `download_file` Tauri command, which shows a save dialog and streams the file natively, because the webview does not handle `<a download>`.
 - A file forced open with "View as text anyway" while binary is read-only, so a save cannot corrupt it.
 - `useDiffTheme` is also implemented in chat on purpose; both share `getDiffTheme`.
 - `stripHtml` in `utils.ts` uses `\x00CODE` placeholders to keep fenced code blocks; the function comment explains the ordering.

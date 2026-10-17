@@ -8,6 +8,7 @@ The server-side surface for everything that happens against a local git reposito
 - File diffing: `getFileChanges`, `getDiff`, `getDiffSummary`, `getBaseFileContent`
 - File read / write inside a worktree: `getFileContent`, `saveFileContent`, `getFileTree`
 - The file browser surface (`files.ts`): path containment for every caller-supplied path, one-level directory listing with gitignored entries flagged, the flat name index, content search, and binary-aware reads
+- Raw byte serving for media previews and downloads (`rawFile.ts`): single-range `Range` parsing, contained file streams, MIME from the shared media map, `Content-Disposition`
 - Git metadata: `getRemoteUrl`, `commitAndPush`
 - The worktree reservation pool (`pool.ts`): one or more hidden pre-warmed worktrees per repo, so `createAgent` can claim one instead of paying the cold-path git work on every new agent. Reserves are built whether or not the repo has a setup script — the dominant cost on a fresh create is `git fetch` + `worktree add`, not the install. When a setup script is configured, it runs ahead of time too. Depth is auto-derived from repo weight: a repo with a setup script rebuilds slowly (install/build per worktree), so it keeps `HEAVY_RESERVE_COUNT` reserves to absorb bursty creation; everything else keeps one. `ensureReserve`, `claimReserve`, `drainReserves`, `initializeReserves`, `HEAVY_RESERVE_COUNT`
 - The file watcher (`watcher.ts`): per-agent native `fs.watch` (recursive) that debounces changes, refreshes `file_changes` rows in the DB, syncs the branch name when it drifts, and emits `agentsWs.fileChanged`. Attached lazily per open agent (see `watchAgent`). `watchWorktree`, `watchAgent`, `unwatchWorktree`, `refreshWorktree`
@@ -28,6 +29,7 @@ The server-side surface for everything that happens against a local git reposito
 - `saveFileContent`: write a file inside the worktree, creating parent directories as needed
 - `DiffBase`: `branch` (vs the merge-base) or `uncommitted` (vs HEAD); `getFileChanges`, `getDiff` and `getBaseFileContent` take it as an optional last argument
 - `files.ts`: `resolveInsideWorktree` + `PathOutsideWorktreeError` (rejects `../`, absolute paths and symlinks that leave the worktree), `listDirectory`, `listAllFilePaths`, `searchFileContents` (ripgrep, falling back to `git grep`), `readWorktreeFile` (withholds binary / >5 MB content unless forced), `writeWorktreeFile`
+- `rawFile.ts`: `openRawWorktreeFile` (contained read stream, optional byte range, media MIME or `application/octet-stream`), `parseRange`, `contentDisposition`
 - `commitAndPush`: stage everything, commit with the given message, push with `--set-upstream`
 - `FileTreeEntry`: the recursive `{ name, path, type, children? }` shape returned by `getFileTree`
 - `ensureReserve`: top a repo up to its target number of hidden reserve worktrees (auto-derived from repo weight); runs the setup script (if any) in each before recording its row. Coalesces concurrent calls per repo and stops early if a build fails

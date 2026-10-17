@@ -1,5 +1,6 @@
 import { z } from "zod/v4"
 import { reqValidated, req, getApiBase, authHeaders } from "../../apiBase.js"
+import { getActiveServer, serverAuthedUrl } from "../servers/servers.store.js"
 import { directoryEntrySchema, fileReadResultSchema, fileSearchMatchSchema, type DiffBase } from "../file-changes/file-changes.types.js"
 import {
   agentSchema,
@@ -158,6 +159,14 @@ export const agentsApi = {
     reqValidated(z.array(fileSearchMatchSchema), `/api/agents/${agentId}/files/search?q=${encodeURIComponent(q)}`, { timeoutMs: 15_000 }),
   readFile: (agentId: string, path: string, force = false) =>
     reqValidated(fileReadResultSchema, `/api/agents/${agentId}/files/read?path=${encodeURIComponent(path)}${force ? "&force=1" : ""}`),
+  // Raw bytes of a worktree file, with the credential in the query string so
+  // `<img>`, `<video>`, `<audio>` and download links can load it directly.
+  // Supports HTTP Range. `download` makes the server send it as an attachment.
+  rawFileUrl: (agentId: string, path: string, download = false): string | null => {
+    const server = getActiveServer()
+    if (!server) return null
+    return serverAuthedUrl(server, `/api/agents/${agentId}/files/raw?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`)
+  },
   saveFileContent: (agentId: string, path: string, content: string) =>
     reqValidated(okResponseSchema, `/api/agents/${agentId}/files/content`, {
       method: "PUT",

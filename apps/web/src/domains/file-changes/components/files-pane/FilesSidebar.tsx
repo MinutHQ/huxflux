@@ -4,6 +4,7 @@ import type { Agent } from "@huxflux/shared"
 import type { useDirectoryTree } from "../../hooks/useDirectoryTree"
 import { DirectoryTree } from "./DirectoryTree"
 import { FilterResults } from "./FilterResults"
+import { useDownloadFile } from "../../hooks/useDownloadFile"
 
 interface FilesSidebarProps {
   agent: Agent
@@ -19,6 +20,7 @@ interface FilesSidebarProps {
 
 /** Left column of the Files section: the filter box over either the tree or the filter results. */
 export function FilesSidebar({ agent, filter, onFilterChange, inputRef, tree, activePath, onOpen, onFirstResult, onEnter }: FilesSidebarProps) {
+  const download = useDownloadFile(agent.id)
   return (
     <div className="flex flex-col h-full border-r border-border/60">
       <div className="relative mx-1.5 mt-1.5 mb-1">
@@ -49,7 +51,7 @@ export function FilesSidebar({ agent, filter, onFilterChange, inputRef, tree, ac
             onFirstResult={onFirstResult}
           />
         ) : (
-          <DirectoryTree tree={tree} activePath={activePath} fileChanges={agent.fileChanges} onOpen={(path, pin) => onOpen(path, { pin })} />
+          <DirectoryTree tree={tree} activePath={activePath} fileChanges={agent.fileChanges} onOpen={(path, pin) => onOpen(path, { pin })} onDownload={download} />
         )}
       </div>
     </div>

@@ -20,7 +20,14 @@ const diffBaseSchema = z.enum(["branch", "uncommitted"]).optional()
 const pathQuerySchema = z.object({ path: z.string().optional(), base: diffBaseSchema })
 const baseQuerySchema = z.object({ base: diffBaseSchema })
 const readQuerySchema = z.object({ path: z.string().min(1), force: z.enum(["0", "1"]).optional() })
-const rawQuerySchema = z.object({ path: z.string().min(1), download: z.enum(["0", "1"]).optional() })
+// `token` is declared so validation keeps it: the auth hook runs as a preHandler,
+// after the schema has stripped unknown keys, and this route is loaded by
+// `<img>`/`<video>`/links that can only authenticate through the query string.
+const rawQuerySchema = z.object({
+  path: z.string().min(1),
+  download: z.enum(["0", "1"]).optional(),
+  token: z.string().optional(),
+})
 const searchQuerySchema = z.object({ q: z.string() })
 
 /** Map containment and missing-file errors to 400/404; rethrow everything else. */

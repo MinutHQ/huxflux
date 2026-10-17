@@ -12,6 +12,7 @@ import { getDiffBundle } from "../../git/diffBundle.js"
 import {
   PathOutsideWorktreeError, listDirectory, listAllFilePaths, readWorktreeFile, searchFileContents,
 } from "../../git/files.js"
+import { contentDisposition, openRawWorktreeFile } from "../../git/rawFile.js"
 import * as path from "node:path"
 
 const idParamsSchema = z.object({ id: z.string() })
@@ -19,6 +20,7 @@ const diffBaseSchema = z.enum(["branch", "uncommitted"]).optional()
 const pathQuerySchema = z.object({ path: z.string().optional(), base: diffBaseSchema })
 const baseQuerySchema = z.object({ base: diffBaseSchema })
 const readQuerySchema = z.object({ path: z.string().min(1), force: z.enum(["0", "1"]).optional() })
+const rawQuerySchema = z.object({ path: z.string().min(1), download: z.enum(["0", "1"]).optional() })
 const searchQuerySchema = z.object({ q: z.string() })
 
 /** Map containment and missing-file errors to 400/404; rethrow everything else. */
@@ -70,6 +72,9 @@ export const filesRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get("/api/agents/:id/files/read", {
     schema: { params: idParamsSchema, querystring: readQuerySchema },
   }, readHandler)
+  app.get("/api/agents/:id/files/raw", {
+    schema: { params: idParamsSchema, querystring: rawQuerySchema },
+  }, rawHandler)
 }
 
 // GET /api/agents/:id/files — list file changes from DB
@@ -235,6 +240,43 @@ async function readHandler(
   if (!ctx) return
   try {
     return await readWorktreeFile(ctx.worktreePath, req.query.path, req.query.force === "1")
+  } catch (err) {
+    return sendFsError(err, reply)
+  }
+}
+
+// GET /api/agents/:id/files/raw?path=&download=1 — raw bytes for media previews and downloads.
+// Loaded via `<img>`/`<video>`/links, so the token rides in the query string. Range is supported
+// so video and audio can seek.
+async function rawHandler(
+  req: { params: { id: string }; query: { path: string; download?: "0" | "1" }; headers: { range?: string } },
+  reply: FastifyReply,
+): Promise<unknown> {
+  const ctx = resolveAgentWorktree(req.params.id, reply)
+  if (!ctx) return
+  try {
+    const file = await openRawWorktreeFile(ctx.worktreePath, req.query.path, req.headers.range)
+    reply
+      .header("Accept-Ranges", "bytes")
+      .header("Cache-Control", "private, no-cache")
+      .header("X-Content-Type-Options", "nosniff")
+      // Worktree files are agent-written; never let one run as a page on the server's origin.
+      .header("Content-Security-Policy", "default-src 'none'; sandbox")
+      // The URL carries the auth token; never forward it as a referrer.
+      .header("Referrer-Policy", "no-referrer")
+      .header("Content-Disposition", contentDisposition(req.query.download === "1" ? "attachment" : "inline", req.query.path))
+    if (file.range === "unsatisfiable") {
+      return reply.code(416).header("Content-Range", `bytes */${file.size}`).send()
+    }
+    reply.header("Content-Type", file.contentType)
+    if (file.range) {
+      reply.code(206)
+        .header("Content-Range", `bytes ${file.range.start}-${file.range.end}/${file.size}`)
+        .header("Content-Length", file.range.end - file.range.start + 1)
+    } else {
+      reply.header("Content-Length", file.size)
+    }
+    return reply.send(file.stream)
   } catch (err) {
     return sendFsError(err, reply)
   }

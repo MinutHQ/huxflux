@@ -4,6 +4,7 @@ import { api, type Agent, type Repo, queryKeys, useHuxfluxQuery, useHuxfluxMutat
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { BranchPicker } from "./BranchPicker"
+import { isGitRepo } from "../../utils"
 
 interface BranchRowProps {
   agent: Agent
@@ -17,12 +18,12 @@ export function BranchRow({ agent, repo }: BranchRowProps) {
   const [baseOpen, setBaseOpen] = useState(false)
 
   // Folder-type repos don't have branches; show the path instead.
-  const isGitRepo = repo?.type !== "folder" && agent.branch !== "local"
+  const hasGit = isGitRepo(agent, repo)
 
   const { data: repoBranches = [] } = useHuxfluxQuery({
     queryKey: queryKeys.repos.branches(agent.repoId ?? ""),
     queryFn: () => api.repos.branches(agent.repoId!),
-    enabled: isGitRepo && !!agent.repoId && (baseOpen || branchOpen),
+    enabled: hasGit && !!agent.repoId && (baseOpen || branchOpen),
     staleTime: 60_000,
   })
 
@@ -52,7 +53,7 @@ export function BranchRow({ agent, repo }: BranchRowProps) {
     },
   })
 
-  if (!isGitRepo) {
+  if (!hasGit) {
     if (!repo) return null
     return (
       <div className="flex items-center gap-1.5">

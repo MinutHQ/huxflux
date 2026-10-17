@@ -16,6 +16,11 @@ function isLayout(raw: unknown): raw is SidePaneLayout {
     && (r.maximized === null || r.maximized === "top" || r.maximized === "terminal")
 }
 
+function withoutDiff(l: SidePaneLayout): SidePaneLayout {
+  if (l.top !== "diff" && l.lastTop !== "diff") return l
+  return { ...l, top: l.top === "diff" ? "files" : l.top, lastTop: l.lastTop === "diff" ? "files" : l.lastTop }
+}
+
 function isPosition(raw: unknown): raw is "right" | "bottom" {
   return raw === "right" || raw === "bottom"
 }
@@ -27,11 +32,18 @@ function isPosition(raw: unknown): raw is "right" | "bottom" {
  *
  * Shortcuts: Cmd/Ctrl+U toggles the top section (reopening the last one),
  * Cmd/Ctrl+J toggles the terminal. `huxflux:toggle-terminal-maximize`
- * maximizes the terminal.
+ * maximizes the terminal. With `hasDiff` false (a folder, not a git repo)
+ * the Diff section is replaced by Files.
  */
-export function useAgentWorkspaceLayout(agentId: string) {
+export function useAgentWorkspaceLayout(agentId: string, { hasDiff }: { hasDiff: boolean }) {
   const [terminalTab, setTerminalTab] = useState<TerminalTopTab>("terminal")
-  const [layout, setLayout] = usePersistentState(`huxflux:side-pane:${agentId}`, defaultLayout, isLayout)
+  const [storedLayout, setStoredLayout] = usePersistentState(`huxflux:side-pane:${agentId}`, defaultLayout, isLayout)
+  // Outside a git repo there is nothing to diff: show Files wherever Diff would be.
+  // Updates see the same substituted layout, so toggling Files closes what is on screen.
+  const layout = hasDiff ? storedLayout : withoutDiff(storedLayout)
+  const setLayout = useCallback((update: (l: SidePaneLayout) => SidePaneLayout) => {
+    setStoredLayout((l) => update(hasDiff ? l : withoutDiff(l)))
+  }, [hasDiff, setStoredLayout])
   const [terminalPosition, setTerminalPosition] = usePersistentState<"right" | "bottom">("huxflux:terminal-position", "right", isPosition)
 
   const mainLayout = useDefaultLayout({ id: "huxflux-main", panelIds: ["huxflux-main-chat", "huxflux-main-side"] })

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { cn } from "@huxflux/ui"
-import { IconChevronRight, IconFile } from "@tabler/icons-react"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, cn } from "@huxflux/ui"
+import { IconChevronRight, IconCopy, IconDownload, IconFile } from "@tabler/icons-react"
+import { toast } from "sonner"
 import type { FileChange } from "@huxflux/shared"
 import { fileColor } from "../../utils"
 import type { useDirectoryTree } from "../../hooks/useDirectoryTree"
@@ -11,12 +12,13 @@ interface DirectoryTreeProps {
   activePath: string | null
   fileChanges: FileChange[]
   onOpen: (path: string, pin: boolean) => void
+  onDownload: (path: string) => void
 }
 
 const ROW_HEIGHT = 24
 
 /** Virtualised, lazily loaded worktree tree. Ignored entries are dimmed, changed files tinted. */
-export function DirectoryTree({ tree, activePath, fileChanges, onOpen }: DirectoryTreeProps) {
+export function DirectoryTree({ tree, activePath, fileChanges, onOpen, onDownload }: DirectoryTreeProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const changed = useMemo(() => {
     const files = new Set(fileChanges.map((f) => f.path))
@@ -59,26 +61,39 @@ export function DirectoryTree({ tree, activePath, fileChanges, onOpen }: Directo
           const isDir = entry.type === "directory"
           const isChanged = isDir ? changed.dirs.has(entry.path) : changed.files.has(entry.path)
           return (
-            <button
-              key={entry.path}
-              style={{ ...style, paddingLeft: 8 + row.depth * 12 }}
-              onClick={() => (isDir ? tree.toggle(entry.path) : onOpen(entry.path, false))}
-              onDoubleClick={() => { if (!isDir) onOpen(entry.path, true) }}
-              title={entry.path}
-              className={cn(
-                "flex items-center gap-1.5 pr-2 text-left transition-colors",
-                entry.path === activePath ? "bg-accent" : "hover:bg-accent/50",
-                entry.ignored ? "text-muted-foreground/55" : "text-foreground/90",
-                isChanged && !entry.ignored && "text-amber-600 dark:text-amber-300",
-              )}
-            >
-              {isDir ? (
-                <IconChevronRight size={12} className={cn("shrink-0 text-muted-foreground transition-transform", row.expanded && "rotate-90")} />
-              ) : (
-                <IconFile size={12} className={cn("shrink-0", entry.ignored ? "text-muted-foreground/50" : fileColor(entry.name))} />
-              )}
-              <span className="truncate">{entry.name}</span>
-            </button>
+            <ContextMenu key={entry.path}>
+              <ContextMenuTrigger asChild>
+                <button
+                  style={{ ...style, paddingLeft: 8 + row.depth * 12 }}
+                  onClick={() => (isDir ? tree.toggle(entry.path) : onOpen(entry.path, false))}
+                  onDoubleClick={() => { if (!isDir) onOpen(entry.path, true) }}
+                  title={entry.path}
+                  className={cn(
+                    "flex items-center gap-1.5 pr-2 text-left transition-colors",
+                    entry.path === activePath ? "bg-accent" : "hover:bg-accent/50",
+                    entry.ignored ? "text-muted-foreground/55" : "text-foreground/90",
+                    isChanged && !entry.ignored && "text-amber-600 dark:text-amber-300",
+                  )}
+                >
+                  {isDir ? (
+                    <IconChevronRight size={12} className={cn("shrink-0 text-muted-foreground transition-transform", row.expanded && "rotate-90")} />
+                  ) : (
+                    <IconFile size={12} className={cn("shrink-0", entry.ignored ? "text-muted-foreground/50" : fileColor(entry.name))} />
+                  )}
+                  <span className="truncate">{entry.name}</span>
+                </button>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {!isDir && (
+                  <ContextMenuItem onSelect={() => onDownload(entry.path)}>
+                    <IconDownload size={13} /> Download
+                  </ContextMenuItem>
+                )}
+                <ContextMenuItem onSelect={() => { navigator.clipboard.writeText(entry.path).then(() => toast.success("Path copied"), () => toast.error("Could not copy path")) }}>
+                  <IconCopy size={13} /> Copy path
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           )
         })}
       </div>

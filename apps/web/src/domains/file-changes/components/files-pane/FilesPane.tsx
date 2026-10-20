@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from "react"
+import { useCallback, useRef, useState } from "react"
 import type { EditorView } from "@codemirror/view"
 import { openSearchPanel } from "@codemirror/search"
 import { useQueryClient } from "@tanstack/react-query"
@@ -26,16 +26,15 @@ export interface FilesPaneProps {
   pendingComments: PRComment[]
   onAddComment: (c: PRComment) => void
   onRemoveComment: (id: string) => void
-  controls?: ReactNode
 }
 
 /**
- * The side pane's Files section: the whole worktree as a lazy tree (ignored
+ * The workspace's Files pane: the whole worktree as a lazy tree (ignored
  * files dimmed), a filter box that fuzzy-matches names or, with a leading
  * `?`, searches contents, preview/pinned tabs, and a CodeMirror editor with
  * Cmd+S save and line comments.
  */
-export function FilesPane({ agent, buffers, openRequest, pendingComments, onAddComment, onRemoveComment, controls }: FilesPaneProps) {
+export function FilesPane({ agent, buffers, openRequest, pendingComments, onAddComment, onRemoveComment }: FilesPaneProps) {
   const tabs = useFileTabsState(agent.id)
   const tree = useDirectoryTree(agent.id)
   const queryClient = useQueryClient()
@@ -139,7 +138,6 @@ export function FilesPane({ agent, buffers, openRequest, pendingComments, onAddC
               { label: "Close all tabs", icon: <IconX size={13} />, disabled: tabs.tabs.length === 0 || buffers.dirty.size > 0, onSelect: tabs.closeAll },
             ]}
           />
-          {controls}
         </div>
       </div>
       <div className="flex-1 min-h-0">

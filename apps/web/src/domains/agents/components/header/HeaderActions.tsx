@@ -5,7 +5,7 @@ import {
   IconPlayerPlayFilled,
 } from "@tabler/icons-react"
 import type { Agent, Repo } from "@huxflux/shared"
-import type { SidePaneLayout, SidePaneSection } from "../../agents.types"
+import type { SidePaneId, WorkspacePaneId } from "../../agents.types"
 import { PRBadges } from "./PRBadges"
 import { SidePaneToggles } from "./SidePaneToggles"
 import { isGitRepo } from "../../utils"
@@ -21,13 +21,12 @@ interface HeaderActionsProps {
   onReview?: () => void
   onRun?: () => void
   sidePane?: {
-    layout: SidePaneLayout
-    onToggleTop: (section: SidePaneSection) => void
-    onToggleTerminal: () => void
+    visible: ReadonlySet<WorkspacePaneId>
+    onToggle: (pane: SidePaneId) => void
   }
 }
 
-/** Right side of the header: PR badges + the action buttons + open-in + side-pane toggles. */
+/** Right side of the header: PR badges + the action buttons + open-in + pane toggles. */
 export function HeaderActions({
   agent,
   repo,
@@ -88,11 +87,10 @@ export function HeaderActions({
         <>
           <div className="w-px h-4 bg-border" />
           <SidePaneToggles
-            layout={sidePane.layout}
+            visible={sidePane.visible}
             showDiff={hasGit}
             showPR={hasGit && githubEnabled && !!agent.prStatus}
-            onToggleTop={sidePane.onToggleTop}
-            onToggleTerminal={sidePane.onToggleTerminal}
+            onToggle={sidePane.onToggle}
           />
         </>
       )}

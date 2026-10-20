@@ -17,6 +17,7 @@ Cross-platform types, hooks, and API client slice for the agent / chat surface. 
 - `agentsApi` — the agent HTTP slice, merged into the composed `api` object at the package root
 - `useAgent` — single-agent React Query hook with WS reconciliation and message pagination
 - `attachments.ts` — chat-attachment helpers: `MAX_ATTACHMENT_BYTES`, `buildAttachedFilesBlock`, `parseAttachedFiles`, `attachmentUrl`, `isImageAttachment`, `checkAttachmentSize`, `describeUploadError`, `formatBytes`
+- `paneAnchor.ts` — `derivePaneAnchor` / `resolvePaneAnchor` and the `PaneAnchor` types: remember where a docked workspace pane sat when it was hidden (tab sibling, outer edge, or adjacent group) and pick where it reappears, following the chain when its reference is hidden too. Pure, used by the web dock layout
 - `configureAgentErrorHandler` — registers a platform-specific handler for `error` events surfaced by `useAgent`
 - `useAgents` — sidebar agent-list React Query hook with WS reconciliation
 - `markAgentDeleted` — tombstone helper that prevents a late `agent:updated` from resurrecting a just-deleted agent

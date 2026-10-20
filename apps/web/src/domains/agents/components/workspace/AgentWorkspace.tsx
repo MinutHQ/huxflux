@@ -10,9 +10,10 @@ import { AgentWorkspaceHeader } from "../AgentWorkspaceHeader"
 import { HomeView } from "../../HomeView"
 import { useAgentWorkspaceLayout } from "../../hooks/useAgentWorkspaceLayout"
 import { isGitRepo } from "../../utils"
+import type { SidePaneId } from "../../agents.types"
 import { useQuestionNotice, useWorkspaceActions } from "../../hooks/useWorkspaceActions"
 import { SideTopSection, type PaneRequests } from "./SideTopSection"
-import { WorkspacePanels } from "./WorkspacePanels"
+import { WorkspaceDock } from "./WorkspaceDock"
 import { WorkspaceTerminal } from "./WorkspaceTerminal"
 
 const workerPoolOptions = {
@@ -23,9 +24,9 @@ const workerPoolOptions = {
 }
 
 /**
- * The per-agent workspace: header, chat on the left, and a side pane with one
- * top section (Diff / Files / PR) over an optional terminal. Either side-pane
- * section can be maximized over the chat.
+ * The per-agent workspace: header over a dock of panes (chat, Diff, Files,
+ * PR, terminal) that can be dragged into splits and tab groups. Any pane can
+ * be maximized; every pane but the chat can be closed.
  */
 export function AgentWorkspace({ agentId }: { agentId: string }) {
   const workspace = useWorkspaceContext()
@@ -48,7 +49,7 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
   useQuestionNotice(activeAgent, active.pendingQuestion)
   const actions = useWorkspaceActions(activeAgent)
 
-  // The side pane follows the root agent (a thread child shares its parent's worktree).
+  // The Diff / Files / PR / terminal panes follow the root agent (a thread child shares its parent's worktree).
   const rootId = workspace.rootAgentId
   const sameAsActive = !!rootId && !!activeAgent && rootId === activeAgent.id
   const { data: rootQueryData } = useHuxfluxQuery({
@@ -58,10 +59,10 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
     staleTime: 10_000,
   })
   const rootAgent = (sameAsActive ? activeAgent : rootQueryData) ?? activeAgent
-  const { data: repos = [] } = useRepos()
+  const { data: repos = [], isPending: reposPending } = useRepos()
   const hasDiff = !rootAgent || isGitRepo(rootAgent, repos.find((r) => r.id === rootAgent.repoId))
-  const ui = useAgentWorkspaceLayout(agentId, { hasDiff })
-  const { layout } = ui
+  const hasPR = hasDiff && githubEnabled && !!rootAgent?.prStatus
+  const ui = useAgentWorkspaceLayout(agentId, { hasDiff, hasPR, settled: !!rootAgent && !reposPending })
 
   const { pendingComments, setPendingComments } = workspace
   const comments = useMemo(() => ({
@@ -73,45 +74,24 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
   if (!activeAgent || !rootAgent) return <HomeView />
 
   const openFileAt = (path: string) => {
-    ui.openTop("files")
+    ui.show("files")
     setRequests((r) => ({ ...r, fileOpen: { path, nonce: Date.now() } }))
   }
   const openDiffAt = (file: FileChange) => {
     if (!hasDiff) { openFileAt(file.path); return }
-    ui.openTop("diff")
+    ui.show("diff")
     setRequests((r) => ({ ...r, diffFocus: { path: file.path, nonce: Date.now() } }))
   }
-  // Switching sections by hand drops any pending jump so it does not replay on remount.
-  const toggleTop = (section: Parameters<typeof ui.toggleTop>[0]) => {
+  // Toggling a pane by hand drops any pending jump so it does not replay on remount.
+  const togglePane = (pane: SidePaneId) => {
     setRequests({ diffFocus: null, fileOpen: null })
-    ui.toggleTop(section)
+    ui.toggle(pane)
   }
 
-  const top = layout.top && (
-    <SideTopSection
-      section={layout.top}
-      agent={rootAgent}
-      buffers={buffers}
-      requests={requests}
-      onOpenFile={openFileAt}
-      {...comments}
-      maximized={layout.maximized === "top"}
-      onToggleMaximize={() => ui.toggleMaximize("top")}
-      onClose={ui.closeTop}
-    />
+  const section = (which: "diff" | "files" | "pr") => (
+    <SideTopSection section={which} agent={rootAgent} buffers={buffers} requests={requests} onOpenFile={openFileAt} {...comments} />
   )
-  const terminal = layout.terminal && (
-    <WorkspaceTerminal
-      agent={rootAgent}
-      activeTab={ui.terminalTab}
-      onTabChange={ui.setTerminalTab}
-      position={ui.terminalPosition}
-      onPositionChange={ui.setTerminalPosition}
-      maximized={layout.maximized === "terminal"}
-      onToggleMaximize={() => ui.toggleMaximize("terminal")}
-      onClose={ui.toggleTerminal}
-    />
-  )
+  const terminal = <WorkspaceTerminal agent={rootAgent} activeTab={ui.terminalTab} onTabChange={ui.setTerminalTab} />
   const chat = (
     <ChatView
       agent={activeAgent}
@@ -152,10 +132,13 @@ export function AgentWorkspace({ agentId }: { agentId: string }) {
           onCreatePR={actions.handleCreatePR}
           onReview={actions.handleReview}
           onRun={actions.handleRun}
-          sidePane={{ layout, onToggleTop: toggleTop, onToggleTerminal: ui.toggleTerminal }}
+          sidePane={{ visible: ui.visible, onToggle: togglePane }}
           sidebarCollapsed={sidebarCollapsed}
         />
-        <WorkspacePanels ui={ui} chat={chat} top={top || null} terminal={terminal || null} />
+        <WorkspaceDock
+          ui={ui}
+          content={{ chat, diff: hasDiff && section("diff"), files: section("files"), pr: section("pr"), terminal }}
+        />
       </div>
     </WorkerPoolContextProvider>
   )

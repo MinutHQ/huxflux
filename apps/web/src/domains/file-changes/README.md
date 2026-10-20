@@ -4,8 +4,8 @@ Right-pane viewers for an agent's file changes: the unified file tree, the stack
 
 ## Owns
 
-- The side pane's Diff section (`DiffPane`): changed-files tree with +/- counts on the left, every changed file stacked on the right with sticky collapsible headers, lazily mounted diff bodies, a `base › branch` crumb that switches between "all branch changes" and "uncommitted changes", unified/split toggle, hover-`+` line comments
-- The side pane's Files section (`FilesPane`): lazily loaded worktree tree (gitignored entries dimmed), a filter box that fuzzy-matches file names or, with a leading `?`, searches contents, preview/pinned tabs persisted per agent, and a CodeMirror editor with Cmd+S save, Cmd+F search, folding, on-disk conflict handling, binary placeholder, image / video / audio previews streamed from the raw-file route, a right-click menu on tree rows (Download, Copy path), and hover-`+` line comments
+- The workspace's Diff pane (`DiffPane`): changed-files tree with +/- counts on the left, every changed file stacked on the right with sticky collapsible headers, lazily mounted diff bodies, a `base › branch` crumb that switches between "all branch changes" and "uncommitted changes", unified/split toggle, hover-`+` line comments
+- The workspace's Files pane (`FilesPane`): lazily loaded worktree tree (gitignored entries dimmed), a filter box that fuzzy-matches file names or, with a leading `?`, searches contents, preview/pinned tabs persisted per agent, and a CodeMirror editor with Cmd+S save, Cmd+F search, folding, on-disk conflict handling, binary placeholder, image / video / audio previews streamed from the raw-file route, a right-click menu on tree rows (Download, Copy path), and hover-`+` line comments
 - Unsaved editor buffers (`useFileBuffers`), owned by the workspace so drafts survive the pane remounting
 - Syntax-highlighted unified/split diff for a single file (`DiffView`), with the inline comment composer
 - Per-agent PR tab body (`AgentPRTab`): reviews / checks / merge status cards, merge actions, review threads, discussion list
@@ -13,8 +13,8 @@ Right-pane viewers for an agent's file changes: the unified file tree, the stack
 
 ## Public surface
 
-- `DiffPane` — the Diff section of the agent side pane
-- `FilesPane` — the Files section of the agent side pane
+- `DiffPane` — the Diff pane of the agent workspace dock
+- `FilesPane` — the Files pane of the agent workspace dock
 - `useFileBuffers` — unsaved-draft store for the Files section (and the `FileBuffers` type)
 - `AgentPRTab` — per-agent PR tab body
 - `DiffView` — single-file syntax-highlighted diff

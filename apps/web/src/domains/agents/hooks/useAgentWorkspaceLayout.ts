@@ -1,111 +1,143 @@
-import { useCallback, useEffect, useState } from "react"
-import { useDefaultLayout } from "react-resizable-panels"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePersistentState } from "@/hooks/usePersistentState"
-import type { SidePaneLayout, SidePaneSection, TerminalTopTab } from "../agents.types"
+import type { DockHandle, PaneVisibility, SidePaneId, TerminalTopTab, WorkspacePaneId } from "../agents.types"
+import { paneOrder, resetLayout } from "../service/workspaceDock"
 
-const defaultLayout: SidePaneLayout = { top: "diff", lastTop: "diff", terminal: true, maximized: null }
+const sidePanes: readonly SidePaneId[] = ["diff", "files", "pr", "terminal"]
+const sectionPanes: readonly SidePaneId[] = ["diff", "files", "pr"]
 
-const sections: readonly string[] = ["diff", "files", "pr"]
+const defaultVisibility: PaneVisibility = { hidden: ["files", "pr"], lastSide: ["diff"] }
 
-function isLayout(raw: unknown): raw is SidePaneLayout {
+function isPaneList(raw: unknown): raw is SidePaneId[] {
+  return Array.isArray(raw) && raw.every((p) => sidePanes.includes(p as SidePaneId))
+}
+
+function isVisibility(raw: unknown): raw is PaneVisibility {
   if (!raw || typeof raw !== "object") return false
   const r = raw as Record<string, unknown>
-  return (r.top === null || sections.includes(String(r.top)))
-    && sections.includes(String(r.lastTop))
-    && typeof r.terminal === "boolean"
-    && (r.maximized === null || r.maximized === "top" || r.maximized === "terminal")
+  return isPaneList(r.hidden) && isPaneList(r.lastSide)
 }
 
-function withoutDiff(l: SidePaneLayout): SidePaneLayout {
-  if (l.top !== "diff" && l.lastTop !== "diff") return l
-  return { ...l, top: l.top === "diff" ? "files" : l.top, lastTop: l.lastTop === "diff" ? "files" : l.lastTop }
+/** Outside a git repo there is nothing to diff: Files shows wherever Diff would. */
+function withoutDiff(v: PaneVisibility): PaneVisibility {
+  const lastSide = [...new Set(v.lastSide.map((p) => (p === "diff" ? "files" : p)))]
+  const hidden = v.hidden.includes("diff")
+    ? v.hidden
+    : [...v.hidden.filter((p) => p !== "files"), "diff" as const]
+  return { hidden, lastSide }
 }
 
-function isPosition(raw: unknown): raw is "right" | "bottom" {
-  return raw === "right" || raw === "bottom"
+/** Cmd/Ctrl+U: closes every open Diff / Files / PR pane, or reopens the set it last closed. */
+function toggleSections(v: PaneVisibility): PaneVisibility {
+  const open = sectionPanes.filter((p) => !v.hidden.includes(p))
+  if (open.length) return { hidden: [...new Set([...v.hidden, ...open])], lastSide: open }
+  const reopen = v.lastSide.length ? v.lastSide : ["diff" as const]
+  return { ...v, hidden: v.hidden.filter((p) => !reopen.includes(p)) }
 }
 
 /**
- * Layout state for the per-agent workspace: chat on the left, one side pane
- * on the right with a top section (Diff / Files / PR, one at a time) and an
- * optional terminal stacked under it. Persisted per agent.
+ * Pane state for the per-agent workspace dock. Where panes sit (the split
+ * tree, tabs, sizes) is one global layout owned by `WorkspaceDock`; which
+ * panes are shown is persisted per agent here. The chat is always shown.
  *
- * Shortcuts: Cmd/Ctrl+U toggles the top section (reopening the last one),
- * Cmd/Ctrl+J toggles the terminal. `huxflux:toggle-terminal-maximize`
+ * Shortcuts: Cmd/Ctrl+U toggles the Diff / Files / PR panes (reopening the
+ * last set), Cmd/Ctrl+J toggles the terminal. `huxflux:toggle-terminal-maximize`
  * maximizes the terminal. With `hasDiff` false (a folder, not a git repo)
- * the Diff section is replaced by Files.
+ * the Diff pane is replaced by Files; with `hasPR` false the PR pane stays
+ * hidden without touching what is saved. `settled` is false while those two
+ * are still loading, and the dock waits for it so it never rearranges on a guess.
  */
-export function useAgentWorkspaceLayout(agentId: string, { hasDiff }: { hasDiff: boolean }) {
+export function useAgentWorkspaceLayout(
+  agentId: string,
+  { hasDiff, hasPR, settled }: { hasDiff: boolean; hasPR: boolean; settled: boolean },
+) {
   const [terminalTab, setTerminalTab] = useState<TerminalTopTab>("terminal")
-  const [storedLayout, setStoredLayout] = usePersistentState(`huxflux:side-pane:${agentId}`, defaultLayout, isLayout)
-  // Outside a git repo there is nothing to diff: show Files wherever Diff would be.
-  // Updates see the same substituted layout, so toggling Files closes what is on screen.
-  const layout = hasDiff ? storedLayout : withoutDiff(storedLayout)
-  const setLayout = useCallback((update: (l: SidePaneLayout) => SidePaneLayout) => {
-    setStoredLayout((l) => update(hasDiff ? l : withoutDiff(l)))
-  }, [hasDiff, setStoredLayout])
-  const [terminalPosition, setTerminalPosition] = usePersistentState<"right" | "bottom">("huxflux:terminal-position", "right", isPosition)
+  const [stored, setStored] = usePersistentState(`huxflux:panes:${agentId}`, defaultVisibility, isVisibility)
+  const visibility = hasDiff ? stored : withoutDiff(stored)
+  // Updates see the same substituted state, so toggling Files closes what is on screen.
+  const setVisibility = useCallback((update: (v: PaneVisibility) => PaneVisibility) => {
+    setStored((v) => update(hasDiff ? v : withoutDiff(v)))
+  }, [hasDiff, setStored])
 
-  const mainLayout = useDefaultLayout({ id: "huxflux-main", panelIds: ["huxflux-main-chat", "huxflux-main-side"] })
-  const sideLayout = useDefaultLayout({ id: "huxflux-side", panelIds: ["huxflux-side-top", "huxflux-side-terminal"] })
+  const hiddenKey = [...visibility.hidden, ...(hasPR ? [] : ["pr"])].sort().join(",")
+  const visible = useMemo(() => {
+    const hidden = hiddenKey.split(",")
+    return new Set(paneOrder.filter((p) => !hidden.includes(p)))
+  }, [hiddenKey])
 
-  const openTop = useCallback((section: SidePaneSection) => {
-    setLayout((l) => ({ ...l, top: section, lastTop: section }))
-  }, [setLayout])
+  const dockRef = useRef<DockHandle | null>(null)
+  /** Pane to bring to the front on the next reconcile, set when a pane is opened. */
+  const pendingFocusRef = useRef<WorkspacePaneId | undefined>(undefined)
 
-  const toggleTop = useCallback((section: SidePaneSection) => {
-    setLayout((l) => (l.top === section
-      ? { ...l, top: null, maximized: l.maximized === "top" ? null : l.maximized }
-      : { ...l, top: section, lastTop: section }))
-  }, [setLayout])
+  const show = useCallback((pane: SidePaneId) => {
+    const panel = dockRef.current?.api.getPanel(pane)
+    if (panel) { panel.api.setActive(); return }
+    pendingFocusRef.current = pane
+    setVisibility((v) => ({ ...v, hidden: v.hidden.filter((p) => p !== pane) }))
+  }, [setVisibility])
 
-  const closeTop = useCallback(() => {
-    setLayout((l) => ({ ...l, top: null, maximized: l.maximized === "top" ? null : l.maximized }))
-  }, [setLayout])
+  const hide = useCallback((pane: SidePaneId) => {
+    if (dockRef.current?.api.hasMaximizedGroup()) dockRef.current.api.exitMaximizedGroup()
+    setVisibility((v) => ({ ...v, hidden: [...new Set([...v.hidden, pane])] }))
+  }, [setVisibility])
 
-  const toggleTerminal = useCallback(() => {
-    setLayout((l) => ({ ...l, terminal: !l.terminal, maximized: l.maximized === "terminal" ? null : l.maximized }))
-  }, [setLayout])
+  /** Opens a hidden pane, brings a background tab to the front, or hides a pane already in front. */
+  const toggle = useCallback((pane: SidePaneId) => {
+    const panel = dockRef.current?.api.getPanel(pane)
+    if (panel && panel.group.activePanel?.id !== pane) panel.api.setActive()
+    else if (visible.has(pane)) hide(pane)
+    else show(pane)
+  }, [visible, show, hide])
 
-  const toggleMaximize = useCallback((which: "top" | "terminal") => {
-    setLayout((l) => ({ ...l, maximized: l.maximized === which ? null : which }))
-  }, [setLayout])
+  const toggleMaximize = useCallback((pane: WorkspacePaneId) => {
+    const handle = dockRef.current
+    const panel = handle?.api.getPanel(pane)
+    if (!handle || !panel) return
+    if (panel.group.api.isMaximized()) handle.api.exitMaximizedGroup()
+    else handle.api.maximizeGroup(panel)
+  }, [])
+
+  const reset = useCallback(() => {
+    if (dockRef.current) resetLayout(dockRef.current.api, visible, dockRef.current.container)
+  }, [visible])
 
   useEffect(() => {
-    const onMaximizeTerminal = () => toggleMaximize("terminal")
+    const onMaximizeTerminal = () => {
+      if (visible.has("terminal")) toggleMaximize("terminal")
+      else show("terminal")
+    }
     window.addEventListener("huxflux:toggle-terminal-maximize", onMaximizeTerminal)
     return () => window.removeEventListener("huxflux:toggle-terminal-maximize", onMaximizeTerminal)
-  }, [toggleMaximize])
+  }, [visible, show, toggleMaximize])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey)) return
       if (e.key === "u") {
         e.preventDefault()
-        setLayout((l) => (l.top ? { ...l, top: null } : { ...l, top: l.lastTop }))
+        setVisibility(toggleSections)
       }
       if (e.key === "j") {
         e.preventDefault()
-        toggleTerminal()
+        toggle("terminal")
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [setLayout, toggleTerminal])
+  }, [setVisibility, toggle])
 
   return {
     terminalTab,
     setTerminalTab,
-    layout,
-    openTop,
-    toggleTop,
-    closeTop,
-    toggleTerminal,
+    visible,
+    show,
+    hide,
+    toggle,
     toggleMaximize,
-    terminalPosition,
-    setTerminalPosition,
-    mainLayout,
-    sideLayout,
+    reset,
+    settled,
+    dockRef,
+    pendingFocusRef,
   }
 }
 

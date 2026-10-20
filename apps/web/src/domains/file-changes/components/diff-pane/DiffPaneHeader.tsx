@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useState } from "react"
 import { Button, Popover, PopoverContent, PopoverTrigger, cn } from "@huxflux/ui"
 import {
   IconArrowsMaximize, IconArrowsMinimize, IconChevronDown, IconChevronRight, IconLayoutColumns,
@@ -24,7 +24,6 @@ interface DiffPaneHeaderProps {
   onExpandAll: () => void
   onCollapseAll: () => void
   onRefresh: () => void
-  controls?: ReactNode
 }
 
 const baseOptions: Array<{ value: DiffBase; label: string; hint: string }> = [
@@ -32,7 +31,7 @@ const baseOptions: Array<{ value: DiffBase; label: string; hint: string }> = [
   { value: "uncommitted", label: "Uncommitted changes", hint: "Working tree vs the last commit" },
 ]
 
-/** Diff pane header: tree toggle, `base › branch` crumb with base picker, search, menu, window controls. */
+/** Diff pane header: tree toggle, `base › branch` crumb with base picker, search, menu. */
 export function DiffPaneHeader(props: DiffPaneHeaderProps) {
   const [baseOpen, setBaseOpen] = useState(false)
   const { base, baseBranch, branch } = props
@@ -105,7 +104,6 @@ export function DiffPaneHeader(props: DiffPaneHeaderProps) {
             { label: "Refresh", icon: <IconRefresh size={13} />, onSelect: props.onRefresh },
           ]}
         />
-        {props.controls}
       </div>
     </div>
   )

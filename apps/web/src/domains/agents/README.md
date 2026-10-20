@@ -4,7 +4,7 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 
 ## Owns
 
-- The per-agent workspace header rendered above the chat: repo / agent name + task link, branch picker + base-branch picker, PR badges (review state, CI checks popover, PR number link), action buttons (Create PR, Review, Run), the "Open in editor" split-button (with SSH-aware behavior when running against a remote server) and the side-pane section toggles
+- The per-agent workspace header rendered above the chat: repo / agent name + task link, branch picker + base-branch picker, PR badges (review state, CI checks popover, PR number link), action buttons (Create PR, Review, Run), the "Open in editor" split-button (with SSH-aware behavior when running against a remote server) and the pane toggles (Diff / Files / PR / Terminal)
 - The per-agent terminal viewer: persisted multi-tab strip backed by the server's terminal-tab table, long-lived xterm sessions kept in a module-level store so they survive component remounts, Cmd+F search, port autodetection, and the "setup" / "run" top-tab overlays
 - The sidebar agent list: status-grouped or repo-grouped rows with thread-child nesting, inline rename, status context menu (set status, generate title, rename branch, delete with confirm), hover popover, repo + group-by filter, the new-agent flow (random bee names → branches) and add-workspace flows, plus the empty state
 - The active-processes panel rendered at the bottom of the sidebar: lists every running dev-server port across all agents, click-through to open the URL or kill the process
@@ -18,14 +18,15 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 - `ActiveProcesses` — the bottom-of-sidebar collapsible panel listing every running dev-server port across all agents
 - `HomeView` — the agent-centric landing dashboard (lifetime workspace stats, status breakdown, AI "Wrapped" summary, animated background)
 - `AgentShortcuts` — headless component that wires the agent-level keyboard shortcuts (⌘⇧D mark done, ⌘⇧⌫ archive); mounted once by `routes/_app.tsx` inside the workspace provider
-- `AgentWorkspace` — the per-agent workspace rendered by the agent route: header, chat, and the side pane (one top section of Diff / Files / PR over an optional terminal, each maximizable), wrapped in an error boundary
-- `useAgentWorkspaceLayout` — side pane layout state persisted per agent (open section, terminal, maximized), terminal position, Cmd/Ctrl+U / Cmd/Ctrl+J shortcuts, `useDefaultLayout` for the resizable groups
+- `AgentWorkspace` — the per-agent workspace rendered by the agent route: header over a dockview dock of five panes (chat, Diff, Files, PR, terminal) that can be dragged into splits and tab groups, maximized, and (all but the chat) closed; wrapped in an error boundary
+- `useAgentWorkspaceLayout` — which panes are shown, persisted per agent; show / hide / toggle / maximize / reset actions against the live dock; Cmd/Ctrl+U / Cmd/Ctrl+J shortcuts; holds the dock back (`settled`) until git and PR status are known, and keeps the PR pane hidden while the agent has no PR
 
 ## Depends on
 
 - `@huxflux/shared` — `Agent`, `AgentSummary`, `AgentStatus`, `Repo`, `PRStatus`, `PRCheck`, `useAgents`, `useRepos`, `useAgentEvents`, `markAgentDeleted`, `statusConfig`, `api`, `WorkspaceStats`, `getActiveServer`
 - `@huxflux/ui` — primitives (Button, ScrollArea, cn)
 - `@tabler/icons-react` — icons
+- `dockview-react` — the workspace dock (splits, tab groups, drag and drop, layout JSON)
 - `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`, `@xterm/addon-web-links` — terminal renderer and addons
 - `@tanstack/react-query` — PR details + repo-branches fetching, agent cache writes, ports query
 - `@tanstack/react-router` — `useNavigate` / `useMatchRoute` for the Task link, selected-agent derivation, and active-processes click-through
@@ -42,6 +43,12 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 None.
 
 ## Quirks
+
+- The workspace dock has two layers of state. The arrangement (split tree, tab groups, sizes) is one global dockview layout in localStorage (`huxflux:dock-layout`). Which panes are shown is per agent (`huxflux:panes:<agentId>`). dockview cannot hide a single tab, so a hidden pane is removed from the dock and its spot is saved in `huxflux:dock-anchors` (tab sibling, outer edge, or adjacent pane, via `derivePaneAnchor` in `@huxflux/shared`). Showing it re-adds it there. Panes come back in reverse hiding order, and a batch is removed smallest group first, so a set hidden together (Cmd/Ctrl+U) returns in the same arrangement. Switching agents with different visible panes remounts those panes.
+- The chat never shares a tab group. `guardChatDrop` rejects tab-strip and center drops into or out of the chat's group, but splits beside it are allowed. The chat input's attachment drop zone ignores drags without files so pane drags reach the dock.
+- Panes use dockview's `always` renderer so a background tab or a group hidden behind a maximized one keeps its React state (chat draft, diff scroll, open files) instead of remounting.
+- Outside a git repo, toggles write the Files-for-Diff substitution back to the agent's saved visibility (writing only the raw change made Files impossible to close there). If a folder later becomes a git repo, its earlier Diff visibility is not remembered.
+- `WorkspaceDock` keeps the dockview API in state and copies it into the hook's `dockRef` from an effect. Setting the ref directly in `onReady` breaks under React StrictMode, because the dev-only effect cleanup nulls it and `onReady` does not fire again.
 
 - `AgentRow` shows `NeedsInputIcon` (amber question bubble) when `agent.pendingQuestion` is set. It outranks the streaming dots: a parked AskUserQuestion means the agent is waiting on the user, not working.
 

@@ -62,6 +62,8 @@ export {
   describeUploadError,
 } from "./domains/agents/attachments.js"
 export type { AttachedFile, ParsedUserContent } from "./domains/agents/attachments.js"
+export { derivePaneAnchor, resolvePaneAnchor } from "./domains/agents/paneAnchor.js"
+export type { PaneAnchor, PaneDirection, PaneRect, PaneSite } from "./domains/agents/paneAnchor.js"
 export {
   statusConfig,
   statusOrder,

@@ -4,7 +4,7 @@ import { isTauri } from "@/lib/platform"
 import { AgentIdentity } from "./header/AgentIdentity"
 import { BranchRow } from "./header/BranchRow"
 import { HeaderActions } from "./header/HeaderActions"
-import type { SidePaneLayout, SidePaneSection } from "../agents.types"
+import type { SidePaneId, WorkspacePaneId } from "../agents.types"
 
 interface AgentWorkspaceHeaderProps {
   agent: Agent
@@ -14,9 +14,8 @@ interface AgentWorkspaceHeaderProps {
   onReview?: () => void
   onRun?: () => void
   sidePane?: {
-    layout: SidePaneLayout
-    onToggleTop: (section: SidePaneSection) => void
-    onToggleTerminal: () => void
+    visible: ReadonlySet<WorkspacePaneId>
+    onToggle: (pane: SidePaneId) => void
   }
   sidebarCollapsed?: boolean
 }
@@ -25,7 +24,7 @@ interface AgentWorkspaceHeaderProps {
  * Top bar above the per-agent chat. Three regions:
  *  - left identity (repo / title / task link)
  *  - branch line (current branch + base branch, both pickable)
- *  - right action cluster (PR badges, create PR / review / run, open-in, side-pane toggles)
+ *  - right action cluster (PR badges, create PR / review / run, open-in, pane toggles)
  */
 export function AgentWorkspaceHeader({
   agent,

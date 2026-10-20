@@ -15,7 +15,7 @@ interface PaneMenuProps {
   title?: string
 }
 
-/** The `⋯` overflow menu in a side-pane header. */
+/** The `⋯` overflow menu in a workspace pane header. */
 export function PaneMenu({ items, title = "More" }: PaneMenuProps) {
   const [open, setOpen] = useState(false)
   return (

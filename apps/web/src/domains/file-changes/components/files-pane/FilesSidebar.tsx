@@ -22,7 +22,7 @@ interface FilesSidebarProps {
 export function FilesSidebar({ agent, filter, onFilterChange, inputRef, tree, activePath, onOpen, onFirstResult, onEnter }: FilesSidebarProps) {
   const download = useDownloadFile(agent.id)
   return (
-    <div className="flex flex-col h-full border-r border-border/60">
+    <div className="flex flex-col h-full">
       <div className="relative mx-1.5 mt-1.5 mb-1">
         <IconSearch size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input

@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@huxflux/ui"
 import { IconFiles } from "@tabler/icons-react"
-import { useDefaultLayout } from "react-resizable-panels"
 import { api, orderChangedFiles, queryKeys, useHuxfluxQuery, useRepos, type Agent, type PRComment } from "@huxflux/shared"
 import { useDiffPaneState } from "../../hooks/useDiffPaneState"
 import { useActiveSection } from "../../hooks/useActiveSection"
+import { TreeSplit } from "../TreeSplit"
 import { ChangedFilesTree } from "./ChangedFilesTree"
 import { DiffFileSection } from "./DiffFileSection"
 import { DiffPaneHeader } from "./DiffPaneHeader"
@@ -37,7 +36,6 @@ export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onA
   const queryClient = useQueryClient()
   const { data: repos = [] } = useRepos()
   const repo = repos.find((r) => r.id === agent.repoId)
-  const treeLayout = useDefaultLayout({ id: "huxflux-diff-tree", panelIds: ["huxflux-diff-tree-list", "huxflux-diff-tree-body"] })
 
   const { data: diffs, isLoading } = useHuxfluxQuery({
     queryKey: queryKeys.agents.allDiffs(agent.id, state.base),
@@ -116,7 +114,7 @@ export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onA
   )
 
   const tree = (
-    <div className="flex flex-col h-full border-r border-border/60">
+    <div className="flex flex-col h-full">
       {searchOpen && (
         <input
           autoFocus
@@ -164,11 +162,7 @@ export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onA
       />
       <div className="flex-1 min-h-0">
         {!state.diffVisible ? tree : showTree ? (
-          <ResizablePanelGroup orientation="horizontal" className="h-full" defaultLayout={treeLayout.defaultLayout} onLayoutChanged={treeLayout.onLayoutChanged}>
-            <ResizablePanel id="huxflux-diff-tree-list" defaultSize="28" minSize="12" maxSize="50">{tree}</ResizablePanel>
-            <ResizableHandle className="w-0 bg-transparent" />
-            <ResizablePanel id="huxflux-diff-tree-body" minSize="40">{body}</ResizablePanel>
-          </ResizablePanelGroup>
+          <TreeSplit id="huxflux-diff-tree" tree={tree} body={body} treeSize={{ default: "28", min: "12", max: "50" }} bodyMinSize="40" />
         ) : body}
       </div>
     </div>

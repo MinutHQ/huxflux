@@ -24,6 +24,27 @@ export interface TerminalSession {
   isRunning: boolean
   outputBuf: string
   onDataDisposable: IDisposable | null
+  /** Where the socket connects; set on the first `connectSession`, reused by reconnects. */
+  target: TerminalSessionTarget | null
+  /** The shell exited; the next keystroke starts a new one. */
+  exited: boolean
+  /** The server refused the terminal (agent gone, bad cwd); do not reconnect. */
+  fatal: boolean
+  /** Torn down by `closeTerminalSession`; late socket events are ignored. */
+  disposed: boolean
+  reconnectAttempts: number
+  reconnectTimer: ReturnType<typeof setTimeout> | null
+  /** Input typed (or sent by Run) before the socket opened, flushed on open. */
+  pendingInput: string[]
+  /** Last `cols x rows` sent to the PTY, so unchanged sizes are not re-sent. */
+  sentSize: string | null
+}
+
+/** Connection target for a terminal session. */
+export interface TerminalSessionTarget {
+  agentId: string
+  terminalId: string
+  onPortDetected?: (port: number) => void
 }
 
 /** A persisted terminal tab row owned by the server, surfaced in the UI tab strip. */

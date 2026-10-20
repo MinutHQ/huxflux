@@ -5,7 +5,9 @@ import {
   getOrCreateSession,
   getTerminalTheme,
   globalSessions,
+  syncSize,
 } from "../terminalSession"
+import { getStoredActiveTabId } from "../utils"
 
 interface UseTerminalSessionArgs {
   agentId: string
@@ -46,7 +48,6 @@ function activateSession({
   setIsRunning,
   setDetectedPort,
 }: ActivateArgs) {
-  const isNew = !globalSessions.has(sessionKey)
   const session = getOrCreateSession(sessionKey)
 
   for (const [key, s] of globalSessions.entries()) {
@@ -55,32 +56,32 @@ function activateSession({
 
   if (!session.div.parentElement) {
     wrapper.appendChild(session.div)
-    if (isNew) session.term.open(session.div)
+    // `element` is set once xterm has been opened. A session can exist unopened
+    // (Run creates it before the tab activates), so do not key this on "new".
+    if (!session.term.element) session.term.open(session.div)
   }
 
-  requestAnimationFrame(() => {
-    session.fitAddon.fit()
-    connectSession({
-      agentId,
-      terminalId,
-      session,
-      fresh: isNew,
-      onPortDetected: (port) => {
-        onPortChange?.(agentId, port)
-        if (activeSessionKeyRef.current.startsWith(agentId + ":")) {
-          setDetectedPort(port)
-          setIsRunning(true)
-        }
-      },
-    })
+  connectSession(session, {
+    agentId,
+    terminalId,
+    onPortDetected: (port) => {
+      onPortChange?.(agentId, port)
+      if (activeSessionKeyRef.current === sessionKey) {
+        setDetectedPort(port)
+        setIsRunning(true)
+      }
+    },
   })
+  // Refit after layout and push the size: the pane may have been resized while
+  // another tab was active, and an already-open socket gets no other resize.
+  requestAnimationFrame(() => syncSize(session))
 }
 
 /** Attach a fresh wrapper DOM node back to the session's existing terminal div. */
 function reattachSessionTo(node: HTMLDivElement, session: TerminalSession) {
   node.appendChild(session.div)
   requestAnimationFrame(() => {
-    session.fitAddon.fit()
+    syncSize(session)
     session.term.focus()
   })
 }
@@ -108,7 +109,8 @@ export function useTerminalSession({
 }: UseTerminalSessionArgs): UseTerminalSessionResult {
   const wrapperDomRef = useRef<HTMLDivElement | null>(null)
   const resizeObsRef = useRef<ResizeObserver | null>(null)
-  const activeSessionKeyRef = useRef(`${agentId}:t1`)
+  // Seed from the stored tab so a remount re-attaches the right terminal, not t1.
+  const activeSessionKeyRef = useRef(`${agentId}:${getStoredActiveTabId(agentId) ?? "t1"}`)
 
   const [isRunning, setIsRunning] = useState(false)
   const [detectedPort, setDetectedPort] = useState<number | null>(null)
@@ -154,12 +156,7 @@ export function useTerminalSession({
     if (!wrapperDomRef.current) return
     resizeObsRef.current = new ResizeObserver(() => {
       const session = globalSessions.get(activeSessionKeyRef.current)
-      if (!session?.ws || session.ws.readyState !== WebSocket.OPEN) return
-      try {
-        session.fitAddon.fit()
-        const dims = session.fitAddon.proposeDimensions()
-        if (dims) session.ws.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }))
-      } catch { /* ignore */ }
+      if (session) syncSize(session)
     })
     resizeObsRef.current.observe(wrapperDomRef.current)
     return () => resizeObsRef.current?.disconnect()

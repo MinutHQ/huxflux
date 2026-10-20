@@ -9,6 +9,7 @@ import { terminalTabs, agents } from "../../../db/schema.js"
 import { killTerminal } from "../../ws/pty.js"
 
 const idParamsSchema = z.object({ id: z.string() })
+const DEFAULT_TERMINAL_ID = "t1"
 const tabParamsSchema = z.object({ id: z.string(), terminalId: z.string() })
 
 export const terminalTabsRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -36,10 +37,17 @@ async function listTabsHandler(agentId: string, reply: FastifyReply): Promise<un
   const agent = db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) return reply.code(404).send({ error: "Not found" })
 
-  return db.select().from(terminalTabs)
+  const rows = db.select().from(terminalTabs)
     .where(eq(terminalTabs.agentId, agentId))
     .all()
     .sort((a, b) => a.orderIdx - b.orderIdx)
+  if (rows.length > 0) return rows
+
+  // Persist the default "t1" tab so it survives adding a second tab and can be
+  // closed like any other (its PTY is killed on delete instead of leaking).
+  const id = uuid()
+  db.insert(terminalTabs).values({ id, agentId, terminalId: DEFAULT_TERMINAL_ID, label: null, orderIdx: 0 }).run()
+  return [db.select().from(terminalTabs).where(eq(terminalTabs.id, id)).get()]
 }
 
 async function createTabHandler(agentId: string, reply: FastifyReply): Promise<unknown> {
@@ -97,13 +105,14 @@ async function deleteTabHandler(
   terminalId: string,
   reply: FastifyReply,
 ): Promise<undefined> {
+  // Kill the PTY first: a tab row can be missing while its shell still runs
+  // (e.g. a default tab from before it was persisted).
+  killTerminal(`${agentId}:${terminalId}`)
+
   const tab = db.select().from(terminalTabs)
     .where(and(eq(terminalTabs.agentId, agentId), eq(terminalTabs.terminalId, terminalId)))
     .get()
   if (!tab) { reply.code(404).send({ error: "Not found" }); return }
-
-  // Kill the PTY process for this specific terminal
-  killTerminal(`${agentId}:${terminalId}`)
 
   db.delete(terminalTabs)
     .where(and(eq(terminalTabs.agentId, agentId), eq(terminalTabs.terminalId, terminalId)))

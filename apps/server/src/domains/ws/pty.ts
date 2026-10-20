@@ -5,6 +5,7 @@ import { db } from "../../db/index.js"
 import { agents, repos } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
 import { logger } from "../../logger.js"
+import { PtyOutputBuffer } from "./service/ptyOutputBuffer.js"
 
 // @lydell/node-pty ships prebuilt binaries for all platforms as optional deps
 // (same pattern as esbuild). No compilation needed anywhere.
@@ -25,7 +26,7 @@ const OUTPUT_BUF_SIZE = 100_000 // ~100KB
 
 interface PtyEntry {
   process: ReturnType<NonNullable<typeof pty>["spawn"]>
-  outputBuf: string
+  outputBuf: PtyOutputBuffer
   clients: Set<WebSocket>
 }
 
@@ -37,8 +38,14 @@ export function killTerminal(key: string): void {
   const entry = globalPtyMap.get(key)
   if (!entry) return
   globalPtyMap.delete(key)
+  // Tell clients the terminal is gone on purpose, so they do not reconnect and
+  // respawn a shell for a deleted tab or agent.
+  const msg = JSON.stringify({ type: "closed" })
   for (const ws of entry.clients) {
-    try { ws.close() } catch { /* ignore */ }
+    try {
+      if (ws.readyState === ws.OPEN) ws.send(msg)
+      ws.close()
+    } catch { /* ignore */ }
   }
   try { entry.process.kill() } catch { /* already dead */ }
 }
@@ -68,7 +75,7 @@ function attachClientHandlers(socket: WebSocket, entry: PtyEntry, key: string): 
       } else if (msg.type === "resize") {
         entry.process.resize(msg.cols, msg.rows)
       } else if (msg.type === "kill") {
-        killTerminal(key)
+        if (globalPtyMap.get(key) === entry) killTerminal(key)
       }
     } catch {
       // ignore malformed messages
@@ -91,9 +98,11 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
     // Replay the output buffer when the client signals a fresh xterm (page refresh
     // or first connect). We rely on the client's declaration rather than clients.size
     // because on fast refreshes the old socket's close event may not have fired yet,
-    // making clients.size unreliable.
-    if (fresh && existing.outputBuf) {
-      socket.send(JSON.stringify({ type: "output", data: existing.outputBuf }))
+    // making clients.size unreliable. "replay" (not "output") tells the client to
+    // reset its screen first, so a reconnecting xterm does not duplicate content.
+    const replay = existing.outputBuf.read()
+    if (fresh && replay) {
+      socket.send(JSON.stringify({ type: "replay", data: replay }))
     }
     existing.clients.add(socket)
     attachClientHandlers(socket, existing, key)
@@ -141,27 +150,29 @@ export function registerPtySocket(socket: WebSocket, agentId: string, terminalId
   })
   logger.info(`[pty] spawned ${key} (shell=${shell}, cwd=${cwd}) in ${Date.now() - t0}ms`)
 
-  const entry: PtyEntry = { process: ptyProcess, outputBuf: "", clients: new Set([socket]) }
+  const entry: PtyEntry = { process: ptyProcess, outputBuf: new PtyOutputBuffer(OUTPUT_BUF_SIZE), clients: new Set([socket]) }
   globalPtyMap.set(key, entry)
 
+  // Handlers close over `entry` rather than looking up `key`, so a late event from
+  // a killed process can never touch a newer PTY spawned under the same key.
   ptyProcess.onData((data) => {
-    const e = globalPtyMap.get(key)
-    if (!e) return
-    e.outputBuf = (e.outputBuf + data).slice(-OUTPUT_BUF_SIZE)
+    entry.outputBuf.append(data)
     const msg = JSON.stringify({ type: "output", data })
-    for (const ws of e.clients) {
+    for (const ws of entry.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
     }
   })
 
   ptyProcess.onExit(({ exitCode }) => {
-    const e = globalPtyMap.get(key)
-    globalPtyMap.delete(key)
-    if (!e) return
+    if (globalPtyMap.get(key) === entry) globalPtyMap.delete(key)
+    // Close the sockets so clients know the shell is gone; leaving them open
+    // strands the client on a socket whose input goes nowhere.
     const msg = JSON.stringify({ type: "exit", exitCode })
-    for (const ws of e.clients) {
+    for (const ws of entry.clients) {
       if (ws.readyState === ws.OPEN) ws.send(msg)
+      try { ws.close() } catch { /* ignore */ }
     }
+    entry.clients.clear()
   })
 
   attachClientHandlers(socket, entry, key)

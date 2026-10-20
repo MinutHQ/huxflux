@@ -175,12 +175,17 @@ export interface FileReadResult {
 const BINARY_SNIFF_BYTES = 8000
 const MAX_VIEW_BYTES = 5 * 1024 * 1024
 
+/** Same heuristic as git: a NUL byte in the first 8 KB means binary. */
+export function isBinaryBuffer(buf: Buffer): boolean {
+  return buf.subarray(0, BINARY_SNIFF_BYTES).includes(0)
+}
+
 async function looksBinary(absPath: string): Promise<boolean> {
   const fh = await open(absPath, "r")
   try {
     const buf = Buffer.alloc(BINARY_SNIFF_BYTES)
     const { bytesRead } = await fh.read(buf, 0, BINARY_SNIFF_BYTES, 0)
-    return buf.subarray(0, bytesRead).includes(0)
+    return isBinaryBuffer(buf.subarray(0, bytesRead))
   } finally {
     await fh.close()
   }

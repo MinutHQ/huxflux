@@ -4,7 +4,7 @@ import { readFile, mkdir } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import * as path from "node:path"
 import type { FileChange } from "../../types.js"
-import { resolveInsideWorktree, writeWorktreeFile } from "./files.js"
+import { isBinaryBuffer, resolveInsideWorktree, writeWorktreeFile } from "./files.js"
 
 /**
  * What a diff is measured against. `branch`: the merge-base with the agent's
@@ -198,8 +198,9 @@ export async function getFileChanges(worktreePath: string, branchFrom: string, m
       untrackedPaths.map(async (filePath) => {
         if (fileMap.has(filePath)) return
         try {
-          const content = await readFile(path.join(worktreePath, filePath), "utf8")
-          fileMap.set(filePath, { path: filePath, additions: content.split("\n").length, deletions: 0 })
+          const buf = await readFile(path.join(worktreePath, filePath))
+          const additions = isBinaryBuffer(buf) ? 0 : buf.toString("utf8").split("\n").length
+          fileMap.set(filePath, { path: filePath, additions, deletions: 0 })
         } catch {
           fileMap.set(filePath, { path: filePath, additions: 0, deletions: 0 })
         }
@@ -218,9 +219,12 @@ export async function getDiff(worktreePath: string, filePath: string, branchFrom
     const absPath = await resolveInsideWorktree(worktreePath, filePath)
     const base = mode === "branch" ? await resolveBase(worktreePath, branchFrom) : "HEAD"
     const diff = await git.diff([base, "-U2", "--", filePath])
-    if (diff) return diff
+    // A diff without hunks is a binary or mode-only change ("Binary files ... differ").
+    if (diff) return /^@@ /m.test(diff) ? diff : ""
     // Untracked new file — render as full addition
-    const content = await readFile(absPath, "utf8")
+    const buf = await readFile(absPath)
+    if (isBinaryBuffer(buf)) return ""
+    const content = buf.toString("utf8")
     const lines = content.split("\n")
     const added = lines.map((l) => `+${l}`).join("\n")
     return `--- /dev/null\n+++ b/${filePath}\n@@ -0,0 +1,${lines.length} @@\n${added}\n`

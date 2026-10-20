@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { readFile, stat } from "node:fs/promises"
 import { simpleGit } from "simple-git"
-import { resolveInsideWorktree } from "./files.js"
+import { isBinaryBuffer, resolveInsideWorktree } from "./files.js"
 
 export interface FileDiffBundle {
   path: string
@@ -35,7 +35,8 @@ export function splitUnifiedDiff(raw: string): Map<string, string> {
 
 /**
  * Read many `<rev>:<path>` blobs through one `git cat-file --batch` process.
- * Missing objects (the file does not exist at that revision) map to "".
+ * Missing objects (the file does not exist at that revision) and binary
+ * blobs map to "".
  */
 export function readBlobs(worktreePath: string, rev: string, paths: string[]): Promise<Map<string, string>> {
   return new Promise((resolve) => {
@@ -56,7 +57,8 @@ export function readBlobs(worktreePath: string, rev: string, paths: string[]): P
         const m = /^\S+ (\w+) (\d+)$/.exec(header)
         if (!m) { out.set(path, ""); continue }
         const size = Number(m[2])
-        out.set(path, m[1] === "blob" && size <= MAX_CONTENT_BYTES ? buf.subarray(pos, pos + size).toString("utf8") : "")
+        const blob = buf.subarray(pos, pos + size)
+        out.set(path, m[1] === "blob" && size <= MAX_CONTENT_BYTES && !isBinaryBuffer(blob) ? blob.toString("utf8") : "")
         pos += size + 1
       }
       resolve(out)
@@ -69,7 +71,9 @@ async function readWorkingCopy(worktreePath: string, relPath: string): Promise<s
   try {
     const abs = await resolveInsideWorktree(worktreePath, relPath)
     const { size } = await stat(abs)
-    return size > MAX_CONTENT_BYTES ? "" : await readFile(abs, "utf8")
+    if (size > MAX_CONTENT_BYTES) return ""
+    const buf = await readFile(abs)
+    return isBinaryBuffer(buf) ? "" : buf.toString("utf8")
   } catch {
     return ""
   }
@@ -85,6 +89,7 @@ function syntheticAddition(path: string, content: string): string {
  * already resolved base commit. One `git diff`, one `git cat-file --batch`,
  * plus plain file reads, instead of several git processes per file.
  * Files without a git diff (untracked) get a synthetic full addition.
+ * Binary files get an empty diff, so the UI shows its "no textual diff" note.
  */
 export async function getDiffBundle(worktreePath: string, base: string, paths: string[]): Promise<FileDiffBundle[]> {
   const git = simpleGit(worktreePath)
@@ -96,9 +101,11 @@ export async function getDiffBundle(worktreePath: string, base: string, paths: s
   const chunks = splitUnifiedDiff(raw)
   return paths.map((path, i) => {
     const newContent = newContents[i] ?? ""
+    const chunk = chunks.get(path)
     return {
       path,
-      diff: chunks.get(path) ?? (newContent ? syntheticAddition(path, newContent) : ""),
+      // A chunk without hunks is a binary or mode-only change ("Binary files ... differ").
+      diff: chunk !== undefined ? (/^@@ /m.test(chunk) ? chunk : "") : newContent ? syntheticAddition(path, newContent) : "",
       oldContent: oldContents.get(path) ?? "",
       newContent,
     }

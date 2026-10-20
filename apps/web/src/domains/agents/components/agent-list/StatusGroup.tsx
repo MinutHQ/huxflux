@@ -3,6 +3,7 @@ import { IconTrash } from "@tabler/icons-react"
 import { statusConfig, type AgentSummary, type AgentStatus } from "@huxflux/shared"
 import { StatusIcon } from "./StatusIcon"
 import { AgentRow } from "./AgentRow"
+import { MarkViewedButton } from "./MarkViewedButton"
 
 interface StatusGroupProps {
   status: AgentStatus
@@ -13,6 +14,7 @@ interface StatusGroupProps {
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
   onArchiveAll?: () => void
+  onMarkAllViewed: (agents: AgentSummary[]) => void
   agentPorts?: Record<string, number | null>
   repoNames: Record<string, string>
   repoIcons?: Record<string, string | undefined>
@@ -37,6 +39,7 @@ export function StatusGroup({
   onLeave,
   onDelete,
   onArchiveAll,
+  onMarkAllViewed,
   threadChildrenByParent,
   agentPorts,
   repoNames,
@@ -51,6 +54,8 @@ export function StatusGroup({
     return status === "done"
   })
   const config = statusConfig[status]
+  const withChildren = agents.flatMap((a) => [a, ...(threadChildrenByParent?.get(a.id) ?? [])])
+  const hasUnread = withChildren.some((a) => a.unread)
 
   function toggleCollapsed() {
     setCollapsed(prev => {
@@ -62,18 +67,21 @@ export function StatusGroup({
 
   return (
     <div className="mb-2.5">
-      <button
-        onClick={toggleCollapsed}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-sidebar-accent/40 rounded-md transition-colors"
-      >
-        <StatusIcon status={status} size={14} />
-        <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
-          {config.label}
-        </span>
-        {agents.length > 0 && (
-          <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
-        )}
-      </button>
+      <div className="group flex items-center gap-1 pr-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors">
+        <button
+          onClick={toggleCollapsed}
+          className="flex-1 min-w-0 flex items-center gap-2.5 pl-2.5 py-2"
+        >
+          <StatusIcon status={status} size={14} />
+          <span className="text-[13px] font-semibold text-sidebar-foreground flex-1 text-left">
+            {config.label}
+          </span>
+          {agents.length > 0 && (
+            <span className="text-[12px] text-muted-foreground/50 tabular-nums">{agents.length}</span>
+          )}
+        </button>
+        {hasUnread && <MarkViewedButton onClick={() => onMarkAllViewed(withChildren)} />}
+      </div>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent) => (

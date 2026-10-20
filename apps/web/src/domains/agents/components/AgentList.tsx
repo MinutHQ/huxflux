@@ -66,7 +66,7 @@ export function AgentList({ agents, containerRef }: AgentListProps) {
 
   const groups = useAgentGroups({ agents, repoFilter })
   const { filteredAgents, threadChildrenByParent, pinnedAgents, grouped, repoGrouped, repoNames, repoIcons, repoTypes, agentPorts } = groups
-  const { handleCreateAgent, handleDeleteAgent, handleArchiveAll, pendingAgent } = useAgentLifecycle({
+  const { handleCreateAgent, handleDeleteAgent, handleArchiveAll, handleMarkAllViewed, pendingAgent } = useAgentLifecycle({
     grouped,
     repos: groups.repos,
   })
@@ -119,6 +119,7 @@ export function AgentList({ agents, containerRef }: AgentListProps) {
             onLeave={() => setHoveredAgent(null)}
             onDelete={handleDeleteAgent}
             onArchiveAll={handleArchiveAll}
+            onMarkAllViewed={handleMarkAllViewed}
             onOpenNewAgent={() => setShowNewAgent(true)}
             agentPorts={agentPorts}
             repoNames={repoNames}
@@ -190,6 +191,7 @@ interface AgentListBodyProps {
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
   onArchiveAll: (status: AgentStatus) => void
+  onMarkAllViewed: (agents: AgentSummary[]) => void
   onOpenNewAgent: () => void
   agentPorts: Record<string, number | null>
   repoNames: Record<string, string>
@@ -211,6 +213,7 @@ function AgentListBody({
   onLeave,
   onDelete,
   onArchiveAll,
+  onMarkAllViewed,
   onOpenNewAgent,
   agentPorts,
   repoNames,
@@ -259,6 +262,7 @@ function AgentListBody({
               onHover={onHover}
               onLeave={onLeave}
               onDelete={onDelete}
+              onMarkAllViewed={onMarkAllViewed}
               onArchiveAll={(status === "done" || status === "cancelled") ? () => onArchiveAll(status) : undefined}
               agentPorts={agentPorts}
               repoNames={repoNames}
@@ -298,6 +302,7 @@ function AgentListBody({
           onHover={onHover}
           onLeave={onLeave}
           onDelete={onDelete}
+          onMarkAllViewed={onMarkAllViewed}
           agentPorts={agentPorts}
         />
       ))}

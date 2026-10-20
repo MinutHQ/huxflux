@@ -59,6 +59,23 @@ describe("getDiffBundle", () => {
     expect(byPath.get("dir with space/x.ts")?.diff).toContain("+export const x = 2")
   })
 
+  it("gives binary files an empty diff and no contents, tracked or untracked", async () => {
+    const bin = Buffer.from([0x49, 0x44, 0x33, 0x00, 0x0a, 0xff, 0xfe, 0x0a, 0x41])
+    writeFileSync(path.join(repo.path, "song.mp3"), bin)
+    git("add", "song.mp3")
+    git("commit", "-q", "-m", "audio")
+    writeFileSync(path.join(repo.path, "loose.mp3"), bin)
+    expect(await getDiff(repo.path, "song.mp3", "main")).toBe("")
+
+    const changes = await getFileChanges(repo.path, "main")
+    expect(changes.find((c) => c.path === "loose.mp3")).toMatchObject({ additions: 0, deletions: 0 })
+
+    const base = await resolveDiffBase(repo.path, "main", "branch")
+    const bundle = await getDiffBundle(repo.path, base, ["song.mp3", "loose.mp3"])
+    for (const b of bundle) expect(b).toMatchObject({ diff: "", oldContent: "", newContent: "" })
+    expect(await getDiff(repo.path, "loose.mp3", "main")).toBe("")
+  })
+
   it("uses HEAD as the base in uncommitted mode", async () => {
     const base = await resolveDiffBase(repo.path, "main", "uncommitted")
     const [edit] = await getDiffBundle(repo.path, base, ["edit.txt"])
@@ -91,5 +108,14 @@ describe("readBlobs", () => {
     expect(blobs.get("keep.txt")).toBe("keep\n")
     expect(blobs.get("new.txt")).toBe("")
     expect(blobs.get("gone.txt")).toBe("bye\n")
+  })
+
+  it("returns an empty string for binary blobs", async () => {
+    writeFileSync(path.join(repo.path, "img.png"), Buffer.from([0x89, 0x50, 0x00, 0x0a, 0x1a]))
+    git("add", "img.png")
+    git("commit", "-q", "-m", "img")
+    const blobs = await readBlobs(repo.path, "HEAD", ["img.png", "keep.txt"])
+    expect(blobs.get("img.png")).toBe("")
+    expect(blobs.get("keep.txt")).toBe("keep\n")
   })
 })

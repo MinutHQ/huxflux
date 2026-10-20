@@ -73,7 +73,7 @@ export const DiffFileSection = forwardRef<HTMLDivElement, DiffFileSectionProps>(
               onRemoveComment={onRemoveComment}
             />
           ) : (
-            <p className="px-4 py-3 text-[11px] text-muted-foreground">No textual diff (binary or renamed file).</p>
+            <p className="px-4 py-3 text-[11px] text-muted-foreground">No textual diff (binary file or mode change).</p>
           )}
         </LazyMount>
       )}

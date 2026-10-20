@@ -3,9 +3,8 @@ import type { EditorView } from "@codemirror/view"
 import { openSearchPanel } from "@codemirror/search"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Button, ResizableHandle, ResizablePanel, ResizablePanelGroup, cn } from "@huxflux/ui"
+import { Button, cn } from "@huxflux/ui"
 import { IconCopy, IconFolders, IconLayoutSidebar, IconSearch, IconX } from "@tabler/icons-react"
-import { useDefaultLayout } from "react-resizable-panels"
 import { ancestorDirs, queryKeys, useAgentEvents, type Agent, type PRComment } from "@huxflux/shared"
 import { usePersistentState } from "@/hooks/usePersistentState"
 import { useDirectoryTree } from "../../hooks/useDirectoryTree"
@@ -13,6 +12,7 @@ import type { FileBuffers } from "../../hooks/useFileBuffers"
 import { useFileTabsState } from "../../hooks/useFileTabsState"
 import type { FileBuffer, OpenFileRequest } from "../../file-changes.types"
 import { PaneMenu } from "../PaneMenu"
+import { TreeSplit } from "../TreeSplit"
 import { FileEditorArea } from "./FileEditorArea"
 import { FileTabStrip } from "./FileTabStrip"
 import { FilesSidebar } from "./FilesSidebar"
@@ -46,7 +46,6 @@ export function FilesPane({ agent, buffers, openRequest, pendingComments, onAddC
   const firstResult = useRef<{ path: string; line?: number } | null>(null)
   const viewRef = useRef<EditorView | null>(null)
   const filterRef = useRef<HTMLInputElement>(null)
-  const layout = useDefaultLayout({ id: "huxflux-files-tree", panelIds: ["huxflux-files-tree-list", "huxflux-files-tree-body"] })
 
   const openFile = useCallback((path: string, opts: { pin?: boolean; line?: number } = {}) => {
     tabs.open(path, { pin: opts.pin })
@@ -145,11 +144,7 @@ export function FilesPane({ agent, buffers, openRequest, pendingComments, onAddC
       </div>
       <div className="flex-1 min-h-0">
         {treeVisible ? (
-          <ResizablePanelGroup orientation="horizontal" className="h-full" defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged}>
-            <ResizablePanel id="huxflux-files-tree-list" defaultSize="30" minSize="15" maxSize="55">{sidebar}</ResizablePanel>
-            <ResizableHandle className="w-0 bg-transparent" />
-            <ResizablePanel id="huxflux-files-tree-body" minSize="35">{editor}</ResizablePanel>
-          </ResizablePanelGroup>
+          <TreeSplit id="huxflux-files-tree" tree={sidebar} body={editor} treeSize={{ default: "30", min: "15", max: "55" }} bodyMinSize="35" />
         ) : editor}
       </div>
       {confirmClose && (

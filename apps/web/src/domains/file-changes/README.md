@@ -41,6 +41,7 @@ None.
 
 ## Quirks
 
+- `TreeSplit` stacks the Diff and Files trees above their content below 640px of pane width. Crossing that width remounts the panel group, because react-resizable-panels only reads orientation and the saved layout on mount, so the diff scroll position resets. Side-by-side and stacked layouts persist under separate keys.
 - `AgentPRTab` was named `PRView` originally; it was renamed to avoid colliding with the full-screen PR review page in `@/domains/pull-requests`.
 - `DiffView` uses a manual `React.memo` comparator (path, preloaded diff, style, comment count) so the stacked diff does not re-render every file on unrelated parent renders. It has three `any` casts at the pierre/diffs boundary.
 - The Diff and Files sections refetch when the agent's `fileChanges` signature changes (the watcher pushes it over WebSocket), instead of polling.

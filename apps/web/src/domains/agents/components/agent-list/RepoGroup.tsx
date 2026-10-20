@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { AgentSummary } from "@huxflux/shared"
 import { AgentRow } from "./AgentRow"
+import { MarkViewedButton } from "./MarkViewedButton"
 
 interface RepoGroupProps {
   repoName: string
@@ -11,6 +12,7 @@ interface RepoGroupProps {
   onHover: (agent: AgentSummary, y: number) => void
   onLeave: () => void
   onDelete: (agent: AgentSummary) => void
+  onMarkAllViewed: (agents: AgentSummary[]) => void
   agentPorts?: Record<string, number | null>
 }
 
@@ -27,6 +29,7 @@ export function RepoGroup({
   onHover,
   onLeave,
   onDelete,
+  onMarkAllViewed,
   agentPorts,
 }: RepoGroupProps) {
   const [collapsed, setCollapsed] = useState(false)
@@ -36,20 +39,23 @@ export function RepoGroup({
 
   return (
     <div className="mb-0.5">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors"
-      >
-        <span className="w-4 h-4 rounded-sm bg-muted border border-border text-[9px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
-          {initials}
-        </span>
-        <span className="text-[11px] font-semibold text-muted-foreground truncate">
-          {repoName}
-        </span>
-        {agents.length > 0 && (
-          <span className="ml-auto text-[11px] text-muted-foreground/40 font-mono">{agents.length}</span>
-        )}
-      </button>
+      <div className="group flex items-center gap-1 pr-1.5 hover:bg-sidebar-accent/40 rounded-md transition-colors">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex-1 min-w-0 flex items-center gap-2 pl-2.5 py-1.5"
+        >
+          <span className="w-4 h-4 rounded-sm bg-muted border border-border text-[9px] font-bold flex items-center justify-center shrink-0 text-muted-foreground">
+            {initials}
+          </span>
+          <span className="text-[11px] font-semibold text-muted-foreground truncate">
+            {repoName}
+          </span>
+          {agents.length > 0 && (
+            <span className="ml-auto text-[11px] text-muted-foreground/40 font-mono">{agents.length}</span>
+          )}
+        </button>
+        {agents.some((a) => a.unread) && <MarkViewedButton onClick={() => onMarkAllViewed(agents)} />}
+      </div>
       {!collapsed && (
         <div className="mt-0.5 space-y-0.5 px-1 min-w-0 overflow-hidden">
           {agents.map((agent) => (

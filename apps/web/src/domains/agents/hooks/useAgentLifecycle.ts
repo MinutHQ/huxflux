@@ -24,10 +24,10 @@ interface UseAgentLifecycleArgs {
 }
 
 /**
- * Wraps the three multi-step agent mutations (create, delete, archive-all) so
- * the sidebar orchestrator stays a thin component.
+ * Wraps the multi-step agent mutations (create, delete, archive-all,
+ * mark-all-viewed) so the sidebar orchestrator stays a thin component.
  *
- * All three mutations write to TanStack Query optimistically with prefix
+ * All of them write to TanStack Query optimistically with prefix
  * matching (`{ queryKey: queryKeys.agents.all }`) — the `useAgents` cache key is
  * `queryKeys.agents.list(serverUrl)`, so an exact write would miss. The server's WS
  * broadcast reconciles afterwards.
@@ -44,6 +44,8 @@ export function useAgentLifecycle({ grouped, repos }: UseAgentLifecycleArgs) {
       deleteAgent({ agent, repos, queryClient, navigate, workspace }),
     handleArchiveAll: (status: AgentStatus) =>
       archiveAll({ status, grouped, queryClient }),
+    handleMarkAllViewed: (agents: AgentSummary[]) =>
+      markAllViewed(agents, queryClient),
     pendingAgent: workspace.pendingAgent,
   }
 }
@@ -164,4 +166,16 @@ function archiveAll({ status, grouped, queryClient }: ArchiveAllArgs) {
       }
     }
   })()
+}
+
+/** Clears the unread flag on every given agent that has one (a status or repo group). */
+function markAllViewed(agents: AgentSummary[], queryClient: QueryClient) {
+  const ids = agents.filter((a) => a.unread).map((a) => a.id)
+  if (ids.length === 0) return
+  queryClient.setQueriesData<AgentSummary[]>({ queryKey: queryKeys.agents.all }, (old) =>
+    old ? old.map((a) => ids.includes(a.id) ? { ...a, unread: 0 } : a) : old
+  )
+  for (const id of ids) {
+    api.agents.update(id, { unread: 0 }).catch(() => {})
+  }
 }

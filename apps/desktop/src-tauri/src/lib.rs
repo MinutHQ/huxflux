@@ -367,8 +367,26 @@ fn read_local_connection(app: tauri::AppHandle) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
+/// Turn off macOS press-and-hold (the accent picker) for this app so held keys
+/// repeat, e.g. `j` in vim inside the terminal. `registerDefaults` only sets the
+/// fallback, so a user's explicit `defaults write` for the app still wins.
+#[cfg(target_os = "macos")]
+fn disable_press_and_hold() {
+    #[allow(unused_imports)]
+    use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+    unsafe {
+        let key: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"ApplePressAndHoldEnabled\0".as_ptr()];
+        let no: *mut Object = msg_send![class!(NSNumber), numberWithBool: false];
+        let dict: *mut Object = msg_send![class!(NSDictionary), dictionaryWithObject: no forKey: key];
+        let defaults: *mut Object = msg_send![class!(NSUserDefaults), standardUserDefaults];
+        let _: () = msg_send![defaults, registerDefaults: dict];
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    disable_press_and_hold();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())

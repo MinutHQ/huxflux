@@ -5,7 +5,7 @@ import { TerminalRunPanel } from "./terminal/TerminalRunPanel"
 import { useTerminalTabs } from "../hooks/useTerminalTabs"
 import { useTerminalSession } from "../hooks/useTerminalSession"
 import { useTerminalSearch } from "../hooks/useTerminalSearch"
-import { getOrCreateSession } from "../terminalSession"
+import { getOrCreateSession, sendInput } from "../terminalSession"
 import type { TerminalTopTab } from "../agents.types"
 import "@xterm/xterm/css/xterm.css"
 
@@ -57,15 +57,12 @@ export function TerminalView({ agent, activeTab, onTabChange, onOpenSettings, on
     setIsRunning(true)
     setDetectedPort(null)
     onPortChange?.(agent.id, null)
-    setTimeout(() => {
-      if (session.ws?.readyState === WebSocket.OPEN) {
-        session.ws.send(JSON.stringify({ type: "input", data: repo.runScript + "\r" }))
-      }
-    }, 300)
+    // Queued until the socket opens if the terminal is connecting or restarting.
+    sendInput(session, repo.runScript + "\r", true)
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" onKeyDown={search.handleKeyDown}>
       <TerminalTabBar
         tabs={tabs}
         activeTerminalId={activeTerminalId}

@@ -65,9 +65,8 @@ describe("getDiff", () => {
   })
 
   it("uncommitted mode shows nothing for a file only changed in commits", async () => {
-    const diff = await getDiff(repo.path, "committed.txt", "main", "uncommitted")
-    // No working-tree diff, so it falls back to the synthetic full-file addition.
-    expect(diff).toContain("--- /dev/null")
+    // The file exists at HEAD unchanged, so there is no diff to show.
+    expect(await getDiff(repo.path, "committed.txt", "main", "uncommitted")).toBe("")
   })
 
   it("uncommitted mode diffs the working tree against HEAD", async () => {

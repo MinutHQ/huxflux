@@ -219,6 +219,9 @@ export async function getDiff(worktreePath: string, filePath: string, branchFrom
     const base = mode === "branch" ? await resolveBase(worktreePath, branchFrom) : "HEAD"
     const diff = await git.diff([base, "-U2", "--", filePath])
     if (diff) return diff
+    // Present at the base with no diff means unchanged, not new.
+    const atBase = await git.raw(["cat-file", "-e", `${base}:${filePath}`]).then(() => true, () => false)
+    if (atBase) return ""
     // Untracked new file — render as full addition
     const content = await readFile(absPath, "utf8")
     const lines = content.split("\n")

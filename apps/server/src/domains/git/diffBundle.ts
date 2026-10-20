@@ -84,7 +84,8 @@ function syntheticAddition(path: string, content: string): string {
  * Diff, base content and working content for many files at once, against an
  * already resolved base commit. One `git diff`, one `git cat-file --batch`,
  * plus plain file reads, instead of several git processes per file.
- * Files without a git diff (untracked) get a synthetic full addition.
+ * Files without a git diff get a synthetic full addition only when they do not
+ * exist at the base (untracked); a file unchanged since the base gets no diff.
  */
 export async function getDiffBundle(worktreePath: string, base: string, paths: string[]): Promise<FileDiffBundle[]> {
   const git = simpleGit(worktreePath)
@@ -96,10 +97,11 @@ export async function getDiffBundle(worktreePath: string, base: string, paths: s
   const chunks = splitUnifiedDiff(raw)
   return paths.map((path, i) => {
     const newContent = newContents[i] ?? ""
+    const oldContent = oldContents.get(path) ?? ""
     return {
       path,
-      diff: chunks.get(path) ?? (newContent ? syntheticAddition(path, newContent) : ""),
-      oldContent: oldContents.get(path) ?? "",
+      diff: chunks.get(path) ?? (newContent && !oldContent ? syntheticAddition(path, newContent) : ""),
+      oldContent,
       newContent,
     }
   })

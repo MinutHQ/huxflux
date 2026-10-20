@@ -59,6 +59,14 @@ describe("getDiffBundle", () => {
     expect(byPath.get("dir with space/x.ts")?.diff).toContain("+export const x = 2")
   })
 
+  it("gives no diff for a listed file that is unchanged since the base", async () => {
+    // A stale file-changes row can list a file the branch no longer changes.
+    const base = await resolveDiffBase(repo.path, "main", "branch")
+    const [keep] = await getDiffBundle(repo.path, base, ["keep.txt"])
+    expect(keep).toMatchObject({ diff: "", oldContent: "keep\n", newContent: "keep\n" })
+    expect(await getDiff(repo.path, "keep.txt", "main")).toBe("")
+  })
+
   it("uses HEAD as the base in uncommitted mode", async () => {
     const base = await resolveDiffBase(repo.path, "main", "uncommitted")
     const [edit] = await getDiffBundle(repo.path, base, ["edit.txt"])

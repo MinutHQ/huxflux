@@ -1,35 +1,34 @@
 import { Button, cn } from "@huxflux/ui"
 import { IconFileDiff, IconFolder, IconGitPullRequest, IconTerminal2 } from "@tabler/icons-react"
-import type { SidePaneLayout, SidePaneSection } from "../../agents.types"
+import type { SidePaneId, WorkspacePaneId } from "../../agents.types"
 
 interface SidePaneTogglesProps {
-  layout: SidePaneLayout
+  visible: ReadonlySet<WorkspacePaneId>
   showDiff: boolean
   showPR: boolean
-  onToggleTop: (section: SidePaneSection) => void
-  onToggleTerminal: () => void
+  onToggle: (pane: SidePaneId) => void
 }
 
-/** Header buttons that open and close the side pane's sections. */
-export function SidePaneToggles({ layout, showDiff, showPR, onToggleTop, onToggleTerminal }: SidePaneTogglesProps) {
-  const item = (active: boolean, title: string, onClick: () => void, icon: React.ReactNode) => (
+/** Header buttons that open and close the workspace's dockable panes. */
+export function SidePaneToggles({ visible, showDiff, showPR, onToggle }: SidePaneTogglesProps) {
+  const item = (pane: SidePaneId, title: string, icon: React.ReactNode) => (
     <Button
       variant="ghost"
       size="icon-xs"
-      onClick={onClick}
+      onClick={() => onToggle(pane)}
       title={title}
-      aria-pressed={active}
-      className={cn(active ? "bg-accent text-foreground" : "text-muted-foreground")}
+      aria-pressed={visible.has(pane)}
+      className={cn(visible.has(pane) ? "bg-accent text-foreground" : "text-muted-foreground")}
     >
       {icon}
     </Button>
   )
   return (
     <div className="flex items-center gap-0.5">
-      {showDiff && item(layout.top === "diff", "Diff", () => onToggleTop("diff"), <IconFileDiff size={14} />)}
-      {item(layout.top === "files", "Files", () => onToggleTop("files"), <IconFolder size={14} />)}
-      {showPR && item(layout.top === "pr", "Pull request", () => onToggleTop("pr"), <IconGitPullRequest size={14} />)}
-      {item(layout.terminal, "Terminal (⌘J)", onToggleTerminal, <IconTerminal2 size={14} />)}
+      {showDiff && item("diff", "Diff", <IconFileDiff size={14} />)}
+      {item("files", "Files", <IconFolder size={14} />)}
+      {showPR && item("pr", "Pull request", <IconGitPullRequest size={14} />)}
+      {item("terminal", "Terminal (⌘J)", <IconTerminal2 size={14} />)}
     </div>
   )
 }

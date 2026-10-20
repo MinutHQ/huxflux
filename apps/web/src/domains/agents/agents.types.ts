@@ -1,3 +1,4 @@
+import type { DockviewApi } from "dockview-react"
 import type { Terminal, IDisposable } from "@xterm/xterm"
 import type { FitAddon } from "@xterm/addon-fit"
 import type { SearchAddon } from "@xterm/addon-search"
@@ -76,15 +77,21 @@ export interface SshInfo {
   configured: boolean
 }
 
-/** A top section of the agent workspace side pane. Only one shows at a time. */
-export type SidePaneSection = "diff" | "files" | "pr"
+/** A dockable pane of the agent workspace. Exactly one of each exists. */
+export type WorkspacePaneId = "chat" | "diff" | "files" | "pr" | "terminal"
 
-/** Persisted per-agent side pane layout. */
-export interface SidePaneLayout {
-  /** Visible top section, or null when only the terminal (or nothing) shows. */
-  top: SidePaneSection | null
-  /** Last opened top section, reopened by Cmd/Ctrl+U. */
-  lastTop: SidePaneSection
-  terminal: boolean
-  maximized: "top" | "terminal" | null
+/** A pane that can be hidden. The chat is always on screen. */
+export type SidePaneId = Exclude<WorkspacePaneId, "chat">
+
+/** The live dockview instance and the element it fills, shared with the layout hook. */
+export interface DockHandle {
+  api: DockviewApi
+  container: HTMLElement
+}
+
+/** Persisted per-agent pane visibility. Placement in the dock is global. */
+export interface PaneVisibility {
+  hidden: SidePaneId[]
+  /** Diff / Files / PR panes that Cmd/Ctrl+U closed, reopened by the next press. */
+  lastSide: SidePaneId[]
 }

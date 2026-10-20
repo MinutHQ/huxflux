@@ -58,6 +58,11 @@ function handlePaste(e: React.ClipboardEvent, onUploadFiles: (files: File[]) => 
   }
 }
 
+/** Only drags carrying files are attachments; anything else (e.g. a dock pane being moved) passes through. */
+function isFileDrag(e: React.DragEvent): boolean {
+  return e.dataTransfer.types.includes("Files")
+}
+
 export function ChatInputBar(props: ChatInputBarProps) {
   const { agent, input, onInputChange, textareaRef, showPlanApproval, isInPlanMode, planContent } = props
   const [isDragOver, setIsDragOver] = React.useState(false)
@@ -65,6 +70,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
   const onKeyDown = makeKeyDownHandler(props)
 
   function handleDrop(e: React.DragEvent) {
+    if (!isFileDrag(e)) return
     e.preventDefault(); e.stopPropagation(); setIsDragOver(false)
     const files = Array.from(e.dataTransfer.files)
     if (files.length > 0) props.onUploadFiles(files)
@@ -88,14 +94,15 @@ export function ChatInputBar(props: ChatInputBarProps) {
       {showPlanApproval && planContent && <PlanPreview content={planContent} />}
       <div
         className={cn("bg-card rounded-2xl transition-all relative shadow-sm", inputContainerClass(isDragOver, showPlanApproval, isInPlanMode))}
-        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true) }}
+        onDragEnter={(e) => { if (!isFileDrag(e)) return; e.preventDefault(); e.stopPropagation(); setIsDragOver(true) }}
         onDragLeave={(e) => {
+          if (!isFileDrag(e)) return
           e.preventDefault(); e.stopPropagation()
           const rect = e.currentTarget.getBoundingClientRect()
           const { clientX: x, clientY: y } = e
           if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) setIsDragOver(false)
         }}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => { if (isFileDrag(e)) e.preventDefault() }}
         onDrop={handleDrop}
       >
         <AttachmentChips
@@ -124,7 +131,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
           }
           rows={2}
           className="w-full bg-transparent px-4 pt-3 pb-1 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none overflow-y-auto"
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => { if (isFileDrag(e)) e.preventDefault() }}
           onDrop={handleDrop}
           onPaste={(e) => handlePaste(e, props.onUploadFiles)}
           onKeyDown={onKeyDown}

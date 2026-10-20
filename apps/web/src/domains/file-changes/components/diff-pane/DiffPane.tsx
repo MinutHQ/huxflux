@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { IconFiles } from "@tabler/icons-react"
 import { api, orderChangedFiles, queryKeys, useHuxfluxQuery, useRepos, type Agent, type PRComment } from "@huxflux/shared"
@@ -17,16 +17,14 @@ export interface DiffPaneProps {
   pendingComments: PRComment[]
   onAddComment: (c: PRComment) => void
   onRemoveComment: (id: string) => void
-  /** Window controls (maximize / close) rendered at the right of the header. */
-  controls?: ReactNode
 }
 
 /**
- * The side pane's Diff section: changed-files tree on the left, every changed
+ * The workspace's Diff pane: changed-files tree on the left, every changed
  * file stacked on the right with sticky collapsible headers. Clicking a file
  * in the tree scrolls to it. The base can be the branch point or HEAD.
  */
-export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onAddComment, onRemoveComment, controls }: DiffPaneProps) {
+export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onAddComment, onRemoveComment }: DiffPaneProps) {
   const state = useDiffPaneState(agent.id)
   const [search, setSearch] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
@@ -158,7 +156,6 @@ export function DiffPane({ agent, focusRequest, onOpenFile, pendingComments, onA
         onExpandAll={state.expandAll}
         onCollapseAll={() => state.collapseAll(ordered.map((d) => d.path))}
         onRefresh={() => queryClient.invalidateQueries({ queryKey: queryKeys.agents.allDiffs(agent.id) })}
-        controls={controls}
       />
       <div className="flex-1 min-h-0">
         {!state.diffVisible ? tree : showTree ? (

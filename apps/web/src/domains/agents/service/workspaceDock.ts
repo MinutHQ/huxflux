@@ -1,5 +1,5 @@
 import type { DockviewApi, IDockviewPanel, SerializedDockview } from "dockview-react"
-import { derivePaneAnchor, resolvePaneAnchor, type PaneAnchor, type PaneRect, type PaneSite } from "@huxflux/shared"
+import { derivePaneAnchor, resolvePaneAnchor, type PaneAnchor, type PaneDirection, type PaneRect, type PaneSite } from "@huxflux/shared"
 import type { WorkspacePaneId } from "../agents.types"
 
 const layoutKey = "huxflux:dock-layout"
@@ -27,7 +27,7 @@ function defaultAnchors(visible: ReadonlySet<WorkspacePaneId>): Record<string, P
   return anchors
 }
 
-const fallbackAnchor: PaneAnchor = { ref: "chat", direction: "right" }
+const fallbackAnchor: StoredAnchor = { ref: "chat", direction: "right" }
 
 function readJson(key: string): unknown {
   try {
@@ -46,8 +46,15 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
-/** A saved anchor plus a counter of when the pane was hidden, so the latest-hidden pane comes back first. */
-type StoredAnchor = PaneAnchor & { hiddenAt?: number }
+/**
+ * A saved anchor plus a counter of when the pane was hidden, so the latest-hidden pane comes back first,
+ * and its size along the split as a fraction of the dock, so it comes back as big as it left.
+ */
+type StoredAnchor = PaneAnchor & { hiddenAt?: number; size?: number }
+
+function isOptionalFraction(v: unknown): boolean {
+  return v === undefined || (typeof v === "number" && v > 0 && v < 1)
+}
 
 function isOptionalCount(v: unknown): boolean {
   return v === undefined || (typeof v === "number" && Number.isFinite(v) && v >= 0)
@@ -58,6 +65,7 @@ function isAnchor(raw: unknown): raw is StoredAnchor {
   const r = raw as Record<string, unknown>
   const direction = String(r.direction)
   if (!["left", "right", "above", "below", "within"].includes(direction)) return false
+  if (!isOptionalFraction(r.size)) return false
   if (r.ref === null) return direction !== "within" && isOptionalCount(r.hiddenAt)
   return typeof r.ref === "string" && isOptionalCount(r.index) && isOptionalCount(r.hiddenAt)
 }
@@ -68,7 +76,7 @@ function loadAnchors(): Record<string, StoredAnchor> {
   return Object.fromEntries(Object.entries(raw).filter(([, a]) => isAnchor(a))) as Record<string, StoredAnchor>
 }
 
-function saveAnchor(id: string, anchor: PaneAnchor | null): void {
+function saveAnchor(id: string, anchor: StoredAnchor | null): void {
   const anchors = loadAnchors()
   const latest = Math.max(0, ...Object.values(anchors).map((a) => a.hiddenAt ?? 0))
   if (anchor) anchors[id] = { ...anchor, hiddenAt: latest + 1 }
@@ -84,7 +92,21 @@ function toRect(r: DOMRect): PaneRect {
   return { top: r.top, left: r.left, bottom: r.bottom, right: r.right }
 }
 
-/** Records where `panel` sits so it can come back to the same spot once removed. */
+function isHorizontal(direction: PaneDirection): boolean {
+  return direction === "left" || direction === "right"
+}
+
+/** The group's share of the dock along the axis it was split on; undefined for tabs. */
+function splitFraction(anchor: PaneAnchor, rect: PaneRect, container: PaneRect): number | undefined {
+  if (anchor.direction === "within") return undefined
+  const [own, total] = isHorizontal(anchor.direction)
+    ? [rect.right - rect.left, container.right - container.left]
+    : [rect.bottom - rect.top, container.bottom - container.top]
+  const fraction = total > 0 ? own / total : 0
+  return fraction > 0 && fraction < 1 ? fraction : undefined
+}
+
+/** Records where `panel` sits, and how big it is, so it can come back to the same spot once removed. */
 function capturePaneAnchor(api: DockviewApi, panel: IDockviewPanel, container: HTMLElement): void {
   const group = panel.group
   const neighbors: PaneSite["neighbors"] = {}
@@ -94,13 +116,28 @@ function capturePaneAnchor(api: DockviewApi, panel: IDockviewPanel, container: H
     const id = adjacent?.activePanel?.id
     if (adjacent && id) neighbors[side] = { id, rect: toRect(adjacent.element.getBoundingClientRect()) }
   }
-  saveAnchor(panel.id, derivePaneAnchor({
+  const rect = toRect(group.element.getBoundingClientRect())
+  const bounds = toRect(container.getBoundingClientRect())
+  const anchor = derivePaneAnchor({
     tabSiblings: group.panels.filter((p) => p.id !== panel.id).map((p) => p.id),
     index: group.panels.indexOf(panel),
-    rect: toRect(group.element.getBoundingClientRect()),
-    container: toRect(container.getBoundingClientRect()),
+    rect,
+    container: bounds,
     neighbors,
-  }))
+  })
+  saveAnchor(panel.id, anchor && { ...anchor, size: splitFraction(anchor, rect, bounds) })
+}
+
+/** Gives re-added panes back the share of the dock they had when hidden. */
+function applySavedSizes(api: DockviewApi, sized: Array<{ id: string; anchor: StoredAnchor }>): void {
+  // Before the dock is laid out there is nothing to take a share of; sizing now would squash panes.
+  if (api.width <= 0 || api.height <= 0) return
+  for (const { id, anchor } of sized) {
+    const group = api.getPanel(id)?.group
+    if (!group || anchor.size === undefined || anchor.direction === "within") continue
+    if (isHorizontal(anchor.direction)) group.api.setSize({ width: Math.round(anchor.size * api.width) })
+    else group.api.setSize({ height: Math.round(anchor.size * api.height) })
+  }
 }
 
 /** Keeps panes usable when squeezed: the chat needs room for messages above its input. */
@@ -157,7 +194,8 @@ export function reconcilePanes(
   if (!api.getPanel("chat")) addPane(api, "chat", api.panels.length ? { ref: null, direction: "left" } : null)
 
   const saved = loadAnchors()
-  const anchors: Record<string, PaneAnchor> = { ...defaultAnchors(visible), ...saved }
+  const anchors: Record<string, StoredAnchor> = { ...defaultAnchors(visible), ...saved }
+  const sized: Array<{ id: string; anchor: StoredAnchor }> = []
   const missing = paneOrder
     .filter((id) => visible.has(id) && !api.getPanel(id))
     .sort((a, b) => (saved[b]?.hiddenAt ?? -1) - (saved[a]?.hiddenAt ?? -1))
@@ -166,8 +204,13 @@ export function reconcilePanes(
     const [id] = missing.splice(ready === -1 ? 0 : ready, 1)
     if (!id) break
     const present = new Set(api.panels.map((p) => p.id))
-    addPane(api, id, resolvePaneAnchor(id, anchors, present, fallbackAnchor))
+    const anchor = resolvePaneAnchor(id, anchors, present, fallbackAnchor)
+    addPane(api, id, anchor)
+    // A pane that took over a hidden pane's spot takes its size too; the fallback has none.
+    if (anchor !== fallbackAnchor) sized.push({ id, anchor })
   }
+  // Applied once everything is back, so a later split does not undo an earlier size.
+  applySavedSizes(api, sized)
   if (focus) api.getPanel(focus)?.api.setActive()
 }
 

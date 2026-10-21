@@ -5,7 +5,7 @@ import "./workspaceDock.css"
 import type { WorkspacePaneId } from "../../agents.types"
 import type { DockHandle } from "../../agents.types"
 import type { AgentWorkspaceLayout } from "../../hooks/useAgentWorkspaceLayout"
-import { reconcilePanes, restoreLayout, saveLayout } from "../../service/workspaceDock"
+import { applyMaximizedPane, getMaximizedPane, reconcilePanes, restoreLayout, saveLayout } from "../../service/workspaceDock"
 import { DockHeaderActions } from "./DockHeaderActions"
 import { DockPane } from "./DockPane"
 import { DockTab } from "./DockTab"
@@ -50,7 +50,9 @@ interface WorkspaceDockProps {
 export function WorkspaceDock({ ui, content }: WorkspaceDockProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [handle, setHandle] = useState<DockHandle | null>(null)
-  const { dockRef, pendingFocusRef, visible, settled } = ui
+  const { dockRef, pendingFocusRef, visible, settled, agentId, maximized, setMaximized } = ui
+  /** Agent whose saved maximize was last applied, so it is applied once per agent switch, not on every change. */
+  const maximizeAppliedForRef = useRef<string | null>(null)
 
   const onReady = (e: DockviewReadyEvent) => {
     const container = containerRef.current
@@ -72,6 +74,25 @@ export function WorkspaceDock({ ui, content }: WorkspaceDockProps) {
     reconcilePanes(handle.api, visible, handle.container, pendingFocusRef.current)
     pendingFocusRef.current = undefined
   }, [handle, visible, settled, pendingFocusRef])
+
+  // Ignores changes until this agent's saved maximize is applied, so a reconcile or a
+  // leftover maximize from the previous agent is never written to this agent.
+  useEffect(() => {
+    if (!handle) return
+    const record = () => {
+      if (maximizeAppliedForRef.current === agentId) setMaximized(getMaximizedPane(handle.api))
+    }
+    // Tab switches inside a maximized group change which pane is in front.
+    const subs = [handle.api.onDidMaximizedGroupChange(record), handle.api.onDidActivePanelChange(record)]
+    return () => subs.forEach((s) => s.dispose())
+  }, [handle, agentId, setMaximized])
+
+  // Runs after the reconcile above, which may have exited a maximize to rearrange panes.
+  useEffect(() => {
+    if (!handle || !settled || maximizeAppliedForRef.current === agentId) return
+    maximizeAppliedForRef.current = agentId
+    applyMaximizedPane(handle.api, maximized)
+  }, [handle, settled, agentId, maximized])
 
   return (
     <WorkspacePanesContext.Provider value={{ content, ui }}>

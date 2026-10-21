@@ -15,7 +15,8 @@ function isPaneList(raw: unknown): raw is SidePaneId[] {
 function isVisibility(raw: unknown): raw is PaneVisibility {
   if (!raw || typeof raw !== "object") return false
   const r = raw as Record<string, unknown>
-  return isPaneList(r.hidden) && isPaneList(r.lastSide)
+  const maximizedOk = r.maximized === undefined || paneOrder.includes(r.maximized as WorkspacePaneId)
+  return isPaneList(r.hidden) && isPaneList(r.lastSide) && maximizedOk
 }
 
 /** Outside a git repo there is nothing to diff: Files shows wherever Diff would. */
@@ -24,15 +25,37 @@ function withoutDiff(v: PaneVisibility): PaneVisibility {
   const hidden = v.hidden.includes("diff")
     ? v.hidden
     : [...v.hidden.filter((p) => p !== "files"), "diff" as const]
-  return { hidden, lastSide }
+  return { ...v, hidden, lastSide }
 }
 
 /** Cmd/Ctrl+U: closes every open Diff / Files / PR pane, or reopens the set it last closed. */
 function toggleSections(v: PaneVisibility): PaneVisibility {
   const open = sectionPanes.filter((p) => !v.hidden.includes(p))
-  if (open.length) return { hidden: [...new Set([...v.hidden, ...open])], lastSide: open }
+  if (open.length) return { ...v, hidden: [...new Set([...v.hidden, ...open])], lastSide: open }
   const reopen = v.lastSide.length ? v.lastSide : ["diff" as const]
   return { ...v, hidden: v.hidden.filter((p) => !reopen.includes(p)) }
+}
+
+/** Cmd/Ctrl+U toggles the Diff / Files / PR panes, Cmd/Ctrl+J the terminal. */
+function useSectionShortcuts(
+  setVisibility: (update: (v: PaneVisibility) => PaneVisibility) => void,
+  toggle: (pane: SidePaneId) => void,
+) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return
+      if (e.key === "u") {
+        e.preventDefault()
+        setVisibility(toggleSections)
+      }
+      if (e.key === "j") {
+        e.preventDefault()
+        toggle("terminal")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [setVisibility, toggle])
 }
 
 /**
@@ -42,8 +65,8 @@ function toggleSections(v: PaneVisibility): PaneVisibility {
  *
  * Shortcuts: Cmd/Ctrl+U toggles the Diff / Files / PR panes (reopening the
  * last set), Cmd/Ctrl+J toggles the terminal. `huxflux:toggle-terminal-maximize`
- * maximizes the terminal. With `hasDiff` false (a folder, not a git repo)
- * the Diff pane is replaced by Files; with `hasPR` false the PR pane stays
+ * maximizes the terminal. The maximized pane is remembered per agent too.
+ * With `hasDiff` false (a folder, not a git repo) the Diff pane is replaced by Files; with `hasPR` false the PR pane stays
  * hidden without touching what is saved. `settled` is false while those two
  * are still loading, and the dock waits for it so it never rearranges on a guess.
  */
@@ -97,6 +120,11 @@ export function useAgentWorkspaceLayout(
     else handle.api.maximizeGroup(panel)
   }, [])
 
+  /** Records the maximized pane as the dock reports it; written as-is so a missing Diff is not substituted. */
+  const setMaximized = useCallback((pane: WorkspacePaneId | undefined) => {
+    setStored((v) => (v.maximized === pane ? v : { ...v, maximized: pane }))
+  }, [setStored])
+
   const reset = useCallback(() => {
     if (dockRef.current) resetLayout(dockRef.current.api, visible, dockRef.current.container)
   }, [visible])
@@ -110,23 +138,12 @@ export function useAgentWorkspaceLayout(
     return () => window.removeEventListener("huxflux:toggle-terminal-maximize", onMaximizeTerminal)
   }, [visible, show, toggleMaximize])
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey)) return
-      if (e.key === "u") {
-        e.preventDefault()
-        setVisibility(toggleSections)
-      }
-      if (e.key === "j") {
-        e.preventDefault()
-        toggle("terminal")
-      }
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [setVisibility, toggle])
+  useSectionShortcuts(setVisibility, toggle)
 
   return {
+    agentId,
+    maximized: stored.maximized,
+    setMaximized,
     terminalTab,
     setTerminalTab,
     visible,

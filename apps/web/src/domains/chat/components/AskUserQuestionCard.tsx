@@ -1,163 +1,154 @@
-import { useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { cn, Button } from "@huxflux/ui"
-import { IconCheck, IconMessageCircle } from "@tabler/icons-react"
+import { IconCheck, IconMessageQuestion } from "@tabler/icons-react"
 import type { PendingQuestionEntry } from "../chat.types"
+import { useQuestionDraft } from "../hooks/useQuestionDraft"
+import { QuestionOptions } from "./QuestionOptions"
 
 interface AskUserQuestionCardProps {
   questions: PendingQuestionEntry[]
-  onSubmit: (answers: Record<string, string>) => void
+  /** Rejects when the answer did not reach the agent; the card then stays open. */
+  onSubmit: (answers: Record<string, string>) => Promise<void> | void
+  /** Drop the card locally (after an answer failed because the question is gone). */
+  onDismiss: () => void
 }
 
-interface QuestionOptionsProps {
-  q: PendingQuestionEntry
-  answers: Record<string, string>
-  setAnswers: (updater: (prev: Record<string, string>) => Record<string, string>) => void
-  isLast: boolean
-  onAdvance: () => void
-  onSubmit: () => void
-}
-
-function QuestionOptions({ q, answers, setAnswers, isLast, onAdvance, onSubmit }: QuestionOptionsProps) {
-  const currentAnswer = (answers[q.question] ?? "").trim()
-  const options = q.options ?? []
-  const otherSelected = answers[q.question] && !options.some((o) => o.label === answers[q.question])
-
+function StepDots({ questions, step, isAnswered }: { questions: PendingQuestionEntry[]; step: number; isAnswered: (q: PendingQuestionEntry) => boolean }) {
   return (
-    <div className="space-y-1">
-      {options.map((opt) => (
-        <button
-          key={opt.label}
-          onClick={() => {
-            setAnswers((prev) => ({ ...prev, [q.question]: opt.label }))
-            if (!isLast) setTimeout(onAdvance, 200)
-          }}
+    <div className="flex justify-center gap-1 pb-2">
+      {questions.map((q, i) => (
+        <div
+          key={q.question}
           className={cn(
-            "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors text-[12px]",
-            answers[q.question] === opt.label
-              ? "border-blue-400/50 bg-blue-500/10 text-foreground"
-              : "border-border bg-card hover:bg-accent text-foreground/80"
+            "w-1.5 h-1.5 rounded-full transition-colors",
+            i === step ? "bg-foreground" : i < step && isAnswered(q) ? "bg-foreground/40" : "bg-muted-foreground/20",
           )}
-        >
-          <div className={cn(
-            "w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-colors",
-            answers[q.question] === opt.label ? "border-blue-400 bg-blue-400" : "border-muted-foreground/30"
-          )}>
-            {answers[q.question] === opt.label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </div>
-          <div>
-            <span className="font-medium">{opt.label}</span>
-            {opt.description && <span className="text-muted-foreground/60 ml-1.5">{opt.description}</span>}
-          </div>
-        </button>
-      ))}
-      {/* "Other" option with free text input */}
-      <div className={cn(
-        "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors text-[12px]",
-        otherSelected ? "border-blue-400/50 bg-blue-500/10 text-foreground" : "border-border bg-card text-foreground/80"
-      )}>
-        <div className={cn(
-          "w-3.5 h-3.5 rounded-full border-2 shrink-0 mt-1.5 flex items-center justify-center transition-colors",
-          otherSelected ? "border-blue-400 bg-blue-400" : "border-muted-foreground/30"
-        )}>
-          {otherSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-        </div>
-        <input
-          type="text"
-          placeholder="Other..."
-          value={otherSelected ? (answers[q.question] ?? "") : ""}
-          onChange={(e) => setAnswers((prev) => ({ ...prev, [q.question]: e.target.value }))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && currentAnswer) {
-              if (isLast) onSubmit()
-              else onAdvance()
-            }
-          }}
-          className="flex-1 bg-transparent text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
         />
-      </div>
+      ))}
     </div>
   )
 }
 
-export function AskUserQuestionCard({ questions, onSubmit }: AskUserQuestionCardProps) {
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+function FreeTextInput({ value, onChange, onEnter }: { value: string; onChange: (v: string) => void; onEnter: () => void }) {
+  return (
+    <input
+      type="text"
+      placeholder="Type your answer…"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onEnter() } }}
+      className="w-full bg-card border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring"
+      autoFocus
+    />
+  )
+}
+
+function ErrorRow({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
+      <span className="flex-1">{message}</span>
+      <button type="button" onClick={onDismiss} className="shrink-0 underline underline-offset-2 hover:opacity-80">Dismiss</button>
+    </div>
+  )
+}
+
+function CardFooter({ showBack, onBack, isLast, sending, canAdvance, onNext }: {
+  showBack: boolean
+  onBack: () => void
+  isLast: boolean
+  sending: boolean
+  canAdvance: boolean
+  onNext: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 border-t border-border">
+      <div>
+        {showBack && (
+          <button type="button" onClick={onBack} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+            Back
+          </button>
+        )}
+      </div>
+      <Button size="sm" className="h-7 text-[11px] px-3 gap-1" disabled={!canAdvance} onClick={onNext}>
+        {isLast ? (<><IconCheck size={12} />{sending ? "Sending…" : "Submit"}</>) : "Next"}
+      </Button>
+    </div>
+  )
+}
+
+export function AskUserQuestionCard({ questions, onSubmit, onDismiss }: AskUserQuestionCardProps) {
   const [step, setStep] = useState(0)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const draft = useQuestionDraft(questions)
+  const cardRef = useRef<HTMLDivElement>(null)
 
-  const total = questions.length
+  // Take keyboard focus for the number shortcuts, but never steal it from
+  // something the user is typing into (the composer, a terminal).
+  useEffect(() => {
+    if (!document.activeElement || document.activeElement === document.body) cardRef.current?.focus()
+  }, [step])
+
   const q = questions[step]
-  const currentAnswer = q ? (answers[q.question] ?? "").trim() : ""
-  const isLast = step === total - 1
-
   if (!q) return null
+  const isLast = step === questions.length - 1
+  const canAdvance = draft.answerOf(q).length > 0 && !sending
 
-  const advance = () => setStep((s) => s + 1)
-  const submit = () => onSubmit(answers)
+  async function submit() {
+    setSending(true)
+    setError(null)
+    try {
+      await onSubmit(draft.buildAnswers())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The answer did not reach the agent")
+      setSending(false)
+    }
+  }
+  const next = () => {
+    if (!canAdvance) return
+    if (isLast) void submit()
+    else setStep((s) => s + 1)
+  }
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (!q || e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return
+    const option = /^[1-9]$/.test(e.key) ? q.options?.[Number(e.key) - 1] : undefined
+    if (option) { e.preventDefault(); draft.choose(q, option.label) }
+    else if (e.key === "Enter") { e.preventDefault(); next() }
+  }
 
   return (
-    <div className="mb-3 rounded-xl border border-blue-400/30 bg-blue-500/5 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-blue-400/20 bg-blue-500/5">
-        <IconMessageCircle size={13} className="text-blue-400 shrink-0" />
-        <span className="text-[12px] font-medium text-blue-400/90">Claude is asking a question</span>
-        {total > 1 && (
-          <span className="text-[10px] font-mono text-blue-400/50 ml-auto">{step + 1}/{total}</span>
-        )}
+    <div ref={cardRef} tabIndex={-1} onKeyDown={handleKeyDown} className="mb-3 rounded-xl border border-border bg-card overflow-hidden shadow-sm focus:outline-none">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/40">
+        <IconMessageQuestion size={13} className="text-amber-400 shrink-0" />
+        <span className="text-[12px] font-medium text-foreground">The agent is waiting for your answer</span>
+        {questions.length > 1 && <span className="text-[10px] font-mono text-muted-foreground ml-auto">{step + 1}/{questions.length}</span>}
       </div>
       <div className="px-3 py-3">
-        {q.header && <p className="text-[11px] font-semibold text-foreground/60 uppercase tracking-wider mb-1.5">{q.header}</p>}
+        {q.header && <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{q.header}</p>}
         <p className="text-[13px] text-foreground mb-2.5">{q.question}</p>
+        {q.multiSelect && <p className="-mt-1.5 mb-2 text-[11px] text-muted-foreground">Pick all that apply.</p>}
         {q.options && q.options.length > 0 ? (
-          <QuestionOptions q={q} answers={answers} setAnswers={setAnswers} isLast={isLast} onAdvance={advance} onSubmit={submit} />
-        ) : (
-          <input
-            type="text"
-            placeholder="Type your answer…"
-            value={answers[q.question] ?? ""}
-            onChange={(e) => setAnswers((prev) => ({ ...prev, [q.question]: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && currentAnswer) {
-                if (isLast) submit()
-                else advance()
-              }
-            }}
-            className="w-full bg-card border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-ring"
-            autoFocus
+          <QuestionOptions
+            q={q}
+            draft={draft.draftFor(q)}
+            onChoose={(label) => draft.choose(q, label)}
+            onOtherChange={(v) => draft.setOther(q, v)}
+            onEnter={next}
           />
+        ) : (
+          <FreeTextInput value={draft.draftFor(q).other} onChange={(v) => draft.setOther(q, v)} onEnter={next} />
         )}
+        {error && <ErrorRow message={error} onDismiss={onDismiss} />}
       </div>
-      <div className="flex items-center justify-between px-3 py-2 border-t border-blue-400/20">
-        <div>
-          {step > 0 && (
-            <button
-              onClick={() => setStep((s) => s - 1)}
-              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Back
-            </button>
-          )}
-        </div>
-        <Button
-          size="sm"
-          className="h-7 text-[11px] px-3 gap-1"
-          disabled={!currentAnswer}
-          onClick={() => { if (isLast) submit(); else advance() }}
-        >
-          {isLast ? (<><IconCheck size={12} />Submit</>) : "Next"}
-        </Button>
-      </div>
-      {/* Step dots */}
-      {total > 1 && (
-        <div className="flex justify-center gap-1 pb-2">
-          {questions.map((_, i) => (
-            <div
-              key={i}
-              className={cn(
-                "w-1.5 h-1.5 rounded-full transition-colors",
-                i === step ? "bg-blue-400" : i < step && answers[questions[i].question] ? "bg-blue-400/40" : "bg-muted-foreground/20"
-              )}
-            />
-          ))}
-        </div>
-      )}
+      <CardFooter
+        showBack={step > 0}
+        onBack={() => setStep((s) => s - 1)}
+        isLast={isLast}
+        sending={sending}
+        canAdvance={canAdvance}
+        onNext={next}
+      />
+      {questions.length > 1 && <StepDots questions={questions} step={step} isAnswered={(x) => draft.answerOf(x).length > 0} />}
     </div>
   )
 }

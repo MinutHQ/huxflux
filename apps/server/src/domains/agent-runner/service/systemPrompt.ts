@@ -69,13 +69,28 @@ function buildRefinePrompt(taskContext: string): string {
 }
 
 function buildAskUserQuestionDirective(provider: ProviderAdapter): string[] {
-  if (!provider.capabilities.askUserQuestion) return []
+  if (!provider.capabilities.askUserQuestion) return buildPlainTextQuestionDirective()
   return [
     ``,
     `Asking the user questions:`,
     `- You have the AskUserQuestion tool. Call it directly — do NOT use ToolSearch to find it, it will not appear there. It is a built-in tool handled by the system.`,
     `- Use it when you need clarification, want the user to choose between options, or need confirmation before proceeding. Prefer it over guessing when the task is ambiguous.`,
-    `- The user will see your question in the Hive UI and can answer at their own pace. The tool call will block until they respond.`,
+    `- The user will see your question in the Huxflux UI and can answer at their own pace. The tool call will block until they respond.`,
+  ]
+}
+
+/**
+ * Providers without a host-answered question tool: the model asks in its reply
+ * and stops, and the user's answer arrives as the next turn. Without this the
+ * model either guesses or waits on a prompt nobody can see.
+ */
+function buildPlainTextQuestionDirective(): string[] {
+  return [
+    ``,
+    `Asking the user questions:`,
+    `- You cannot pause mid-task for input. When you need clarification or a decision you cannot reasonably make yourself, ask in your reply and end your turn there. The user's answer arrives as their next message.`,
+    `- Put the question at the end of your reply. When there are a few clear choices, list them as a numbered list so the user can answer with a number.`,
+    `- Do not ask about things you can find out yourself from the code or by running a command.`,
   ]
 }
 

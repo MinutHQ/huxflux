@@ -73,15 +73,16 @@ function ToolbarToggle({ active, onPress, icon, label }: {
   )
 }
 
-function SendOrStopButton({ canSend, sending, isStreaming, queuedMessage, activeSessionId, onSend }: {
+function SendOrStopButton({ canSend, sending, isStreaming, queuedMessage, activeSessionId, onSend, preferSend }: {
   canSend: boolean
+  preferSend: boolean
   sending: boolean
   isStreaming: boolean
   queuedMessage: string | null
   activeSessionId: string | null
   onSend: () => void
 }) {
-  if (isStreaming && !queuedMessage) {
+  if (isStreaming && !queuedMessage && !preferSend) {
     return (
       <TouchableOpacity
         onPress={() => api.agents.stop(activeSessionId!).catch(() => {})}
@@ -116,7 +117,7 @@ export function ChatInputBar({
   comments, onRemoveComment,
   queuedMessage, setQueuedMessage,
   sending, thinking, setThinking, planMode, setPlanMode,
-  isStreaming, hasMessages,
+  isStreaming, hasMessages, hasPendingQuestion,
   onSend, onPickImage,
   bottomInset,
 }: {
@@ -138,6 +139,7 @@ export function ChatInputBar({
   setPlanMode: React.Dispatch<React.SetStateAction<boolean>>
   isStreaming: boolean
   hasMessages: boolean
+  hasPendingQuestion: boolean
   onSend: () => void
   onPickImage: () => void
   bottomInset: number
@@ -158,7 +160,8 @@ export function ChatInputBar({
   }
 
   const canSend = !!(input.trim() || attachments.length > 0 || comments.length > 0) && !sending && uploadingCount === 0
-  const placeholder = isStreaming
+  const placeholder = hasPendingQuestion ? "Reply to answer the question…"
+    : isStreaming
     ? (queuedMessage ? "Replace queued message…" : "Queue a follow-up…")
     : !hasMessages ? "Tell the agent what to work on…" : "Add a follow up"
 
@@ -204,6 +207,7 @@ export function ChatInputBar({
 
           <SendOrStopButton
             canSend={canSend}
+            preferSend={hasPendingQuestion && canSend}
             sending={sending}
             isStreaming={isStreaming}
             queuedMessage={queuedMessage}

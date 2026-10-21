@@ -9,12 +9,13 @@ import type { AgentSummary } from "@huxflux/shared"
  * Global notification hook — call once at the app root.
  * Listens for message:done on all agents and fires a toast + sound.
  */
-function fireNotification(title: string, body: string) {
+function fireNotification(title: string, body: string, onlyWhenUnfocused = false) {
   if (getSoundEnabled()) {
     playSound(getSoundPref())
   }
 
-  if (getDesktopNotif()) {
+  const isUnfocused = !document.hasFocus() || document.visibilityState === "hidden"
+  if (getDesktopNotif() && (!onlyWhenUnfocused || isUnfocused)) {
     sendDesktopNotification(title, body).catch((error: unknown) => {
       console.warn("Could not send desktop notification:", error)
     })
@@ -43,7 +44,9 @@ export function useNotifications(agents: AgentSummary[]) {
         description: firstQuestion.length > 80 ? firstQuestion.slice(0, 80) + "..." : firstQuestion,
         duration: 10000,
       })
-      fireNotification(`${title} needs your input`, firstQuestion)
+      const body = firstQuestion.length > 120 ? firstQuestion.slice(0, 120) + "..." : firstQuestion
+      // The toast covers a focused window; the OS notification is for when the user is elsewhere.
+      fireNotification(`${title} has a question`, body, true)
     }
   })
 }

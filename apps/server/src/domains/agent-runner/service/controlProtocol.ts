@@ -99,11 +99,15 @@ function extractQuestions(input: unknown): PendingQuestionEntry[] | null {
 /**
  * Answer the agent's pending AskUserQuestion by writing an allow
  * control_response with the user's answers merged into the tool input.
- * Returns false when there is no pending question or no writable stdin.
+ * When `toolUseId` is given it must match the pending question, so a stale
+ * client cannot answer a newer question with answers meant for an older one.
+ * Returns false when there is no (matching) pending question or no writable
+ * stdin.
  */
-export function answerPendingQuestion(agentId: string, answers: Record<string, string>): boolean {
+export function answerPendingQuestion(agentId: string, answers: Record<string, string>, toolUseId?: string): boolean {
   const pending = getPendingQuestion(agentId)
   if (!pending) return false
+  if (toolUseId !== undefined && toolUseId !== pending.toolUseId) return false
   const proc = runningProcesses.get(agentId)
   const written = writeStdinLine(proc, buildControlResponseLine(pending.requestId, {
     behavior: "allow",

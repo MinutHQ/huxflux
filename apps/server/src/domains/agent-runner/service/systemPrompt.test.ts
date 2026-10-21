@@ -3,13 +3,13 @@ import { createTestDb, type TestDb } from "../../../../test/harness.js"
 import { buildSystemPrompt } from "./systemPrompt.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 
-function fakeProvider(planMode: boolean, taskListTools = false): ProviderAdapter {
+function fakeProvider(planMode: boolean, taskListTools = false, askUserQuestion = true): ProviderAdapter {
   return {
     id: "claude",
     name: "Claude",
     capabilities: {
       sessionResume: true, sessionContinue: true, planMode, streamingJson: true,
-      toolUseEvents: true, thinkingBlocks: true, askUserQuestion: true,
+      toolUseEvents: true, thinkingBlocks: true, askUserQuestion,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
       taskListTools, effortLevels: [],
     },
@@ -128,5 +128,18 @@ describe("buildSystemPrompt", () => {
       provider: fakeProvider(false),
     })
     expect(out).toContain("working directly in a folder")
+  })
+
+  it("points providers with AskUserQuestion at the tool", () => {
+    const out = buildSystemPrompt({ agentId: "a", repo: null, planMode: false, provider: fakeProvider(false) })
+    expect(out).toContain("You have the AskUserQuestion tool.")
+    expect(out).not.toContain("You cannot pause mid-task for input.")
+  })
+
+  it("tells providers without AskUserQuestion to ask in the reply and end the turn", () => {
+    const out = buildSystemPrompt({ agentId: "a", repo: null, planMode: false, provider: fakeProvider(false, false, false) })
+    expect(out).toContain("You cannot pause mid-task for input.")
+    expect(out).toContain("ask in your reply and end your turn there")
+    expect(out).not.toContain("AskUserQuestion")
   })
 })

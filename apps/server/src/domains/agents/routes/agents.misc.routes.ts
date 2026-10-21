@@ -45,10 +45,14 @@ function registerAskAnswer(app: ZodApp): void {
     { schema: { params: idParamsSchema, body: answerBodySchema } },
     async (req, reply) => {
       const { id } = req.params
-      const { answers } = req.body
+      const { answers, toolUseId } = req.body
 
-      if (!getPendingQuestion(id)) return reply.code(404).send({ error: "No pending question" })
-      if (!answerPendingQuestion(id, answers)) {
+      const pending = getPendingQuestion(id)
+      if (!pending) return reply.code(404).send({ error: "No pending question" })
+      if (toolUseId !== undefined && toolUseId !== pending.toolUseId) {
+        return reply.code(409).send({ error: "The agent replaced this question with a newer one" })
+      }
+      if (!answerPendingQuestion(id, answers, toolUseId)) {
         return reply.code(409).send({ error: "Agent is no longer running; the question expired" })
       }
       return { ok: true }

@@ -94,9 +94,11 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
   async function handleAnswerQuestion(answers: Record<string, string>) {
     // The server completes the AskUserQuestion round trip by writing an allow
     // control_response (with these answers) to the running CLI's stdin.
-    // fire-and-forget; intentional: non-fatal answer ping with explicit error swallowing
+    // Errors propagate so the card stays open and shows why the answer did
+    // not land (agent stopped, question replaced, network).
+    // fire-and-forget; intentional: one-shot answer whose result the card handles itself
     // eslint-disable-next-line no-restricted-syntax
-    try { await api.agents.answerQuestion(agent.id, answers, pendingQuestion?.toolUseId) } catch { /* non-fatal */ }
+    await api.agents.answerQuestion(agent.id, answers, pendingQuestion?.toolUseId)
     onClearPendingQuestion?.()
   }
 

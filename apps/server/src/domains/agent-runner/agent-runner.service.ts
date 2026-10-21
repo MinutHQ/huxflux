@@ -22,6 +22,7 @@ export {
   runningProcesses,
   getClaudeBin,
   isAgentRunning,
+  countBusyTurns,
   stopAgent,
   endTurn,
   stopAllRunningTurns,

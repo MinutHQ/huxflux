@@ -5,10 +5,11 @@ import { consumeSetupMessage } from "@/lib/setupMessage"
 import type { Attachment } from "../agents.types"
 
 /**
- * Owns the message-send pipeline: input draft, queued-while-streaming, attachments,
+ * Owns the message-send pipeline: input draft, queued-while-streaming (sent at once
+ * while the agent waits on a question), attachments,
  * optimistic-then-network send, and the setup-message hand-off from new-agent.
  */
-export function useChatSend(rootId: string, activeSessionId: string | null, isStreaming: boolean) {
+export function useChatSend(rootId: string, activeSessionId: string | null, isStreaming: boolean, hasPendingQuestion: boolean) {
   const queryClient = useQueryClient()
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
@@ -59,7 +60,9 @@ export function useChatSend(rootId: string, activeSessionId: string | null, isSt
     setInput("")
     setAttachments([])
     setComments([])
-    if (isStreaming) {
+    // A turn parked on a question never ends on its own, so a queued message
+    // would never go out. The server turns a message sent now into the answer.
+    if (isStreaming && !hasPendingQuestion) {
       setQueuedMessage(content)
       return
     }

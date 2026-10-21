@@ -46,6 +46,8 @@ export interface ChatInputBarProps {
   planMode: boolean
   setPlanMode: (updater: (v: boolean) => boolean) => void
   showPlanApproval: boolean
+  /** The agent is blocked on a question; a sent message becomes the answer. */
+  hasPendingQuestion: boolean
   planContent: string | null
   effort: "" | "low" | "medium" | "high" | "max"
   setEffort: (v: "" | "low" | "medium" | "high" | "max") => void

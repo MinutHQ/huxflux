@@ -36,7 +36,7 @@ export interface DeletingAgentInfo {
   repoName: string
 }
 
-export type PendingQuestionOption = { label: string; description?: string }
+export type PendingQuestionOption = { label: string; description?: string; preview?: string }
 export type PendingQuestionEntry = {
   question: string
   header?: string

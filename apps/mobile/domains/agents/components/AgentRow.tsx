@@ -68,6 +68,9 @@ export function AgentRow({ agent, isStreaming, repoName }: {
     : "#60a5fa"
     : null
 
+  // A parked AskUserQuestion means the agent is waiting on the user, not working.
+  const needsInput = !!agent.pendingQuestion
+
   function handlePress() {
     if (agent.unread) {
       const prev = queryClient.getQueryData<AgentSummary[]>(agentsKey)
@@ -118,7 +121,9 @@ export function AgentRow({ agent, isStreaming, repoName }: {
         </View>
       </View>
 
-      {isStreaming ? <StreamingDots /> : <Ionicons name="chevron-forward" size={14} color={c.fgSub} />}
+      {needsInput
+        ? <Ionicons name="help-circle-outline" size={16} color={c.warning} accessibilityLabel="Waiting for your input" />
+        : isStreaming ? <StreamingDots /> : <Ionicons name="chevron-forward" size={14} color={c.fgSub} />}
     </TouchableOpacity>
   )
 }

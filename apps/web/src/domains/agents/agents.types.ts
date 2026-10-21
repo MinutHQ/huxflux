@@ -94,4 +94,6 @@ export interface PaneVisibility {
   hidden: SidePaneId[]
   /** Diff / Files / PR panes that Cmd/Ctrl+U closed, reopened by the next press. */
   lastSide: SidePaneId[]
+  /** Pane whose group is maximized, restored when the agent is opened again. */
+  maximized?: WorkspacePaneId
 }

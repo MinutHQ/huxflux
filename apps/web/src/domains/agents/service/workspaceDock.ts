@@ -171,6 +171,22 @@ export function reconcilePanes(
   if (focus) api.getPanel(focus)?.api.setActive()
 }
 
+/** The pane in front of the maximized group, if any. */
+export function getMaximizedPane(api: DockviewApi): WorkspacePaneId | undefined {
+  return api.groups.find((g) => g.api.isMaximized())?.activePanel?.id as WorkspacePaneId | undefined
+}
+
+/** Maximizes `pane`'s group, or restores the layout when `pane` is unset or not in the dock. */
+export function applyMaximizedPane(api: DockviewApi, pane: WorkspacePaneId | undefined): void {
+  const panel = pane && api.getPanel(pane)
+  if (!panel) {
+    if (api.hasMaximizedGroup()) api.exitMaximizedGroup()
+    return
+  }
+  panel.api.setActive()
+  if (!panel.group.api.isMaximized()) api.maximizeGroup(panel)
+}
+
 /** Restores the saved global layout. False when there is none, it no longer loads, or it breaks the dock rules. */
 export function restoreLayout(api: DockviewApi): boolean {
   const saved = readJson(layoutKey)

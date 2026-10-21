@@ -82,12 +82,12 @@ export function derivePaneAnchor(site: PaneSite): PaneAnchor | null {
  * (or the layout edge) is found. Falls back to `fallback` when the chain
  * breaks or loops; the caller must make `fallback` always resolvable.
  */
-export function resolvePaneAnchor(
+export function resolvePaneAnchor<A extends PaneAnchor>(
   pane: string,
-  anchors: Readonly<Record<string, PaneAnchor | undefined>>,
+  anchors: Readonly<Record<string, NoInfer<A> | undefined>>,
   present: ReadonlySet<string>,
-  fallback: PaneAnchor,
-): PaneAnchor {
+  fallback: A,
+): A {
   const seen = new Set([pane])
   let anchor = anchors[pane]
   while (anchor) {

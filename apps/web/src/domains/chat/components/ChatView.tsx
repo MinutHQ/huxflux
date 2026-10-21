@@ -57,6 +57,7 @@ function buildInputBarProps(args: any): ChatInputBarProps {
     input: args.input, onInputChange: args.handleInputChange, textareaRef: args.textareaRef,
     isInPlanMode: args.isInPlanMode, planMode: args.planMode, setPlanMode: args.setPlanMode,
     showPlanApproval: args.showPlanApproval, planContent: args.planContent,
+    hasPendingQuestion: args.hasPendingQuestion,
     effort: args.effort, setEffort: args.setEffort,
     isStreaming: args.isStreaming, canSend: args.canSend, hideChrome: args.hideChrome,
     fileChanges: args.agent.fileChanges,
@@ -142,6 +143,7 @@ export function ChatView(props: ChatViewProps) {
     input, handleInputChange: actions.handleInputChange, textareaRef,
     isInPlanMode, planMode, setPlanMode,
     showPlanApproval, planContent,
+    hasPendingQuestion: pendingQuestion?.agentId === agent.id,
     effort, setEffort, isStreaming, canSend, hideChrome,
     onRemoveComment, onOpenDiffFile,
     onRemoveAttachment: (path: string) => setAttachments((p) => p.filter((x) => x.path !== path)),
@@ -200,6 +202,7 @@ export function ChatView(props: ChatViewProps) {
           onScrollToBottom={jumpToBottom}
           pendingQuestion={pendingQuestion}
           onAnswerQuestion={actions.handleAnswerQuestion}
+          onDismissQuestion={() => onClearPendingQuestion?.()}
           inputBarProps={inputBarProps}
         />
       </div>

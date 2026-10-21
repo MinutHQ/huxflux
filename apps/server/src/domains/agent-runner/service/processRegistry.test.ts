@@ -11,7 +11,8 @@ import { registerProvider, _resetProviders } from "../../providers/registry.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import { runAgent } from "../agent-runner.service.js"
 import { spawn } from "node:child_process"
-import { endTurn, resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason, type RunningTurn } from "./processRegistry.js"
+import { setPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
+import { countBusyTurns, endTurn, resolveModelAlias, runningProcesses, stopAllRunningTurns, stopAgent, takeStopReason, type RunningTurn } from "./processRegistry.js"
 
 const SERVER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..")
 const FAKE_BIN = path.join(SERVER_ROOT, "test", "fixtures", "fake-claude.mjs")
@@ -235,5 +236,28 @@ describe("endTurn", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe("countBusyTurns", () => {
+  const ids = ["busy-1", "busy-2", "asking-1"]
+  const turn: RunningTurn = { kill: () => true }
+  beforeEach(() => { for (const id of ids) runningProcesses.set(id, turn) })
+  afterEach(() => {
+    for (const id of ids) { runningProcesses.delete(id); clearPendingQuestion(id) }
+  })
+
+  it("counts every running turn when none is waiting on a question", () => {
+    expect(countBusyTurns()).toBe(3)
+  })
+
+  it("does not count a turn blocked on an AskUserQuestion", () => {
+    setPendingQuestion("asking-1", "req-1", "tu-1", [{ question: "Which?" }])
+    expect(countBusyTurns()).toBe(2)
+  })
+
+  it("is zero when every running turn is waiting on a question", () => {
+    for (const id of ids) setPendingQuestion(id, `req-${id}`, `tu-${id}`, [{ question: "Which?" }])
+    expect(countBusyTurns()).toBe(0)
   })
 })

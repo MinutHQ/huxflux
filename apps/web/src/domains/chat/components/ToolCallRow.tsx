@@ -10,6 +10,7 @@ import { toolIcon, formatToolCall, isToolCallRunning, stripHuxfluxTags } from ".
 import { MarkdownContent } from "./MarkdownContent"
 import { AgentPromptBlock } from "./AgentPromptBlock"
 import { ResultBlock } from "./ResultBlock"
+import { AskUserQuestionResult } from "./AskUserQuestionResult"
 
 function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; indent: boolean; isStreaming: boolean }) {
   const [open, setOpen] = useState(false)
@@ -88,7 +89,9 @@ export function ToolCallRow({ call, indent = false, isStreaming = false }: { cal
           </span>
         )}
       </div>
-      {call.result && <ResultBlock result={call.result} />}
+      {call.result && (call.tool === "AskUserQuestion"
+        ? <AskUserQuestionResult args={call.args} result={call.result} fallback={<ResultBlock result={call.result} />} />
+        : <ResultBlock result={call.result} />)}
     </div>
   )
 }

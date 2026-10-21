@@ -16,7 +16,7 @@ import { agents as agentsTable, repos as reposTable } from "./db/schema.js"
 import { killWorktreeProcesses, clearAgentPorts } from "./domains/git/processes.js"
 import { stopProxyConnector } from "./domains/proxy-connector/proxy-connector.service.js"
 import { stopHeadroomProxy } from "./domains/headroom/headroom.service.js"
-import { runningProcesses, stopAllRunningTurns } from "./domains/agent-runner/agent-runner.service.js"
+import { countBusyTurns, stopAllRunningTurns } from "./domains/agent-runner/agent-runner.service.js"
 import { logger } from "./logger.js"
 
 /** Exit code the supervisor treats as a planned restart, not a crash. */
@@ -82,16 +82,18 @@ export function exitGracefully(code: number, reason: string): void {
 }
 
 /**
- * Restart as soon as no agent turn is running. Turns that start while we wait
- * are allowed to finish too; after IDLE_WAIT_CAP_MS the restart proceeds
- * anyway (running turns are then finalized with an "interrupted" note).
+ * Restart as soon as no agent turn is busy (turns waiting on a question do not
+ * count). Turns that start while we wait are allowed to finish too; after
+ * IDLE_WAIT_CAP_MS the restart proceeds anyway. Every turn still running at
+ * that point, including question-blocked ones, is finalized with an
+ * "interrupted" note.
  */
 export function restartWhenIdle(reason: string): void {
   if (shuttingDown || idleTimer) return
   const deadline = Date.now() + IDLE_WAIT_CAP_MS
   let polls = 0
   const attempt = (): void => {
-    const running = runningProcesses.size
+    const running = countBusyTurns()
     if (running === 0 || Date.now() >= deadline) {
       exitGracefully(RESTART_EXIT_CODE, reason)
       return

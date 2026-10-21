@@ -125,6 +125,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
           onChange={(e) => onInputChange(e.target.value)}
           placeholder={
             showPlanApproval ? "Approve or dismiss the plan…"
+            : props.hasPendingQuestion ? "Reply here to answer the agent's question…"
             : agent.messages.length === 0 ? "Tell the agent what to work on…"
             : props.isStreaming && isClaudeFamilyProvider(agent.provider) ? "Message the running agent…"
             : "Add a follow up"

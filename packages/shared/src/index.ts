@@ -133,6 +133,9 @@ export type {
   AgentsServerEvent,
 } from "./domains/agents/agents.types.js"
 
+export { joinMultiSelectAnswer, buildQuestionAnswer, parseAskAnswers, MULTI_SELECT_SEPARATOR } from "./domains/agents/askAnswers.js"
+export type { QuestionDraft } from "./domains/agents/askAnswers.js"
+
 // ── settings ─────────────────────────────────────────────────────────────────
 export { settingsApi } from "./domains/settings/settings.api.js"
 export { settingsSchema, settingsDefaults } from "./domains/settings/settings.schema.js"

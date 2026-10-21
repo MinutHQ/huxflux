@@ -130,7 +130,12 @@ export const askQuestionEntrySchema = z.object({
   question: z.string(),
   header: z.string().optional(),
   multiSelect: z.boolean().optional(),
-  options: z.array(z.object({ label: z.string(), description: z.string().optional() })).optional(),
+  options: z.array(z.object({
+    label: z.string(),
+    description: z.string().optional(),
+    // Optional mockup / snippet shown when the option is focused (monospace).
+    preview: z.string().optional(),
+  })).optional(),
 })
 
 export type AskQuestionEntry = z.infer<typeof askQuestionEntrySchema>

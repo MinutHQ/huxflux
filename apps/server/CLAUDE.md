@@ -22,7 +22,8 @@ src/
   auth.ts            Auth middleware.
   audit.ts           Audit logging.
   shutdown.ts        Graceful exit: drains in-flight agent turns before the process exits;
-                     SIGUSR2 from the supervisor means "restart once no turn is running".
+                     SIGUSR2 from the supervisor means "restart once no turn is busy" (turns
+                     blocked on an AskUserQuestion count as idle).
   sandbox.ts         Sandbox execution.
   jobs.ts            Background-job registry. Each domain's `domains/<x>/<x>.job.ts`
                      exports a `Job` (see `jobTypes.ts`); this file lists them and

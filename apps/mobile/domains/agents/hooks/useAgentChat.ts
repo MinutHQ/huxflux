@@ -63,8 +63,8 @@ async function pickAndUploadImages(sessionId: string | null, setAttachments: Set
 export function useAgentChat(rootId: string) {
   const session = useChatSession(rootId)
   const agentState = useAgent(session.activeSessionId)
-  const { data: agent, isStreaming } = agentState
-  const send = useChatSend(rootId, session.activeSessionId, !!isStreaming)
+  const { data: agent, isStreaming, pendingQuestion } = agentState
+  const send = useChatSend(rootId, session.activeSessionId, !!isStreaming, !!pendingQuestion)
 
   const messages = useMemo(() => {
     const seen = new Set<string>()

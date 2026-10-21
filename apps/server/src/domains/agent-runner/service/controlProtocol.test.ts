@@ -162,6 +162,21 @@ describe("answerPendingQuestion", () => {
     expect(answerPendingQuestion(ctx.agentId, { q: "a" })).toBe(false)
   })
 
+  it("answers when the given toolUseId matches the pending question", () => {
+    handleControlRequest(askRequest("req-1", "tu-1"), ctx.agentId, ctx.fake.proc)
+    expect(answerPendingQuestion(ctx.agentId, { "Which color?": "Red" }, "tu-1")).toBe(true)
+    expect(ctx.fake.written).toHaveLength(1)
+    expect(getPendingQuestion(ctx.agentId)).toBeUndefined()
+  })
+
+  it("refuses a stale answer meant for an older question and keeps the new one pending", () => {
+    handleControlRequest(askRequest("req-2", "tu-new"), ctx.agentId, ctx.fake.proc)
+    expect(answerPendingQuestion(ctx.agentId, { "Which color?": "Red" }, "tu-old")).toBe(false)
+    expect(ctx.fake.written).toHaveLength(0)
+    expect(getPendingQuestion(ctx.agentId)?.toolUseId).toBe("tu-new")
+    expect(ctx.capture.events.filter((e) => e.type === "ask:resolved")).toHaveLength(0)
+  })
+
   it("returns false and keeps pending state when the process is gone", () => {
     handleControlRequest(askRequest(), ctx.agentId, ctx.fake.proc)
     runningProcesses.delete(ctx.agentId)

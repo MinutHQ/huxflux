@@ -6,6 +6,7 @@ import { agents as agentsTable, repos as reposTable } from "../../../db/schema.j
 import { getProvider } from "../../providers/registry.js"
 import { killWorktreeProcesses } from "../../git/processes.js"
 import { logger } from "../../../logger.js"
+import { getPendingQuestion } from "../../../askStore.js"
 
 /**
  * Handle on a running turn. A spawned CLI's `ChildProcess` satisfies this
@@ -137,6 +138,19 @@ function cleanupOrphanedProcesses(agentId: string): void {
 
 export function isAgentRunning(agentId: string): boolean {
   return runningProcesses.has(agentId)
+}
+
+/**
+ * Running turns that are still doing work. A turn blocked on an
+ * AskUserQuestion is idle: the user may not answer for hours, so restart-when-
+ * idle does not wait for it (the question is lost on restart either way).
+ */
+export function countBusyTurns(): number {
+  let busy = 0
+  for (const agentId of runningProcesses.keys()) {
+    if (!getPendingQuestion(agentId)) busy++
+  }
+  return busy
 }
 
 // Clears any stale streaming=1 rows at startup. The in-memory runningProcesses

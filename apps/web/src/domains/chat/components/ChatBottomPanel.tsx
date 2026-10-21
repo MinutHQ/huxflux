@@ -19,10 +19,11 @@ interface ChatBottomPanelProps {
   onScrollToBottom: () => void
   pendingQuestion: PendingQuestion | null
   onAnswerQuestion: (answers: Record<string, string>) => Promise<void> | void
+  onDismissQuestion: () => void
   inputBarProps: ChatInputBarProps
 }
 
-export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBottom, pendingQuestion, onAnswerQuestion, inputBarProps }: ChatBottomPanelProps) {
+export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBottom, pendingQuestion, onAnswerQuestion, onDismissQuestion, inputBarProps }: ChatBottomPanelProps) {
   return (
     <div className="shrink-0 relative">
       {!isAtBottom && agent.messages.length > 0 && (
@@ -42,7 +43,12 @@ export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBo
         <TasksBar agentId={agent.id} isStreaming={uiIsStreaming} />
         <BackgroundTasksStrip agentId={agent.id} />
         {pendingQuestion && pendingQuestion.agentId === agent.id && Array.isArray(pendingQuestion.questions) && pendingQuestion.questions.length > 0 && (
-          <AskUserQuestionCard questions={pendingQuestion.questions} onSubmit={onAnswerQuestion} />
+          <AskUserQuestionCard
+            key={pendingQuestion.toolUseId}
+            questions={pendingQuestion.questions}
+            onSubmit={onAnswerQuestion}
+            onDismiss={onDismissQuestion}
+          />
         )}
         <ChatInputBar {...inputBarProps} />
       </div>

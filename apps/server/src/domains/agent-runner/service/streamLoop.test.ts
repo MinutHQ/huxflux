@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { agents as agentsTable, messages as messagesTable, terminalLines as terminalLinesTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, silenceLogs, waitFor, type TestDb, type CapturedWsEvents, type SilencedLogs } from "../../../../test/harness.js"
 import { createStreamState } from "./state.js"
-import { spawnAndStream } from "./streamLoop.js"
+import { buildSpawnEnv, spawnAndStream } from "./streamLoop.js"
 import { runningProcesses } from "./processRegistry.js"
 import type { ProviderAdapter } from "../../providers/providers.types.js"
 import type { StreamState } from "../../agents/agents.types.js"
@@ -209,5 +209,25 @@ describe("spawnAndStream — stdin lifetime", () => {
     const proc = spawnFixture(ctx, "happy-path-stdin.json", JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "hi" }] } }))
     await waitForExit(proc)
     expect(stdinReport()).toBe("stdin-ended-after=7")
+  })
+})
+
+describe("buildSpawnEnv", () => {
+  const args = { agentId: "a1", apiBase: "http://x", authToken: "t", cwd: "/tmp/w", repoPath: null }
+  const saved = process.env.CLAUDE_CODE_ARTIFACT
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.CLAUDE_CODE_ARTIFACT
+    else process.env.CLAUDE_CODE_ARTIFACT = saved
+  })
+
+  it("turns the Artifact tools on by default", () => {
+    delete process.env.CLAUDE_CODE_ARTIFACT
+    expect(buildSpawnEnv(args).CLAUDE_CODE_ARTIFACT).toBe("1")
+  })
+
+  it("keeps the user's own CLAUDE_CODE_ARTIFACT value", () => {
+    process.env.CLAUDE_CODE_ARTIFACT = "0"
+    expect(buildSpawnEnv(args).CLAUDE_CODE_ARTIFACT).toBe("0")
   })
 })

@@ -206,6 +206,9 @@ export function buildSpawnEnv(args: SpawnEnvArgs): NodeJS.ProcessEnv {
     // Pin Claude's TaskCreate / TaskUpdate list to the agent so the runner can
     // find it on disk (`~/.claude/tasks/<agentId>/`) and it survives resumes.
     CLAUDE_CODE_TASK_LIST_ID: args.agentId,
+    // Print mode leaves out the Artifact tools that an interactive session
+    // has; this turns them back on unless the user's env already decides.
+    CLAUDE_CODE_ARTIFACT: process.env.CLAUDE_CODE_ARTIFACT ?? "1",
     ...(args.spawnEnvFromProvider ?? {}),
   }
 }

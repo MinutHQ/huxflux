@@ -5,8 +5,8 @@ import {
   IconLoader2,
   IconSparkles,
 } from "@tabler/icons-react"
-import type { ToolCall } from "@huxflux/shared"
-import { toolIcon, formatToolCall, isToolCallRunning, stripHuxfluxTags } from "../utils"
+import { isAgentTool, isToolCallRunning, subagentResultText, type ToolCall } from "@huxflux/shared"
+import { toolIcon, formatToolCall, stripHuxfluxTags } from "../utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { AgentPromptBlock } from "./AgentPromptBlock"
 import { ResultBlock } from "./ResultBlock"
@@ -26,6 +26,8 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
   const isRunning = isToolCallRunning(call, isStreaming)
   const hasOutputText = !!(call.outputText && call.outputText.trim())
   const hasSubCalls = !!(call.subCalls && call.subCalls.length > 0)
+  const resultText = subagentResultText(call)
+  const ended = call.subagentStatus === "failed" || call.subagentStatus === "stopped" ? call.subagentStatus : undefined
   return (
     <div className={cn("mt-1", indent && "ml-4")}>
       <button
@@ -38,6 +40,7 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
           : <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />}
         <span className="font-medium text-foreground/80">Agent</span>
         {description && <span className="text-muted-foreground/60 ml-1 truncate">{description}</span>}
+        {ended && <span className="text-[11px] text-muted-foreground/50 shrink-0">{ended}</span>}
       </button>
       {open && (
         <div className="ml-3 mt-0.5 border-l border-border/50 pl-3 space-y-1.5">
@@ -45,7 +48,7 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
           {hasSubCalls && (
             <div className="space-y-0.5">
               {call.subCalls!.map((sub) => (
-                <ToolCallRow key={sub.id} call={sub} />
+                <ToolCallRow key={sub.id} call={sub} isStreaming={isRunning} />
               ))}
             </div>
           )}
@@ -55,14 +58,14 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
               <MarkdownContent content={stripHuxfluxTags(call.outputText!)} />
             </div>
           )}
-          {isRunning && !hasOutputText && !hasSubCalls && (
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50">
-              <IconLoader2 size={11} className="animate-spin" />
-              <span>Working…</span>
+          {isRunning && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/50 min-w-0">
+              <IconLoader2 size={11} className="animate-spin shrink-0" />
+              <span className="truncate">{call.subagentProgress ?? "Working…"}</span>
             </div>
           )}
           {/* Final result summary, once the sub-agent has finished */}
-          {call.result && <ResultBlock result={call.result} />}
+          {resultText && <ResultBlock result={resultText} />}
         </div>
       )}
     </div>
@@ -70,7 +73,7 @@ function AgentToolCallRow({ call, indent, isStreaming }: { call: ToolCall; inden
 }
 
 export function ToolCallRow({ call, indent = false, isStreaming = false }: { call: ToolCall; indent?: boolean; isStreaming?: boolean }) {
-  if (call.tool === "Agent") {
+  if (isAgentTool(call.tool)) {
     return <AgentToolCallRow call={call} indent={indent} isStreaming={isStreaming} />
   }
 

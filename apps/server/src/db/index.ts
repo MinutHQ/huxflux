@@ -562,6 +562,16 @@ const MIGRATIONS: Migration[] = [
     version: 38,
     sql: `ALTER TABLE agents ADD COLUMN headroom INTEGER DEFAULT 0;`,
   },
+  {
+    version: 39,
+    sql: `
+      ALTER TABLE tool_calls ADD COLUMN output_text TEXT;
+      ALTER TABLE tool_calls ADD COLUMN subagent_status TEXT;
+      ALTER TABLE tool_calls ADD COLUMN subagent_summary TEXT;
+      ALTER TABLE tool_calls ADD COLUMN subagent_progress TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tool_calls_parent ON tool_calls(parent_id);
+    `,
+  },
 ]
 
 export function runMigrations() {

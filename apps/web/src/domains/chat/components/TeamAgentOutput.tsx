@@ -35,7 +35,7 @@ function TeamAgentTools({ subCalls, status, toolsOpen, onToggle }: TeamAgentTool
       {toolsOpen && (
         <div className="mt-0.5 ml-3 border-l border-border/50 pl-3 space-y-0.5">
           {calls.map((sub) => (
-            <ToolCallRow key={sub.id} call={sub} />
+            <ToolCallRow key={sub.id} call={sub} isStreaming={status === "running"} />
           ))}
         </div>
       )}
@@ -64,7 +64,7 @@ export function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [selected.subCalls?.length, selected.outputText, selected.result])
+  }, [selected.subCalls?.length, selected.outputText, selected.result, selected.progress])
 
   return (
     <div ref={scrollRef} className="max-h-56 overflow-y-auto px-4 py-3 space-y-2">
@@ -90,16 +90,16 @@ export function TeamAgentOutput({ selected }: { selected: TeamAgent }) {
         </div>
       )}
 
-      {/* Final result */}
-      {hasResult && !hasOutput && (
+      {/* Final result, when the streamed output does not already end with it */}
+      {hasResult && (
         <pre className="text-[11px] font-mono text-foreground/70 leading-relaxed whitespace-pre-wrap">{selected.result}</pre>
       )}
 
-      {/* Idle placeholder */}
-      {selected.status === "running" && !hasSubCalls && !hasOutput && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50">
-          <IconLoader2 size={12} className="animate-spin" />
-          <span>Running in background…</span>
+      {/* Live progress */}
+      {selected.status === "running" && (
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground/50 min-w-0">
+          <IconLoader2 size={12} className="animate-spin shrink-0" />
+          <span className="truncate">{selected.progress ?? "Running in background…"}</span>
         </div>
       )}
     </div>

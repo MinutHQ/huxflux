@@ -45,14 +45,34 @@ export interface ToolCall {
   args?: string
   result?: string
   duration?: string
+  // Tool calls made by the sub-agent this call spawned (Agent tool calls only).
   subCalls?: ToolCall[]
   // Text output streamed by a sub-agent (Agent tool calls only).
   outputText?: string
+  // Sub-agent run state reported by the CLI's task events (Agent tool calls
+  // only). Absent when the provider never reported task events.
+  subagentStatus?: SubagentStatus
+  subagentSummary?: string
+  subagentProgress?: string
   // Text the main assistant emitted just before this tool call (intermediate
   // narration like "Now let me look at..."). Lets the UI interleave it with
   // tool calls in the order they were produced.
   precedingText?: string
 }
+
+/** CLI task status of a sub-agent run. "running" until a terminal status arrives. */
+export type SubagentStatus = "running" | "completed" | "failed" | "stopped"
+
+/**
+ * One incremental change to a sub-agent run, sent as `subagent:update`.
+ * `toolUseId` on the frame names the Agent tool call the change applies to,
+ * which may itself be a sub-call when a sub-agent spawns its own sub-agent.
+ */
+export type SubagentUpdate =
+  | { kind: "toolCall"; toolCall: ToolCall }
+  | { kind: "toolResult"; toolCallId: string; result: string }
+  | { kind: "text"; text: string }
+  | { kind: "status"; status?: SubagentStatus; summary?: string; progress?: string }
 
 export const toolCallSchema: z.ZodType<ToolCall> = z.lazy(() =>
   z.object({
@@ -63,6 +83,9 @@ export const toolCallSchema: z.ZodType<ToolCall> = z.lazy(() =>
     duration: z.string().optional(),
     subCalls: z.array(toolCallSchema).optional(),
     outputText: z.string().optional(),
+    subagentStatus: z.enum(["running", "completed", "failed", "stopped"]).optional(),
+    subagentSummary: z.string().optional(),
+    subagentProgress: z.string().optional(),
     precedingText: z.string().optional(),
   }),
 )
@@ -297,7 +320,7 @@ export type AgentPortEntry = z.infer<typeof agentPortEntrySchema>
 
 export const backgroundTaskSchema = z.object({
   toolUseId: z.string(),
-  kind: z.enum(["monitor", "bash"]),
+  kind: z.enum(["monitor", "bash", "agent"]),
   /** Human label: the tool's description, or the command when none was given. */
   label: z.string(),
   command: z.string().optional(),
@@ -507,7 +530,7 @@ export type AgentsServerEvent =
   // agent is still working, so it must not be treated as "turn finished".
   | { type: "message:done";     agentId: string; messageId: string; message: Message; segment?: boolean }
   | { type: "terminal:line";    agentId: string; line: string }
-  | { type: "subagent:event";   agentId: string; toolUseId: string; event: Record<string, unknown> }
+  | { type: "subagent:update";  agentId: string; toolUseId: string; update: SubagentUpdate }
   | { type: "file:changed";     agentId: string; files: FileChange[] }
   | { type: "ask:question";     agentId: string; toolUseId: string; questions: AskQuestionEntry[] }
   // The pending question was answered (from any client) or cancelled by the

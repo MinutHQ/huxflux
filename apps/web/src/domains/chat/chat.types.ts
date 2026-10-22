@@ -15,6 +15,8 @@ export interface TeamAgent {
   status: "running" | "done"
   subCalls?: ToolCall[]
   outputText?: string
+  /** Latest progress line reported while the sub-agent runs. */
+  progress?: string
   result?: string
 }
 

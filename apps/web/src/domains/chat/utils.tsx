@@ -6,7 +6,7 @@ import {
   IconSparkles,
   IconKey,
 } from "@tabler/icons-react"
-import { getActiveServer, type ToolCall } from "@huxflux/shared"
+import { getActiveServer, isAgentTool } from "@huxflux/shared"
 
 export function isRemoteServer(): boolean {
   const server = getActiveServer()
@@ -22,7 +22,7 @@ export function toolIcon(tool: string) {
   if (tool === "Read" || tool === "Write") return <IconFileText size={12} className="text-muted-foreground/60 shrink-0" />
   if (tool === "Edit") return <IconPencil size={12} className="text-muted-foreground/60 shrink-0" />
   if (tool === "Glob" || tool === "Grep") return <IconSearch size={12} className="text-muted-foreground/60 shrink-0" />
-  if (tool === "Agent") return <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />
+  if (isAgentTool(tool)) return <IconSparkles size={12} className="text-muted-foreground/60 shrink-0" />
   return <IconKey size={12} className="text-muted-foreground/60 shrink-0" />
 }
 
@@ -150,13 +150,6 @@ export function markdownToPlainText(text: string): string {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\s+/g, " ")
     .trim()
-}
-
-/** A tool call is in flight only while its message is still streaming AND
- *  no result has landed. Without the streaming guard, a call that never got a
- *  result (legacy rows) would look live forever. */
-export function isToolCallRunning(call: ToolCall, isStreaming: boolean | undefined): boolean {
-  return !!isStreaming && !call.result
 }
 
 /** The per-agent Headroom flag arrives as 0/1 from the DB, or a boolean from an optimistic cache patch. */

@@ -168,10 +168,8 @@ export const claudeProvider: ProviderAdapter = {
       return { type: "session_init", sessionId: event.session_id }
     }
 
-    // Unknown events — forward as subagent if they have a tool_use_id
-    if (event.tool_use_id || event.parent_tool_use_id) {
-      const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
-      return { type: "subagent", toolUseId, event: event as unknown as Record<string, unknown> }
+    if (event.type === "system" && event.subtype?.startsWith("task_")) {
+      return { type: "subagent_task", event: event as unknown as Record<string, unknown> }
     }
 
     return null

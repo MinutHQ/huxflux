@@ -5,8 +5,8 @@ import {
   IconChevronRight,
   IconLoader2,
 } from "@tabler/icons-react"
-import type { ToolCall } from "@huxflux/shared"
-import { formatToolCall, isToolCallRunning, markdownToPlainText, stripHuxfluxTags } from "../utils"
+import { isToolCallRunning, type ToolCall } from "@huxflux/shared"
+import { formatToolCall, markdownToPlainText, stripHuxfluxTags } from "../utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { ToolCallRow } from "./ToolCallRow"
 

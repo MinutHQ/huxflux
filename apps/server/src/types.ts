@@ -1,5 +1,7 @@
 // Mirrors apps/web/src/data/mock.ts — shared contract between server and web client
 
+import type { SubagentStatus } from "@huxflux/shared"
+
 export type AgentStatus = "done" | "in-review" | "draft-pr" | "in-progress" | "backlog" | "cancelled"
 
 export interface PRStatus {
@@ -129,6 +131,11 @@ export interface ToolCall {
   result?: string
   duration?: string
   subCalls?: ToolCall[]
+  // Sub-agent run state (Agent tool calls only).
+  outputText?: string
+  subagentStatus?: SubagentStatus
+  subagentSummary?: string
+  subagentProgress?: string
   // Text the assistant emitted just before this tool call (intermediate
   // narration like "Now let me look at..."). Preserved on the tool call so
   // it can be rendered inline with tool calls in the order they happened.

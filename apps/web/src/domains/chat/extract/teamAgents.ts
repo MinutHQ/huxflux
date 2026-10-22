@@ -1,4 +1,4 @@
-import type { Message, ToolCall } from "@huxflux/shared"
+import { isAgentTool, isToolCallRunning, subagentResultText, type Message, type ToolCall } from "@huxflux/shared"
 import type { TeamAgent } from "../chat.types"
 
 function collectSendMessagesByAgent(toolCalls: ToolCall[]): Map<string, ToolCall[]> {
@@ -51,10 +51,11 @@ function buildAgent(
     description,
     prompt,
     name,
-    status: (!isStreaming || tc.result != null) ? "done" as const : "running" as const,
+    status: isToolCallRunning(tc, isStreaming) ? "running" as const : "done" as const,
     subCalls: combinedSubCalls.length > 0 ? combinedSubCalls : undefined,
     outputText: tc.outputText,
-    result: tc.result,
+    progress: tc.subagentProgress,
+    result: subagentResultText(tc),
   }
 }
 
@@ -64,7 +65,7 @@ export function extractTeamAgents(messages: Message[], isStreaming?: boolean): T
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== "assistant" || !msg.toolCalls) continue
-    const agentCalls = msg.toolCalls.filter((tc) => tc.tool === "Agent")
+    const agentCalls = msg.toolCalls.filter((tc) => isAgentTool(tc.tool))
     if (agentCalls.length === 0) continue
 
     const sendMessagesByAgent = collectSendMessagesByAgent(msg.toolCalls)

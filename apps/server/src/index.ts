@@ -49,7 +49,7 @@ import { authHook } from "./auth.js"
 import { registerAuditLog } from "./audit.js"
 import { registerErrorHandler } from "./errorHandler.js"
 import { startJobs } from "./jobs.js"
-import { resetStreamingFlags } from "./domains/agent-runner/agent-runner.service.js"
+import { resetRunningSubagents, resetStreamingFlags } from "./domains/agent-runner/agent-runner.service.js"
 import { watchAgent, unwatchWorktree } from "./domains/git/watcher.js"
 
 // Fastify shares the one server-wide logger (pretty in dev, JSON in prod). See
@@ -189,6 +189,8 @@ startUpdateChecker()
 // The in-memory runningProcesses Map starts empty, so any row claiming to
 // stream is a leftover that would otherwise show stuck loading indicators.
 resetStreamingFlags()
+// Sub-agents those processes were running died with them.
+resetRunningSubagents()
 
 // Ensure each repo with a setup script has one hidden reserve worktree
 import { initializeReserves } from "./domains/git/pool.js"

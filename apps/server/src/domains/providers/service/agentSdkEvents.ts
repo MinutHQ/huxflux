@@ -39,9 +39,9 @@ export function mapSdkMessage(message: SDKMessage, contextTokens: number | null)
 
   switch (message.type) {
     case "system":
-      return message.subtype === "init" && message.session_id
-        ? [{ type: "session_init", sessionId: message.session_id }]
-        : []
+      if (message.subtype === "init" && message.session_id) return [{ type: "session_init", sessionId: message.session_id }]
+      if (message.subtype.startsWith("task_")) return [{ type: "subagent_task", event: message as unknown as Record<string, unknown> }]
+      return []
     case "assistant":
       return mapAssistantBlocks(message.message.content as unknown as RawBlock[])
     case "user":

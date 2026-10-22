@@ -235,22 +235,41 @@ describe("handleStreamEvent — subagent routing and unknown events", () => {
   beforeEach(() => { ctx = setup() })
   afterEach(() => { ctx.capture.restore(); ctx.testDb.close() })
 
-  it("routes events with parent_tool_use_id to subagentEvent and skips content processing", () => {
+  it("routes events with parent_tool_use_id to the sub-agent and skips content processing", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_parent", name: "Agent", input: {} }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
     handleStreamEvent(
       { type: "assistant", parent_tool_use_id: "tu_parent", message: { content: [{ type: "text", text: "should not accumulate" }] } },
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
     expect(ctx.state.fullContent).toBe("")
-    expect(ctx.capture.events.some((e) => e.type === "subagent:event")).toBe(true)
+    expect(ctx.capture.events.some((e) => e.type === "message:chunk")).toBe(false)
+    const update = ctx.capture.events.find((e) => e.type === "subagent:update")
+    expect(update).toMatchObject({ toolUseId: "tu_parent", update: { kind: "text", text: "should not accumulate" } })
   })
 
-  it("forwards unrecognized event types as subagent + terminal lines", () => {
+  it("drops unrecognized event types instead of relaying them", () => {
     handleStreamEvent(
-      { type: "weird_unknown_event", tool_use_id: "tu_x" } as ClaudeStreamEvent,
+      { type: "rate_limit_event", tool_use_id: "tu_x" } as ClaudeStreamEvent,
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
-    expect(ctx.capture.events.some((e) => e.type === "subagent:event")).toBe(true)
-    expect(ctx.capture.events.some((e) => e.type === "terminal:line")).toBe(true)
+    expect(ctx.capture.events).toEqual([])
+  })
+
+  it("routes system task events to the sub-agent status", () => {
+    handleStreamEvent(
+      { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_agent", name: "Agent", input: {} }] } },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    handleStreamEvent(
+      { type: "system", subtype: "task_notification", tool_use_id: "tu_agent", status: "completed", summary: "all good" } as ClaudeStreamEvent,
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    const row = ctx.testDb.db.select().from(toolCallsTable).where(eq(toolCallsTable.id, "tu_agent")).get()
+    expect(row.subagentStatus).toBe("completed")
+    expect(row.subagentSummary).toBe("all good")
   })
 
   it("silently drops `system` events without an init subtype", () => {

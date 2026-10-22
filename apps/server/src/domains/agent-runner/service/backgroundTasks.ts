@@ -77,6 +77,22 @@ export function noteBackgroundToolUse(agentId: string, block: ToolUseBlock): voi
   setState(agentId, { ...current, tasks: [...current.tasks, task] })
 }
 
+/** Record a sub-agent the CLI is running in the background. */
+export function noteBackgroundAgent(agentId: string, agent: { toolUseId: string; taskId?: string; label: string }): void {
+  const current = getBackgroundState(agentId)
+  if (current.tasks.some((t) => t.toolUseId === agent.toolUseId)) return
+  const task: BackgroundTask = { ...agent, kind: "agent", startedAt: new Date().toISOString() }
+  setState(agentId, { ...current, tasks: [...current.tasks, task] })
+}
+
+/** Forget a tracked task, e.g. once a background sub-agent finishes. */
+export function dropBackgroundTask(agentId: string, toolUseId: string): void {
+  const current = backgroundStates.get(agentId)
+  if (!current) return
+  const remaining = current.tasks.filter((t) => t.toolUseId !== toolUseId)
+  if (remaining.length !== current.tasks.length) setState(agentId, { ...current, tasks: remaining })
+}
+
 /** Attach the CLI task id once the tool result for a tracked tool_use arrives. */
 export function noteBackgroundToolResult(agentId: string, toolUseId: string, result: string): void {
   const current = backgroundStates.get(agentId)

@@ -6,6 +6,8 @@ use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 mod app_identity;
+#[cfg(target_os = "linux")]
+mod linux_gpu;
 
 #[tauri::command]
 fn zoom_window(window: tauri::WebviewWindow) {
@@ -385,6 +387,8 @@ fn disable_press_and_hold() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_gpu::enable_gpu_rendering_on_nvidia();
     #[cfg(target_os = "macos")]
     disable_press_and_hold();
     tauri::Builder::default()

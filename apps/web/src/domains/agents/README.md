@@ -35,7 +35,7 @@ Agent orchestration surface: the per-agent workspace header above the chat, the 
 - `@/domains/settings` — `AddRepoDialog`, `CloneRepoDialog`, `QuickStartDialog` (opened from the add-workspace flow)
 - `@/app-shell/workspace` — pending/deleting agent state shared with the chat surface
 - `@/lib/flags` — `remoteEditor` flag
-- `@/lib/platform` — `isTauri`, `handleExternalClick`
+- `@/lib/platform` — `isTauri`, `isLinux`, `handleExternalClick`
 - `@/lib/colorThemes` — `colorThemes`, `getColorTheme` for the xterm theme
 
 ## Sub-domains
@@ -72,4 +72,5 @@ None.
 - The home dashboard uses semantic accent colors directly (`text-emerald-400`, `text-blue-400`, `text-violet-400`, `text-orange-400`, etc.) — these are *not* the forbidden `zinc/slate/gray` palette and are intentional decorative accents on the lifetime-stats card hover states + the rainbow wordmark / streak / achievement pills. No `zinc`-class swaps were needed; the source already avoided them.
 - `ConstellationBackground` keeps its node array, mouse position and RAF handle in refs so the animation never re-renders. The canvas resizes via a `resize` listener and clears + redraws every frame; nodes are initialised once and persist across renders (cleanup cancels the RAF and removes listeners, but the ref content survives if the component is re-mounted while the module stays loaded — currently it does not, since `HomeView` is route-mounted).
 - `RepoPanel`'s small per-repo bar-preview heights are randomised but memoised via `useMemo([repos, agents])` so each repo gets a stable randomised silhouette instead of jittering on every render (the source called `Math.random()` directly inside the JSX, which would have re-rolled every render).
+- `HomeView` drops the whole `HomeBackground` and every backdrop blur beneath it in the Linux desktop app (`isLinux`): WebKitGTK often renders without GPU compositing there, so the blurred, endlessly animating layers were repainted on the CPU every frame and made the dashboard crawl. Any new full-viewport or blurred home decoration should respect the same flag. The native side also forces GPU compositing back on for NVIDIA (`apps/desktop/src-tauri/src/linux_gpu.rs`); this flag is the fallback for the Linux setups that still paint on the CPU.
 - The home dashboard keyframes (`homeFloat`, `homeMorph`, `homeGlow`, `homeOrbit`, `homeAurora1/2/3`, `homeRainbow`, `homeBorderRotate`, `homeShimmer`, `homeSlotSpin`) and the `.home-shimmer` utility class live in `apps/web/src/index.css`. They were left in place — moving them into a CSS-in-JS file would not buy anything and they're loaded once globally regardless.

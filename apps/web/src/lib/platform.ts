@@ -11,6 +11,16 @@ export const isMacOS: boolean =
   import.meta.env.TAURI_ENV_PLATFORM === 'macos' ||
   (isTauri && typeof navigator !== 'undefined' && navigator.userAgent.includes('Macintosh'))
 
+// True only in the Linux desktop app. The Linux webview (WebKitGTK) often
+// renders without GPU compositing, so heavy blur must be gated on it.
+// Android UAs also say 'Linux', so they are excluded for a future mobile target.
+export const isLinux: boolean =
+  import.meta.env.TAURI_ENV_PLATFORM === 'linux' ||
+  (isTauri &&
+    typeof navigator !== 'undefined' &&
+    navigator.userAgent.includes('Linux') &&
+    !navigator.userAgent.includes('Android'))
+
 // Opens a URL in the system browser. On desktop (Tauri) this uses the native
 // open_url command; on web it falls back to window.open.
 export function openExternal(url: string): void {

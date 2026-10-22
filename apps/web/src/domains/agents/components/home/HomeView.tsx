@@ -1,4 +1,6 @@
 import { useAgents, useRepos } from "@huxflux/shared"
+import { cn } from "@huxflux/ui"
+import { isLinux } from "@/lib/platform"
 import { ActivityChart } from "./ActivityChart"
 import { AnimatedSection } from "./AnimatedSection"
 import { CodePanel } from "./CodePanel"
@@ -21,7 +23,8 @@ import { WrappedPanel } from "./WrappedPanel"
  * `useRepos`, server stats from `useHomeStats`, and every panel is its own
  * presentational component under `home/`. The full-viewport background is
  * decorative (constellation + particles + aurora + blobs + mouse spotlight)
- * and lives in `HomeBackground`.
+ * and lives in `HomeBackground`. It and every backdrop blur below it are
+ * dropped in the Linux desktop app, where the webview often paints on the CPU.
  */
 export function HomeView() {
   const { data: agents = [] } = useAgents()
@@ -34,8 +37,13 @@ export function HomeView() {
   }, {})
 
   return (
-    <div className="flex-1 h-full overflow-y-auto overflow-x-hidden relative">
-      <HomeBackground />
+    <div
+      className={cn(
+        "flex-1 h-full overflow-y-auto overflow-x-hidden relative",
+        isLinux && "[&_*]:backdrop-filter-none!",
+      )}
+    >
+      {!isLinux && <HomeBackground />}
 
       <div className="max-w-6xl mx-auto px-6 py-12 relative z-10">
         <HomeHeader loaded={loaded} streak={streak} achievement={achievement} />

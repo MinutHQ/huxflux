@@ -10,7 +10,7 @@ import type { Agent } from "../agents.types.js"
  * `hasMore = older.length === 50` (the API page size).
  *
  * Reads / writes the same React Query cache entry as `useAgentQuery`, so the
- * extra messages flow through `select` (sub-agent merge) on the next render.
+ * extra messages show up on the next render.
  */
 export function useAgentPagination(id: string | null, initialHasMore: boolean | undefined) {
   const queryClient = useQueryClient()

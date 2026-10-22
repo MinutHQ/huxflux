@@ -14,6 +14,7 @@ import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { persistAssistantMessage, appendInterruptedNote } from "./persistMessage.js"
 import { clearPendingQuestion } from "../../../askStore.js"
+import { settleRunningSubagents } from "./subagents.js"
 import { logger } from "../../../logger.js"
 
 interface FinalizeArgs {
@@ -49,6 +50,7 @@ export function makeFinalize(args: FinalizeArgs): (exitCode?: number | null) => 
 
     clearPendingQuestion(args.agentId)
     flushRemainingBuffer(args)
+    settleRunningSubagents(args.agentId)
     // A server-side stop reason only applies when the process did not finish
     // on its own: a turn that completed (code 0) in the same tick the shutdown
     // signalled it must not be labelled "interrupted".

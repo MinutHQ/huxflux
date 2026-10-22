@@ -3,11 +3,12 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { z } from "zod/v4"
 import { eq, inArray, isNull, and, count } from "drizzle-orm"
 import { db } from "../../../db/index.js"
-import { agents, messages, toolCalls, fileChanges, terminalLines } from "../../../db/schema.js"
+import { agents, messages, fileChanges, terminalLines } from "../../../db/schema.js"
 import { parsePrStatus } from "../../pull-requests/prStatus.js"
 import { getAgentPortsFromDB, getAllPortsFromDB } from "../../git/processes.js"
 import { getPendingQuestionPayload } from "../../../askStore.js"
 import { loadAttention } from "../service/attention.js"
+import { loadToolCallTrees } from "../service/toolCallTree.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -119,30 +120,10 @@ async function getAgentHandler(id: string, reply: FastifyReply): Promise<unknown
 
 function attachToolCalls(msgs: Array<typeof messages.$inferSelect>): unknown[] {
   // Bulk-fetch all tool calls for these messages (avoids N+1)
-  const msgIds = msgs.map((m) => m.id)
-  const allToolCalls = msgIds.length > 0
-    ? db.select().from(toolCalls).where(inArray(toolCalls.messageId, msgIds)).all()
-    : []
-  const toolCallsByMsg = new Map<string, typeof allToolCalls>()
-  for (const tc of allToolCalls) {
-    const list = toolCallsByMsg.get(tc.messageId) ?? []
-    list.push(tc)
-    toolCallsByMsg.set(tc.messageId, list)
-  }
-
-  return msgs.map((m) => {
-    const tcs = (toolCallsByMsg.get(m.id) ?? []).sort((a, b) => a.orderIdx - b.orderIdx)
-    return {
-      ...m,
-      injected: m.injected ? true : undefined,
-      toolCalls: tcs.length > 0 ? tcs.map((tc) => ({
-        id: tc.id,
-        tool: tc.tool,
-        args: tc.args ?? undefined,
-        result: tc.result ?? undefined,
-        duration: tc.duration ?? undefined,
-        precedingText: tc.precedingText ?? undefined,
-      })) : undefined,
-    }
-  })
+  const toolCallsByMsg = loadToolCallTrees(msgs.map((m) => m.id))
+  return msgs.map((m) => ({
+    ...m,
+    injected: m.injected ? true : undefined,
+    toolCalls: toolCallsByMsg.get(m.id),
+  }))
 }

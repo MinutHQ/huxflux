@@ -131,13 +131,19 @@ describe("handleNormalizedEvent — session, subagent, error", () => {
     expect(row.sessionId).toBe("sess-norm")
   })
 
-  it("forwards subagent events to the WS layer without touching state", () => {
+  it("records subagent tool calls under their Agent call without touching state", () => {
     handleNormalizedEvent(
-      { type: "subagent", toolUseId: "tu_p", event: { foo: "bar" } },
+      { type: "tool_use", id: "tu_p", name: "Agent", input: {} },
+      ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
+    )
+    handleNormalizedEvent(
+      { type: "subagent", toolUseId: "tu_p", event: { type: "assistant", message: { content: [{ type: "tool_use", id: "tu_c", name: "Read", input: {} }] } } },
       ctx.state, ctx.agentId, ctx.messageId, ctx.scheduleFlush,
     )
     expect(ctx.state.fullContent).toBe("")
-    expect(ctx.capture.events.some((e) => e.type === "subagent:event")).toBe(true)
+    expect(ctx.state.collectedToolCalls.map((t) => t.id)).toEqual(["tu_p"])
+    const child = ctx.testDb.db.select().from(toolCallsTable).where(eq(toolCallsTable.id, "tu_c")).get()
+    expect(child.parentId).toBe("tu_p")
   })
 
   it("surfaces error messages into pendingText/fullContent and emits an error event", () => {

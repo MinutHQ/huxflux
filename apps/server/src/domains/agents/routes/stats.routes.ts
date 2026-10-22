@@ -27,10 +27,10 @@ export const statsRoutes: FastifyPluginAsyncZod = async (app) => {
       cacheWriteTokens: sum(messages.cacheWriteTokens),
     }).from(messages).get()
 
-    // Tool calls
+    // Tool calls (top-level only; calls a sub-agent made are not counted)
     const tcStats = db.select({
       total: count(),
-    }).from(toolCalls).get()
+    }).from(toolCalls).where(isNull(toolCalls.parentId)).get()
 
     // File changes
     const fcStats = db.select({

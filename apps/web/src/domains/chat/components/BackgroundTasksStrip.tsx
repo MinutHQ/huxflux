@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { IconChevronDown, IconEye, IconLoader2, IconPlayerStop, IconTerminal2 } from "@tabler/icons-react"
+import { IconChevronDown, IconEye, IconLoader2, IconPlayerStop, IconSparkles, IconTerminal2 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { Button, cn } from "@huxflux/ui"
 import { api, useHuxfluxMutation, type BackgroundTask } from "@huxflux/shared"
@@ -10,7 +10,7 @@ interface BackgroundTasksStripProps {
 }
 
 function TaskRow({ task }: { task: BackgroundTask }) {
-  const Icon = task.kind === "monitor" ? IconEye : IconTerminal2
+  const Icon = task.kind === "monitor" ? IconEye : task.kind === "agent" ? IconSparkles : IconTerminal2
   const started = new Date(task.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   return (
     <div className="flex items-start gap-2 min-w-0">
@@ -31,7 +31,7 @@ function TaskRow({ task }: { task: BackgroundTask }) {
 
 /**
  * Shows the background work the CLI started this turn (Monitor watches,
- * background Bash) and, once the CLI has emitted its final result but is
+ * background Bash, background sub-agents) and, once the CLI has emitted its final result but is
  * still alive, says so and offers to end the turn. Ending the turn only
  * terminates the CLI; processes the agent started in the worktree survive.
  */

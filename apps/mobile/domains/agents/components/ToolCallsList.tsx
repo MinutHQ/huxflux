@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useState, useEffect } from "react"
-import type { ToolCall } from "@huxflux/shared"
+import { isAgentTool, type ToolCall } from "@huxflux/shared"
 import { c } from "@/theme"
 import { MessageContent } from "./MessageContent"
 import { ToolCallRow } from "./ToolCallRow"
@@ -16,7 +16,7 @@ export function ToolCallsList({ calls, hasContent, isStreaming, pendingText }: {
   const [userToggled, setUserToggled] = useState(false)
   const label = calls.length === 0 ? "Working…" : calls.length === 1 ? "1 tool call" : `${calls.length} tool calls`
   const lastCall = calls[calls.length - 1]
-  const summary = lastCall ? (lastCall.tool === "Agent"
+  const summary = lastCall ? (isAgentTool(lastCall.tool)
     ? (() => { try { return JSON.parse(lastCall.args ?? "{}").description ?? lastCall.tool } catch { return lastCall.tool } })()
     : lastCall.tool) : ""
 

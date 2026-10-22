@@ -1,7 +1,7 @@
 // Domain-internal pure helpers for the mobile agents domain.
 
 import { prefs } from "@/lib/prefs"
-import type { Message, ToolCall } from "@huxflux/shared"
+import { isAgentTool, isToolCallRunning, subagentResultText, type Message, type ToolCall } from "@huxflux/shared"
 import type { TeamAgent } from "./agents.types"
 
 export const CLAUDE_CONTEXT_TOKENS = 200_000
@@ -85,7 +85,7 @@ export function extractTeamAgents(messages: Message[], isStreaming?: boolean): T
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (msg.role !== "assistant" || !msg.toolCalls) continue
-    const agentCalls = msg.toolCalls.filter((tc: ToolCall) => tc.tool === "Agent")
+    const agentCalls = msg.toolCalls.filter((tc: ToolCall) => isAgentTool(tc.tool))
     if (agentCalls.length === 0) continue
 
     return agentCalls.map((tc: ToolCall) => {
@@ -101,10 +101,10 @@ export function extractTeamAgents(messages: Message[], isStreaming?: boolean): T
       return {
         id: tc.id,
         description,
-        status: (!isStreaming || tc.result != null) ? "done" as const : "running" as const,
+        status: isToolCallRunning(tc, isStreaming) ? "running" as const : "done" as const,
         subCalls: tc.subCalls,
         outputText: tc.outputText,
-        result: tc.result,
+        result: subagentResultText(tc),
       }
     })
   }

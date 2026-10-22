@@ -1,15 +1,16 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useState } from "react"
-import type { ToolCall } from "@huxflux/shared"
+import { isAgentTool, isToolCallRunning, subagentResultText, type ToolCall } from "@huxflux/shared"
 import { c } from "@/theme"
 import { formatToolCall } from "../utils"
 import { MessageContent } from "./MessageContent"
 
 export function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(true)
-  const isAgent = call.tool === "Agent"
-  const isRunning = isStreaming && !call.result
+  const isAgent = isAgentTool(call.tool)
+  const isRunning = isToolCallRunning(call, isStreaming)
+  const resultText = isAgent ? subagentResultText(call) : call.result
   const hasOutputText = !!(call.outputText && call.outputText.trim())
   const hasSubCalls = !!(call.subCalls && call.subCalls.length > 0)
 
@@ -37,7 +38,7 @@ export function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isS
             {hasSubCalls && (
               <View style={{ gap: 2 }}>
                 {call.subCalls!.map((sub) => (
-                  <ToolCallRow key={sub.id} call={sub} isStreaming={isStreaming} />
+                  <ToolCallRow key={sub.id} call={sub} isStreaming={isRunning} />
                 ))}
               </View>
             )}
@@ -46,15 +47,15 @@ export function ToolCallRow({ call, isStreaming = false }: { call: ToolCall; isS
                 <MessageContent text={call.outputText!} />
               </View>
             )}
-            {isRunning && !hasOutputText && !hasSubCalls && (
+            {isRunning && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 }}>
                 <ActivityIndicator size="small" color={c.fgSub} style={{ width: 11, height: 11 }} />
-                <Text style={{ color: c.fgSub, fontSize: 11 }}>Working…</Text>
+                <Text style={{ color: c.fgSub, fontSize: 11 }} numberOfLines={1}>{call.subagentProgress ?? "Working…"}</Text>
               </View>
             )}
-            {call.result && (
+            {resultText && (
               <Text style={{ color: c.fgSub, fontSize: 11, fontStyle: "italic" }} numberOfLines={2}>
-                {call.result.trim()}
+                {resultText.trim()}
               </Text>
             )}
           </View>

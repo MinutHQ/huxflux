@@ -6,6 +6,7 @@ import type { ToolCall } from "../../../types.js"
 import type { NormalizedStreamEvent } from "../../providers/providers.types.js"
 import type { StreamState } from "../../agents/agents.types.js"
 import { noteTaskListToolResult } from "./taskList.js"
+import { handleSubagentMessage, handleSubagentTaskEvent, noteAgentToolResult } from "./subagents.js"
 
 /** Handle a provider-agnostic normalized stream event */
 export function handleNormalizedEvent(
@@ -47,6 +48,7 @@ export function handleNormalizedEvent(
       if (tc) tc.result = event.content
       if (event.toolUseId) {
         db.update(toolCallsTable).set({ result: event.content }).where(eq(toolCallsTable.id, event.toolUseId)).run()
+        noteAgentToolResult(agentId, event.toolUseId)
       }
       noteTaskListToolResult(agentId, tc?.tool)
       agentsWs.toolResult(agentId, messageId, event.toolUseId, event.content)
@@ -65,7 +67,10 @@ export function handleNormalizedEvent(
       db.update(agentsTable).set({ sessionId: event.sessionId }).where(eq(agentsTable.id, agentId)).run()
       break
     case "subagent":
-      agentsWs.subagentEvent(agentId, event.toolUseId, event.event)
+      handleSubagentMessage(agentId, event.toolUseId, event.event)
+      break
+    case "subagent_task":
+      handleSubagentTaskEvent(agentId, event.event)
       break
     case "error":
       // Surface errors as message content so the user sees them

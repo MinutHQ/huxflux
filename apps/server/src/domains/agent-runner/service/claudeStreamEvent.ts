@@ -4,6 +4,7 @@ import { toolCalls as toolCallsTable, agents as agentsTable } from "../../../db/
 import { agentsWs } from "../../agents/agents.ws.js"
 import { noteBackgroundToolUse, noteBackgroundToolResult } from "./backgroundTasks.js"
 import { noteTaskListToolResult } from "./taskList.js"
+import { handleSubagentMessage, handleSubagentTaskEvent, noteAgentToolResult, toolResultContentToString } from "./subagents.js"
 import type { ToolCall } from "../../../types.js"
 import type { ClaudeModelUsage, ClaudeStreamEvent, ClaudeUsage, ClaudeUserContentBlock, StreamState } from "../../agents/agents.types.js"
 
@@ -18,9 +19,7 @@ export function handleStreamEvent(
   // Sub-agent events carry parent_tool_use_id — route them before any type checks
   // so they don't get processed as parent content/tool-calls.
   if (event.parent_tool_use_id) {
-    const toolUseId = event.parent_tool_use_id
-    agentsWs.subagentEvent(agentId, toolUseId, event as unknown as Record<string, unknown>)
-    agentsWs.terminalLine(agentId, `[stream] ${JSON.stringify(event)}`)
+    handleSubagentMessage(agentId, event.parent_tool_use_id, event as unknown as Record<string, unknown>)
     return
   }
 
@@ -45,11 +44,8 @@ export function handleStreamEvent(
       .set({ sessionId: event.session_id })
       .where(eq(agentsTable.id, agentId))
       .run()
-  } else if (event.type !== "system") {
-    // Forward unrecognized events (likely sub-agent activity) to frontend.
-    const toolUseId = event.parent_tool_use_id ?? event.tool_use_id ?? ""
-    agentsWs.subagentEvent(agentId, toolUseId, event as unknown as Record<string, unknown>)
-    agentsWs.terminalLine(agentId, `[stream] ${JSON.stringify(event)}`)
+  } else if (event.type === "system" && event.subtype?.startsWith("task_")) {
+    handleSubagentTaskEvent(agentId, event as unknown as Record<string, unknown>)
   }
 }
 
@@ -81,17 +77,6 @@ function handleUserBlocks(
   }
 }
 
-/** tool_result content is either a plain string or an array of text blocks. */
-function toolResultContentToString(content: unknown): string {
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) {
-    return content
-      .map((c) => (c && typeof c === "object" && typeof (c as { text?: unknown }).text === "string" ? (c as { text: string }).text : ""))
-      .join("")
-  }
-  return ""
-}
-
 function handleToolResult(
   toolUseId: string,
   content: string,
@@ -102,6 +87,7 @@ function handleToolResult(
   const tc = state.collectedToolCalls.find((t) => t.id === toolUseId)
   if (tc) tc.result = content
   noteBackgroundToolResult(agentId, toolUseId, content)
+  noteAgentToolResult(agentId, toolUseId)
   noteTaskListToolResult(agentId, tc?.tool)
   // Persist tool result to DB immediately
   db.update(toolCallsTable)

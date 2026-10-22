@@ -1,4 +1,4 @@
-import { count, sum, sql, eq } from "drizzle-orm"
+import { and, count, sum, sql, eq, isNull } from "drizzle-orm"
 import { db } from "../../../db/index.js"
 import { agents, messages, toolCalls, fileChanges, repos } from "../../../db/schema.js"
 import type { DateRange, FileRow, GatheredStats, InProgressRow, ShippedRow } from "../wrapped.types.js"
@@ -31,9 +31,10 @@ export function gatherStats(range: DateRange): GatheredStats {
     .where(sql`${messages.createdAt} >= ${fromISO} AND ${messages.createdAt} <= ${toISO}`)
     .get()
 
+  // Top-level calls only; calls a sub-agent made are not counted.
   const tcStats = db.select({ total: count() }).from(toolCalls)
     .innerJoin(messages, eq(toolCalls.messageId, messages.id))
-    .where(sql`${messages.createdAt} >= ${fromISO} AND ${messages.createdAt} <= ${toISO}`)
+    .where(and(isNull(toolCalls.parentId), sql`${messages.createdAt} >= ${fromISO} AND ${messages.createdAt} <= ${toISO}`))
     .get()
 
   const fcStats = db.select({

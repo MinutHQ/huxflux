@@ -10,7 +10,7 @@
 // is composed into the central `ServerEvent` in `src/domains/ws/events.ts`.
 
 import type { AgentSummary, Message, FileChange, ToolCall } from "../../types.js"
-import type { BackgroundState, TaskListState } from "@huxflux/shared"
+import type { BackgroundState, SubagentUpdate, TaskListState } from "@huxflux/shared"
 import { defineEvents, type InferEvents } from "../ws/define.js"
 
 type UserMessagePayload = { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean }
@@ -69,12 +69,12 @@ const agentsEventsConfig = {
     channel: "emit",
     build: (agentId: string, line: string) => ({ type: "terminal:line" as const, agentId, line }),
   },
-  subagentEvent: {
-    // Forwards an arbitrary upstream event payload verbatim — the inner shape
-    // is opaque on purpose so any Claude CLI event can be relayed.
+  subagentUpdate: {
+    // One incremental change to the sub-agent run spawned by Agent tool call
+    // `toolUseId` (a top-level call, or a sub-call for nested sub-agents).
     channel: "emit",
-    build: (agentId: string, toolUseId: string, event: Record<string, unknown>) =>
-      ({ type: "subagent:event" as const, agentId, toolUseId, event }),
+    build: (agentId: string, toolUseId: string, update: SubagentUpdate) =>
+      ({ type: "subagent:update" as const, agentId, toolUseId, update }),
   },
   fileChanged: {
     channel: "emit",

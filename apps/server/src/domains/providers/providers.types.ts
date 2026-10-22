@@ -45,6 +45,8 @@ export type NormalizedStreamEvent =
   | { type: "usage"; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; contextTokens?: number; contextWindow?: number }
   | { type: "session_init"; sessionId: string }
   | { type: "subagent"; toolUseId: string; event: Record<string, unknown> }
+  /** A CLI `system` task event (task_started / task_progress / task_updated / task_notification). */
+  | { type: "subagent_task"; event: Record<string, unknown> }
   | { type: "done"; result?: string }
   | { type: "error"; message: string }
 

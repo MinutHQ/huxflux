@@ -5,7 +5,7 @@
 // Every function takes `(msgs, event)` and returns the new message array.
 
 import type { Message, ToolCall } from "../agents.types.js"
-import type { SubAgentDataMap } from "./subAgentData.js"
+import { carrySubagentState } from "./subagentReducer.js"
 
 type UserEvent = { message: { id: string; role: "user"; content: string; timestamp: string; sender?: string; injected?: boolean } }
 
@@ -102,11 +102,8 @@ export function applyToolResult(msgs: Message[], messageId: string, toolCallId: 
   )
 }
 
-export function applyMessageDone(msgs: Message[], messageId: string, message: Message, map: SubAgentDataMap): Message[] {
-  const mergedToolCalls = (message.toolCalls ?? []).map((tc) => {
-    const sd = map.get(tc.id)
-    return sd ? { ...tc, subCalls: sd.subCalls, outputText: sd.outputText } : tc
-  })
+export function applyMessageDone(msgs: Message[], messageId: string, message: Message): Message[] {
+  const mergedToolCalls = carrySubagentState(msgs, message.toolCalls ?? [])
   // Clear the local pendingText buffer. The server's `content` is now
   // authoritative (it holds whatever text was emitted after the last tool
   // call).

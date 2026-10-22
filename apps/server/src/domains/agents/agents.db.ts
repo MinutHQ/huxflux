@@ -75,7 +75,7 @@ export const messages = sqliteTable("messages", {
 export const toolCalls = sqliteTable("tool_calls", {
   id: text("id").primaryKey(),
   messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
-  parentId: text("parent_id"), // for sub-calls (Agent tool)
+  parentId: text("parent_id"), // set on calls a sub-agent made; points at the Agent call that spawned it
   tool: text("tool").notNull(),
   args: text("args"),
   result: text("result"),
@@ -84,6 +84,11 @@ export const toolCalls = sqliteTable("tool_calls", {
   // Text the assistant emitted between the previous tool call (or message
   // start) and this one — preserves text↔tool ordering for inline display.
   precedingText: text("preceding_text"),
+  // Sub-agent run state, set on Agent tool calls only.
+  outputText: text("output_text"), // text the sub-agent streamed
+  subagentStatus: text("subagent_status"), // running | completed | failed | stopped (CLI task status)
+  subagentSummary: text("subagent_summary"), // final summary from the CLI's task notification
+  subagentProgress: text("subagent_progress"), // latest progress line while running
 })
 
 export const fileChanges = sqliteTable("file_changes", {

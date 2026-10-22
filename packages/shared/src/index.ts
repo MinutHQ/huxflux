@@ -105,6 +105,8 @@ export type {
   AgentStatus,
   Message,
   ToolCall,
+  SubagentStatus,
+  SubagentUpdate,
   FileChange,
   SlashCommand,
   WorkspaceStats,
@@ -133,6 +135,7 @@ export type {
   AgentsServerEvent,
 } from "./domains/agents/agents.types.js"
 
+export { isAgentTool, isToolCallRunning, subagentResultText } from "./domains/agents/subagents.js"
 export { joinMultiSelectAnswer, buildQuestionAnswer, parseAskAnswers, MULTI_SELECT_SEPARATOR } from "./domains/agents/askAnswers.js"
 export type { QuestionDraft } from "./domains/agents/askAnswers.js"
 

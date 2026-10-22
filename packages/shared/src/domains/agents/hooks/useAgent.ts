@@ -15,7 +15,7 @@ export { configureAgentErrorHandler } from "./errorHandler.js"
 /**
  * Composite agent hook. Thin orchestrator over per-concern hooks:
  *
- *   - `useAgentQuery`          single-agent fetch + sub-agent data merge
+ *   - `useAgentQuery`          single-agent fetch
  *   - `useAgentPagination`     loadMore / hasMore / isLoadingMore
  *   - `useAgentMessageStream`  message + tool + subagent WS events
  *   - `useAgentFileChanges`    `file:changed` frame
@@ -33,9 +33,9 @@ export { configureAgentErrorHandler } from "./errorHandler.js"
  * the underlying React-Query result exposes).
  */
 export function useAgent(id: string | null) {
-  const { query, subAgentDataRef } = useAgentQuery(id)
+  const { query } = useAgentQuery(id)
   const pagination = useAgentPagination(id, query.data?.hasMore)
-  const { handleEvent: handleMessageStreamEvent } = useAgentMessageStream(id, subAgentDataRef)
+  const { handleEvent: handleMessageStreamEvent } = useAgentMessageStream(id)
   const { handleEvent: handleFileChangesEvent } = useAgentFileChanges(id)
   const { handleEvent: handleTerminalEvent } = useAgentTerminal(id)
   const { pendingQuestion, clearPendingQuestion, handleEvent: handlePendingQuestionEvent, handleResolved: handleQuestionResolvedEvent } = useAgentPendingQuestion(id, query.data?.pendingQuestion)
@@ -78,7 +78,7 @@ export function useAgent(id: string | null) {
         case "message:thinking":
         case "tool:call":
         case "tool:result":
-        case "subagent:event":
+        case "subagent:update":
           handleMessageStreamEvent(event)
           return
         case "file:changed":

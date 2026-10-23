@@ -133,4 +133,4 @@ export const modelColors: Record<string, string> = {
 
 // ── Status set rendered in the sidebar (cancelled is hidden) ─────────────────
 
-export const visibleStatuses: AgentStatus[] = ["done", "in-review", "draft-pr", "in-progress", "backlog"]
+export const visibleStatuses: AgentStatus[] = ["done", "in-review", "draft-pr", "in-progress", "triage", "backlog"]

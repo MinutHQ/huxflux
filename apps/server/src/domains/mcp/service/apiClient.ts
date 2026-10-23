@@ -15,7 +15,7 @@ export interface ApiResult<T = unknown> {
  */
 export async function callApi<T = unknown>(
   app: FastifyInstance,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH",
   url: string,
   body?: unknown,
 ): Promise<ApiResult<T>> {

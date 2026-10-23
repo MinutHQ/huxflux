@@ -5,12 +5,13 @@ Exposes Huxflux to other AI assistants over the Model Context Protocol. A Claude
 ## Owns
 
 - The `/mcp` Streamable HTTP endpoint (POST for JSON-RPC, GET/DELETE answered by the SDK). Stateless: one `McpServer` + transport per request.
-- The MCP tool set: `list_repos`, `create_agent`, `send_message`, `list_agents`, `get_agent`.
+- The MCP tool set: `list_repos`, `create_agent`, `send_message`, `list_agents`, `get_agent`, `set_agent_status`.
 - The in-process bridge that runs each tool through the server's own REST routes via `app.inject`, so MCP callers get the same validation and behaviour as the web and mobile clients.
 
 ## Public surface
 
 - `mcp.routes.ts` — exposes `mcpPlugin`, the Fastify plugin registering `/mcp`. Wired through the registry at `src/domains/index.ts`.
+- `agentCli.ts` — `runAgentCommand`, the `huxflux agent list|get|create|status` CLI. It is an MCP client of the running server, so shell-only assistants get the same tools.
 
 ## Depends on
 
@@ -32,5 +33,6 @@ None.
 - Prompts are sent without `sender`. A user message carrying `sender` renders in the web client as a collapsed "linked workspace" card; the task an outside assistant hands over should be readable at a glance.
 - The endpoint is hidden from `/docs` (`schema.hide`) because Swagger cannot describe a JSON-RPC surface usefully.
 - `MCP_SERVER_NAME` env overrides the name reported in `serverInfo` (default `huxflux`); `huxflux config mcp-name <name>` persists it in the CLI's `config.json` and the supervisor passes it through. Client-side display names come from the client's own config key, not from this.
+- Statuses: `create_agent` takes an optional `status` and `set_agent_status` moves an existing agent. `triage` is the status an assistant uses to queue work for the user; a turn started on a triage agent keeps it in triage.
 - Connect from Claude Code with:
   `claude mcp add --transport http huxflux http://<host>:<port>/mcp --header "Authorization: Bearer <AUTH_TOKEN>"`

@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { FastifyInstance } from "fastify"
 import { z } from "zod/v4"
+import { agentStatusSchema } from "@huxflux/shared"
 import { titleToBranchSlug } from "../../agents/title.js"
 import { callApi } from "./apiClient.js"
 import { fetchRepos, type RepoRow } from "./repoTools.js"
@@ -15,6 +16,7 @@ const createAgentInput = {
   model: z.string().optional().describe("Model name as shown in Huxflux, e.g. 'Sonnet 4.6'. Defaults to the server setting."),
   provider: z.string().optional().describe("Provider id, e.g. claude, codex, gemini. Defaults to the server setting."),
   description: z.string().optional().describe("Longer task description stored on the agent"),
+  status: agentStatusSchema.optional().describe("Sidebar status to create the agent in. Defaults to in-progress. Use 'triage' to queue it for the user to look at."),
 }
 
 interface CreatedAgent {
@@ -60,6 +62,7 @@ export function registerCreateAgentTool(server: McpServer, app: FastifyInstance)
         model: input.model,
         provider: input.provider,
         description: input.description,
+        status: input.status,
         noWorktree: repo?.type === "folder" ? true : undefined,
       })
       if (!created.ok) return apiErrorResult("create_agent", created)

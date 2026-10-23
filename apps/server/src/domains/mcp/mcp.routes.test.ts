@@ -103,11 +103,11 @@ describe("mcp domain", () => {
     expect(res.status).toBe(401)
   })
 
-  it("lists the five huxflux tools", async () => {
+  it("lists the six huxflux tools", async () => {
     const c = await connect()
     const { tools } = await c.listTools()
     const names = tools.map((t) => t.name).sort()
-    expect(names).toEqual(["create_agent", "get_agent", "list_agents", "list_repos", "send_message"])
+    expect(names).toEqual(["create_agent", "get_agent", "list_agents", "list_repos", "send_message", "set_agent_status"])
   })
 
   it("list_repos returns registered repos", async () => {
@@ -145,6 +145,34 @@ describe("mcp domain", () => {
     expect(detail.id).toBe(agent.id)
     expect(detail.title).toBe("Fix Login Bug!")
     expect(detail.messages).toEqual([])
+  })
+
+  it("create_agent can start in triage and set_agent_status moves it out", async () => {
+    const c = await connect()
+    const created = await c.callTool({
+      name: "create_agent",
+      arguments: { repoId: "repo-1", title: "Look at flaky test", status: "triage" },
+    })
+    expect(created.isError).toBeFalsy()
+    const agent = parseText(created) as { id: string; status: string }
+    createdAgentIds.push(agent.id)
+    expect(agent.status).toBe("triage")
+
+    const triaged = parseText(await c.callTool({ name: "list_agents", arguments: { status: "triage" } })) as Array<{ id: string }>
+    expect(triaged.map((a) => a.id)).toEqual([agent.id])
+
+    const moved = await c.callTool({ name: "set_agent_status", arguments: { agentId: agent.id, status: "backlog" } })
+    expect(moved.isError).toBeFalsy()
+    expect(parseText(moved)).toEqual({ agentId: agent.id, status: "backlog" })
+
+    const after = parseText(await c.callTool({ name: "list_agents", arguments: { status: "triage" } })) as unknown[]
+    expect(after).toEqual([])
+  })
+
+  it("set_agent_status rejects an unknown status", async () => {
+    const c = await connect()
+    const result = await c.callTool({ name: "set_agent_status", arguments: { agentId: "missing", status: "nope" } })
+    expect(result.isError).toBe(true)
   })
 
   it("create_agent rejects an unknown repoId without creating anything", async () => {

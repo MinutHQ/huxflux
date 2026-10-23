@@ -94,6 +94,7 @@ export function CommandPalette({ open, onClose, agents, onSelectAgent }: Command
 
   const statusColor: Record<string, string> = {
     "in-progress": "bg-amber-400",
+    "triage": "bg-orange-400",
     "draft-pr": "bg-violet-400",
     "in-review": "bg-blue-400",
     "backlog": "bg-muted-foreground/30",

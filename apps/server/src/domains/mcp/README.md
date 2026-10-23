@@ -1,11 +1,11 @@
 # mcp
 
-Exposes Huxflux to other AI assistants over the Model Context Protocol. A Claude Code, Cursor or Codex session pointed at `/mcp` can list repos, spawn a new agent in its own worktree, hand it a prompt, send follow-ups, and read the agent's answer back.
+Exposes Huxflux to other AI assistants over the Model Context Protocol. A Claude Code, Cursor or Codex session pointed at `/mcp` can list repos, spawn a new agent in its own worktree, hand it a prompt, send follow-ups, answer questions the agent blocks on, and read the agent's answer back.
 
 ## Owns
 
 - The `/mcp` Streamable HTTP endpoint (POST for JSON-RPC, GET/DELETE answered by the SDK). Stateless: one `McpServer` + transport per request.
-- The MCP tool set: `list_repos`, `create_agent`, `send_message`, `list_agents`, `get_agent`, `set_agent_status`.
+- The MCP tool set: `list_repos`, `create_agent`, `send_message`, `list_agents`, `get_agent`, `set_agent_status`, `answer_question`.
 - The in-process bridge that runs each tool through the server's own REST routes via `app.inject`, so MCP callers get the same validation and behaviour as the web and mobile clients.
 
 ## Public surface
@@ -31,6 +31,7 @@ None.
 - Tools never touch the DB directly. They call `/api/...` in-process with the server's own Bearer token; the one exception is `isAgentRunning` from the agent-runner public surface, because the REST payload has no live-running flag. This keeps one code path for agent creation (worktree pool, setup script, PR auto-link) but means MCP errors surface as `HTTP <status>: <route error>` strings.
 - `create_agent` mirrors the web client's branch default: `<repo branchPrefix or "agent">/<slug of title>`, and `local` + `noWorktree` for folder-type repos.
 - Prompts are sent without `sender`. A user message carrying `sender` renders in the web client as a collapsed "linked workspace" card; the task an outside assistant hands over should be readable at a glance.
+- An agent that calls AskUserQuestion parks on a control response and ignores further input, so `send_message` cannot unblock it. `answer_question` is the only route out; `get_agent` surfaces the pending question through `pendingQuestion`, and answers are keyed by each question's exact text.
 - The endpoint is hidden from `/docs` (`schema.hide`) because Swagger cannot describe a JSON-RPC surface usefully.
 - `MCP_SERVER_NAME` env overrides the name reported in `serverInfo` (default `huxflux`); `huxflux config mcp-name <name>` persists it in the CLI's `config.json` and the supervisor passes it through. Client-side display names come from the client's own config key, not from this.
 - Statuses: `create_agent` takes an optional `status` and `set_agent_status` moves an existing agent. `triage` is the status an assistant uses to queue work for the user; a turn started on a triage agent keeps it in triage.

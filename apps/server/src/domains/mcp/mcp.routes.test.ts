@@ -15,6 +15,9 @@ import { reposPlugin } from "../repos/repos.routes.js"
 import { agentsPlugin } from "../agents/agents.routes.js"
 import { unwatchWorktree } from "../git/watcher.js"
 import { mcpPlugin } from "./mcp.routes.js"
+import { setPendingQuestion, getPendingQuestion, clearPendingQuestion } from "../../askStore.js"
+import { runningProcesses } from "../agent-runner/service/processRegistry.js"
+import type { ChildProcess } from "node:child_process"
 
 const TOKEN = "mcp-test-token"
 
@@ -24,6 +27,18 @@ function textBlocks(result: unknown): TextContent[] {
   const content = (result as { content?: unknown }).content
   if (!Array.isArray(content)) throw new Error("expected a content array")
   return content as TextContent[]
+}
+
+/**
+ * Stands in for a running CLI. `answerPendingQuestion` only needs a writable
+ * stdin to write the control response to, so a real subprocess is unnecessary.
+ */
+function fakeProcess(): { written: string[]; proc: ChildProcess } {
+  const written: string[] = []
+  const proc = {
+    stdin: { destroyed: false, writable: true, write: (line: string) => { written.push(line); return true } },
+  } as unknown as ChildProcess
+  return { written, proc }
 }
 
 function parseText(result: unknown): unknown {
@@ -103,11 +118,13 @@ describe("mcp domain", () => {
     expect(res.status).toBe(401)
   })
 
-  it("lists the six huxflux tools", async () => {
+  it("lists the seven huxflux tools", async () => {
     const c = await connect()
     const { tools } = await c.listTools()
     const names = tools.map((t) => t.name).sort()
-    expect(names).toEqual(["create_agent", "get_agent", "list_agents", "list_repos", "send_message", "set_agent_status"])
+    expect(names).toEqual([
+      "answer_question", "create_agent", "get_agent", "list_agents", "list_repos", "send_message", "set_agent_status",
+    ])
   })
 
   it("list_repos returns registered repos", async () => {
@@ -189,5 +206,95 @@ describe("mcp domain", () => {
     const result = await c.callTool({ name: "get_agent", arguments: { agentId: "missing" } })
     expect(result.isError).toBe(true)
     expect(textBlocks(result)[0]?.text).toContain("HTTP 404")
+  })
+
+  it("answer_question surfaces the route's 404 when nothing is pending", async () => {
+    const c = await connect()
+    const created = await c.callTool({ name: "create_agent", arguments: { repoId: "repo-1", title: "No Question" } })
+    const agent = parseText(created) as { id: string }
+    createdAgentIds.push(agent.id)
+
+    const result = await c.callTool({
+      name: "answer_question",
+      arguments: { agentId: agent.id, answers: { "Which database?": "Postgres" } },
+    })
+    expect(result.isError).toBe(true)
+    expect(textBlocks(result)[0]?.text).toContain("HTTP 404")
+    expect(textBlocks(result)[0]?.text).toContain("No pending question")
+  })
+
+  it("answer_question reports an unknown agent as a tool error", async () => {
+    const c = await connect()
+    const result = await c.callTool({
+      name: "answer_question",
+      arguments: { agentId: "missing", answers: { q: "a" } },
+    })
+    expect(result.isError).toBe(true)
+    expect(textBlocks(result)[0]?.text).toContain("HTTP 404")
+  })
+
+  it("answer_question rejects a call that omits answers", async () => {
+    const c = await connect()
+    const result = await c.callTool({ name: "answer_question", arguments: { agentId: "x" } })
+    expect(result.isError).toBe(true)
+  })
+
+  it("answer_question writes the answers to the waiting agent and clears the question", async () => {
+    const c = await connect()
+    const created = await c.callTool({ name: "create_agent", arguments: { repoId: "repo-1", title: "Needs Input" } })
+    const agent = parseText(created) as { id: string }
+    createdAgentIds.push(agent.id)
+
+    const questions = [{ question: "Which database?", header: "DB", options: [{ label: "Postgres" }, { label: "SQLite" }] }]
+    const fake = fakeProcess()
+    runningProcesses.set(agent.id, fake.proc)
+    setPendingQuestion(agent.id, "req-1", "tu-1", questions)
+
+    try {
+      const result = await c.callTool({
+        name: "answer_question",
+        arguments: { agentId: agent.id, answers: { "Which database?": "Postgres" } },
+      })
+
+      expect(result.isError).toBeFalsy()
+      expect(parseText(result)).toEqual({ agentId: agent.id, answered: ["Which database?"] })
+
+      // The CLI is unblocked by a control response on stdin carrying the answers.
+      expect(fake.written).toHaveLength(1)
+      const sent = JSON.parse(fake.written[0]!) as {
+        response: { request_id: string; response: { behavior: string; updatedInput: { answers: Record<string, string> } } }
+      }
+      expect(sent.response.request_id).toBe("req-1")
+      expect(sent.response.response.behavior).toBe("allow")
+      expect(sent.response.response.updatedInput.answers).toEqual({ "Which database?": "Postgres" })
+
+      // Answering consumes the question, so a second call has nothing to answer.
+      expect(getPendingQuestion(agent.id)).toBeUndefined()
+    } finally {
+      runningProcesses.delete(agent.id)
+      clearPendingQuestion(agent.id)
+    }
+  })
+
+  it("answer_question reports the question as expired when the agent stopped running", async () => {
+    const c = await connect()
+    const created = await c.callTool({ name: "create_agent", arguments: { repoId: "repo-1", title: "Gone Away" } })
+    const agent = parseText(created) as { id: string }
+    createdAgentIds.push(agent.id)
+
+    // Pending question, but no live process to write the control response to.
+    setPendingQuestion(agent.id, "req-2", "tu-2", [{ question: "Still there?" }])
+
+    try {
+      const result = await c.callTool({
+        name: "answer_question",
+        arguments: { agentId: agent.id, answers: { "Still there?": "yes" } },
+      })
+      expect(result.isError).toBe(true)
+      expect(textBlocks(result)[0]?.text).toContain("HTTP 409")
+      expect(textBlocks(result)[0]?.text).toContain("no longer running")
+    } finally {
+      clearPendingQuestion(agent.id)
+    }
   })
 })

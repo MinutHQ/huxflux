@@ -277,3 +277,16 @@ textarea:focus {
   background-size: 200% 100%;
   animation: homeShimmer 3s ease-in-out infinite;
 }
+
+/* Mermaid diagrams (Pele). Mapping Pele's variables onto the theme tokens is
+   what makes a diagram follow light/dark mode; Pele recolours from these
+   without re-rendering, so the dark-class swap needs no JS. */
+.pele {
+  --pele-bg: var(--secondary);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--foreground);
+  --pele-surface: var(--background);
+  --pele-surface-alt: var(--accent);
+  --pele-border: var(--border);
+}

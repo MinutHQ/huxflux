@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkBreaks from "remark-breaks"
 import { handleExternalClick } from "@/lib/platform"
+import { MermaidBlock } from "./MermaidBlock"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function TableBlock({ children }: { node?: any; children?: React.ReactNode }) {
@@ -49,7 +50,21 @@ function TableBlock({ children }: { node?: any; children?: React.ReactNode }) {
 // only reliable block signal. PreContext tells the inner <code> it is a block.
 const PreContext = createContext(false)
 
+/**
+ * Source of a ```mermaid fence, or null for any other block. react-markdown
+ * hands `pre` a single `code` child carrying the language class, so the fence
+ * language is only visible from here; the text itself is that child's children.
+ */
+function mermaidSource(children: React.ReactNode): string | null {
+  if (!React.isValidElement(children)) return null
+  const props = children.props as { className?: string; children?: React.ReactNode }
+  if (!props.className?.split(/\s+/).includes("language-mermaid")) return null
+  return typeof props.children === "string" ? props.children.replace(/\n$/, "") : null
+}
+
 function PreBlock({ children }: { children?: React.ReactNode }) {
+  const mermaid = mermaidSource(children)
+  if (mermaid !== null) return <MermaidBlock source={mermaid} />
   return (
     <PreContext.Provider value={true}>
       <pre className="my-3 overflow-x-auto rounded-lg border border-border bg-secondary px-4 py-3 font-mono text-[12px] leading-relaxed text-foreground/80">

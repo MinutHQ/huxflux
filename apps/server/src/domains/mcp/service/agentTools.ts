@@ -158,3 +158,35 @@ export function registerSetStatusTool(server: McpServer, app: FastifyInstance): 
     },
   )
 }
+
+export function registerAnswerQuestionTool(server: McpServer, app: FastifyInstance): void {
+  server.registerTool(
+    "answer_question",
+    {
+      title: "Answer an agent's pending question",
+      description:
+        "Answer a question an agent is blocked on. When `get_agent` reports a non-null `pendingQuestion`, the agent " +
+        "is parked waiting for a reply and will make no further progress until it gets one. This is the only way to " +
+        "unblock it: `send_message` does NOT work, because the agent is waiting on a control response rather than " +
+        "reading new messages. Key each answer by the question's exact `question` text as reported in " +
+        "`pendingQuestion`, and prefer one of that question's offered option labels as the value.",
+      inputSchema: {
+        agentId: z.string().describe("Agent id from create_agent or list_agents"),
+        answers: z.record(z.string(), z.string()).describe(
+          "Map of question text to chosen answer, e.g. {\"Which database?\": \"Postgres\"}. Answer every question " +
+          "listed in the agent's pendingQuestion.",
+        ),
+      },
+    },
+    async ({ agentId, answers }) => {
+      const result = await callApi<{ ok: boolean }>(
+        app,
+        "POST",
+        `/api/agents/${encodeURIComponent(agentId)}/answer`,
+        { answers },
+      )
+      if (!result.ok) return apiErrorResult("answer_question", result)
+      return textResult({ agentId, answered: Object.keys(answers) })
+    },
+  )
+}

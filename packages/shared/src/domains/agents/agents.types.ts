@@ -21,6 +21,7 @@ export const agentStatusSchema = z.enum([
   "in-review",
   "draft-pr",
   "in-progress",
+  "triage",
   "backlog",
   "cancelled",
 ])
@@ -403,6 +404,7 @@ export const createAgentBodySchema = z.object({
   noWorktree: z.boolean().optional(),
   existingBranch: z.boolean().optional(),
   baseBranch: z.string().optional(),
+  status: agentStatusSchema.optional(),
 })
 
 export type CreateAgentBody = z.infer<typeof createAgentBodySchema>
@@ -506,11 +508,12 @@ export const statusConfig: Record<AgentStatus, { label: string; color: string; d
   "in-review":   sc("in-review",    "In review"),
   "draft-pr":    sc("draft-pr",     "Draft PR"),
   "in-progress": sc("in-progress",  "In progress"),
+  triage:        sc("triage",       "Triage"),
   backlog:       sc("backlog",      "Backlog"),
   cancelled:     sc("cancelled",    "Canceled"),
 }
 
-export const statusOrder: AgentStatus[] = ["in-progress", "draft-pr", "in-review", "backlog", "done", "cancelled"]
+export const statusOrder: AgentStatus[] = ["in-progress", "triage", "draft-pr", "in-review", "backlog", "done", "cancelled"]
 
 // ── WebSocket events emitted by the agents domain ────────────────────────────
 // Composed into the top-level `ServerEvent` union in `../../ws.ts`.

@@ -2,7 +2,7 @@
 
 import type { SubagentStatus } from "@huxflux/shared"
 
-export type AgentStatus = "done" | "in-review" | "draft-pr" | "in-progress" | "backlog" | "cancelled"
+export type AgentStatus = "done" | "in-review" | "draft-pr" | "in-progress" | "triage" | "backlog" | "cancelled"
 
 export interface PRStatus {
   number: number

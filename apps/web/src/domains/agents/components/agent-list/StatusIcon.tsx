@@ -2,7 +2,7 @@ import { statusConfig, type AgentStatus } from "@huxflux/shared"
 
 /**
  * Linear-style status glyph: a 14×14 SVG that visually encodes the agent state
- * (filled check, 3/4 pie, half pie, dashed ring, crossed-out fill). Inlined SVG
+ * (filled check, 3/4 pie, half pie, ring with "!", dashed ring, crossed-out fill). Inlined SVG
  * rather than an icon font so each shape can be tinted from `statusConfig.hex`.
  */
 export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: number }) {
@@ -41,6 +41,15 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
         <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.4" />
           <path d={`M ${cx} ${cy - r + 0.6} A ${r - 0.6} ${r - 0.6} 0 0 1 ${cx} ${cy + r - 0.6} L ${cx} ${cy} Z`} fill={color} />
+        </svg>
+      )
+    case "triage":
+      // ring with an exclamation mark — waiting for a human to decide what to do
+      return (
+        <svg width={size} height={size} viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="1.4" />
+          <path d="M7 4.2 L7 7.6" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx={cx} cy={9.6} r={0.85} fill={color} />
         </svg>
       )
     case "backlog":

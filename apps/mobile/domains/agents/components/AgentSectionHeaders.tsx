@@ -12,6 +12,7 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
     : status === "in-review"   ? "git-pull-request"
     : status === "draft-pr"    ? "git-pull-request-outline"
     : status === "in-progress" ? "time"
+    : status === "triage"      ? "alert-circle-outline"
     : status === "backlog"     ? "ellipse-outline"
     :                            "close-circle"
   return <Ionicons name={icon} size={size} color={color} style={{ flexShrink: 0 }} />

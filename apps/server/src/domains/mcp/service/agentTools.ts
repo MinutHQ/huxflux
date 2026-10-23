@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { FastifyInstance } from "fastify"
 import { z } from "zod/v4"
+import { agentStatusSchema } from "@huxflux/shared"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { callApi } from "./apiClient.js"
 import { apiErrorResult, textResult } from "./toolResult.js"
@@ -77,7 +78,7 @@ export function registerAgentReadTools(server: McpServer, app: FastifyInstance):
       title: "List agents",
       description: "List Huxflux agents (one per worktree). Optionally filter by status.",
       inputSchema: {
-        status: z.string().optional().describe("Only return agents with this status, e.g. in-progress, review, done"),
+        status: agentStatusSchema.optional().describe("Only return agents with this status, e.g. triage, in-progress, in-review, done"),
       },
     },
     async ({ status }) => {
@@ -132,6 +133,27 @@ export function registerSendMessageTool(server: McpServer, app: FastifyInstance)
         { content, planMode },
       )
       if (!result.ok) return apiErrorResult("send_message", result)
+      return textResult({ agentId, status: result.data.status })
+    },
+  )
+}
+
+export function registerSetStatusTool(server: McpServer, app: FastifyInstance): void {
+  server.registerTool(
+    "set_agent_status",
+    {
+      title: "Set agent status",
+      description:
+        "Move an agent to another sidebar status. Use 'triage' to queue it for the user to look at. " +
+        "Setting done or cancelled also retires its PR thread children, same as the UI.",
+      inputSchema: {
+        agentId: z.string().describe("Agent id from create_agent or list_agents"),
+        status: agentStatusSchema.describe("The new status"),
+      },
+    },
+    async ({ agentId, status }) => {
+      const result = await callApi<AgentRow>(app, "PATCH", `/api/agents/${encodeURIComponent(agentId)}`, { status })
+      if (!result.ok) return apiErrorResult("set_agent_status", result)
       return textResult({ agentId, status: result.data.status })
     },
   )

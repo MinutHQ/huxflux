@@ -29,6 +29,7 @@ import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
 import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
 import { dropGithubPackagesPin } from "./npmRegistry.js"
+import { runAgentCommand } from "./domains/mcp/agentCli.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -633,6 +634,11 @@ async function cmdStatus() {
   console.info(`  Node.js: ${process.versions.node}${nodeMajor > 24 ? " (unsupported, use Node 22 LTS)" : ""}`)
   console.info("")
   await printConnectInfo(cfg)
+}
+
+async function cmdAgent(args: string[]) {
+  const cfg = loadConfig()
+  await runAgentCommand(`http://localhost:${getActualPort(cfg.port)}`, cfg.token, args)
 }
 
 function cmdLogs() {
@@ -1815,6 +1821,8 @@ Usage:
   huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
   huxflux status    Show server status, URL, and auth token
+  huxflux agent list|get|create|status   Manage agents on the running server
+                    (run 'huxflux agent' for details; e.g. create one in triage)
   huxflux logs      Tail the server log (Ctrl+C to exit)
   huxflux crashes   Tail the crash log
   huxflux run       Run in the foreground (process managers / debug)
@@ -1858,6 +1866,7 @@ switch (cmd) {
   case "open":        cmdOpen(cmdArgs[0]); break
   case "stop":        cmdStop(); break
   case "status":      cmdStatus().catch(console.error); break
+  case "agent":       cmdAgent(cmdArgs).catch(console.error); break
   case "logs":        cmdLogs(); break
   case "crashes":     cmdCrashes(); break
   case "run":         cmdRun(); break

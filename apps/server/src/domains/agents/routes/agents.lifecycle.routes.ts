@@ -44,23 +44,22 @@ export const agentsLifecycleRoutes: FastifyPluginAsyncZod = async (app) => {
     // Stop live file watcher before removing worktree
     unwatchWorktree(req.params.id)
 
-    // Remove worktree from disk (frees space) but keep DB record
-    // Skip for child agents — they share the parent's worktree
-    if (agent.repoId && !agent.noWorktree && !agent.parentAgentId) {
-      const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
-      if (repo) {
-        const worktreePath = path.join(repo.workspacesPath, agent.location)
-        try {
-          await removeWorktree(repo.path, worktreePath)
-        } catch (err) {
-          app.log.warn(`Worktree removal failed: ${err}`)
-        }
-      }
-    }
-
+    // Mark deleted before the slow worktree removal so a list refetch during
+    // a bulk archive can't bring the agent back, and the client doesn't time out
     await db.update(agents).set({ deletedAt: now }).where(eq(agents.id, req.params.id))
     agentsWs.agentDeleted(req.params.id)
     reply.code(204).send()
+
+    // Remove worktree from disk (frees space) but keep DB record
+    // Skip for child agents — they share the parent's worktree
+    if (agent.repoId && !agent.noWorktree && !agent.parentAgentId) {
+      try {
+        const repo = db.select().from(repos).where(eq(repos.id, agent.repoId)).get()
+        if (repo) await removeWorktree(repo.path, path.join(repo.workspacesPath, agent.location))
+      } catch (err) {
+        app.log.warn(`Worktree removal failed: ${err}`)
+      }
+    }
   })
 
   // POST /api/agents/:id/sync-files — refresh file changes from git diff

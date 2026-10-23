@@ -27,7 +27,7 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
     const {
       repoId, title, branch,
       model = getSettings().defaultModel ?? "Sonnet 4.6",
-      location, description, shareWorktreeWith, noWorktree, existingBranch, baseBranch,
+      location, description, shareWorktreeWith, noWorktree, existingBranch, baseBranch, status,
       provider = getSettings().defaultProvider ?? "claude",
     } = req.body
     const now = new Date().toISOString()
@@ -57,7 +57,7 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
       id,
       repoId: agentRepoId,
       title,
-      status: "in-progress",
+      status: status ?? "in-progress",
       branch,
       model,
       location: agentLocation,

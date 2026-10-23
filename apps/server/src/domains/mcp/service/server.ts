@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify"
 import { config } from "../../../config.js"
 import { SERVER_VERSION } from "../../../version.js"
 import { registerRepoTools } from "./repoTools.js"
-import { registerAgentReadTools, registerSendMessageTool } from "./agentTools.js"
+import { registerAgentReadTools, registerSendMessageTool, registerSetStatusTool } from "./agentTools.js"
 import { registerCreateAgentTool } from "./createAgentTool.js"
 
 /**
@@ -18,12 +18,14 @@ export function buildMcpServer(app: FastifyInstance): McpServer {
       instructions:
         "Huxflux runs coding agents in isolated git worktrees. Typical flow: list_repos, then create_agent with a " +
         "prompt, then poll get_agent until `running` is false and read the last assistant message. Use send_message " +
-        "for follow-ups on the same agent.",
+        "for follow-ups on the same agent. Use set_agent_status (or create_agent's `status`) to put an agent in " +
+        "'triage' when the user should look at it.",
     },
   )
   registerRepoTools(server, app)
   registerCreateAgentTool(server, app)
   registerSendMessageTool(server, app)
   registerAgentReadTools(server, app)
+  registerSetStatusTool(server, app)
   return server
 }

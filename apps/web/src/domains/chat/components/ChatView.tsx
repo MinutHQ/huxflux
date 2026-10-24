@@ -69,7 +69,7 @@ function buildInputBarProps(args: any): ChatInputBarProps {
     onModelChange: args.handleModelChange, onSend: args.handleSend,
     onSendCommand: args.handleSendCommand,
     onPlanApprove: args.handlePlanApprove, onPlanDismiss: args.handlePlanDismiss,
-    onUploadFiles: args.uploadFiles, fileInputRef: args.fileInputRef,
+    onUploadFiles: args.uploadFiles, fileInputRef: args.fileInputRef, onOpenFilePicker: args.openFilePicker,
     onFileSelect: args.handleFileSelect,
   }
 }
@@ -111,7 +111,7 @@ export function ChatView(props: ChatViewProps) {
     : null
   const elapsedSeconds = useStreamingElapsed(uiIsStreaming, streamingAnchor)
   const { setScrollContainer, setScrollContent, isAtBottom, jumpToBottom, resetToBottom } = useChatScroll()
-  const { fileInputRef, uploadFiles, pendingUploads, uploadingCount } = useFileUpload(agent.id, setAttachments)
+  const { fileInputRef, openFilePicker, uploadFiles, pendingUploads, uploadingCount } = useFileUpload(agent.id, setAttachments)
   const openInApps = useOpenInApps(agent.id)
 
   useDraftAutosave(agent.id, input)
@@ -156,7 +156,7 @@ export function ChatView(props: ChatViewProps) {
     handleSendCommand: actions.handleSendCommand,
     handlePlanApprove: actions.handlePlanApprove,
     handlePlanDismiss: () => setAwaitingPlanApproval(false),
-    uploadFiles, fileInputRef, handleFileSelect: actions.handleFileSelect,
+    uploadFiles, fileInputRef, openFilePicker, handleFileSelect: actions.handleFileSelect,
   })
 
   return (

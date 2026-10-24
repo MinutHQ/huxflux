@@ -180,6 +180,47 @@ fn open_url(url: String) {
 /// Ask where to save `file_name`, then stream `url` there. Returns false when
 /// the user cancels the dialog. Used by the file browser's "Download" item,
 /// because the webview does not handle `<a download>` the way a browser does.
+/// Largest chat attachment, matching the server's limit. Bigger files are not
+/// read; they come back with `data: None` so the web side reports the size.
+const MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
+
+#[derive(Serialize)]
+struct PickedFile {
+    name: String,
+    size: u64,
+    data: Option<String>,
+}
+
+/// Native picker for chat attachments. Files chosen through the webview's own
+/// `<input type="file">` do not reliably reach the page in WKWebView, so the
+/// desktop app picks and reads them here. Only files the user chose are read.
+#[tauri::command]
+async fn pick_files(app: tauri::AppHandle) -> Result<Vec<PickedFile>, String> {
+    use base64::Engine;
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_files())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(Vec::new()) };
+    let mut files = Vec::with_capacity(picked.len());
+    for entry in picked {
+        let path = entry.into_path().map_err(|e| e.to_string())?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".to_string());
+        let size = std::fs::metadata(&path).map_err(|e| format!("{}: {}", name, e))?.len();
+        let data = if size > MAX_ATTACHMENT_BYTES {
+            None
+        } else {
+            let bytes = std::fs::read(&path).map_err(|e| format!("{}: {}", name, e))?;
+            Some(base64::engine::general_purpose::STANDARD.encode(bytes))
+        };
+        files.push(PickedFile { name, size, data });
+    }
+    Ok(files)
+}
+
 #[tauri::command]
 async fn download_file(app: tauri::AppHandle, url: String, file_name: String) -> Result<bool, String> {
     use std::io::Write;
@@ -413,7 +454,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, app_identity::set_app_name, app_identity::send_desktop_notification, open_url, download_file, read_local_connection, check_update, download_and_install_update])
+        .invoke_handler(tauri::generate_handler![detect_editors, open_ssh_editor, zoom_window, set_app_icon, app_identity::set_app_name, app_identity::send_desktop_notification, open_url, download_file, pick_files, read_local_connection, check_update, download_and_install_update])
         .run(tauri::generate_context!())
         .expect("error while running huxflux desktop");
 }

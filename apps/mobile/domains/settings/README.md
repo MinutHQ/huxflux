@@ -20,12 +20,14 @@ Mobile settings surface. The Settings tab is a hub (server card, repositories, t
 - `AddRepoScreen`, `isAddRepoMode`, `AddRepoMode` — the Add-workspace modal rendered by `app/add-repo.tsx`
 - `AddRepoMenu` (`useAddRepoMenu`) — opens the Add-workspace action sheet; used by the agent list header
 - `RepoSettingsScreen` — per-repo settings rendered by `app/repo/[id].tsx`
+- `AppUpdateBanner` — Android-only "new version available" banner and one-time notification, mounted by the root layout; downloads the APK and opens the system installer
 
 ## Depends on
 
 - `@huxflux/shared` — `api`, `queryKeys`, `useHuxfluxQuery`, `useHuxfluxMutation`, `useRepos`, `useServersStore`, `useServerConfig`, `settingsSchema`, `settingsDefaults`, repo and settings types
 - `@huxflux/tokens` — via `apps/mobile/theme.ts` (`c`, `themes`, `useTheme`)
 - `@expo/vector-icons` — `Ionicons`
+- `expo-file-system`, `expo-intent-launcher`, `expo-constants`, `expo-notifications` — APK download, handing it to the installer, the running app version, the update notification
 - `react-native`, `react-native-safe-area-context`, `expo-router`, `@tanstack/react-query`
 - `@/theme`, `@/ui` (`useModal` for action sheets / confirms / alerts), `@/lib/prefs`
 

@@ -87,6 +87,7 @@ export const queryKeys = {
     serverConfig: () => ["server-config"] as const,
     githubStatus: () => ["github-status"] as const,
     serverVersion: () => ["server-version"] as const,
+    androidUpdate: () => ["android-update"] as const,
   },
   repos: {
     all: ["repos"] as const,

@@ -7,6 +7,7 @@ import {
   serverConfigSchema,
   serverVersionInfoSchema,
   updateResultSchema,
+  androidUpdateInfoSchema,
   feedbackRequestSchema,
   feedbackResponseSchema,
   githubStatusSchema,
@@ -35,6 +36,7 @@ export const settingsApi = {
     reqValidated(serverVersionInfoSchema, "/api/system/version/check", { method: "POST" }),
   triggerUpdate: () =>
     reqValidated(updateResultSchema, "/api/system/update", { method: "POST" }),
+  androidUpdate: () => reqValidated(androidUpdateInfoSchema, "/api/system/android-update"),
 
   // Feedback (consumed by the in-app feedback dialog)
   submitFeedback: (body: FeedbackRequest) =>

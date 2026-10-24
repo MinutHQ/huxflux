@@ -145,6 +145,9 @@ export type { QuestionDraft } from "./domains/agents/askAnswers.js"
 // ── settings ─────────────────────────────────────────────────────────────────
 export { settingsApi } from "./domains/settings/settings.api.js"
 export { waitForServerUpdate } from "./domains/settings/waitForServerUpdate.js"
+export { isNewerVersion } from "./domains/settings/versionCompare.js"
+export { androidApkAssetName, selectAndroidRelease } from "./domains/settings/androidUpdate.js"
+export type { AndroidRelease, GithubRelease, GithubReleaseAsset } from "./domains/settings/androidUpdate.js"
 export type { ServerUpdateOutcome, WaitForServerUpdateOptions } from "./domains/settings/waitForServerUpdate.js"
 export { settingsSchema, settingsDefaults } from "./domains/settings/settings.schema.js"
 export type { SettingDef, SettingsSection, HuxfluxSettings } from "./domains/settings/settings.schema.js"
@@ -157,6 +160,7 @@ export {
   serverConfigSchema,
   serverVersionInfoSchema,
   updateResultSchema,
+  androidUpdateInfoSchema,
   feedbackRequestSchema,
   feedbackResponseSchema,
   githubStatusSchema,
@@ -167,6 +171,7 @@ export type {
   ServerConfig,
   ServerVersionInfo,
   UpdateResult,
+  AndroidUpdateInfo,
   FeedbackRequest,
   FeedbackResponse,
   GitHubStatus,

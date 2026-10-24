@@ -1,6 +1,7 @@
 import { spawn, type SpawnOptions } from "node:child_process"
 import { SERVER_VERSION } from "./version.js"
-import { dropGithubPackagesPin, isNewerVersion, npmEnv } from "./npmRegistry.js"
+import { isNewerVersion } from "@huxflux/shared"
+import { dropGithubPackagesPin, npmEnv } from "./npmRegistry.js"
 import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"

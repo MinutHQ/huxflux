@@ -12,6 +12,7 @@ import { PREF_KEYS, prefs } from "../lib/prefs"
 import { HydrationContext } from "../lib/hydration"
 import { setGlobalAlert, getGlobalAlert } from "../lib/globalAlert"
 import * as Notifications from "expo-notifications"
+import { AppUpdateBanner } from "@/domains/settings/AppUpdateBanner"
 
 // Show notifications when app is in the foreground
 Notifications.setNotificationHandler({
@@ -150,6 +151,7 @@ function AppContent({ hydrated }: { hydrated: boolean }) {
         <Stack.Screen name="repo/[id]" options={{ title: "Repository" }} />
         <Stack.Screen name="settings/[section]" options={{ title: "Settings" }} />
       </Stack>
+      {hydrated && <AppUpdateBanner />}
     </HydrationContext.Provider>
   )
 }

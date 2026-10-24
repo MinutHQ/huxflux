@@ -12,6 +12,7 @@ export const COLLAPSED_SECTIONS_KEY = "huxflux:mobile:collapsed-sections"
 export const REPO_FILTER_KEY = "huxflux:mobile:repo-filter"
 export const GROUP_BY_KEY = "huxflux:mobile:group-by"
 export const DOWNLOAD_DIR_KEY = "huxflux:mobile:download-dir"
+export const APP_UPDATE_NOTIFIED_KEY = "huxflux:mobile:app-update-notified"
 
 export const PREF_KEYS = [
   STRIP_KEY,
@@ -22,6 +23,7 @@ export const PREF_KEYS = [
   REPO_FILTER_KEY,
   GROUP_BY_KEY,
   DOWNLOAD_DIR_KEY,
+  APP_UPDATE_NOTIFIED_KEY,
 ]
 
 function get(key: string, defaultVal: boolean): boolean {
@@ -54,4 +56,9 @@ export const prefs = {
   getDownloadDir: () => getStorage().getItem(DOWNLOAD_DIR_KEY),
   setDownloadDir: (uri: string) => getStorage().setItem(DOWNLOAD_DIR_KEY, uri),
   clearDownloadDir: () => getStorage().removeItem(DOWNLOAD_DIR_KEY),
+
+  // Last app version a "new version available" notification was shown for,
+  // so each Android update notifies once.
+  getNotifiedAppVersion: () => getStorage().getItem(APP_UPDATE_NOTIFIED_KEY),
+  setNotifiedAppVersion: (version: string) => getStorage().setItem(APP_UPDATE_NOTIFIED_KEY, version),
 }

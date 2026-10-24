@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
 import { api, checkAttachmentSize, describeUploadError, isImageAttachment } from "@huxflux/shared"
+import { isTauri } from "@/lib/platform"
+import { pickFilesNative } from "@/lib/pickFiles"
 import type { PendingUpload } from "../components/chatInputBarTypes"
 
 interface Attachment {
@@ -49,5 +51,17 @@ export function useFileUpload(agentId: string, setAttachments: (updater: (prev: 
     for (const file of files) uploadFile(file)
   }, [uploadFile])
 
-  return { fileInputRef, uploadFiles, pendingUploads, uploadingCount: pendingUploads.length }
+  // The desktop webview's file input does not reliably deliver picked files,
+  // so the desktop app uses a native dialog. Browsers use the hidden input.
+  const openFilePicker = useCallback(() => {
+    if (!isTauri) {
+      fileInputRef.current?.click()
+      return
+    }
+    pickFilesNative()
+      .then(uploadFiles)
+      .catch((err: unknown) => toast.error(`Could not attach files: ${String(err)}`))
+  }, [uploadFiles])
+
+  return { fileInputRef, openFilePicker, uploadFiles, pendingUploads, uploadingCount: pendingUploads.length }
 }

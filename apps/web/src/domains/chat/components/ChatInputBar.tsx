@@ -20,7 +20,7 @@ function makeKeyDownHandler(props: ChatInputBarProps) {
   return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const { mentionQuery, mentionOptions, mentionIndex, setMentionIndex, applyMention, setMentionQuery,
       slashQuery, filteredCommands, slashIndex, setSlashIndex, applySlashCommand, setSlashQuery,
-      fileInputRef, setPlanMode, onSend } = props
+      onOpenFilePicker, setPlanMode, onSend } = props
     if (mentionQuery !== null && mentionOptions.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionOptions.length); return }
       if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionOptions.length) % mentionOptions.length); return }
@@ -34,7 +34,7 @@ function makeKeyDownHandler(props: ChatInputBarProps) {
       if (e.key === "Escape") { setSlashQuery(null); return }
     }
     if (e.key === "Tab" && e.shiftKey) { e.preventDefault(); setPlanMode((v) => !v); return }
-    if (e.key === "u" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fileInputRef.current?.click(); return }
+    if (e.key === "u" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onOpenFilePicker(); return }
     const sendWith = getSendWith()
     const shouldSend =
       sendWith === "enter" ? (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) :

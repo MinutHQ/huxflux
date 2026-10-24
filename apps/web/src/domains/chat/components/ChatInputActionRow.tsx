@@ -47,7 +47,7 @@ function PlusPopover(props: ChatInputBarProps) {
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-52 p-1">
         <button
-          onClick={() => props.fileInputRef.current?.click()}
+          onClick={() => { setOpen(false); props.onOpenFilePicker() }}
           className="flex items-center gap-3 w-full px-3 py-2 text-[13px] text-foreground hover:bg-accent rounded-md transition-colors"
         >
           <IconPaperclip size={15} className="text-muted-foreground shrink-0" />
@@ -132,7 +132,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
         {isClaudeFamilyProvider(agentProvider) && <HeadroomToggle agent={agent} />}
       </div>
       <div className="flex items-center gap-1">
-        <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.json" className="hidden" onChange={onFileSelect} />
+        <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileSelect} />
         <ContextRing agent={agent} models={allModels} />
         <PlusPopover {...props} />
         {isStreaming && (

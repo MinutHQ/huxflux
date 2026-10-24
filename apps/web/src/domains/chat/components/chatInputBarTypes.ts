@@ -68,5 +68,6 @@ export interface ChatInputBarProps {
   onPlanDismiss: () => void
   onUploadFiles: (files: File[]) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  onOpenFilePicker: () => void
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
 }

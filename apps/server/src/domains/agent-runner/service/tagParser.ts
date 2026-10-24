@@ -6,6 +6,7 @@
 // declares which tags it cares about via `TagHandler` entries; this module is
 // the only place that understands the wire format.
 
+import type { SharedFile } from "@huxflux/shared"
 import type { ParsedTag, TagHandler, TagFollowUp } from "../agent-runner.types.js"
 import { logger } from "../../../logger.js"
 
@@ -75,9 +76,14 @@ export function parseTagsFromText(text: string): ParsedTag[] {
  *
  * Returns the follow-up messages any handler asked to deliver back to the
  * agent (in order of appearance). The caller is responsible for delivering
- * them once the turn has finalized.
+ * them once the turn has finalized. Files handlers shared are pushed into the
+ * optional `sharedFiles` collector, also in order of appearance.
  */
-export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]): Promise<TagFollowUp[]> {
+export async function dispatchTags(
+  parsed: ParsedTag[],
+  handlers: TagHandler[],
+  sharedFiles?: SharedFile[],
+): Promise<TagFollowUp[]> {
   const followUps: TagFollowUp[] = []
   if (parsed.length === 0 || handlers.length === 0) return followUps
   const byId = new Map<string, TagHandler>()
@@ -94,6 +100,7 @@ export async function dispatchTags(parsed: ParsedTag[], handlers: TagHandler[]):
     try {
       const outcome = await handler.onTag({ args: result.data, body: tag.body })
       if (outcome?.followUp) followUps.push(outcome.followUp)
+      if (outcome?.sharedFiles) sharedFiles?.push(...outcome.sharedFiles)
     } catch (err) {
       logger.error({ err }, `[tags] handler for <huxflux:${tag.id}> threw`)
     }

@@ -91,6 +91,14 @@ export const toolCallSchema: z.ZodType<ToolCall> = z.lazy(() =>
   }),
 )
 
+// A file an agent handed to the user from its reply. `file` is the stored
+// name under the agent's shared-files dir; `name` is what the user sees.
+export const sharedFileSchema = z.object({
+  name: z.string(),
+  file: z.string(),
+  size: z.number(),
+})
+
 // ── Message ──────────────────────────────────────────────────────────────────
 // One schema covers both user + assistant messages — every assistant-only
 // field is optional and a user message simply omits it. A discriminated union
@@ -119,6 +127,8 @@ export const messageSchema = z.object({
   // True when the user message was delivered into a running turn (mid-run
   // injection or a chat reply that answered a pending AskUserQuestion).
   injected: z.boolean().optional(),
+  // Files the agent shared in this (assistant) message.
+  sharedFiles: z.array(sharedFileSchema).optional(),
   // Client-only: text being streamed since the last tool call. Rendered inside
   // the tool-calls accordion so intermediate narration doesn't first appear
   // under the bubble and then jump into the accordion. Cleared on
@@ -127,6 +137,7 @@ export const messageSchema = z.object({
 })
 
 export type Message = z.infer<typeof messageSchema>
+export type SharedFile = z.infer<typeof sharedFileSchema>
 
 // ── Agent ────────────────────────────────────────────────────────────────────
 

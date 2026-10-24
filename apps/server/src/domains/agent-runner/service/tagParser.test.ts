@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod/v4"
+import type { SharedFile } from "@huxflux/shared"
 import { parseTagsFromText, dispatchTags, stripTagsFromBody } from "./tagParser.js"
-import type { TagHandler } from "../agent-runner.types.js"
+import { defineTagHandler, type TagHandler } from "../agent-runner.types.js"
 
 describe("parseTagsFromText", () => {
   it("returns an empty array for text with no huxflux tags", () => {
@@ -233,5 +234,20 @@ describe("stripTagsFromBody", () => {
     )
     expect(out).not.toContain("huxflux")
     expect(out).toContain("middle")
+  })
+
+  it("collects shared files returned by handlers into the optional collector", async () => {
+    const handler = defineTagHandler({
+      id: "demo.share",
+      args: z.object({ path: z.string() }),
+      onTag: ({ args }) => ({ sharedFiles: [{ name: args.path, file: `abcd1234-${args.path}`, size: 3 }] }),
+    })
+    const parsed = parseTagsFromText(`<huxflux:demo.share path="a.apk"/><huxflux:demo.share path="b.zip"/>`)
+    const sharedFiles: SharedFile[] = []
+    expect(await dispatchTags(parsed, [handler], sharedFiles)).toEqual([])
+    expect(sharedFiles).toEqual([
+      { name: "a.apk", file: "abcd1234-a.apk", size: 3 },
+      { name: "b.zip", file: "abcd1234-b.zip", size: 3 },
+    ])
   })
 })

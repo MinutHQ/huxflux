@@ -572,6 +572,10 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_tool_calls_parent ON tool_calls(parent_id);
     `,
   },
+  {
+    version: 40,
+    sql: `ALTER TABLE messages ADD COLUMN shared_files TEXT;`,
+  },
 ]
 
 export function runMigrations() {

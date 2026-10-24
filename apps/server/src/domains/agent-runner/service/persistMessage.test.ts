@@ -156,6 +156,26 @@ describe("persistAssistantMessage", () => {
     expect(seen).toEqual(["Improve auth flow"])
   })
 
+  it("stores shared files from tag outcomes on the row and on message:done", async () => {
+    const shared = { name: "app.apk", file: "abcd1234-app.apk", size: 42 }
+    ctx.state.pendingText = "Here is the build."
+    ctx.state.fullContent = `Here is the build.<huxflux:demo.share/>`
+    const handler: TagHandler = { id: "demo.share", args: z.object({}), onTag: () => ({ sharedFiles: [shared] }) }
+    await persist(ctx, [handler])
+    const row = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.id, ctx.messageId)).get()
+    expect(JSON.parse(row?.sharedFiles ?? "null")).toEqual([shared])
+    const done = ctx.capture.events.find((e) => e.type === "message:done") as { message: { sharedFiles?: unknown } } | undefined
+    expect(done?.message.sharedFiles).toEqual([shared])
+  })
+
+  it("leaves shared_files null when nothing was shared", async () => {
+    ctx.state.pendingText = "plain answer"
+    ctx.state.fullContent = "plain answer"
+    await persist(ctx)
+    const row = ctx.testDb.db.select().from(messagesTable).where(eq(messagesTable.id, ctx.messageId)).get()
+    expect(row?.sharedFiles).toBeNull()
+  })
+
   it("strips <huxflux:*> tags from the persisted body", async () => {
     ctx.state.pendingText = "answer text"
     ctx.state.fullContent = `<huxflux:demo.note>x</huxflux:demo.note>answer text`

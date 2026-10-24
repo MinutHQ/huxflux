@@ -114,7 +114,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
             data={messages}
             keyExtractor={(m) => m.id}
             extraData={isStreaming}
-            renderItem={({ item, index }) => <MessageBubble message={item} isStreaming={isStreaming && index === messages.length - 1} />}
+            renderItem={({ item, index }) => <MessageBubble agentId={agentId} message={item} isStreaming={isStreaming && index === messages.length - 1} />}
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
             onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
               const dist = contentSize.height - contentOffset.y - layoutMeasurement.height

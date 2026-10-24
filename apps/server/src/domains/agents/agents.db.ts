@@ -70,6 +70,7 @@ export const messages = sqliteTable("messages", {
   contextWindow: integer("context_window"), // model context limit reported by the CLI for that call
   sender: text("sender"), // display name for delegated messages, e.g. agent title
   injected: integer("injected"), // 1 = user message delivered into a running turn (mid-run injection)
+  sharedFiles: text("shared_files"), // JSON SharedFile[]: files the agent handed to the user in this message
 })
 
 export const toolCalls = sqliteTable("tool_calls", {

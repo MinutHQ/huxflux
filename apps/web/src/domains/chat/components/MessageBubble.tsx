@@ -49,7 +49,7 @@ function UserBubble({ content, injected }: { content: string; injected?: boolean
   )
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ msg, isStreaming: isStreamingProp }: { msg: Message; isStreaming?: boolean }) {
+export const MessageBubble = React.memo(function MessageBubble({ agentId, msg, isStreaming: isStreamingProp }: { agentId: string; msg: Message; isStreaming?: boolean }) {
   const isUser = msg.role === "user"
   // Belt-and-braces: even if the parent's derived isStreaming hasn't flipped
   // yet (cache update race), `durationMs` being set means this message is
@@ -59,7 +59,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, isStreamin
   const hasPending = pendingText.trim().length > 0
   // A non-streaming message with only tool calls and no text/thinking is not shown —
   // the tool calls accordion only renders alongside actual content (see below).
-  const isEmpty = !msg.content && !msg.thinking && !hasPending && (!msg.toolCalls || msg.toolCalls.length === 0)
+  const isEmpty = !msg.content && !msg.thinking && !hasPending && (!msg.toolCalls || msg.toolCalls.length === 0) && !msg.sharedFiles?.length
 
   // Messages from linked workspaces — collapsed accordion
   if (isUser && msg.sender) {
@@ -72,5 +72,5 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, isStreamin
   // Empty in-flight assistant message — nothing yet, typing bubble shown separately
   if (isEmpty) return null
 
-  return <AssistantBubble msg={msg} isStreaming={isStreaming} hasPending={hasPending} pendingText={pendingText} />
+  return <AssistantBubble agentId={agentId} msg={msg} isStreaming={isStreaming} hasPending={hasPending} pendingText={pendingText} />
 })

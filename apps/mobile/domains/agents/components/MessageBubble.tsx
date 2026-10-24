@@ -6,6 +6,7 @@ import { MessageContent } from "./MessageContent"
 import { ThinkingBlock } from "./ThinkingBlock"
 import { ToolCallsList } from "./ToolCallsList"
 import { AttachmentImage } from "./AttachmentImage"
+import { SharedFileChips } from "./SharedFileChips"
 
 function UserBubble({ content }: { content: string }) {
   const { files, text } = parseAttachedFiles(content)
@@ -26,7 +27,8 @@ function UserBubble({ content }: { content: string }) {
   )
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, isStreaming: isStreamingProp }: {
+export const MessageBubble = memo(function MessageBubble({ agentId, message, isStreaming: isStreamingProp }: {
+  agentId: string
   message: Message
   isStreaming?: boolean
 }) {
@@ -38,6 +40,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isStreaming:
   const pendingText = message.pendingText ?? ""
   const hasPending = pendingText.trim().length > 0
   const hasContent = !!message.content
+  const sharedFiles = message.sharedFiles ?? []
 
   return (
     <View style={{ paddingHorizontal: 16, paddingVertical: 6, alignItems: isUser ? "flex-end" : "flex-start" }}>
@@ -61,13 +64,15 @@ export const MessageBubble = memo(function MessageBubble({ message, isStreaming:
           {/* Content */}
           {hasContent ? (
             <MessageContent text={message.content} />
-          ) : toolCalls.length === 0 && !hasPending ? (
+          ) : toolCalls.length === 0 && !hasPending && sharedFiles.length === 0 ? (
             <View style={{ flexDirection: "row", gap: 4, paddingVertical: 4 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.secondary }} />
               ))}
             </View>
           ) : null}
+
+          {sharedFiles.length > 0 && <SharedFileChips agentId={agentId} files={sharedFiles} />}
         </View>
       )}
     </View>

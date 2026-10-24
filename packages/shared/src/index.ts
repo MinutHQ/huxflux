@@ -62,6 +62,7 @@ export {
   describeUploadError,
 } from "./domains/agents/attachments.js"
 export type { AttachedFile, ParsedUserContent } from "./domains/agents/attachments.js"
+export { MAX_SHARED_FILE_BYTES, sharedFileUrl } from "./domains/agents/sharedFiles.js"
 export { derivePaneAnchor, resolvePaneAnchor } from "./domains/agents/paneAnchor.js"
 export type { PaneAnchor, PaneDirection, PaneRect, PaneSite } from "./domains/agents/paneAnchor.js"
 export {
@@ -71,6 +72,7 @@ export {
   agentSummarySchema,
   agentStatusSchema,
   messageSchema,
+  sharedFileSchema,
   toolCallSchema,
   fileChangeSchema,
   slashCommandSchema,
@@ -104,6 +106,7 @@ export type {
   AgentSummary,
   AgentStatus,
   Message,
+  SharedFile,
   ToolCall,
   SubagentStatus,
   SubagentUpdate,

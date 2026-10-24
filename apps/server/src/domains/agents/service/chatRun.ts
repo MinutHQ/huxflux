@@ -20,6 +20,7 @@ import {
 } from "../../tasks/runnerTags.js"
 import { prReplyHandler } from "../../pull-requests/runnerTags.js"
 import { buildChatTagInstructions, buildNamingTurnContext } from "./tagInstructions.js"
+import { agentFileHandler } from "./shareFileTag.js"
 
 interface ChatRunInput {
   agentId: string
@@ -58,6 +59,7 @@ export function buildChatRunOptions(input: ChatRunInput): RunAgentOptions {
     taskStatusHandler(),
     taskDependencyHandler(),
     prReplyHandler(agentId),
+    agentFileHandler(agentId, input.worktreePath),
   ]
 
   const allRepos = db.select().from(reposTable).all()

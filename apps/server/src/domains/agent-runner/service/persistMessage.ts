@@ -8,6 +8,7 @@ import {
   toolCalls as toolCallsTable,
 } from "../../../db/schema.js"
 import { agentsWs } from "../../agents/agents.ws.js"
+import type { SharedFile } from "@huxflux/shared"
 import type { Message } from "../../../types.js"
 import type { StreamState, CollectedToolCall } from "../../agents/agents.types.js"
 import type { TagHandler, TagFollowUp } from "../agent-runner.types.js"
@@ -75,7 +76,8 @@ export async function persistAssistantMessage(args: PersistArgs): Promise<void> 
   // We parse from fullContent (not finalContent) so handlers see directives
   // that streamed before tool calls reset the pendingText buffer.
   const parsed = parseTagsFromText(state.fullContent)
-  followUps.push(...await dispatchTags(parsed, tags))
+  const sharedFiles: SharedFile[] = []
+  followUps.push(...await dispatchTags(parsed, tags, sharedFiles))
 
   // Fallback: derive title + branch from the first user message if the agent
   // never emitted the rename tags and is still on the random-bee placeholder.
@@ -88,10 +90,10 @@ export async function persistAssistantMessage(args: PersistArgs): Promise<void> 
 
   const finalContent = appendInterruptedNote(stripTagsFromBody(computeFinalContent(state, providerId)), interruptedReason)
 
-  await writeAssistantRow(messageId, finalContent, state, model, startedAt)
+  await writeAssistantRow(messageId, finalContent, state, model, startedAt, sharedFiles)
   await updateToolCallResults(state.collectedToolCalls)
 
-  const builtMessage = buildMessage(messageId, finalContent, state, skeletonCreatedAt, startedAt, model)
+  const builtMessage = buildMessage(messageId, finalContent, state, skeletonCreatedAt, startedAt, model, sharedFiles)
 
   // Emit message:done immediately after the message is persisted with
   // durationMs set — this clears the client loading state regardless of what
@@ -171,10 +173,12 @@ async function writeAssistantRow(
   state: StreamState,
   model: string,
   startedAt: number,
+  sharedFiles: SharedFile[],
 ): Promise<void> {
   await db.update(messagesTable)
     .set({
       content: finalContent,
+      sharedFiles: sharedFiles.length > 0 ? JSON.stringify(sharedFiles) : null,
       thinking: state.fullThinking || null,
       durationMs: Date.now() - startedAt,
       model,
@@ -205,11 +209,13 @@ function buildMessage(
   skeletonCreatedAt: string,
   startedAt: number,
   model: string,
+  sharedFiles: SharedFile[],
 ): Message {
   return {
     id: messageId,
     role: "assistant",
     content: finalContent,
+    sharedFiles: sharedFiles.length > 0 ? sharedFiles : undefined,
     thinking: state.fullThinking || undefined,
     timestamp: skeletonCreatedAt,
     durationMs: Date.now() - startedAt,

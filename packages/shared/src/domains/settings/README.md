@@ -23,6 +23,10 @@ Cross-platform API slice for the server-side settings blob, the feature-flag / p
 - `serverConfigSchema` — Zod schema for `GET /api/config`
 - `serverVersionInfoSchema` — Zod schema for `GET /api/system/version` and `POST /api/system/version/check`
 - `updateResultSchema` — Zod schema for `POST /api/system/update` (202: the install runs in the background)
+- `androidUpdateInfoSchema` / `AndroidUpdateInfo` — Zod schema and shape of `GET /api/system/android-update` (newest APK on the server's update channel, or nulls)
+- `isNewerVersion` — semver precedence check used by every updater (server, desktop, mobile)
+- `selectAndroidRelease` / `androidApkAssetName` — picks the newest GitHub release carrying an APK for a channel; the asset naming contract with the release workflows
+- `AndroidRelease` / `GithubRelease` / `GithubReleaseAsset` — types for the above
 - `waitForServerUpdate` — polls the server version after `POST /api/system/update` until the background install succeeds, fails, or the server restarts
 - `ServerUpdateOutcome` / `WaitForServerUpdateOptions` — result and options of `waitForServerUpdate`
 - `feedbackRequestSchema` — Zod schema for the body of `POST /api/feedback`

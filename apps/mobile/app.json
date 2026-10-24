@@ -2,7 +2,7 @@
   "expo": {
     "name": "Huxflux",
     "slug": "huxflux-mobile",
-    "version": "1.0.0",
+    "version": "0.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -28,7 +28,10 @@
         "backgroundColor": "#0a0a0a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.huxflux.mobile"
+      "package": "com.huxflux.mobile",
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ]
     },
     "plugins": [
       "expo-router",

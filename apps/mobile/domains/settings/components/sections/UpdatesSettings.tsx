@@ -1,4 +1,4 @@
-import { View, Text } from "react-native"
+import { Platform, View, Text } from "react-native"
 import { api, queryKeys, useHuxfluxMutation, useHuxfluxQuery, waitForServerUpdate, type ServerVersionInfo } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { c } from "@/theme"
@@ -7,6 +7,7 @@ import { SectionLabel, SettingsCard } from "../SettingsRow"
 import { PrimaryButton, LinkButton } from "../FormField"
 import { SchemaSection } from "../server-settings/SchemaSection"
 import type { ServerSettingsState } from "../../hooks/useServerSettings"
+import { useAppUpdate } from "../../hooks/useAppUpdate"
 
 function ServerVersionCard() {
   const modal = useModal()
@@ -56,11 +57,41 @@ function ServerVersionCard() {
   )
 }
 
-/** Update channel + auto-update toggle from the schema, plus the server version block. */
+function AppVersionCard() {
+  const { current, available, progress, error, install } = useAppUpdate()
+  if (Platform.OS !== "android") return null
+  const installing = progress !== null
+  return (
+    <View>
+      <SectionLabel label="App" />
+      <SettingsCard>
+        <View style={{ paddingVertical: 12, gap: 10 }}>
+          <View>
+            <Text style={{ color: c.fg, fontSize: 14, fontFamily: "monospace" }}>{current}</Text>
+            <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>
+              {error ?? (available ? `${available.version} available` : "Up to date")}
+            </Text>
+          </View>
+          {available && (
+            <PrimaryButton
+              label={installing ? `Downloading ${Math.round(progress * 100)}%` : `Update to ${available.version}`}
+              onPress={install}
+              loading={installing}
+              disabled={installing}
+            />
+          )}
+        </View>
+      </SettingsCard>
+    </View>
+  )
+}
+
+/** Update channel + auto-update toggle from the schema, plus the app and server version blocks. */
 export function UpdatesSettings({ state }: { state: ServerSettingsState }) {
   return (
     <View style={{ gap: 20 }}>
       <SchemaSection section="updates" state={state} />
+      <AppVersionCard />
       <ServerVersionCard />
     </View>
   )

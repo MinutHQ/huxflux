@@ -105,6 +105,13 @@ export const updateResultSchema = z.object({
 
 export type UpdateResult = z.infer<typeof updateResultSchema>
 
+export const androidUpdateInfoSchema = z.object({
+  version: z.string().nullable(),
+  url: z.string().nullable(),
+})
+
+export type AndroidUpdateInfo = z.infer<typeof androidUpdateInfoSchema>
+
 export const feedbackRequestSchema = z.object({
   title: z.string(),
   body: z.string().optional(),

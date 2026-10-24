@@ -56,6 +56,9 @@ async function ignoredSet(worktreePath: string, relPaths: string[]): Promise<Set
       // Exit code 1 means "nothing ignored"; any other failure (not a git repo) also means no info.
       resolve(new Set(String(stdout ?? "").split("\0").filter(Boolean)))
     })
+    // git exits early outside a repo; writing to its closed stdin then raises
+    // EPIPE, which must not escape as an uncaught exception.
+    child.stdin?.on("error", () => {})
     child.stdin?.end(relPaths.join("\0") + "\0")
   })
 }

@@ -198,7 +198,7 @@ function printDisclaimer() {
   │     Run 'huxflux sandbox' to restrict file/binary access.     │
   │                                                               │
   │  6. Rotate the token if it leaks                              │
-  │     huxflux token rotate && huxflux stop && huxflux start     │
+  │     huxflux token rotate && huxflux restart                   │
   │                                                               │
   │  7. Audit requests                                            │
   │     huxflux audit   — tail the request log                    │
@@ -261,7 +261,7 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
     saveConfig(cfg)
     console.info(`Added: ${added.join(", ")}`)
     console.info(`Allowed now: ${cfg.sandbox.allowedBinaries.join(", ")}`)
-    console.info(`\nRestart to apply: huxflux stop && huxflux start`)
+    console.info(`\nRestart to apply: huxflux restart`)
     return
   }
 
@@ -275,7 +275,7 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
     saveConfig(cfg)
     console.info(`Removed: ${removed.join(", ")}`)
     console.info(`Allowed now: ${next.length > 0 ? next.join(", ") : "(none)"}`)
-    console.info(`\nRestart to apply: huxflux stop && huxflux start`)
+    console.info(`\nRestart to apply: huxflux restart`)
     return
   }
 
@@ -286,7 +286,7 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
       console.info("Sandbox enabled — but firejail is not installed:")
       console.info("  sudo apt install firejail")
     } else {
-      console.info("Sandbox enabled. Restart to apply: huxflux stop && huxflux start")
+      console.info("Sandbox enabled. Restart to apply: huxflux restart")
     }
     return
   }
@@ -294,7 +294,7 @@ async function cmdSandbox(sub?: string, ...rest: string[]) {
   if (sub === "disable") {
     cfg.sandbox = { enabled: false, allowedBinaries: cfg.sandbox?.allowedBinaries ?? [] }
     saveConfig(cfg)
-    console.info("Sandbox disabled. Restart to apply: huxflux stop && huxflux start")
+    console.info("Sandbox disabled. Restart to apply: huxflux restart")
     return
   }
 
@@ -341,7 +341,7 @@ async function cmdSandboxSetup(cfg: Config) {
 
   console.info("\nSandbox configured:")
   console.info(`  Extra binaries: ${allowedBinaries.length > 0 ? allowedBinaries.join(", ") : "none"}`)
-  console.info(`\nRestart to apply: huxflux stop && huxflux start\n`)
+  console.info(`\nRestart to apply: huxflux restart\n`)
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -433,6 +433,7 @@ async function cmdStart() {
   await printConnectInfo(cfg, pid)
   console.info(`\n  huxflux logs    — tail the server log`)
   console.info(`  huxflux crashes — tail the crash log`)
+  console.info(`  huxflux restart — restart the server`)
   console.info(`  huxflux stop    — stop the server`)
   if (!cfg.sandbox?.enabled && os.platform() === "linux") {
     console.info(`\n  Tip: run 'huxflux sandbox' to restrict Claude's file access.`)
@@ -585,19 +586,30 @@ function unloadService() {
   return true
 }
 
-function killStaleProcesses(excludePid?: number) {
+function listServerProcesses(): number[] {
   try {
     const result = spawnSync("pgrep", ["-f", "huxflux/dist/(index|cli)"], { encoding: "utf8", stdio: "pipe" })
-    if (result.status !== 0 || !result.stdout) return
-    for (const line of result.stdout.trim().split("\n")) {
-      const pid = parseInt(line, 10)
-      if (isNaN(pid) || pid === process.pid || pid === excludePid) continue
-      try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
-    }
-  } catch { /* pgrep not available, skip */ }
+    if (result.status !== 0 || !result.stdout) return []
+    return result.stdout.trim().split("\n")
+      .map((line) => parseInt(line, 10))
+      // Skip ourselves and our parent: `_restart` runs as a child of the
+      // `huxflux restart` CLI, which matches the pattern when run by path.
+      .filter((pid) => !isNaN(pid) && pid !== process.pid && pid !== process.ppid)
+  } catch {
+    return [] // pgrep not available
+  }
 }
 
-function cmdStop() {
+function killStaleProcesses(excludePid?: number) {
+  for (const pid of listServerProcesses()) {
+    if (pid === excludePid) continue
+    try { process.kill(pid, "SIGTERM") } catch { /* already gone */ }
+  }
+}
+
+interface StopResult { pid: number | null; serviceUnloaded: boolean }
+
+function stopServer(): StopResult {
   const serviceUnloaded = unloadService()
   const pid = getRunningPid()
   if (pid) {
@@ -606,6 +618,22 @@ function cmdStop() {
   killStaleProcesses()
   if (fs.existsSync(PID_FILE)) try { fs.unlinkSync(PID_FILE) } catch { /* ignore */ }
   if (fs.existsSync(PORT_FILE)) try { fs.unlinkSync(PORT_FILE) } catch { /* ignore */ }
+  return { pid, serviceUnloaded }
+}
+
+// The server drains running turns on SIGTERM (up to 7s), so the old process
+// can hold the port for a while after `stopServer` returns.
+function waitForServerExit(timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (listServerProcesses().length === 0) return true
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+  }
+  return listServerProcesses().length === 0
+}
+
+function cmdStop() {
+  const { pid, serviceUnloaded } = stopServer()
   if (pid) {
     console.info(`huxflux stopped  (PID ${pid})`)
   } else if (serviceUnloaded) {
@@ -617,6 +645,49 @@ function cmdStop() {
   if (serviceUnloaded) {
     console.info("Note: auto-start is now disabled. Run 'huxflux start' to restart, or re-run 'huxflux setup' to re-enable auto-start.")
   }
+}
+
+// Runs the stop + start sequence in a detached child with its cwd outside any
+// worktree. When `huxflux restart` is run from an agent terminal, the old
+// server kills that terminal's processes on shutdown; a child that outlives it
+// still brings the new server up.
+async function cmdRestart() {
+  const pid = getRunningPid()
+  console.info(pid ? `Restarting huxflux  (PID ${pid})...` : "huxflux was not running, starting it...")
+  const logFd = fs.openSync(LOG_FILE, "a")
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "_restart"], {
+    detached: true,
+    cwd: os.homedir(),
+    stdio: ["ignore", logFd, logFd],
+    env: process.env,
+  })
+  fs.closeSync(logFd)
+  const code = await new Promise<number | null>((resolve) => child.on("exit", resolve))
+  if (code !== 0) {
+    console.error("Restart failed. Check: huxflux logs")
+    console.error("Start the server again with: huxflux start")
+    process.exit(1)
+  }
+  const cfg = loadConfig()
+  const newPid = getRunningPid()
+  console.info(`\nhuxflux restarted${newPid ? `  (PID ${newPid})` : ""}\n`)
+  await printConnectInfo(cfg, newPid ?? undefined)
+  console.info("")
+}
+
+async function runRestart() {
+  const { pid } = stopServer()
+  console.info(`[restart] Stopping huxflux${pid ? ` (PID ${pid})` : ""}`)
+  // Wait even when no PID file was found: stopServer also SIGTERMs stale
+  // processes, which may still hold the port while they drain.
+  if (!waitForServerExit(15_000)) {
+    console.error("[restart] The old server did not exit in time")
+    process.exit(1)
+  }
+  // startServer re-installs and re-loads the service when one is installed,
+  // so auto-start stays enabled across a restart.
+  const { pid: newPid } = await startServer({ silent: true })
+  console.info(`[restart] huxflux restarted (PID ${newPid})`)
 }
 
 async function cmdStatus() {
@@ -680,7 +751,7 @@ function cmdToken(sub?: string) {
     console.info(`\nNew token generated.\n`)
     console.info(`  Update the web app with the new connection string:`)
     console.info(`\n    ${connectionString(cfg)}\n`)
-    console.info(`  Restart to apply: huxflux stop && huxflux start\n`)
+    console.info(`  Restart to apply: huxflux restart\n`)
     return
   }
   console.info(cfg.token)
@@ -1280,6 +1351,7 @@ Terminal=false
   p.log.info("huxflux status   Connection info and server URL")
   p.log.info("huxflux logs     Tail the server log")
   p.log.info("huxflux stop     Stop the server")
+  p.log.info("huxflux restart  Restart the server")
   p.log.info("huxflux update   Update to the latest version")
 
   // Build a helpful outro based on what was installed
@@ -1785,7 +1857,7 @@ async function cmdProxy(sub?: string) {
     delete cfg.proxyUrl
     saveConfig(cfg)
     console.info("Proxy disabled.")
-    if (getRunningPid() !== null) console.info("Restart the server to apply: huxflux stop && huxflux start")
+    if (getRunningPid() !== null) console.info("Restart the server to apply: huxflux restart")
     return
   }
 
@@ -1804,7 +1876,7 @@ async function cmdProxy(sub?: string) {
   if (!ok) { p.cancel("Proxy setup cancelled."); process.exit(0) }
 
   if (getRunningPid() !== null) {
-    p.log.warning("Restart the server to apply the change: huxflux stop && huxflux start")
+    p.log.warning("Restart the server to apply the change: huxflux restart")
   }
   p.outro("Proxy configured. Sign in with your account in the web app and pick this server by name.")
 }
@@ -1820,6 +1892,7 @@ Usage:
   huxflux setup     Interactive setup wizard (install components, start server)
   huxflux open [host]   Open the web app and auto-connect to this server
   huxflux stop      Stop the running server
+  huxflux restart   Restart the server (keeps auto-start enabled)
   huxflux status    Show server status, URL, and auth token
   huxflux agent list|get|create|status   Manage agents on the running server
                     (run 'huxflux agent' for details; e.g. create one in triage)
@@ -1865,6 +1938,8 @@ switch (cmd) {
   case "_supervisor": runSupervisor(); break
   case "open":        cmdOpen(cmdArgs[0]); break
   case "stop":        cmdStop(); break
+  case "restart":     cmdRestart().catch((err) => { console.error(err); process.exit(1) }); break
+  case "_restart":    runRestart().catch((err) => { console.error(err); process.exit(1) }); break
   case "status":      cmdStatus().catch(console.error); break
   case "agent":       cmdAgent(cmdArgs).catch(console.error); break
   case "logs":        cmdLogs(); break

@@ -1,6 +1,6 @@
 // Mirrors apps/web/src/data/mock.ts — shared contract between server and web client
 
-import type { SubagentStatus } from "@huxflux/shared"
+import type { SharedFile, SubagentStatus } from "@huxflux/shared"
 
 export type AgentStatus = "done" | "in-review" | "draft-pr" | "in-progress" | "triage" | "backlog" | "cancelled"
 
@@ -158,6 +158,7 @@ export interface Message {
   contextTokens?: number
   contextWindow?: number
   sender?: string
+  sharedFiles?: SharedFile[]
 }
 
 export interface Agent {

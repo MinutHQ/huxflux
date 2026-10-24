@@ -57,6 +57,7 @@ export function buildChatTagInstructions(args: BuildArgs): string {
     ...buildForkDirective(args.isFolderAgent),
     ...buildThreadDirective(args.availableRepos),
     ...buildPRReplyDirective(args.hasPrNumber),
+    buildShareFileDirective(),
   ].filter(Boolean).join("\n\n")
 }
 
@@ -203,6 +204,18 @@ function buildPRReplyDirective(hasPrNumber: boolean): string[] {
       `After fixing and replying, push your changes.`,
     ].join("\n"),
   ]
+}
+
+function buildShareFileDirective(): string {
+  return [
+    `## Sharing files with the user`,
+    ``,
+    `The user may be on another machine or a phone and cannot open paths on this one. To hand them a file, attach it to your reply. It appears as a download button under your message:`,
+    `  <huxflux:agents.file path="android/app/build/outputs/apk/release/app-release.apk"/>`,
+    `Relative paths resolve against your working directory; absolute and ~/ paths work too. Emit one tag per file. Directories cannot be shared: zip them first.`,
+    `Share a file when the user asks for one, or when the file is the deliverable of the task (a built APK, an exported report). Do not share intermediate build output or source files the user can already see in the diff.`,
+    `The server copies the file when your turn ends, so make sure it is fully written first. If sharing fails, the server tells you why in a system message.`,
+  ].join("\n")
 }
 
 interface TaskTagArgs {

@@ -8,6 +8,7 @@ import { agents, messages, repos } from "../../../db/schema.js"
 import { enqueue, drainQueue } from "../service/messageQueue.js"
 import { clearConversation, isClearCommand } from "../service/clearConversation.js"
 import { loadToolCallTrees } from "../service/toolCallTree.js"
+import { parseSharedFiles } from "../service/sharedFiles.js"
 import { isAgentRunning, injectUserMessage } from "../../agent-runner/agent-runner.service.js"
 import type { QueuedMessage } from "../agents.types.js"
 import * as path from "node:path"
@@ -87,6 +88,7 @@ async function listMessagesHandler(
   return msgs.map((m) => ({
     ...m,
     injected: m.injected ? true : undefined,
+    sharedFiles: parseSharedFiles(m.sharedFiles),
     toolCalls: toolCallsByMsg.get(m.id),
   }))
 }

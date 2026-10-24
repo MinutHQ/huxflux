@@ -91,7 +91,7 @@ export function ChatMessageList({
       <div ref={setScrollContent} className="px-10 py-8">
         <LoadMoreButton hasMore={hasMore} isLoadingMore={isLoadingMore} loadMore={loadMore} />
         {agent.messages.map((msg, i) => (
-          <MessageBubble key={msg.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
+          <MessageBubble key={msg.id} agentId={agent.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
         ))}
         {uiIsStreaming && <TypingBubble elapsedSeconds={elapsedSeconds} />}
         {messageQueue.filter((m) => m.agentId === agent.id).map((qm) => (

@@ -9,6 +9,7 @@
 // the persisted chat content so they never leak into the visible UI.
 
 import type { ZodType, infer as ZodInfer } from "zod/v4"
+import type { SharedFile } from "@huxflux/shared"
 import type { RunnerOptions } from "../agents/agents.types.js"
 
 export interface ParsedTag {
@@ -42,6 +43,8 @@ export interface TagFollowUp {
 export interface TagOutcome {
   /** Deliver this message to the agent as a new turn after finalize. */
   followUp?: TagFollowUp
+  /** Files to show on the assistant message being persisted, as download chips. */
+  sharedFiles?: SharedFile[]
 }
 
 /**

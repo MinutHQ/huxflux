@@ -1,14 +1,15 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod"
 import { z } from "zod/v4"
-import { eq, isNull, and } from "drizzle-orm"
+import { eq, isNull, and, inArray } from "drizzle-orm"
 import { db } from "../../../db/index.js"
-import { agents, repos } from "../../../db/schema.js"
+import { agents, messages, repos } from "../../../db/schema.js"
 import { removeWorktree, getDiffSummary } from "../../git/worktrees.js"
 import { unwatchWorktree } from "../../git/watcher.js"
 import { killWorktreeProcesses } from "../../git/processes.js"
 import { agentsWs } from "../agents.ws.js"
 import { killAgentTerminals } from "../../ws/pty.js"
 import { clearQueue } from "../service/messageQueue.js"
+import { removeSharedFiles } from "../service/sharedFiles.js"
 import { endTurn, getBackgroundState, getTaskListState } from "../../agent-runner/agent-runner.service.js"
 import * as path from "node:path"
 
@@ -49,6 +50,14 @@ export const agentsLifecycleRoutes: FastifyPluginAsyncZod = async (app) => {
     await db.update(agents).set({ deletedAt: now }).where(eq(agents.id, req.params.id))
     agentsWs.agentDeleted(req.params.id)
     reply.code(204).send()
+
+    // Shared files can be hundreds of MB each; archiving frees them like the worktree.
+    // The transcript stays viewable, so drop the chips too instead of leaving links that 404.
+    const archivedIds = [req.params.id, ...childRows.map((c) => c.id)]
+    await db.update(messages).set({ sharedFiles: null }).where(inArray(messages.agentId, archivedIds))
+    for (const agentId of archivedIds) {
+      removeSharedFiles(agentId).catch((err) => app.log.warn(`Shared file removal failed: ${err}`))
+    }
 
     // Remove worktree from disk (frees space) but keep DB record
     // Skip for child agents — they share the parent's worktree

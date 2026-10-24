@@ -9,6 +9,7 @@ import { getAgentPortsFromDB, getAllPortsFromDB } from "../../git/processes.js"
 import { getPendingQuestionPayload } from "../../../askStore.js"
 import { loadAttention } from "../service/attention.js"
 import { loadToolCallTrees } from "../service/toolCallTree.js"
+import { parseSharedFiles } from "../service/sharedFiles.js"
 
 const idParamsSchema = z.object({ id: z.string() })
 
@@ -124,6 +125,7 @@ function attachToolCalls(msgs: Array<typeof messages.$inferSelect>): unknown[] {
   return msgs.map((m) => ({
     ...m,
     injected: m.injected ? true : undefined,
+    sharedFiles: parseSharedFiles(m.sharedFiles),
     toolCalls: toolCallsByMsg.get(m.id),
   }))
 }

@@ -7,10 +7,12 @@ import { ThinkingBlock } from "./ThinkingBlock"
 import { ToolCallsAccordion } from "./ToolCallsAccordion"
 import { PRCreatedCard } from "./PRCreatedCard"
 import { TurnDiffSummary } from "./TurnDiffSummary"
+import { SharedFileChips } from "./SharedFileChips"
 import { MarkdownContent } from "./MarkdownContent"
 import { buildTurnSegments, isSubstantiveReply, lastCallIsPromoted, promoteAll, type TurnSegment } from "./turnSegments"
 
 interface AssistantBubbleProps {
+  agentId: string
   msg: Message
   isStreaming: boolean
   hasPending: boolean
@@ -51,7 +53,7 @@ function TurnText({ content, className }: { content: string; className?: string 
   )
 }
 
-export function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: AssistantBubbleProps) {
+export function AssistantBubble({ agentId, msg, isStreaming, hasPending, pendingText }: AssistantBubbleProps) {
   // Mid-turn text (a tool call's precedingText) is folded into the accordion
   // unless promoted: everything when the user opted in, else only replies that
   // look like an answer rather than narration. Each promoted block opens a new
@@ -87,6 +89,8 @@ export function AssistantBubble({ msg, isStreaming, hasPending, pendingText }: A
       {msg.content && !isStreaming && <PRCreatedCard content={msg.content} />}
 
       {body && <TurnText content={body} />}
+
+      {msg.sharedFiles && msg.sharedFiles.length > 0 && <SharedFileChips agentId={agentId} files={msg.sharedFiles} />}
 
       {!isStreaming && msg.toolCalls && msg.toolCalls.length > 0 && (
         <TurnDiffSummary calls={msg.toolCalls} />

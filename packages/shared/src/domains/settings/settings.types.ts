@@ -91,6 +91,9 @@ export const serverVersionInfoSchema = z.object({
   current: z.string(),
   latest: z.string().nullable(),
   updateAvailable: z.boolean(),
+  // Optional: servers before the background-install change do not send these.
+  updateInProgress: z.boolean().optional(),
+  updateError: z.string().nullable().optional(),
 })
 
 export type ServerVersionInfo = z.infer<typeof serverVersionInfoSchema>

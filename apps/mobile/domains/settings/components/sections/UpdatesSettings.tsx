@@ -1,5 +1,5 @@
 import { View, Text } from "react-native"
-import { api, queryKeys, useHuxfluxMutation, useHuxfluxQuery, type ServerVersionInfo } from "@huxflux/shared"
+import { api, queryKeys, useHuxfluxMutation, useHuxfluxQuery, waitForServerUpdate, type ServerVersionInfo } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
@@ -23,10 +23,12 @@ function ServerVersionCard() {
     onError: () => modal.showAlert("Check failed", "Could not check for server updates."),
   })
 
-  const update = useHuxfluxMutation<unknown, void>({
-    mutationFn: () => api.settings.triggerUpdate(),
-    onSuccess: () => modal.showAlert("Server updating", "The server will restart with the new version."),
-    onError: () => modal.showAlert("Update failed", "The server could not update itself."),
+  const update = useHuxfluxMutation<void, void>({
+    mutationFn: () => api.settings.triggerUpdate()
+      .then(() => waitForServerUpdate(() => api.settings.serverVersion()))
+      .then((outcome) => { if (outcome.status === "failed") throw new Error(outcome.error) }),
+    onSuccess: () => modal.showAlert("Server updated", "It restarts with the new version once running agents finish."),
+    onError: (err) => modal.showAlert("Update failed", err.message || "The server could not update itself."),
   })
 
   const busy = check.isPending || update.isPending

@@ -289,7 +289,14 @@ async fn latest_beta_tag_via_github() -> Option<String> {
     for r in releases {
         let is_prerelease = r.get("prerelease").and_then(|v| v.as_bool()).unwrap_or(false);
         let is_draft = r.get("draft").and_then(|v| v.as_bool()).unwrap_or(true);
-        if is_prerelease && !is_draft {
+        // Skip prereleases without a manifest (still uploading, or the desktop
+        // build failed): pointing the updater at them only yields a 404.
+        let has_manifest = r
+            .get("assets")
+            .and_then(|v| v.as_array())
+            .map(|assets| assets.iter().any(|a| a.get("name").and_then(|n| n.as_str()) == Some("latest-beta.json")))
+            .unwrap_or(false);
+        if is_prerelease && !is_draft && has_manifest {
             return r.get("tag_name").and_then(|v| v.as_str()).map(|s| s.to_string());
         }
     }

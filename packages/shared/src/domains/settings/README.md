@@ -22,7 +22,9 @@ Cross-platform API slice for the server-side settings blob, the feature-flag / p
 - `providerInfoSchema` — Zod schema for one entry returned by `GET /api/providers`
 - `serverConfigSchema` — Zod schema for `GET /api/config`
 - `serverVersionInfoSchema` — Zod schema for `GET /api/system/version` and `POST /api/system/version/check`
-- `updateResultSchema` — Zod schema for `POST /api/system/update`
+- `updateResultSchema` — Zod schema for `POST /api/system/update` (202: the install runs in the background)
+- `waitForServerUpdate` — polls the server version after `POST /api/system/update` until the background install succeeds, fails, or the server restarts
+- `ServerUpdateOutcome` / `WaitForServerUpdateOptions` — result and options of `waitForServerUpdate`
 - `feedbackRequestSchema` — Zod schema for the body of `POST /api/feedback`
 - `feedbackResponseSchema` — Zod schema for the response of `POST /api/feedback`
 - `ProviderInfo` — provider entry returned by `GET /api/providers`

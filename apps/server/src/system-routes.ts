@@ -17,9 +17,12 @@ export async function systemRoutes(app: FastifyInstance) {
     }
     const res = await fetch(url, { headers })
     if (!res.ok) return { tag: null }
-    const releases = await res.json() as { prerelease?: boolean; draft?: boolean; tag_name?: string }[]
+    const releases = await res.json() as { prerelease?: boolean; draft?: boolean; tag_name?: string; assets?: { name?: string }[] }[]
     for (const r of releases) {
-      if (r.prerelease && !r.draft) {
+      // Skip prereleases without a desktop manifest (a release still uploading,
+      // or one whose desktop build failed): the updater would 404 on them.
+      const hasManifest = r.assets?.some((a) => a.name === "latest-beta.json") ?? false
+      if (r.prerelease && !r.draft && hasManifest) {
         return { tag: r.tag_name ?? null }
       }
     }
@@ -43,16 +46,15 @@ export async function systemRoutes(app: FastifyInstance) {
     return checkForUpdate()
   })
 
-  // Trigger server update (npm install + restart)
+  // Start a server update (npm install + restart). `npm install -g` routinely
+  // outlives a client request timeout, so the install runs in the background
+  // and clients poll /api/system/version (updateInProgress, updateError).
   app.post("/api/system/update", async (_req, reply) => {
     const info = getVersionInfo()
-    if (!info.updateAvailable) {
+    if (!info.updateAvailable && !info.updateInProgress) {
       return reply.status(400).send({ error: "No update available" })
     }
-    const result = await triggerServerUpdate()
-    if (!result.success) {
-      return reply.status(500).send({ error: result.error ?? "Update failed" })
-    }
-    return { success: true, message: "Update installed, server restarting..." }
+    void triggerServerUpdate()
+    return reply.status(202).send({ success: true, message: "Update started" })
   })
 }

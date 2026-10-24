@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from "@huxflux/ui"
 import { IconRefresh, IconDownload } from "@tabler/icons-react"
-import { api } from "@huxflux/shared"
+import { api, waitForServerUpdate } from "@huxflux/shared"
 import { isTauri } from "@/lib/platform"
 import { toast } from "sonner"
 
@@ -78,11 +78,18 @@ function ServerUpdateSection({ channel }: { channel: string }) {
     setUpdating(true)
     try {
       await api.settings.triggerUpdate()
-      toast.info("Server updating", { description: "The server will restart with the new version." })
     } catch {
-      toast.error("Server update failed")
+      toast.error("Server update failed", { description: "The server could not start the update." })
       setUpdating(false)
+      return
     }
+    const outcome = await waitForServerUpdate(() => api.settings.serverVersion())
+    if (outcome.status === "failed") {
+      toast.error("Server update failed", { description: outcome.error, duration: 10000 })
+      setUpdating(false)
+      return
+    }
+    toast.info("Server updated", { description: "It restarts with the new version once running agents finish." })
   }
 
   return (

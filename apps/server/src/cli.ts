@@ -28,7 +28,7 @@ import { isFirejailAvailable, sandboxStatus } from "./sandbox.js"
 import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
 import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
-import { dropGithubPackagesPin } from "./npmRegistry.js"
+import { dropGithubPackagesPin, npmEnv } from "./npmRegistry.js"
 import { runAgentCommand } from "./domains/mcp/agentCli.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -830,7 +830,7 @@ function cmdUpdate() {
   const tag = getUpdateChannel()
   const label = tag === "beta" ? " (beta channel)" : ""
   console.info(`\nUpdating huxflux${label} (current: ${VERSION})...\n`)
-  let result = spawnSync(`npm install -g @minuthq/huxflux@${tag}`, [], { stdio: "inherit", shell: true })
+  let result = spawnSync(`npm install -g @minuthq/huxflux@${tag}`, [], { stdio: "inherit", shell: true, env: npmEnv() })
   if (result.status !== 0) {
     console.info("\nRetrying with sudo...")
     result = spawnSync(`sudo npm install -g @minuthq/huxflux@${tag}`, [], { stdio: "inherit", shell: true })
@@ -1583,6 +1583,9 @@ function cmdService(sub?: string) {
 // ── Post-install restart ────────────────────────────────────────────────────
 
 function cmdPostinstall() {
+  // The server is installing its own update and restarts itself once idle.
+  // Stopping it here would also kill the npm install that is running us.
+  if (process.env.HUXFLUX_SELF_UPDATE === "1") return
   const pid = getRunningPid()
   if (!pid) return
   console.info(`Restarting server after update (PID ${pid})...`)

@@ -144,6 +144,8 @@ export type { QuestionDraft } from "./domains/agents/askAnswers.js"
 
 // ── settings ─────────────────────────────────────────────────────────────────
 export { settingsApi } from "./domains/settings/settings.api.js"
+export { waitForServerUpdate } from "./domains/settings/waitForServerUpdate.js"
+export type { ServerUpdateOutcome, WaitForServerUpdateOptions } from "./domains/settings/waitForServerUpdate.js"
 export { settingsSchema, settingsDefaults } from "./domains/settings/settings.schema.js"
 export type { SettingDef, SettingsSection, HuxfluxSettings } from "./domains/settings/settings.schema.js"
 export {

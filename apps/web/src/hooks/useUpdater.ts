@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { isTauri } from "@/lib/platform"
-import { api } from "@huxflux/shared"
+import { api, waitForServerUpdate } from "@huxflux/shared"
 
 const PENDING_SERVER_UPDATE_KEY = "huxflux:pending-server-update"
 
@@ -42,7 +42,7 @@ export function useUpdater(): UpdaterState {
         .then((info) => {
           if (!cancelled && info?.available) setUpdate(info)
         })
-        .catch(() => { /* no update or offline */ })
+        .catch((err) => { console.warn("[updater] desktop update check failed:", err) })
     }
 
     doCheck()
@@ -64,8 +64,13 @@ export function useUpdater(): UpdaterState {
           return
         }
         return api.settings.triggerUpdate()
-          .then(() => {
-            toast.info("Server updating", { description: "The server is restarting with the new version." })
+          .then(() => waitForServerUpdate(() => api.settings.serverVersion()))
+          .then((outcome) => {
+            if (outcome.status === "failed") {
+              toast.error("Server update failed", { description: `${outcome.error}. You can retry from Settings.`, duration: 10000 })
+            } else {
+              toast.info("Server updated", { description: "It restarts with the new version once running agents finish." })
+            }
             setServerUpdating(false)
           })
           .catch(() => {

@@ -1,6 +1,6 @@
-import { spawn } from "node:child_process"
+import { spawn, type SpawnOptions } from "node:child_process"
 import { SERVER_VERSION } from "./version.js"
-import { dropGithubPackagesPin } from "./npmRegistry.js"
+import { dropGithubPackagesPin, isNewerVersion, npmEnv } from "./npmRegistry.js"
 import { getSettings } from "./domains/settings/settings.service.js"
 import { db } from "./db/index.js"
 import { agents as agentsTable } from "./db/schema.js"
@@ -10,8 +10,35 @@ import { restartWhenIdle } from "./shutdown.js"
 
 const NPM_PACKAGE = "@minuthq/huxflux"
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
+const VIEW_TIMEOUT_MS = 15_000
+const INSTALL_TIMEOUT_MS = 10 * 60 * 1000
+// npm is a .cmd shim on Windows and only resolves through a shell there.
+// Elsewhere it is spawned directly so a timeout kills npm, not just a shell.
+const SPAWN_SHELL = process.platform === "win32"
+// Read by `huxflux _postinstall`: when the server installs its own update, the
+// new version's postinstall must not stop the server (and, under launchd, the
+// whole job including the npm install itself). The server restarts on its own.
+const SELF_UPDATE_ENV = "HUXFLUX_SELF_UPDATE"
+
+interface UpdateResult {
+  success: boolean
+  error?: string
+}
 
 let latestVersion: string | null = null
+let installing: Promise<UpdateResult> | null = null
+let lastUpdateError: string | null = null
+// Set once an install succeeded. The restart can wait up to an hour for busy
+// agents; until then the new version is on disk and must not install again.
+let installedPendingRestart = false
+
+function spawnNpm(args: string[], options: SpawnOptions) {
+  // An args array with `shell: true` is deprecated (DEP0190), so the shell
+  // gets a single command string. Our args never need quoting.
+  return SPAWN_SHELL
+    ? spawn(`npm ${args.join(" ")}`, { ...options, shell: true })
+    : spawn("npm", args, options)
+}
 
 function getNpmTag(): string {
   const settings = getSettings()
@@ -22,45 +49,43 @@ export function getVersionInfo() {
   return {
     current: SERVER_VERSION,
     latest: latestVersion,
-    updateAvailable: latestVersion ? isNewer(latestVersion, SERVER_VERSION) : false,
+    updateAvailable: !installedPendingRestart && latestVersion !== null && isNewerVersion(latestVersion, SERVER_VERSION),
+    updateInProgress: installing !== null,
+    updateError: lastUpdateError,
   }
 }
 
-function parseSemver(v: string): { major: number; minor: number; patch: number; pre: number } {
-  const [base, preStr] = v.split("-beta.")
-  const [major, minor, patch] = base.split(".").map(Number)
-  return { major, minor, patch, pre: preStr ? Number(preStr) : Infinity }
-}
-
-function isNewer(a: string, b: string): boolean {
-  const pa = parseSemver(a)
-  const pb = parseSemver(b)
-  if (pa.major !== pb.major) return pa.major > pb.major
-  if (pa.minor !== pb.minor) return pa.minor > pb.minor
-  if (pa.patch !== pb.patch) return pa.patch > pb.patch
-  return pa.pre > pb.pre
-}
-
-export function checkForUpdate(): Promise<{ current: string; latest: string | null; updateAvailable: boolean }> {
+export function checkForUpdate(): Promise<ReturnType<typeof getVersionInfo>> {
   return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>
     try {
-      const tag = getNpmTag()
-      const child = spawn("npm", ["view", `${NPM_PACKAGE}@${tag}`, "version"], {
+      child = spawnNpm(["view", `${NPM_PACKAGE}@${getNpmTag()}`, "version"], {
         stdio: ["ignore", "pipe", "pipe"],
-        shell: true,
-        timeout: 15_000,
+        timeout: VIEW_TIMEOUT_MS,
+        env: npmEnv(),
       })
-      let stdout = ""
-      child.stdout?.on("data", (d) => { stdout += d })
-      child.on("close", (code) => {
-        const version = stdout.trim()
-        if (code === 0 && version) latestVersion = version
-        resolve(getVersionInfo())
-      })
-      child.on("error", () => resolve(getVersionInfo()))
-    } catch {
+    } catch (err) {
+      logger.warn({ err }, "[updater] version check failed")
       resolve(getVersionInfo())
+      return
     }
+    let stdout = ""
+    let stderr = ""
+    child.stdout?.on("data", (d) => { stdout += d })
+    child.stderr?.on("data", (d) => { stderr += d })
+    child.on("close", (code, signal) => {
+      const version = stdout.trim()
+      if (code === 0 && version) {
+        latestVersion = version
+      } else {
+        logger.warn({ code, signal, err: stderr.trim().slice(-2000) }, "[updater] version check failed")
+      }
+      resolve(getVersionInfo())
+    })
+    child.on("error", (err) => {
+      logger.warn({ err: err.message }, "[updater] version check failed")
+      resolve(getVersionInfo())
+    })
   })
 }
 
@@ -75,30 +100,65 @@ function isIdle(): boolean {
   }
 }
 
-
-export function triggerServerUpdate(): Promise<{ success: boolean; error?: string }> {
+function runInstall(): Promise<UpdateResult> {
   return new Promise((resolve) => {
-    dropGithubPackagesPin()
-    const tag = getNpmTag()
-    const child = spawn("npm", ["install", "-g", `${NPM_PACKAGE}@${tag}`], {
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
-    })
-
     let stderr = ""
+    let settled = false
+
+    function fail(error: string) {
+      if (settled) return
+      settled = true
+      lastUpdateError = error
+      resolve({ success: false, error })
+    }
+
+    lastUpdateError = null
+    let child: ReturnType<typeof spawn>
+    try {
+      dropGithubPackagesPin()
+      // stdout is ignored, not piped: an unread pipe fills up and blocks npm.
+      // The timeout is generous on purpose: a killed global install can leave
+      // the package half-replaced, so it only exists to unstick a hung npm.
+      child = spawnNpm(["install", "-g", `${NPM_PACKAGE}@${getNpmTag()}`], {
+        stdio: ["ignore", "ignore", "pipe"],
+        timeout: INSTALL_TIMEOUT_MS,
+        env: { ...npmEnv(), [SELF_UPDATE_ENV]: "1" },
+      })
+    } catch (err) {
+      fail(`Could not run npm: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
     child.stderr?.on("data", (d) => { stderr += d })
 
-    child.on("close", (code) => {
+    child.on("error", (err) => fail(`Could not run npm: ${err.message}`))
+    child.on("close", (code, signal) => {
       if (code === 0) {
+        if (settled) return
+        settled = true
+        installedPendingRestart = true
         resolve({ success: true })
-        // Give the response time to send, then restart once running agent
-        // turns have finished so none of them is cut mid-message.
+        // Restart once running agent turns have finished so none of them is
+        // cut mid-message.
         setTimeout(() => restartWhenIdle("the Huxflux server was updated"), 1000)
+      } else if (signal) {
+        fail(`npm install was stopped (${signal}); installs are cut off after ${INSTALL_TIMEOUT_MS / 60_000} minutes`)
       } else {
-        resolve({ success: false, error: stderr.trim() || `npm install failed (exit code ${code})` })
+        fail(stderr.trim().slice(-2000) || `npm install failed (exit code ${code})`)
       }
     })
   })
+}
+
+/**
+ * Install the latest version for the configured channel and restart once idle.
+ * A call while an install is already running joins that install. Never rejects.
+ */
+export function triggerServerUpdate(): Promise<UpdateResult> {
+  if (installedPendingRestart) return Promise.resolve({ success: true })
+  if (!installing) {
+    installing = runInstall().finally(() => { installing = null })
+  }
+  return installing
 }
 
 // Periodic checker: runs every 6 hours, auto-updates if setting is on and idle

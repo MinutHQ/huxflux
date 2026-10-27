@@ -2,7 +2,7 @@ import { View, Text, TextInput, TouchableOpacity } from "react-native"
 import { c } from "@/theme"
 
 export function ServerEditForm({
-  name, setName, url, setUrl, token, setToken,
+  name, setName, url, setUrl, token, setToken, proxied,
   error, loading, onCancel, onSave,
 }: {
   name: string
@@ -11,6 +11,8 @@ export function ServerEditForm({
   setUrl: (v: string) => void
   token: string
   setToken: (v: string) => void
+  /** Proxied servers are addressed and authenticated by the proxy; only the name is editable. */
+  proxied: boolean
   error: string | null
   loading: boolean
   onCancel: () => void
@@ -25,26 +27,30 @@ export function ServerEditForm({
         placeholderTextColor={c.placeholder}
         style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 14, marginBottom: 8 }}
       />
-      <TextInput
-        value={url}
-        onChangeText={setUrl}
-        placeholder="http://192.168.1.x:4321"
-        placeholderTextColor={c.placeholder}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 13, fontFamily: "monospace", marginBottom: 8 }}
-      />
-      <TextInput
-        value={token}
-        onChangeText={setToken}
-        placeholder="Auth token"
-        placeholderTextColor={c.placeholder}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 13, fontFamily: "monospace", marginBottom: 12 }}
-      />
+      {!proxied && (
+        <>
+          <TextInput
+            value={url}
+            onChangeText={setUrl}
+            placeholder="http://192.168.1.x:4321"
+            placeholderTextColor={c.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 13, fontFamily: "monospace", marginBottom: 8 }}
+          />
+          <TextInput
+            value={token}
+            onChangeText={setToken}
+            placeholder="Auth token"
+            placeholderTextColor={c.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            style={{ backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: c.fg, fontSize: 13, fontFamily: "monospace", marginBottom: 12 }}
+          />
+        </>
+      )}
       {error && (
         <Text style={{ color: c.error, fontSize: 12, marginBottom: 8, marginTop: -4 }}>{error}</Text>
       )}

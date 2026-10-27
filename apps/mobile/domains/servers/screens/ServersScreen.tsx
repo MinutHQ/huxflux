@@ -5,6 +5,7 @@ import { useCameraPermissions } from "expo-camera"
 import {
   addServer, removeServer, updateServer, setActiveServerId,
   parseConnectionString, useServerStatus, useServersStore,
+  isProxiedServer, serverAuthHeaders,
   type HuxfluxServer,
 } from "@huxflux/shared"
 import { c } from "@/theme"
@@ -13,13 +14,15 @@ import { ServerRow } from "../components/ServerRow"
 import { ServerEditForm } from "../components/ServerEditForm"
 import { AddServerForm, AddServerButtons } from "../components/AddServerForm"
 import { QRScannerModal } from "../components/QRScannerModal"
+import { ProxyConnectForm } from "../components/ProxyConnectForm"
+import { useProxyReauth } from "../hooks/useProxyReauth"
 
 async function validateAuth(url: string, token?: string): Promise<"ok" | "unauthorized" | "unreachable"> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
     const res = await fetch(`${url}/api/config`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: serverAuthHeaders({ url, token }),
       signal: controller.signal,
     })
     if (res.status === 401 || res.status === 403) return "unauthorized"
@@ -78,6 +81,7 @@ function useAddServer(currentLen: () => number) {
 
 interface EditState {
   id: string | null
+  proxied: boolean
   name: string
   url: string
   token: string
@@ -86,10 +90,10 @@ interface EditState {
 }
 
 function useEditServer() {
-  const [state, setState] = useState<EditState>({ id: null, name: "", url: "", token: "", error: null, loading: false })
+  const [state, setState] = useState<EditState>({ id: null, proxied: false, name: "", url: "", token: "", error: null, loading: false })
 
   function start(server: HuxfluxServer) {
-    setState({ id: server.id, name: server.name, url: server.url, token: server.token ?? "", error: null, loading: false })
+    setState({ id: server.id, proxied: isProxiedServer(server), name: server.name, url: server.url, token: server.token ?? "", error: null, loading: false })
   }
 
   function cancel() {
@@ -98,6 +102,12 @@ function useEditServer() {
 
   async function save() {
     if (!state.id || state.loading) return
+    if (state.proxied) {
+      // URL and credentials come from the proxy sign-in; only the name is editable.
+      updateServer(state.id, { name: state.name.trim() || state.url })
+      setState((s) => ({ ...s, id: null }))
+      return
+    }
     const trimmedUrl = state.url.trim()
     if (!trimmedUrl) return
     const trimmedToken = state.token.trim()
@@ -178,6 +188,8 @@ export function ServersScreen() {
   const add = useAddServer(() => servers.length)
   const edit = useEditServer()
   const qr = useQRScanner(servers)
+  const proxyReauth = useProxyReauth()
+  const [addingProxy, setAddingProxy] = useState(false)
 
   function handleRemove(id: string) {
     modal.showConfirm("Remove server", "Are you sure?", "Remove", () => removeServer(id), true)
@@ -215,6 +227,7 @@ export function ServersScreen() {
               setUrl={(url) => edit.setState((s) => ({ ...s, url }))}
               token={edit.state.token}
               setToken={(token) => edit.setState((s) => ({ ...s, token }))}
+              proxied={edit.state.proxied}
               error={edit.state.error}
               loading={edit.state.loading}
               onCancel={edit.cancel}
@@ -226,8 +239,10 @@ export function ServersScreen() {
               server={server}
               status={statuses[server.id] ?? "checking"}
               isActive={server.id === activeId}
+              reauthing={proxyReauth.reauthingId === server.id}
               onSelect={() => setActiveServerId(server.id)}
               onEdit={() => edit.start(server)}
+              onReauth={isProxiedServer(server) ? () => void proxyReauth.toggle(server) : undefined}
               onRemove={() => handleRemove(server.id)}
             />
           ),
@@ -246,8 +261,10 @@ export function ServersScreen() {
             onCancel={add.reset}
             onAdd={add.submit}
           />
+        ) : addingProxy ? (
+          <ProxyConnectForm onDone={() => setAddingProxy(false)} />
         ) : (
-          <AddServerButtons onAdd={() => add.setAdding(true)} onScan={qr.open} />
+          <AddServerButtons onAdd={() => add.setAdding(true)} onAddProxy={() => setAddingProxy(true)} onScan={qr.open} />
         )}
       </ScrollView>
 

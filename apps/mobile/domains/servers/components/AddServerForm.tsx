@@ -70,7 +70,7 @@ export function AddServerForm({
   )
 }
 
-export function AddServerButtons({ onAdd, onScan }: { onAdd: () => void; onScan: () => void }) {
+export function AddServerButtons({ onAdd, onAddProxy, onScan }: { onAdd: () => void; onAddProxy: () => void; onScan: () => void }) {
   return (
     <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
       <TouchableOpacity
@@ -78,6 +78,12 @@ export function AddServerButtons({ onAdd, onScan }: { onAdd: () => void; onScan:
         style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center" }}
       >
         <Text style={{ color: c.fgSub, fontSize: 14 }}>+ Add Server</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onAddProxy}
+        style={{ flex: 1, borderWidth: 1, borderColor: c.border, borderStyle: "dashed", borderRadius: 12, padding: 14, alignItems: "center" }}
+      >
+        <Text style={{ color: c.fgSub, fontSize: 14 }}>+ Via Proxy</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onScan}

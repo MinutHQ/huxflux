@@ -23,15 +23,19 @@ export function StatusDot({ status }: { status: ServerStatus }) {
 }
 
 export function ServerRow({
-  server, status, isActive, onSelect, onEdit, onRemove,
+  server, status, isActive, reauthing, onSelect, onEdit, onReauth, onRemove,
 }: {
   server: HuxfluxServer
   status: ServerStatus
   isActive: boolean
+  reauthing: boolean
   onSelect: () => void
   onEdit: () => void
+  /** Present only for proxied servers: re-runs the proxy sign-in, or cancels it while `reauthing`. */
+  onReauth?: () => void
   onRemove: () => void
 }) {
+  const unauthorizedHint = onReauth ? "Sign-in expired — tap the key to sign in again" : "Auth failed — tap edit to update token"
   return (
     <TouchableOpacity
       onPress={onSelect}
@@ -50,16 +54,23 @@ export function ServerRow({
       <StatusDot status={status} />
       <View style={{ flex: 1 }}>
         <Text style={{ color: c.fg, fontSize: 14, fontWeight: "500" }}>{server.name}</Text>
-        {status === "unauthorized"
-          ? <Text style={{ color: c.warning, fontSize: 12, marginTop: 2 }}>Auth failed — tap edit to update token</Text>
+        {reauthing
+          ? <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>Waiting for sign-in in Safari — tap ✕ to cancel</Text>
+          : status === "unauthorized"
+          ? <Text style={{ color: c.warning, fontSize: 12, marginTop: 2 }}>{unauthorizedHint}</Text>
           : <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>{server.url}</Text>
         }
       </View>
       {isActive && status !== "unauthorized" && (
         <Text style={{ color: c.accent, fontSize: 12, fontWeight: "600" }}>Active</Text>
       )}
+      {onReauth && (
+        <TouchableOpacity onPress={onReauth} hitSlop={8} style={{ padding: 4 }}>
+          <Ionicons name={reauthing ? "close-circle-outline" : "key-outline"} size={15} color={status === "unauthorized" ? c.warning : c.fgSub} />
+        </TouchableOpacity>
+      )}
       <TouchableOpacity onPress={onEdit} hitSlop={8} style={{ padding: 4 }}>
-        <Ionicons name="pencil-outline" size={15} color={status === "unauthorized" ? c.warning : c.fgSub} />
+        <Ionicons name="pencil-outline" size={15} color={status === "unauthorized" && !onReauth ? c.warning : c.fgSub} />
       </TouchableOpacity>
       <TouchableOpacity onPress={onRemove} hitSlop={8} style={{ padding: 4 }}>
         <Ionicons name="trash-outline" size={15} color={c.fgSub} />

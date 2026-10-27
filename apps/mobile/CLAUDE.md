@@ -103,6 +103,8 @@ For flows that legitimately bypass TanStack Query (composite native calls, optim
 
 `apps/mobile/ui/Modal.tsx` is the RN-based modal primitive (`ModalProvider` at the root, `useModal()` for callers). Import it from the `@/ui` barrel. Don't try to use `@huxflux/ui`'s Modal — that's DOM-only.
 
+Routes shown with `presentation: "modal"` (`servers`, `new-agent`, `add-repo`) wrap their screen in their own `ModalProvider`. The root provider presents from the root view controller, and iOS silently refuses to present from a controller that is already presenting a modal screen, so dialogs opened from those screens would never appear. Any new modal-presented route needs the same wrapper.
+
 ## Testing
 
 No test setup. Do not add one without explicit user request.

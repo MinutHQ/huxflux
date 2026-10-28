@@ -117,6 +117,13 @@ export const settingsSchema = {
     label: "CI monitoring",
     description: "Notify agents when CI checks fail on their PR",
   },
+  moveToDoneOnMerge: {
+    type: "boolean",
+    default: true,
+    section: "git",
+    label: "Move to Done on merge",
+    description: "Move a session to Done automatically when its PR is merged",
+  },
   pollingIntervalMs: {
     type: "number",
     default: 60_000,

@@ -28,6 +28,10 @@ describe("prStatusToAgentStatus", () => {
     expect(prStatusToAgentStatus(pr({ merged: true, draft: true }))).toBe("done")
   })
 
+  it("keeps a merged PR in review when moving to done on merge is turned off", () => {
+    expect(prStatusToAgentStatus(pr({ merged: true }), { moveToDoneOnMerge: false })).toBe("in-review")
+  })
+
   it("maps a closed PR to cancelled", () => {
     expect(prStatusToAgentStatus(pr({ state: "closed" }))).toBe("cancelled")
   })

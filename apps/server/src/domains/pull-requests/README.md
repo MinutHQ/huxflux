@@ -7,7 +7,7 @@ The server-side surface for GitHub pull-request workflows: HTTP routes for listi
 - The `/api/prs` REST surface: list (review-requested + already-reviewed), `:owner/:repo/:number` details / files / file-content, comment + submit-review + reply + delete-comment, thread resolve, owner/repo merge methods, and owner/repo merge.
 - The `/api/agents/:id/pr/*` surface: agent-scoped PR details, create PR, mark draft as ready, re-request review, merge. Each route refreshes `prStatus` on the agent row and broadcasts an `agent:updated` event.
 - The Octokit wrapper: PR creation, status, full details (REST + GraphQL review threads), file diffs and raw file content, branch info, merge / mark-ready / rerequest-review / allowed-merge-methods, single-comment posting (inline, side-snap, fallback to issue comment), submit-review (with diff-line snapping), thread resolve, plus the supporting helpers `createIssue` (used by feedback) and `listBranches` (used by repos).
-- The PR-status helpers: `prStatusToAgentStatus` (maps PRStatus to agent column) and `parsePrStatus` (DB JSON to PRStatus | undefined). Used by the poller and the agents list route.
+- The PR-status helpers: `prStatusToAgentStatus` (maps PRStatus to agent column; a merged PR stays in review when the `moveToDoneOnMerge` setting is off) and `parsePrStatus` (DB JSON to PRStatus | undefined). Used by the poller and the agents list route.
 
 ## Public surface
 

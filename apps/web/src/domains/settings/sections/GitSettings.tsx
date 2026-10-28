@@ -6,6 +6,7 @@ import { SettingInfo } from "../components/SettingInfo"
 
 export function GitSettings() {
   const [killOnDone, setKillOnDone] = useState(false)
+  const [moveToDoneOnMerge, setMoveToDoneOnMerge] = useState(true)
   const [prCommentMonitoring, setPrCommentMonitoring] = useState(true)
   const [ciMonitoring, setCiMonitoring] = useState(true)
   const [loaded, setLoaded] = useState(false)
@@ -13,6 +14,7 @@ export function GitSettings() {
   useEffect(() => {
     api.settings.current().then((s) => {
       setKillOnDone(s.killProcessesOnDone ?? false)
+      setMoveToDoneOnMerge(s.moveToDoneOnMerge ?? true)
       setPrCommentMonitoring(s.prCommentMonitoring ?? true)
       setCiMonitoring(s.ciMonitoring ?? true)
       setLoaded(true)
@@ -24,6 +26,10 @@ export function GitSettings() {
       <SettingRow>
         <SettingInfo label="Kill processes on done" description="Automatically stop dev servers and processes when agent is marked done or cancelled" />
         <Switch disabled={!loaded} checked={killOnDone} onCheckedChange={(v) => { setKillOnDone(v); api.settings.update({ killProcessesOnDone: v }) }} />
+      </SettingRow>
+      <SettingRow>
+        <SettingInfo label="Move to Done on merge" description="Move a session to Done automatically when its PR is merged" />
+        <Switch disabled={!loaded} checked={moveToDoneOnMerge} onCheckedChange={(v) => { setMoveToDoneOnMerge(v); api.settings.update({ moveToDoneOnMerge: v }) }} />
       </SettingRow>
       <SettingRow>
         <SettingInfo label="PR comment monitoring" description="Send new PR review comments to agents automatically" />

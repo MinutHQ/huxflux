@@ -2,9 +2,13 @@ import type { AgentStatus, PRStatus } from "../../../types.js"
 import { getOctokit, parseRepo } from "./octokit.js"
 import { logger } from "../../../logger.js"
 
-/** Derive agent status from PR state. Shared between poller and PR routes. */
-export function prStatusToAgentStatus(pr: PRStatus): AgentStatus {
-  if (pr.merged) return "done"
+/**
+ * Derive agent status from PR state. Shared between poller and PR routes.
+ * With `moveToDoneOnMerge` off, a merged PR leaves the agent in review so the
+ * user can move it to Done themselves.
+ */
+export function prStatusToAgentStatus(pr: PRStatus, opts: { moveToDoneOnMerge?: boolean } = {}): AgentStatus {
+  if (pr.merged) return opts.moveToDoneOnMerge === false ? "in-review" : "done"
   if (pr.state === "closed") return "cancelled"
   if (pr.draft) return "draft-pr"
   return "in-review"

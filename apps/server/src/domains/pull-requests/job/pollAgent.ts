@@ -4,7 +4,7 @@ import * as path from "node:path"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { taskAgents, tasks } from "../../../db/schema.js"
-import { findPRNumberForBranch, prStatusToAgentStatus } from "../prStatus.js"
+import { findPRNumberForBranch, parsePrStatus, prStatusToAgentStatus } from "../prStatus.js"
 import { getPRDetails } from "../service/prDetails.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { getRemoteUrl } from "../../git/worktrees.js"
@@ -51,7 +51,8 @@ async function syncBranchFromGit(agent: AgentRow): Promise<AgentRow> {
 }
 
 async function applyPRStatusUpdate(agent: AgentRow, pr: PRStatus): Promise<void> {
-  const newStatus = prStatusToAgentStatus(pr)
+  const newStatus = prStatusToAgentStatus(pr, { moveToDoneOnMerge: getSettings().moveToDoneOnMerge })
+  const justMerged = pr.merged && parsePrStatus(agent.prStatus)?.merged !== true
   const prStatusJson = JSON.stringify(pr)
   const statusChanged = newStatus !== agent.status
   const prChanged = prStatusJson !== agent.prStatus || pr.number !== agent.prNumber
@@ -65,7 +66,7 @@ async function applyPRStatusUpdate(agent: AgentRow, pr: PRStatus): Promise<void>
   const updated = db.select().from(agents).where(eq(agents.id, agent.id)).get()
   if (updated) agentsWs.agentUpdated({ ...updated, prStatus: pr } as never)
 
-  if (newStatus === "done" && statusChanged) await autoCompleteLinkedTasks(agent.id, now)
+  if (justMerged) await autoCompleteLinkedTasks(agent.id, now)
 }
 
 async function autoCompleteLinkedTasks(agentId: string, now: string): Promise<void> {
@@ -81,7 +82,7 @@ async function autoCompleteLinkedTasks(agentId: string, now: string): Promise<vo
 }
 
 async function runMonitors(agent: AgentRow, pr: PRStatus, details: PRDetails): Promise<void> {
-  if (!pr.number) return
+  if (!pr.number || pr.merged) return
   if (agent.status === "done" || agent.status === "cancelled") return
   const s = getSettings()
   const prCommentsEnabled = agent.prCommentMonitoring != null ? agent.prCommentMonitoring === 1 : (s.prCommentMonitoring ?? true)

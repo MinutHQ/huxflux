@@ -90,4 +90,27 @@ export interface ChatViewProps {
   onConsumeInitialFocus?: () => void
 }
 
+export type WorkStepKind = "run" | "read" | "write" | "edit" | "search" | "fetch" | "delegate" | "task" | "other"
+
+export interface WorkStepLabel {
+  kind: WorkStepKind
+  /** "Running", "Reading", ...; absent for tools without a natural verb. */
+  verb?: string
+  text: string
+  /** A raw command keeps its code face; a description reads as prose. */
+  code: boolean
+}
+
+export interface WorkStep {
+  call: ToolCall
+  /** When the step first showed up here; null for steps that were already there on mount. */
+  at: number | null
+}
+
+export interface FinishedStep {
+  step: WorkStep
+  /** Milliseconds, or null when the client did not see both ends of the step. */
+  took: number | null
+}
+
 export type { Agent, AgentSummary, FileChange, PRComment, ToolCall }

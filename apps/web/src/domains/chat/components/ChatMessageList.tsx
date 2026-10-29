@@ -7,7 +7,7 @@ import {
 } from "@tabler/icons-react"
 import type { Agent } from "@huxflux/shared"
 import { MessageBubble } from "./MessageBubble"
-import { TypingBubble } from "./TypingBubble"
+import { WorkingIndicator } from "./WorkingIndicator"
 
 interface QueuedMessage {
   id: string
@@ -93,7 +93,7 @@ export function ChatMessageList({
         {agent.messages.map((msg, i) => (
           <MessageBubble key={msg.id} agentId={agent.id} msg={msg} isStreaming={uiIsStreaming && i === agent.messages.length - 1} />
         ))}
-        {uiIsStreaming && <TypingBubble elapsedSeconds={elapsedSeconds} />}
+        {uiIsStreaming && <WorkingIndicator key={agent.id} messages={agent.messages} elapsedSeconds={elapsedSeconds} />}
         {messageQueue.filter((m) => m.agentId === agent.id).map((qm) => (
           <QueuedMessageBubble
             key={qm.id}

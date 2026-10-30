@@ -290,3 +290,160 @@ textarea:focus {
   --pele-surface-alt: var(--accent);
   --pele-border: var(--border);
 }
+
+/* Working indicator: the card under the last message while an agent runs.
+   Everything is tinted from --foreground so it follows the theme. */
+@property --work-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes workRotate {
+  to { --work-angle: 360deg; }
+}
+
+@keyframes workBreath {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes workComet {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(433%); }
+}
+
+@keyframes workRipple {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes workCore {
+  0%, 100% { transform: scale(0.9); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes workSpark {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes workRise {
+  from { transform: translateY(60%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.work-card {
+  position: relative;
+  border-radius: 13px;
+  isolation: isolate;
+}
+
+/* The halo breathing behind the card. */
+.work-card::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: -2;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--work-angle),
+    color-mix(in oklab, var(--foreground) 45%, transparent),
+    color-mix(in oklab, var(--foreground) 15%, transparent),
+    transparent,
+    color-mix(in oklab, var(--foreground) 35%, transparent),
+    color-mix(in oklab, var(--foreground) 45%, transparent)
+  );
+  filter: blur(14px);
+  animation: workRotate 5s linear infinite, workBreath 4s ease-in-out infinite;
+}
+
+/* A comet of light running round the edge, over a tinted fill. */
+.work-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(
+      color-mix(in oklab, var(--foreground) 7%, var(--background)),
+      color-mix(in oklab, var(--foreground) 3%, var(--background))
+    ) padding-box,
+    conic-gradient(
+      from var(--work-angle),
+      color-mix(in oklab, var(--foreground) 85%, transparent),
+      color-mix(in oklab, var(--foreground) 8%, transparent) 20%,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 45%,
+      color-mix(in oklab, var(--foreground) 70%, transparent) 55%,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 75%,
+      color-mix(in oklab, var(--foreground) 85%, transparent)
+    ) border-box;
+  animation: workRotate 3.3s linear infinite;
+}
+
+.work-comet-track {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+
+.work-comet {
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--foreground), transparent);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--foreground) 70%, transparent);
+  animation: workComet 1.8s ease-in-out infinite;
+}
+
+.work-orb-glow {
+  background: var(--foreground);
+  filter: blur(6px);
+  animation: workBreath 2.4s ease-in-out infinite;
+}
+
+.work-orb-ripple {
+  border: 1px solid var(--foreground);
+  animation: workRipple 1.6s ease-out infinite;
+}
+
+.work-orb-core {
+  background: conic-gradient(
+    from var(--work-angle),
+    var(--foreground),
+    color-mix(in oklab, var(--foreground) 45%, var(--background)),
+    var(--foreground)
+  );
+  animation: workRotate 1.8s linear infinite, workCore 2.4s ease-in-out infinite;
+}
+
+.work-orb-spark {
+  animation: workSpark var(--spark-speed, 2.6s) linear infinite;
+}
+
+.work-orb-spark > span {
+  background: var(--foreground);
+  box-shadow: 0 0 3px var(--foreground);
+}
+
+.work-rise {
+  animation: workRise 0.35s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-card::before,
+  .work-card::after,
+  .work-orb-glow,
+  .work-orb-ripple,
+  .work-orb-core,
+  .work-orb-spark,
+  .work-rise {
+    animation: none;
+  }
+  .work-comet-track,
+  .work-orb-spark {
+    display: none;
+  }
+  .work-step-sheen {
+    animation: none;
+    color: var(--muted-foreground);
+    background: none;
+  }
+}

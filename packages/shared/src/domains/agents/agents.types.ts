@@ -383,8 +383,9 @@ export const agentFileDiffSchema = z.object({
   additions: z.number(),
   deletions: z.number(),
   diff: z.string(),
-  newContent: z.string(),
-  oldContent: z.string(),
+  /** Null when the file is over the server's size cap; render the diff without contents. */
+  newContent: z.string().nullable(),
+  oldContent: z.string().nullable(),
 })
 
 export type AgentFileDiff = z.infer<typeof agentFileDiffSchema>

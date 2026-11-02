@@ -8,8 +8,9 @@ export type CommentAnnotation =
 /** Preloaded diff payload (provided when the parent batch-fetched diffs). */
 export interface PreloadedDiff {
   diff: string
-  newContent: string
-  oldContent: string
+  /** Null when the file is over the server's size cap. */
+  newContent: string | null
+  oldContent: string | null
 }
 
 /** Merge methods supported by the PR merge dropdown. */

@@ -73,6 +73,16 @@ describe("getDiffBundle", () => {
     // edit.txt is committed on the branch and clean in the working tree.
     expect(edit?.oldContent).toBe("one\nTWO\nthree\n")
   })
+
+  it("drops both contents but keeps the diff when one side is over the size cap", async () => {
+    const big = "x".repeat(1024 * 1024 + 1)
+    write("edit.txt", `one\nTWO\nthree\n${big}\n`)
+    const base = await resolveDiffBase(repo.path, "main", "branch")
+    const [edit] = await getDiffBundle(repo.path, base, ["edit.txt"])
+    expect(edit?.diff).toContain("+xxx")
+    expect(edit?.oldContent).toBeNull()
+    expect(edit?.newContent).toBeNull()
+  })
 })
 
 describe("splitUnifiedDiff", () => {

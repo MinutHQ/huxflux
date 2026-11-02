@@ -6,8 +6,9 @@ import { resolveInsideWorktree } from "./files.js"
 export interface FileDiffBundle {
   path: string
   diff: string
-  oldContent: string
-  newContent: string
+  /** Null when either side is over the size cap; the client then renders the diff without contents. */
+  oldContent: string | null
+  newContent: string | null
 }
 
 /** Above this size the full contents are left out; the diff still renders, only context expansion is lost. */
@@ -36,10 +37,11 @@ export function splitUnifiedDiff(raw: string): Map<string, string> {
 /**
  * Read many `<rev>:<path>` blobs through one `git cat-file --batch` process.
  * Missing objects (the file does not exist at that revision) map to "".
+ * Blobs over the size cap map to null so callers can tell them from empty files.
  */
-export function readBlobs(worktreePath: string, rev: string, paths: string[]): Promise<Map<string, string>> {
+export function readBlobs(worktreePath: string, rev: string, paths: string[]): Promise<Map<string, string | null>> {
   return new Promise((resolve) => {
-    const out = new Map<string, string>()
+    const out = new Map<string, string | null>()
     if (paths.length === 0) return resolve(out)
     const child = spawn("git", ["cat-file", "--batch"], { cwd: worktreePath })
     const buffers: Buffer[] = []
@@ -56,7 +58,8 @@ export function readBlobs(worktreePath: string, rev: string, paths: string[]): P
         const m = /^\S+ (\w+) (\d+)$/.exec(header)
         if (!m) { out.set(path, ""); continue }
         const size = Number(m[2])
-        out.set(path, m[1] === "blob" && size <= MAX_CONTENT_BYTES ? buf.subarray(pos, pos + size).toString("utf8") : "")
+        if (m[1] !== "blob") out.set(path, "")
+        else out.set(path, size <= MAX_CONTENT_BYTES ? buf.subarray(pos, pos + size).toString("utf8") : null)
         pos += size + 1
       }
       resolve(out)
@@ -65,11 +68,12 @@ export function readBlobs(worktreePath: string, rev: string, paths: string[]): P
   })
 }
 
-async function readWorkingCopy(worktreePath: string, relPath: string): Promise<string> {
+/** Working-copy text, "" when missing, null when over the size cap. */
+async function readWorkingCopy(worktreePath: string, relPath: string): Promise<string | null> {
   try {
     const abs = await resolveInsideWorktree(worktreePath, relPath)
     const { size } = await stat(abs)
-    return size > MAX_CONTENT_BYTES ? "" : await readFile(abs, "utf8")
+    return size > MAX_CONTENT_BYTES ? null : await readFile(abs, "utf8")
   } catch {
     return ""
   }
@@ -96,13 +100,18 @@ export async function getDiffBundle(worktreePath: string, base: string, paths: s
   ])
   const chunks = splitUnifiedDiff(raw)
   return paths.map((path, i) => {
-    const newContent = newContents[i] ?? ""
-    const oldContent = oldContents.get(path) ?? ""
+    // `??` would turn an over-cap null into "", so default only a missing entry.
+    const newEntry = newContents[i]
+    const oldEntry = oldContents.get(path)
+    const newContent = newEntry === undefined ? "" : newEntry
+    const oldContent = oldEntry === undefined ? "" : oldEntry
+    // Contents must match the diff line for line, so a cut side drops both.
+    const truncated = newContent === null || oldContent === null
     return {
       path,
       diff: chunks.get(path) ?? (newContent && !oldContent ? syntheticAddition(path, newContent) : ""),
-      oldContent,
-      newContent,
+      oldContent: truncated ? null : oldContent,
+      newContent: truncated ? null : newContent,
     }
   })
 }

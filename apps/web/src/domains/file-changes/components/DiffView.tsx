@@ -67,11 +67,12 @@ export const DiffView = React.memo(function DiffView({
   })
 
   const effectiveDiff = preloadedDiff?.diff ?? rawDiff
-  const effectiveNew = preloadedDiff?.newContent ?? newContent
-  const effectiveOld = preloadedDiff?.oldContent ?? oldContent
+  const effectiveNew = preloadedDiff ? preloadedDiff.newContent : newContent
+  const effectiveOld = preloadedDiff ? preloadedDiff.oldContent : oldContent
 
   const fileDiff = useMemo(() => {
-    if (effectiveDiff && effectiveOld !== undefined && effectiveNew !== undefined) {
+    // Contents are only usable when both sides are present; otherwise render the diff on its own.
+    if (effectiveDiff && effectiveOld != null && effectiveNew != null) {
       return processFile(effectiveDiff, {
         oldFile: { name: fileName, contents: effectiveOld },
         newFile: { name: fileName, contents: effectiveNew },

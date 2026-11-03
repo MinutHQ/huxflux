@@ -29,6 +29,7 @@ import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
 import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
 import { dropGithubPackagesPin, npmEnv } from "./npmRegistry.js"
+import { buildSupervisorExecLine, resolveSupervisorCommand } from "./serviceLauncher.js"
 import { runAgentCommand } from "./domains/mcp/agentCli.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -1385,16 +1386,17 @@ function installSystemService() {
   const platform = os.platform()
   const cfg = loadConfig()
 
-  // Derive the huxflux binary from the running Node's bin dir. Using `which`
-  // would resolve to whatever nvm version is active in the caller's shell,
-  // which may differ from the Node that actually has huxflux installed.
-  const huxfluxBin = path.join(path.dirname(process.execPath), "huxflux")
+  // Exec this exact Node and CLI script rather than a `huxflux` bin looked up
+  // on PATH: `which` would pick whatever Node is active in the caller's shell,
+  // and the bin shim is not always next to the Node binary (see serviceLauncher).
+  const supervisor = resolveSupervisorCommand(process.execPath, fileURLToPath(import.meta.url))
+  const execLine = buildSupervisorExecLine(supervisor)
 
   // Build a PATH that includes nvm shims, homebrew, and standard dirs.
   // Capture the user's current PATH at install time so the service inherits
   // all tool locations (homebrew, fnm, mise, custom prefixes, etc.).
   const nvmDir = process.env.NVM_DIR || path.join(os.homedir(), ".nvm")
-  const currentNodeBin = path.dirname(process.execPath)
+  const currentNodeBin = path.dirname(supervisor.nodeBin)
   const knownPaths = [
     currentNodeBin,
     `${nvmDir}/current/bin`,
@@ -1432,7 +1434,7 @@ function installSystemService() {
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
       ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
-      `exec "${huxfluxBin}" _supervisor`,
+      execLine,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
 
@@ -1484,7 +1486,7 @@ function installSystemService() {
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
       ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
-      `exec "${huxfluxBin}" _supervisor`,
+      execLine,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
 

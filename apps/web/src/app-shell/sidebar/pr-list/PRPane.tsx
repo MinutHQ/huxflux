@@ -6,6 +6,7 @@ import type { PullRequest } from "@huxflux/shared"
 import { PRList } from "./PRList"
 import { PRPopover } from "./PRPopover"
 import { PRFilterPopover } from "./PRFilterPopover"
+import { readServerPref, writeServerPref } from "@/lib/serverPrefs"
 
 interface PRPaneProps {
   prs: PullRequest[]
@@ -18,7 +19,7 @@ interface PRPaneProps {
 /**
  * The Review tab's contents: header (refresh + filter), the list, and the
  * hover popover. Owns the `hideReviewedPrs` toggle (persisted in
- * localStorage) and the selected-PR derivation from the route.
+ * localStorage per server) and the selected-PR derivation from the route.
  *
  * Lives in app-shell for now (sidebar chrome). Will move into the
  * `pull-requests` domain in a follow-up commit.
@@ -30,11 +31,11 @@ export function PRPane({ prs, prsLoading, onRefetchPRs, containerRef }: PRPanePr
   const selectedPrId = reviewMatch ? reviewMatch.prId : null
 
   const [hoveredPr, setHoveredPr] = useState<{ pr: PullRequest; y: number } | null>(null)
-  const [hideReviewedPrs, setHideReviewedPrsRaw] = useState(() => localStorage.getItem("hive:sidebar:hideReviewedPrs") === "true")
+  const [hideReviewedPrs, setHideReviewedPrsRaw] = useState(() => readServerPref("hive:sidebar:hideReviewedPrs") === "true")
   const setHideReviewedPrs = (v: boolean | ((prev: boolean) => boolean)) => {
     setHideReviewedPrsRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v
-      localStorage.setItem("hive:sidebar:hideReviewedPrs", String(next))
+      writeServerPref("hive:sidebar:hideReviewedPrs", String(next))
       return next
     })
   }

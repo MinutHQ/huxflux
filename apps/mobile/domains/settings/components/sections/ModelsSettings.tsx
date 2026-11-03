@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { api, queryKeys, useHuxfluxQuery, type ProviderInfo, type SharedProviderModel as ProviderModel } from "@huxflux/shared"
+import { api, queryKeys, useHuxfluxQuery, PERMISSION_MODE_LABELS, readPermissionModes, type PermissionMode, type ProviderInfo, type SharedProviderModel as ProviderModel } from "@huxflux/shared"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
 import { SectionLabel, SettingsCard } from "../SettingsRow"
@@ -81,6 +81,66 @@ function ProviderCard({ provider, state }: { provider: ProviderInfo; state: Serv
 }
 
 /** Show / hide models in the switcher and pick the default. Tap a model for actions. */
+// Offered as a standing default. "plan" is excluded: it is a per-turn toggle,
+// and an agent permanently unable to edit is not a useful default.
+const SELECTABLE_PERMISSION_MODES: PermissionMode[] = [
+  "default",
+  "acceptEdits",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+]
+
+function PermissionDefaultCard({ state, providers }: { state: ServerSettingsState; providers: ProviderInfo[] }) {
+  const modal = useModal()
+  const current = (state.settings.defaultPermissionMode ?? "auto") as PermissionMode
+
+  // Providers whose only option is the unrestricted mode cannot honour this
+  // setting at all; saying so avoids a false sense of safety.
+  const cannotEnforce = providers
+    .filter((p) => {
+      const modes = readPermissionModes(p.capabilities)
+      return modes.length > 0 && modes.every((m) => m === "bypassPermissions")
+    })
+    .map((p) => p.name)
+
+  function open() {
+    modal.showActionSheet("Default permissions", SELECTABLE_PERMISSION_MODES.map((mode) => ({
+      label: PERMISSION_MODE_LABELS[mode],
+      onPress: () => state.update({ defaultPermissionMode: mode }),
+    })))
+  }
+
+  return (
+    <View>
+      <SectionLabel label="Permissions" />
+      <SettingsCard>
+        <TouchableOpacity onPress={open} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 }}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ color: c.fg, fontSize: 15 }}>Default permissions</Text>
+            <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 2 }}>
+              How much a new agent may do before asking you
+            </Text>
+          </View>
+          <Text style={{ color: c.fgSub, fontSize: 14 }}>{PERMISSION_MODE_LABELS[current]}</Text>
+          <Ionicons name="chevron-forward" size={16} color={c.placeholder} />
+        </TouchableOpacity>
+      </SettingsCard>
+      {current === "bypassPermissions" && (
+        <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+          Agents run with no checks at all. Safe only when the agent is sandboxed.
+        </Text>
+      )}
+      {cannotEnforce.length > 0 && current !== "bypassPermissions" && (
+        <Text style={{ color: c.fgSub, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
+          {cannotEnforce.join(" and ")} cannot enforce this and {cannotEnforce.length > 1 ? "run" : "runs"} with no
+          restrictions regardless.
+        </Text>
+      )}
+    </View>
+  )
+}
+
 export function ModelsSettings({ state }: { state: ServerSettingsState }) {
   const [search, setSearch] = useState("")
   const { data: providers = [], isLoading, isError } = useHuxfluxQuery({
@@ -119,6 +179,7 @@ export function ModelsSettings({ state }: { state: ServerSettingsState }) {
           autoCorrect={false}
         />
       </View>
+      <PermissionDefaultCard state={state} providers={providers} />
       {filtered.length === 0
         ? <Text style={{ color: c.fgSub, fontSize: 13, textAlign: "center" }}>No models found</Text>
         : filtered.map((p) => <ProviderCard key={p.id} provider={p} state={state} />)}

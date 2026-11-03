@@ -144,7 +144,7 @@ export type {
   AgentsServerEvent,
 } from "./domains/agents/agents.types.js"
 
-export { permissionModeSchema, PERMISSION_MODE_LABELS } from "./domains/agents/permissionModes.js"
+export { permissionModeSchema, PERMISSION_MODE_LABELS, readPermissionModes } from "./domains/agents/permissionModes.js"
 export type { PermissionMode } from "./domains/agents/permissionModes.js"
 export { isAgentTool, isToolCallRunning, subagentResultText } from "./domains/agents/subagents.js"
 export { joinMultiSelectAnswer, buildQuestionAnswer, parseAskAnswers, MULTI_SELECT_SEPARATOR } from "./domains/agents/askAnswers.js"

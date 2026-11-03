@@ -10,7 +10,7 @@ import { MessageBubble } from "../components/MessageBubble"
 import { TeamBar } from "../components/TeamBar"
 import { TerminalPane } from "../components/TerminalPane"
 import { ChatInputBar } from "../components/ChatInputBar"
-import { AskQuestionCard } from "../components/AskQuestionCard"
+import { AgentBlockedCards } from "../components/AgentBlockedCards"
 import { useAgentChat } from "../hooks/useAgentChat"
 import type { ChatTab } from "../agents.types"
 
@@ -33,7 +33,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
     handleSend, pickImage, uploadingCount,
   } = chat
 
-  const { isLoading, isError, refetch, loadMore, hasMore, isLoadingMore, pendingQuestion, clearPendingQuestion } = agentState
+  const { isLoading, isError, refetch, loadMore, hasMore, isLoadingMore, pendingQuestion, clearPendingQuestion, pendingApproval } = agentState
 
   const [activeTab, setActiveTab] = useState<ChatTab>("chat")
   // Reset tab to chat when the agent changes. Syncing prop → state is the
@@ -147,12 +147,11 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
       {activeTab === "pr" && prPaneSlot}
       {activeTab === "terminal" && <TerminalPane agentId={agentId} />}
 
-      {activeTab === "chat" && pendingQuestion && (
-        <AskQuestionCard
-          key={pendingQuestion.toolUseId}
-          agentId={pendingQuestion.agentId}
+      {activeTab === "chat" && (
+        <AgentBlockedCards
+          pendingApproval={pendingApproval}
           pendingQuestion={pendingQuestion}
-          onAnswered={clearPendingQuestion}
+          onQuestionAnswered={clearPendingQuestion}
         />
       )}
       {activeTab === "chat" && (
@@ -175,7 +174,7 @@ export function AgentDetailScreen({ agentId, prPaneSlot }: { agentId: string; pr
           setPlanMode={setPlanMode}
           isStreaming={!!isStreaming}
           hasMessages={messages.length > 0}
-          hasPendingQuestion={!!pendingQuestion}
+          hasPendingQuestion={!!pendingQuestion || !!pendingApproval}
           onSend={handleSend}
           onPickImage={pickImage}
           bottomInset={insets.bottom}

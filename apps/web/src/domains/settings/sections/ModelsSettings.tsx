@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react"
-import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, PERMISSION_MODE_LABELS, type HuxfluxSettings, type PermissionMode, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
+import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, PERMISSION_MODE_LABELS, readPermissionModes, type HuxfluxSettings, type PermissionMode, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
 import { Button, cn, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@huxflux/ui"
 import { toast } from "sonner"
 import { IconSearch } from "@tabler/icons-react"
@@ -67,7 +67,7 @@ export function ModelsSettings() {
   const cannotEnforce = useMemo(
     () => providers
       .filter((p) => {
-        const modes = (p.capabilities?.permissionModes ?? []) as string[]
+        const modes = readPermissionModes(p.capabilities)
         return modes.length > 0 && modes.every((m) => m === "bypassPermissions")
       })
       .map((p) => p.name),

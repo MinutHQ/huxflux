@@ -10,7 +10,7 @@ import {
   IconSend,
   IconShieldLock,
 } from "@tabler/icons-react"
-import { api, PERMISSION_MODE_LABELS, type PermissionMode } from "@huxflux/shared"
+import { api, PERMISSION_MODE_LABELS, readPermissionModes, type PermissionMode } from "@huxflux/shared"
 import { ContextRing } from "./ContextRing"
 import { ModelSelect } from "./ModelSelect"
 import { AgentSettingsPopover } from "./AgentSettingsPopover"
@@ -166,7 +166,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
           onChange={onModelChange}
         />
         {effortLevels.length > 0 && <EffortSelect effort={effort} setEffort={setEffort} levels={effortLevels} />}
-        <PermissionSelect agent={agent} modes={(capabilities.permissionModes ?? []) as PermissionMode[]} />
+        <PermissionSelect agent={agent} modes={readPermissionModes(capabilities)} />
         {!hideChrome && capabilities.planMode !== false && (
           <PlanModeButton planMode={planMode} isInPlanMode={isInPlanMode} setPlanMode={setPlanMode} />
         )}

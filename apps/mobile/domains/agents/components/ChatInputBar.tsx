@@ -1,6 +1,6 @@
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { api, parseAttachedFiles, queryKeys, type Agent, type PRComment } from "@huxflux/shared"
+import { api, parseAttachedFiles, queryKeys, type Agent, type PRComment, PERMISSION_MODE_LABELS, readPermissionModes, useHuxfluxQuery, type PermissionMode } from "@huxflux/shared"
 import { useQueryClient } from "@tanstack/react-query"
 import { c } from "@/theme"
 import { useModal } from "@/ui"
@@ -159,6 +159,33 @@ export function ChatInputBar({
     })))
   }
 
+  // Only the modes this agent's provider can actually enforce; showing the
+  // rest would promise a restriction that never applies. Null means "follow
+  // the server default".
+  const { data: providers = [] } = useHuxfluxQuery({
+    queryKey: queryKeys.settings.providers(),
+    queryFn: api.settings.providers,
+    staleTime: 30_000,
+  })
+  const agentCapabilities = providers.find((p) => p.id === (agent.provider ?? "claude"))?.capabilities
+  const permissionModes = readPermissionModes(agentCapabilities).filter((m) => m !== "plan")
+
+  function handlePermissionPress() {
+    modal.showActionSheet("Permissions", [
+      { label: "Use default", onPress: () => setPermissionMode(null) },
+      ...permissionModes.map((mode) => ({
+        label: PERMISSION_MODE_LABELS[mode],
+        onPress: () => setPermissionMode(mode),
+      })),
+    ])
+  }
+
+  function setPermissionMode(mode: PermissionMode | null) {
+    // fire-and-forget; intentional: the agent row refreshes over the socket
+    api.agents.update(agent.id, { permissionMode: mode }).catch(() => {})
+    queryClient.setQueryData<Agent>(queryKeys.agents.detail(agent.id), (old) => old ? { ...old, permissionMode: mode } : old)
+  }
+
   const canSend = !!(input.trim() || attachments.length > 0 || comments.length > 0) && !sending && uploadingCount === 0
   const placeholder = hasPendingQuestion ? "Reply to answer the question…"
     : isStreaming
@@ -199,6 +226,19 @@ export function ChatInputBar({
             <Text style={{ color: c.fgSub, fontSize: 12, fontWeight: "500" }}>{shortModel(agent.model)}</Text>
             <Text style={{ color: c.placeholder, fontSize: 9 }}>▾</Text>
           </TouchableOpacity>
+
+          {permissionModes.length > 0 && (
+            <TouchableOpacity
+              onPress={handlePermissionPress}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+            >
+              <Ionicons name="lock-closed-outline" size={12} color={c.fgSub} />
+              <Text style={{ color: c.fgSub, fontSize: 12, fontWeight: "500" }}>
+                {agent.permissionMode ? PERMISSION_MODE_LABELS[agent.permissionMode] : "Permissions"}
+              </Text>
+              <Text style={{ color: c.placeholder, fontSize: 9 }}>▾</Text>
+            </TouchableOpacity>
+          )}
 
           <ToolbarToggle active={thinking} onPress={() => setThinking((v) => !v)} icon="bulb-outline" label="Thinking" />
           <ToolbarToggle active={planMode} onPress={() => setPlanMode((v) => !v)} icon="map-outline" label="Plan" />

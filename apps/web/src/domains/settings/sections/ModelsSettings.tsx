@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react"
 import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, PERMISSION_MODE_LABELS, type HuxfluxSettings, type PermissionMode, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
-import { Button, cn } from "@huxflux/ui"
+import { Button, cn, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@huxflux/ui"
 import { toast } from "sonner"
 import { IconSearch } from "@tabler/icons-react"
 
@@ -61,6 +61,18 @@ export function ModelsSettings() {
   const defaultModel = settings?.defaultModel ?? "Sonnet 4.6"
   const defaultProvider = settings?.defaultProvider ?? "claude"
   const defaultPermissionMode = settings?.defaultPermissionMode ?? "auto"
+  // Providers whose only option is the unrestricted mode: the global default
+  // cannot be honoured for them, and saying so here avoids a false sense of
+  // safety from a setting that silently does not apply.
+  const cannotEnforce = useMemo(
+    () => providers
+      .filter((p) => {
+        const modes = (p.capabilities?.permissionModes ?? []) as string[]
+        return modes.length > 0 && modes.every((m) => m === "bypassPermissions")
+      })
+      .map((p) => p.name),
+    [providers],
+  )
 
   const updateSettings = useHuxfluxMutation({
     mutationFn: (opts: HuxfluxSettings) => api.settings.update(opts),
@@ -94,19 +106,29 @@ export function ModelsSettings() {
             How much a new agent may do before asking you. Individual agents can override this.
           </p>
         </div>
-        <select
+        <Select
           value={defaultPermissionMode}
           disabled={updateSettings.isPending || !settings}
-          onChange={(e) => updateSettings.mutate({ defaultPermissionMode: e.target.value })}
-          className="w-full text-[13px] bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-ring transition-colors"
+          onValueChange={(v) => updateSettings.mutate({ defaultPermissionMode: v })}
         >
-          {SELECTABLE_PERMISSION_MODES.map((mode) => (
-            <option key={mode} value={mode}>{PERMISSION_MODE_LABELS[mode]}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SELECTABLE_PERMISSION_MODES.map((mode) => (
+              <SelectItem key={mode} value={mode}>{PERMISSION_MODE_LABELS[mode]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {defaultPermissionMode === "bypassPermissions" && (
           <p className="text-[12px] text-muted-foreground">
             Agents run with no checks at all. Safe only when the agent is sandboxed.
+          </p>
+        )}
+        {cannotEnforce.length > 0 && defaultPermissionMode !== "bypassPermissions" && (
+          <p className="text-[12px] text-muted-foreground">
+            {cannotEnforce.join(" and ")} cannot enforce this and {cannotEnforce.length > 1 ? "run" : "runs"} with no
+            restrictions regardless. Set a stricter mode on individual agents, or use another provider.
           </p>
         )}
       </div>

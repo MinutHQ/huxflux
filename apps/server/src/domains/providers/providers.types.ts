@@ -119,7 +119,7 @@ export interface RunTurnContext {
   userMessages: AsyncIterable<string>
   /** Ask the host to decide a tool permission. AskUserQuestion is parked
    *  for the UI and resolved with the user's answers in `updatedInput`;
-   *  every other tool is denied. */
+   *  every other tool is put to the user for approval. */
   requestPermission(request: PermissionRequest): Promise<PermissionDecision>
 }
 

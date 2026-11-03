@@ -65,4 +65,20 @@ describe("claudeProvider.buildSpawnArgs", () => {
     const continued = claudeProvider.buildSpawnArgs(baseOpts({ isContinuation: true }))
     expect(continued.args).toContain("--continue")
   })
+
+  it("passes auto and dontAsk through as --permission-mode values", () => {
+    for (const mode of ["auto", "dontAsk", "acceptEdits", "default"] as const) {
+      const { args } = claudeProvider.buildSpawnArgs(baseOpts({ permissionMode: mode }))
+      expect(args).toContain("--permission-mode")
+      expect(args[args.indexOf("--permission-mode") + 1]).toBe(mode)
+      // The unrestricted escape hatch must not leak into a restricted mode.
+      expect(args).not.toContain("--dangerously-skip-permissions")
+    }
+  })
+
+  it("uses the dedicated flag only for the unrestricted mode", () => {
+    const { args } = claudeProvider.buildSpawnArgs(baseOpts({ permissionMode: "bypassPermissions" }))
+    expect(args).toContain("--dangerously-skip-permissions")
+    expect(args).not.toContain("--permission-mode")
+  })
 })

@@ -4,9 +4,6 @@ import { getProvider } from "../providers/registry.js"
 import { buildConversationContext } from "../providers/context.js"
 import { resolvePermissionMode } from "../providers/permissionModes.js"
 import { getSettings } from "../settings/settings.service.js"
-import { db } from "../../db/index.js"
-import { agents } from "../agents/agents.db.js"
-import { eq } from "drizzle-orm"
 import { permissionModeSchema } from "@huxflux/shared"
 import type { PermissionMode } from "@huxflux/shared"
 import { buildSandboxedCommand } from "../../sandbox.js"
@@ -277,8 +274,7 @@ function buildSpawnOptions(args: ResolveSpawnArgs): SpawnOptions {
 
   // The agent's own setting wins; otherwise the server default. Narrowed to
   // what this provider can actually enforce (see resolvePermissionMode).
-  const agentRow = db.select().from(agents).where(eq(agents.id, agentId)).get()
-  const requestedMode = toPermissionMode(agentRow?.permissionMode)
+  const requestedMode = toPermissionMode(bootstrap.agentRow?.permissionMode)
     ?? toPermissionMode(getSettings().defaultPermissionMode)
     ?? "auto"
 

@@ -7,6 +7,7 @@ import { getProvider } from "../../providers/registry.js"
 import { killWorktreeProcesses } from "../../git/processes.js"
 import { logger } from "../../../logger.js"
 import { getPendingQuestion } from "../../../askStore.js"
+import { getPendingApproval } from "../../../approvalStore.js"
 
 /**
  * Handle on a running turn. A spawned CLI's `ChildProcess` satisfies this
@@ -148,7 +149,9 @@ export function isAgentRunning(agentId: string): boolean {
 export function countBusyTurns(): number {
   let busy = 0
   for (const agentId of runningProcesses.keys()) {
-    if (!getPendingQuestion(agentId)) busy++
+    // Blocked on a human either way, so neither counts as busy work that a
+    // planned restart should wait for.
+    if (!getPendingQuestion(agentId) && !getPendingApproval(agentId)) busy++
   }
   return busy
 }

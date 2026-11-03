@@ -14,6 +14,7 @@ import { handleStreamEvent } from "./claudeStreamEvent.js"
 import { handleNormalizedEvent } from "./normalizedEvent.js"
 import { persistAssistantMessage, appendInterruptedNote } from "./persistMessage.js"
 import { clearPendingQuestion } from "../../../askStore.js"
+import { getPendingApproval, clearPendingApproval } from "../../../approvalStore.js"
 import { settleRunningSubagents } from "./subagents.js"
 import { logger } from "../../../logger.js"
 
@@ -49,6 +50,15 @@ export function makeFinalize(args: FinalizeArgs): (exitCode?: number | null) => 
     unregisterTurnSplitter(args.agentId)
 
     clearPendingQuestion(args.agentId)
+    // A turn can end (crash, kill, restart drain) while a tool approval is
+    // still parked. Without this the store keeps serving it on the agent
+    // detail and the card stays on screen for an agent that already finished,
+    // with no way to dismiss it.
+    const orphanedApproval = getPendingApproval(args.agentId)
+    if (orphanedApproval) {
+      clearPendingApproval(args.agentId)
+      agentsWs.approvalResolved(args.agentId, orphanedApproval.toolUseId)
+    }
     flushRemainingBuffer(args)
     settleRunningSubagents(args.agentId)
     // A server-side stop reason only applies when the process did not finish

@@ -115,7 +115,6 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     onClearPendingQuestion?.()
   }
 
-
   async function handleModelChange(value: string) {
     const [providerId, ...modelParts] = value.split(":")
     const modelId = modelParts.join(":")

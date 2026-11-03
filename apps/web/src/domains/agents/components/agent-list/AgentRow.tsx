@@ -55,7 +55,7 @@ export const AgentRow = React.memo(function AgentRow({
   const isCancelled = agent.status === "cancelled"
   // A parked AskUserQuestion blocks the turn until the user answers, so it
   // outranks the streaming dots: the agent is waiting, not working.
-  const needsInput = !!agent.pendingQuestion
+  const needsInput = (!!agent.pendingQuestion || !!agent.pendingApproval)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState("")
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)

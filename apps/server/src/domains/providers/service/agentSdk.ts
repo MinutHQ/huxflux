@@ -73,7 +73,7 @@ export function buildQueryOptions(opts: SpawnOptions, model: string, ctx: QueryC
     // Permission prompts go to the host. Under bypassPermissions only
     // AskUserQuestion asks (the CLI adapter's `--permission-prompt-tool stdio`
     // equivalent); the runner parks it for the UI and answers with the
-    // user's choices in `updatedInput`, denying everything else.
+    // user's choices in `updatedInput`, and parks any other tool for the user to allow or deny.
     canUseTool: (toolName, input, { signal, toolUseID }) => ctx.requestPermission({ toolName, input, toolUseId: toolUseID, signal }),
     // The CLI adapter forwards every sub-agent event to the UI; match it.
     forwardSubagentText: true,

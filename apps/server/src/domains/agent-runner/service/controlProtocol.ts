@@ -52,10 +52,11 @@ function buildControlResponseLine(requestId: string, response: Record<string, un
 
 /**
  * Handle a `control_request` / `control_cancel_request` event from the CLI.
- * AskUserQuestion requests are parked in the ask store and surfaced to the UI;
- * everything else is denied (matches the pre-control-protocol behavior where
- * no permission host existed and anything that would prompt was auto-denied —
- * under `--dangerously-skip-permissions` nothing else prompts anyway).
+ * AskUserQuestion requests are parked in the ask store and surfaced to the UI.
+ * Any other tool is parked in the approval store instead: the agent's
+ * permission mode decided it needed a human, so the turn stays blocked until
+ * `answerPendingApproval` writes a decision back. A malformed AskUserQuestion
+ * is the one case still denied outright — there is nothing to show.
  */
 export function handleControlRequest(event: ControlRequestEvent, agentId: string, proc: RunningTurn): void {
   if (event.type === "control_cancel_request") {

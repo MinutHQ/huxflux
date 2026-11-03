@@ -1,8 +1,19 @@
 import { useState, useMemo } from "react"
-import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, type HuxfluxSettings, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
-import { Button, cn } from "@huxflux/ui"
+import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, PERMISSION_MODE_LABELS, readPermissionModes, type HuxfluxSettings, type PermissionMode, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
+import { Button, cn, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@huxflux/ui"
 import { toast } from "sonner"
 import { IconSearch } from "@tabler/icons-react"
+
+// Offered as a standing default. "plan" is excluded: it is a per-turn toggle
+// in the composer, and an agent permanently unable to edit is not a useful
+// default.
+const SELECTABLE_PERMISSION_MODES: PermissionMode[] = [
+  "default",
+  "acceptEdits",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+]
 
 const SUB_PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic", openai: "OpenAI", google: "Google", mistral: "Mistral",
@@ -49,6 +60,19 @@ export function ModelsSettings() {
 
   const defaultModel = settings?.defaultModel ?? "Sonnet 4.6"
   const defaultProvider = settings?.defaultProvider ?? "claude"
+  const defaultPermissionMode = settings?.defaultPermissionMode ?? "auto"
+  // Providers whose only option is the unrestricted mode: the global default
+  // cannot be honoured for them, and saying so here avoids a false sense of
+  // safety from a setting that silently does not apply.
+  const cannotEnforce = useMemo(
+    () => providers
+      .filter((p) => {
+        const modes = readPermissionModes(p.capabilities)
+        return modes.length > 0 && modes.every((m) => m === "bypassPermissions")
+      })
+      .map((p) => p.name),
+    [providers],
+  )
 
   const updateSettings = useHuxfluxMutation({
     mutationFn: (opts: HuxfluxSettings) => api.settings.update(opts),
@@ -74,6 +98,40 @@ export function ModelsSettings() {
       <p className="text-[12px] text-muted-foreground">
         Check the models you want to show in the switcher. Set the default for new agents separately.
       </p>
+
+      <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
+        <div>
+          <div className="text-[13px] font-medium text-foreground">Default permissions</div>
+          <p className="text-[12px] text-muted-foreground">
+            How much a new agent may do before asking you. Individual agents can override this.
+          </p>
+        </div>
+        <Select
+          value={defaultPermissionMode}
+          disabled={updateSettings.isPending || !settings}
+          onValueChange={(v) => updateSettings.mutate({ defaultPermissionMode: v })}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SELECTABLE_PERMISSION_MODES.map((mode) => (
+              <SelectItem key={mode} value={mode}>{PERMISSION_MODE_LABELS[mode]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {defaultPermissionMode === "bypassPermissions" && (
+          <p className="text-[12px] text-muted-foreground">
+            Agents run with no checks at all. Safe only when the agent is sandboxed.
+          </p>
+        )}
+        {cannotEnforce.length > 0 && defaultPermissionMode !== "bypassPermissions" && (
+          <p className="text-[12px] text-muted-foreground">
+            {cannotEnforce.join(" and ")} cannot enforce this and {cannotEnforce.length > 1 ? "run" : "runs"} with no
+            restrictions regardless. Set a stricter mode on individual agents, or use another provider.
+          </p>
+        )}
+      </div>
       {isLoading ? (
         <p className="text-[12px] text-muted-foreground">Loading providers...</p>
       ) : isError || providers.length === 0 ? (

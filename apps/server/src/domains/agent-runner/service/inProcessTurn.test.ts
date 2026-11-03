@@ -5,8 +5,9 @@ import { createTestDb, captureWsEvents, silenceLogs, waitFor, type TestDb, type 
 import { createStreamState } from "./state.js"
 import { ABORTED_EXIT_CODE, startInProcessTurn } from "./inProcessTurn.js"
 import { runningProcesses, stopAgent } from "./processRegistry.js"
-import { answerPendingQuestion, injectUserMessage } from "./controlProtocol.js"
+import { answerPendingQuestion, answerPendingApproval, injectUserMessage } from "./controlProtocol.js"
 import { getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
+import { getPendingApproval } from "../../../approvalStore.js"
 import { unregisterTurnSplitter } from "./turnSegments.js"
 import type { NormalizedStreamEvent, ProviderAdapter, RunTurnContext, SpawnOptions } from "../../providers/providers.types.js"
 import type { StreamState } from "../../agents/agents.types.js"
@@ -22,6 +23,7 @@ function makeProvider(runTurn: InProcessProvider["runTurn"]): InProcessProvider 
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion: false,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
       effortLevels: [],
+      permissionModes: [],
     },
     resolveBinary: () => "fake",
     isAvailable: () => true,
@@ -34,7 +36,7 @@ function makeProvider(runTurn: InProcessProvider["runTurn"]): InProcessProvider 
 }
 
 function spawnOptions(): SpawnOptions {
-  return { prompt: "p", model: "m", planMode: false, sessionId: null, isContinuation: false, cwd: "/tmp", systemPrompt: "s" }
+  return { prompt: "p", model: "m", planMode: false, permissionMode: "bypassPermissions", sessionId: null, isContinuation: false, cwd: "/tmp", systemPrompt: "s" }
 }
 
 interface Ctx {
@@ -225,15 +227,37 @@ describe("startInProcessTurn", () => {
     await turn
   })
 
-  it("denies permission requests for any other tool without involving the UI", async () => {
+  it("parks a permission request for another tool and runs it once approved", async () => {
     let decision: unknown
     const provider = makeProvider(async function* (_opts, runCtx) {
-      decision = await runCtx.requestPermission({ toolName: "Bash", input: { command: "rm -rf /" }, signal: runCtx.signal })
+      decision = await runCtx.requestPermission({ toolName: "Bash", input: { command: "ls" }, toolUseId: "tu-bash", signal: runCtx.signal })
       yield { type: "done" }
     })
-    expect(await start(ctx, provider)).toBe(0)
-    expect(decision).toMatchObject({ behavior: "deny" })
+
+    const turn = start(ctx, provider)
+    await waitFor(() => getPendingApproval(ctx.agentId))
+    // Surfaced for approval, not silently denied, and not confused with a question.
+    expect(ctx.capture.events.some((e) => e.type === "ask:approval")).toBe(true)
     expect(ctx.capture.events.some((e) => e.type === "ask:question")).toBe(false)
+
+    expect(answerPendingApproval(ctx.agentId, "tu-bash", "allow")).toBe(true)
+    expect(await turn).toBe(0)
+    expect(decision).toMatchObject({ behavior: "allow" })
+    expect(getPendingApproval(ctx.agentId)).toBeUndefined()
+  })
+
+  it("denies a parked permission request when the user refuses", async () => {
+    let decision: unknown
+    const provider = makeProvider(async function* (_opts, runCtx) {
+      decision = await runCtx.requestPermission({ toolName: "Bash", input: { command: "rm -rf /" }, toolUseId: "tu-rm", signal: runCtx.signal })
+      yield { type: "done" }
+    })
+
+    const turn = start(ctx, provider)
+    await waitFor(() => getPendingApproval(ctx.agentId))
+    expect(answerPendingApproval(ctx.agentId, "tu-rm", "deny", "no")).toBe(true)
+    expect(await turn).toBe(0)
+    expect(decision).toMatchObject({ behavior: "deny", message: "no" })
   })
 
   it("answers a pending question with a deny and clears the card when the turn is stopped", async () => {

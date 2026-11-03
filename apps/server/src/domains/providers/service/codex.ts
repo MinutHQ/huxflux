@@ -39,6 +39,7 @@ export const codexProvider: ProviderAdapter = {
   name: "Codex CLI",
 
   capabilities: {
+    permissionModes: ["bypassPermissions"],
     sessionResume: false,
     sessionContinue: false,
     planMode: false,

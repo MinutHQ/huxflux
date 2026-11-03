@@ -22,6 +22,7 @@ interface AgentRow {
   updatedAt: string
   diffSummary?: { additions: number; deletions: number }
   pendingQuestion?: unknown
+  pendingApproval?: unknown
 }
 
 interface MessageRow {
@@ -54,6 +55,10 @@ export function summarizeAgent(a: AgentRow) {
     pr: a.pr ?? null,
     diffSummary: a.diffSummary,
     pendingQuestion: a.pendingQuestion ?? null,
+    // Read-only on purpose: there is no MCP tool to approve. An assistant
+    // allowing its own tool calls is not oversight, but it should still be
+    // able to see why a sub-agent has stopped making progress.
+    pendingApproval: a.pendingApproval ?? null,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   }

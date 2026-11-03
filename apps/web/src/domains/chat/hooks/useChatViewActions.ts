@@ -32,6 +32,19 @@ interface UseChatViewActionsArgs {
   uploadingCount: number
 }
 
+/**
+ * Allow or deny a tool call the agent is blocked on. The server writes the
+ * decision back as a control_response, unblocking the turn; the card is
+ * cleared by the `approval:resolved` frame that follows rather than here,
+ * because until the response actually lands the agent is still waiting.
+ * Errors propagate so the card stays open and shows why it did not land.
+ */
+async function approveTool(agentId: string, toolUseId: string, decision: "allow" | "deny"): Promise<void> {
+  // fire-and-forget; intentional: one-shot decision whose result the card handles itself
+  // eslint-disable-next-line no-restricted-syntax
+  await api.agents.approveTool(agentId, toolUseId, decision)
+}
+
 export function useChatViewActions(args: UseChatViewActionsArgs) {
   const queryClient = useQueryClient()
   const { agent, input, setInput, textareaRef, pendingComments, attachments, setAttachments,
@@ -129,6 +142,7 @@ export function useChatViewActions(args: UseChatViewActionsArgs) {
     handleSendCommand,
     handlePlanApprove,
     handleAnswerQuestion,
+    handleApproveTool: (toolUseId: string, decision: "allow" | "deny") => approveTool(agent.id, toolUseId, decision),
     handleModelChange,
     handleFileSelect,
     toggleLinkedAgent,

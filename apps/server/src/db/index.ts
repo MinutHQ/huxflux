@@ -576,6 +576,14 @@ const MIGRATIONS: Migration[] = [
     version: 40,
     sql: `ALTER TABLE messages ADD COLUMN shared_files TEXT;`,
   },
+  {
+    version: 41,
+    // Null means "use the server default", so existing agents follow the
+    // settings value rather than being pinned to whatever it is today.
+    sql: `
+      ALTER TABLE agents ADD COLUMN permission_mode TEXT;
+    `,
+  },
 ]
 
 export function runMigrations() {

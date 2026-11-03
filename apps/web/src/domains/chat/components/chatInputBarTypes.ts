@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Agent, AgentSummary, PRComment, FileChange, SlashCommand } from "@huxflux/shared"
+import type { Agent, AgentSummary, PRComment, FileChange, SlashCommand, PermissionMode } from "@huxflux/shared"
 import type { MentionAttachment, MentionOption } from "../hooks/useMentionsAndSlash"
 
 export interface Attachment { name: string; path: string; mimeType: string }
@@ -10,6 +10,8 @@ export interface PendingUpload { id: string; name: string; isImage: boolean }
 export interface Capabilities {
   effortLevels?: string[]
   planMode?: boolean
+  /** Modes this provider can enforce; the permission picker offers only these. */
+  permissionModes?: PermissionMode[]
 }
 
 export interface ChatInputBarProps {

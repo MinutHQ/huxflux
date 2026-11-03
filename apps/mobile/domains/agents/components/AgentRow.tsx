@@ -69,7 +69,7 @@ export function AgentRow({ agent, isStreaming, repoName }: {
     : null
 
   // A parked AskUserQuestion means the agent is waiting on the user, not working.
-  const needsInput = !!agent.pendingQuestion
+  const needsInput = !!agent.pendingQuestion || !!agent.pendingApproval
 
   function handlePress() {
     if (agent.unread) {

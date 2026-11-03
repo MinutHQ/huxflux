@@ -13,6 +13,7 @@
 import { z } from "zod/v4"
 import { statusColors } from "@huxflux/tokens"
 import { prStatusSchema, type PRStatus } from "../pull-requests/pull-requests.types.js"
+import { permissionModeSchema } from "./permissionModes.js"
 
 // ── AgentStatus ──────────────────────────────────────────────────────────────
 
@@ -185,6 +186,17 @@ export const agentPendingQuestionSchema = z.object({
 
 export type AgentPendingQuestion = z.infer<typeof agentPendingQuestionSchema>
 
+// The tool call the agent is currently blocked on, if any. Served on the agent
+// detail for the same reason as the pending question: a client that missed the
+// `ask:approval` frame still shows the card.
+export const agentPendingApprovalSchema = z.object({
+  toolUseId: z.string(),
+  toolName: z.string(),
+  input: z.unknown(),
+})
+
+export type AgentPendingApproval = z.infer<typeof agentPendingApprovalSchema>
+
 export const agentSchema = z.object({
   id: z.string(),
   repoId: z.string().nullish(),
@@ -227,6 +239,8 @@ export const agentSchema = z.object({
   noWorktree: intFlagSchema,
   deletedAt: z.string().nullish(),
   pendingQuestion: agentPendingQuestionSchema.nullish(),
+  pendingApproval: agentPendingApprovalSchema.nullish(),
+  permissionMode: permissionModeSchema.nullish(),
 })
 
 export type Agent = z.infer<typeof agentSchema>
@@ -432,6 +446,7 @@ export const updateAgentBodySchema = z.object({
   draft: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
+  permissionMode: permissionModeSchema.nullable().optional(),
   // Server accepts boolean | null (and converts to 0/1/null integer).
   prCommentMonitoring: z.boolean().nullable().optional(),
   ciMonitoring: z.boolean().nullable().optional(),
@@ -480,6 +495,26 @@ export const answerBodySchema = z.object({
 })
 
 export type AnswerBody = z.infer<typeof answerBodySchema>
+
+// A tool call the agent is blocked on, waiting for the user to allow or deny
+// it. Distinct from a pending question: a question asks the user to choose
+// between options the agent offered, an approval asks whether a tool may run
+// at all. Both park the turn until answered.
+export interface PendingApproval {
+  toolUseId: string
+  toolName: string
+  /** The tool's arguments, shown so the user can see what would run. */
+  input: unknown
+}
+
+export const approveBodySchema = z.object({
+  toolUseId: z.string(),
+  decision: z.enum(["allow", "deny"]),
+  /** Shown to the agent when denying, so it can choose another route. */
+  message: z.string().optional(),
+})
+
+export type ApproveBody = z.infer<typeof approveBodySchema>
 
 export const saveFileContentBodySchema = z.object({
   path: z.string(),
@@ -551,6 +586,8 @@ export type AgentsServerEvent =
   // The pending question was answered (from any client) or cancelled by the
   // CLI — every client should drop its question card.
   | { type: "ask:resolved";     agentId: string; toolUseId: string }
+  | { type: "ask:approval";     agentId: string; toolUseId: string; toolName: string; input: unknown }
+  | { type: "approval:resolved"; agentId: string; toolUseId: string }
   // `/clear` wiped the transcript and provider session — drop cached messages.
   | { type: "messages:cleared"; agentId: string }
   | { type: "ports:changed";    ports: Array<{ agentId: string; agentTitle: string; port: number }> }

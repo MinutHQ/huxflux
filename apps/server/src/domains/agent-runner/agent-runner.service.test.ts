@@ -31,6 +31,7 @@ function makeTestProvider(fixturePath: string): ProviderAdapter {
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion: false,
       systemPromptFlag: true, allowedToolsRestriction: false, subAgentSupport: false,
       effortLevels: [],
+      permissionModes: [],
     },
     resolveBinary: () => process.execPath,
     isAvailable: () => true,

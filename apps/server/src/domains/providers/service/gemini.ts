@@ -43,6 +43,7 @@ export const geminiProvider: ProviderAdapter = {
   name: "Gemini CLI",
 
   capabilities: {
+    permissionModes: ["plan", "bypassPermissions"],
     sessionResume: true,
     sessionContinue: false,
     planMode: true,
@@ -71,7 +72,12 @@ export const geminiProvider: ProviderAdapter = {
 
     // Gemini uses --yolo for auto-approve (like Claude's --dangerously-skip-permissions)
     // and --approval-mode plan for plan mode
-    const approvalArgs = opts.planMode ? ["--approval-mode", "plan"] : ["--yolo"]
+    // Gemini has no middle ground: --yolo auto-approves everything and
+    // --approval-mode plan is read-only. `capabilities.permissionModes` only
+    // advertises those two, so anything else has already been narrowed away.
+    const approvalArgs = opts.planMode || opts.permissionMode === "plan"
+      ? ["--approval-mode", "plan"]
+      : ["--yolo"]
 
     // Gemini doesn't have --append-system-prompt. Inject a trimmed system context
     // clearly separated from the user prompt so the model doesn't confuse them.

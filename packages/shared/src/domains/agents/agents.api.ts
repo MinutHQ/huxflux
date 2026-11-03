@@ -23,6 +23,7 @@ import {
   renameBranchBodySchema,
   generateTitleBodySchema,
   answerBodySchema,
+  approveBodySchema,
   saveFileContentBodySchema,
   openInBodySchema,
   uploadFileBodySchema,
@@ -94,6 +95,11 @@ export const agentsApi = {
     reqValidated(okResponseSchema, `/api/agents/${id}/answer`, {
       method: "POST",
       body: JSON.stringify(answerBodySchema.parse({ answers, toolUseId })),
+    }),
+  approveTool: (id: string, toolUseId: string, decision: "allow" | "deny", message?: string) =>
+    reqValidated(okResponseSchema, `/api/agents/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify(approveBodySchema.parse({ toolUseId, decision, message })),
     }),
   switchBranch: (id: string, branch: string, force?: boolean) =>
     reqValidated(agentMutationResponseSchema, `/api/agents/${id}/switch-branch`, {

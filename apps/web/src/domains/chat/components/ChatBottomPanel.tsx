@@ -7,6 +7,7 @@ import { TeamAgentBar } from "./TeamAgentBar"
 import { TasksBar } from "./TasksBar"
 import { BackgroundTasksStrip } from "./BackgroundTasksStrip"
 import { AskUserQuestionCard } from "./AskUserQuestionCard"
+import { ToolApprovalCard } from "./ToolApprovalCard"
 import { ChatInputBar } from "./ChatInputBar"
 import { extractTeamAgents } from "../extract/teamAgents"
 import type { PendingQuestion } from "../chat.types"
@@ -20,10 +21,15 @@ interface ChatBottomPanelProps {
   pendingQuestion: PendingQuestion | null
   onAnswerQuestion: (answers: Record<string, string>) => Promise<void> | void
   onDismissQuestion: () => void
+  onApproveTool: (toolUseId: string, decision: "allow" | "deny") => Promise<void> | void
   inputBarProps: ChatInputBarProps
 }
 
-export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBottom, pendingQuestion, onAnswerQuestion, onDismissQuestion, inputBarProps }: ChatBottomPanelProps) {
+export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBottom, pendingQuestion, onAnswerQuestion, onDismissQuestion, onApproveTool, inputBarProps }: ChatBottomPanelProps) {
+  // Narrowed once so the callback below closes over a non-null value rather
+  // than re-reading a field TypeScript cannot prove is still set.
+  const pendingApproval = agent.pendingApproval ?? null
+
   return (
     <div className="shrink-0 relative">
       {!isAtBottom && agent.messages.length > 0 && (
@@ -42,6 +48,14 @@ export function ChatBottomPanel({ agent, uiIsStreaming, isAtBottom, onScrollToBo
         <TeamAgentBar agents={extractTeamAgents(agent.messages, uiIsStreaming)} isStreaming={uiIsStreaming} agentId={agent.id} />
         <TasksBar agentId={agent.id} isStreaming={uiIsStreaming} />
         <BackgroundTasksStrip agentId={agent.id} />
+        {pendingApproval && (
+          <ToolApprovalCard
+            key={pendingApproval.toolUseId}
+            toolName={pendingApproval.toolName}
+            input={pendingApproval.input}
+            onDecide={(decision) => onApproveTool(pendingApproval.toolUseId, decision)}
+          />
+        )}
         {pendingQuestion && pendingQuestion.agentId === agent.id && Array.isArray(pendingQuestion.questions) && pendingQuestion.questions.length > 0 && (
           <AskUserQuestionCard
             key={pendingQuestion.toolUseId}

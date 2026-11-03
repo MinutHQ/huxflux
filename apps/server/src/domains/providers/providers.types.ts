@@ -1,3 +1,5 @@
+import type { PermissionMode } from "@huxflux/shared"
+
 export type ProviderId = "claude" | "agent-sdk" | "codex" | "gemini" | "antigravity" | "pi"
 
 export interface ModelCapabilities {
@@ -34,6 +36,14 @@ export interface ProviderCapabilities {
   /** Exposes Claude's TaskCreate / TaskUpdate task-list tools (read back by the runner). */
   taskListTools?: boolean
   effortLevels: string[]  // e.g. ["low","medium","high","max"] or [] if not supported
+  /**
+   * Permission modes this provider can actually enforce, most restrictive
+   * first. Shipped to the client on /api/providers so the picker only offers
+   * what the provider honours: only Claude speaks the control protocol that
+   * makes "ask the user" possible, so the others list just the extremes.
+   * An empty list means the provider has no permission concept at all.
+   */
+  permissionModes: PermissionMode[]
 }
 
 /** Normalized stream event — all providers emit these after parsing their raw output */
@@ -54,6 +64,12 @@ export interface SpawnOptions {
   prompt: string
   model: string
   planMode: boolean
+  /**
+   * How much the agent may do before asking. Resolved by the runner from the
+   * agent's own setting or the server default, and already narrowed to
+   * something this provider advertises in `capabilities.permissionModes`.
+   */
+  permissionMode: PermissionMode
   sessionId: string | null
   isContinuation: boolean
   cwd: string
@@ -103,7 +119,7 @@ export interface RunTurnContext {
   userMessages: AsyncIterable<string>
   /** Ask the host to decide a tool permission. AskUserQuestion is parked
    *  for the UI and resolved with the user's answers in `updatedInput`;
-   *  every other tool is denied. */
+   *  every other tool is put to the user for approval. */
   requestPermission(request: PermissionRequest): Promise<PermissionDecision>
 }
 

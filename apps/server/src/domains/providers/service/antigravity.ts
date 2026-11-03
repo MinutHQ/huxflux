@@ -92,6 +92,7 @@ export const antigravityProvider: ProviderAdapter = {
   name: "Antigravity",
 
   capabilities: {
+    permissionModes: ["plan", "bypassPermissions"],
     sessionResume: true,
     sessionContinue: true,
     planMode: true,
@@ -121,7 +122,10 @@ export const antigravityProvider: ProviderAdapter = {
       resumeArgs = ["--continue"]
     }
 
-    const modeArgs = opts.planMode ? ["--mode", "plan"] : ["--dangerously-skip-permissions"]
+    // Same two-way split as Gemini; see capabilities.permissionModes.
+    const modeArgs = opts.planMode || opts.permissionMode === "plan"
+      ? ["--mode", "plan"]
+      : ["--dangerously-skip-permissions"]
 
     const fullPrompt = opts.systemPrompt
       ? `<system_instructions>\n${opts.systemPrompt}\n</system_instructions>\n\n<user_message>\n${opts.prompt}\n</user_message>`

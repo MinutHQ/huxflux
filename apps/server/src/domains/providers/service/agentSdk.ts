@@ -73,7 +73,7 @@ export function buildQueryOptions(opts: SpawnOptions, model: string, ctx: QueryC
     // Permission prompts go to the host. Under bypassPermissions only
     // AskUserQuestion asks (the CLI adapter's `--permission-prompt-tool stdio`
     // equivalent); the runner parks it for the UI and answers with the
-    // user's choices in `updatedInput`, denying everything else.
+    // user's choices in `updatedInput`, and parks any other tool for the user to allow or deny.
     canUseTool: (toolName, input, { signal, toolUseID }) => ctx.requestPermission({ toolName, input, toolUseId: toolUseID, signal }),
     // The CLI adapter forwards every sub-agent event to the UI; match it.
     forwardSubagentText: true,
@@ -83,8 +83,12 @@ export function buildQueryOptions(opts: SpawnOptions, model: string, ctx: QueryC
     // The SDK loads no settings by default; the CLI adapter picks up the
     // user's ~/.claude and the repo's CLAUDE.md, so do the same here.
     settingSources: ["user", "project", "local"],
-    permissionMode: opts.planMode ? "plan" : "bypassPermissions",
-    allowDangerouslySkipPermissions: !opts.planMode,
+    // planMode is a per-turn override; otherwise the agent's standing mode is
+    // passed straight through (the SDK uses the same vocabulary we store).
+    permissionMode: opts.planMode ? "plan" : opts.permissionMode,
+    // Only the unrestricted mode needs the escape hatch; every other mode
+    // routes its prompts through `canUseTool` above.
+    allowDangerouslySkipPermissions: !opts.planMode && opts.permissionMode === "bypassPermissions",
     allowedTools: [...(opts.allowedTools ?? []), "AskUserQuestion"],
     ...(toEffort(opts.effort) ? { effort: toEffort(opts.effort) } : {}),
     ...(resume ? { resume } : {}),
@@ -112,6 +116,7 @@ export const agentSdkProvider: ProviderAdapter = {
   name: "Claude Agent SDK",
 
   capabilities: {
+    permissionModes: ["plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"],
     sessionResume: true,
     sessionContinue: true,
     planMode: true,

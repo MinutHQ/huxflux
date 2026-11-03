@@ -197,10 +197,12 @@ function buildPRReplyDirective(hasPrNumber: boolean): string[] {
       ``,
       `When you receive PR review comments (messages from "PR Review"), fix the issues and reply to each comment on GitHub.`,
       `Use this tag to reply. The server posts it as a threaded reply on the GitHub PR review comment via the GitHub API:`,
-      `  <huxflux:pr.reply commentId="COMMENT_ID">your reply explaining what you fixed</huxflux:pr.reply>`,
+      `  <huxflux:pr.reply commentId="COMMENT_ID" resolve="true">your reply explaining what you fixed</huxflux:pr.reply>`,
       `The comment ID is included in the PR review message. Emit one tag per comment you address.`,
+      `resolve="true" makes the server resolve the review thread after replying. Use it only when you changed the code to do what the comment asked. Leave it out when you disagree, ask a question, or changed nothing, so the thread stays open for the reviewer.`,
       `If the tag fails (e.g. no PR linked, no GitHub token), fall back to the gh CLI:`,
       `  gh api repos/OWNER/REPO/pulls/comments/COMMENT_ID/replies -f body='your reply'`,
+      `and, for a fixed comment, resolve its thread with gh api graphql (resolveReviewThread).`,
       `After fixing and replying, push your changes.`,
     ].join("\n"),
   ]

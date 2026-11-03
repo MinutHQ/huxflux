@@ -62,7 +62,7 @@ function formatCommentsMessage(comments: NewComment[]): string {
     const idNote = c.commentId ? ` (comment ID: ${c.commentId})` : ""
     return `${prefix}${idNote}:\n> ${c.body.split("\n").join("\n> ")}`
   })
-  return `New PR review comment${comments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${comments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, then reply on GitHub using:\n  <huxflux:pr.reply commentId="COMMENT_ID">your reply</huxflux:pr.reply>`
+  return `New PR review comment${comments.length > 1 ? "s" : ""}:\n\n${parts.join("\n\n---\n\n")}\n\nPlease address ${comments.length > 1 ? "these comments" : "this comment"}. Fix the code if needed, then reply on GitHub using:\n  <huxflux:pr.reply commentId="COMMENT_ID" resolve="true">your reply</huxflux:pr.reply>\nKeep resolve="true" only when you changed the code to do what the comment asked; leave it out when you disagree, ask a question, or changed nothing, so the reviewer can answer.`
 }
 
 export async function monitorPRComments(agent: AgentRow, details: PRDetails): Promise<void> {

@@ -32,16 +32,58 @@ export async function replyToReviewComment(
   commentId: number,
   body: string,
   opts: { fallbackToConversation?: boolean } = {},
-): Promise<void> {
+): Promise<"thread" | "conversation"> {
   const octokit = getOctokit()
   try {
     await octokit.pulls.createReplyForReviewComment({ owner, repo, pull_number: prNumber, comment_id: commentId, body })
-    return
+    return "thread"
   } catch (err) {
     if (!opts.fallbackToConversation || !isNotReviewCommentError(err)) throw err
     logger.info(`[prComments] comment ${commentId} is not a review-thread root; replying as a conversation comment`)
   }
   await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body })
+  return "conversation"
+}
+
+type ThreadIdsResult = {
+  repository: { pullRequest: { reviewThreads: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    nodes: Array<{ id: string; isResolved: boolean; comments: { nodes: Array<{ databaseId: number }> } }>
+  } } }
+}
+
+/**
+ * Find the review thread an inline comment (REST id) belongs to. Returns null
+ * when no thread on the PR contains it, e.g. a general conversation comment.
+ */
+export async function findReviewThreadForComment(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  commentId: number,
+): Promise<{ id: string; isResolved: boolean } | null> {
+  const octokit = getOctokit()
+  let after: string | null = null
+  for (;;) {
+    const res: ThreadIdsResult = await octokit.graphql<ThreadIdsResult>(
+      `query PRThreadIds($owner: String!, $repo: String!, $number: Int!, $after: String) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            reviewThreads(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes { id isResolved comments(first: 100) { nodes { databaseId } } }
+            }
+          }
+        }
+      }`,
+      { owner, repo, number: prNumber, after },
+    )
+    const threads = res.repository.pullRequest.reviewThreads
+    const hit = threads.nodes.find((t) => t.comments.nodes.some((c) => c.databaseId === commentId))
+    if (hit) return { id: hit.id, isResolved: hit.isResolved }
+    if (!threads.pageInfo.hasNextPage || !threads.pageInfo.endCursor) return null
+    after = threads.pageInfo.endCursor
+  }
 }
 
 /** Delete an inline review comment by its REST id. */

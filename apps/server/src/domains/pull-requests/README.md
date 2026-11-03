@@ -16,7 +16,7 @@ Top-level `.ts` files in this domain are public; subfolders (`routes/`, `service
 - `pull-requests.routes.ts` — exposes `pullRequestsPlugin`, the Fastify plugin registering every PR-related HTTP route. Wired through the registry at `src/domains/index.ts`.
 - `prStatus.ts` — re-exports `prStatusToAgentStatus`, `parsePrStatus`, `getPRStatus`, `findPRForBranch`, `findPRNumberForBranch` from `service/prStatus.ts`.
 - `prDetails.ts` — re-exports `getPRDetails` (full PR details: reviews, checks, threads, issue comments, currentUser) from `service/prDetails.ts`.
-- `prComments.ts` — re-exports `replyToReviewComment` (posts a reply to an inline review comment, falling back to a top-level PR conversation comment when the target id is not a review-thread root) from `service/prComments.ts`.
+- `prComments.ts` — re-exports `replyToReviewComment` (posts a reply to an inline review comment, falling back to a top-level PR conversation comment when the target id is not a review-thread root; returns which of the two it did), `findReviewThreadForComment` and `resolveReviewThread` from `service/prComments.ts`. The agent's `pr.reply` tag uses them to resolve the thread when it carries `resolve="true"`.
 - `misc.ts` — re-exports `createIssue` (used by feedback) and `listBranches` (used by repos) from `service/misc.ts`.
 
 ## Depends on

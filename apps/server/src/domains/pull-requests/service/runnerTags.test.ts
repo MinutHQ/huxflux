@@ -1,7 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
 import { createTestDb, silenceLogs, type TestDb, type SilencedLogs } from "../../../../test/harness.js"
-import { prReplyHandler } from "./runnerTags.js"
+import { prReplyHandler, wantsResolve } from "./runnerTags.js"
+import { findReviewThreadForComment, replyToReviewComment, resolveReviewThread } from "../prComments.js"
+
+vi.mock("../prComments.js", () => ({
+  replyToReviewComment: vi.fn(),
+  findReviewThreadForComment: vi.fn(),
+  resolveReviewThread: vi.fn(),
+}))
 import type { TagOutcome } from "../../agent-runner/agent-runner.types.js"
 
 // The pr.reply handler posts to GitHub via Octokit on the happy path (network,
@@ -34,9 +41,9 @@ function insertAgent(db: TestDb["db"], fields: { repoId?: string | null; prNumbe
   }).run()
 }
 
-async function invoke(commentId = "123", body = "fixed it"): Promise<TagOutcome | void> {
+async function invoke(commentId = "123", body = "fixed it", resolve?: string): Promise<TagOutcome | void> {
   const handler = prReplyHandler(AGENT_ID)
-  return handler.onTag({ args: { commentId }, body })
+  return handler.onTag({ args: { commentId, resolve }, body })
 }
 
 describe("prReplyHandler follow-ups", () => {
@@ -77,5 +84,65 @@ describe("prReplyHandler follow-ups", () => {
     expect(outcome?.followUp?.content).toContain("not a valid numeric comment id")
     // The failing id is echoed so the agent knows which reply to retry.
     expect(outcome?.followUp?.content).toContain("not-a-number")
+  })
+})
+
+describe("prReplyHandler resolve", () => {
+  let ctx: Ctx
+  beforeEach(() => {
+    ctx = { logs: silenceLogs(), testDb: createTestDb() }
+    vi.mocked(replyToReviewComment).mockReset().mockResolvedValue("thread")
+    vi.mocked(findReviewThreadForComment).mockReset().mockResolvedValue({ id: "T_1", isResolved: false })
+    vi.mocked(resolveReviewThread).mockReset().mockResolvedValue()
+    insertRepo(ctx.testDb.db, "owner/repo")
+    insertAgent(ctx.testDb.db, { repoId: REPO_ID, prNumber: 7 })
+  })
+  afterEach(() => { ctx.testDb.close(); ctx.logs.restore() })
+
+  it("resolves the thread after replying when resolve=\"true\"", async () => {
+    const outcome = await invoke("123", "fixed it", "true")
+    expect(outcome).toBeUndefined()
+    expect(findReviewThreadForComment).toHaveBeenCalledWith("owner", "repo", 7, 123)
+    expect(resolveReviewThread).toHaveBeenCalledWith("T_1")
+  })
+
+  it("leaves the thread open without resolve", async () => {
+    await invoke("123", "I don't think so, because...")
+    expect(replyToReviewComment).toHaveBeenCalled()
+    expect(findReviewThreadForComment).not.toHaveBeenCalled()
+    expect(resolveReviewThread).not.toHaveBeenCalled()
+  })
+
+  it("ignores resolve when the reply landed as a conversation comment", async () => {
+    vi.mocked(replyToReviewComment).mockResolvedValue("conversation")
+    await invoke("123", "fixed it", "true")
+    expect(findReviewThreadForComment).not.toHaveBeenCalled()
+  })
+
+  it("does not resolve a thread that is already resolved", async () => {
+    vi.mocked(findReviewThreadForComment).mockResolvedValue({ id: "T_1", isResolved: true })
+    await invoke("123", "fixed it", "true")
+    expect(resolveReviewThread).not.toHaveBeenCalled()
+  })
+
+  it("tells the agent when resolving fails, without asking it to re-post", async () => {
+    vi.mocked(resolveReviewThread).mockRejectedValue(new Error("Resource not accessible"))
+    const outcome = await invoke("123", "fixed it", "true")
+    expect(outcome?.followUp?.content).toContain("was posted")
+    expect(outcome?.followUp?.content).toContain("NOT resolved")
+    expect(outcome?.followUp?.content).toContain("resolveReviewThread")
+  })
+
+  it("tells the agent when no thread holds the comment", async () => {
+    vi.mocked(findReviewThreadForComment).mockResolvedValue(null)
+    const outcome = await invoke("123", "fixed it", "true")
+    expect(outcome?.followUp?.content).toContain("no review thread")
+  })
+})
+
+describe("wantsResolve", () => {
+  it("accepts true/yes/1 in any case", () => {
+    for (const v of ["true", "TRUE", " yes ", "1"]) expect(wantsResolve(v)).toBe(true)
+    for (const v of [undefined, "", "false", "no", "0"]) expect(wantsResolve(v)).toBe(false)
   })
 })

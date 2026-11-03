@@ -8,8 +8,9 @@ import {
   IconPlayerStop,
   IconPlus,
   IconSend,
+  IconShieldLock,
 } from "@tabler/icons-react"
-import { api } from "@huxflux/shared"
+import { api, PERMISSION_MODE_LABELS, type PermissionMode } from "@huxflux/shared"
 import { ContextRing } from "./ContextRing"
 import { ModelSelect } from "./ModelSelect"
 import { AgentSettingsPopover } from "./AgentSettingsPopover"
@@ -30,6 +31,45 @@ function EffortSelect({ effort, setEffort, levels }: { effort: ChatInputBarProps
         <SelectItem value="default">Auto</SelectItem>
         {levels.map((lvl) => (
           <SelectItem key={lvl} value={lvl}>{lvl.charAt(0).toUpperCase() + lvl.slice(1)}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/**
+ * Per-agent permission mode. Only the modes this provider can actually enforce
+ * are offered (see `capabilities.permissionModes`): Claude speaks the control
+ * protocol that makes "ask the user" possible, the others only have an on/off
+ * flag, so showing them a full list would promise enforcement that never
+ * happens. "Default" means follow the server-wide setting.
+ *
+ * "plan" is absent on purpose: it is the per-turn toggle beside this control,
+ * not a standing mode.
+ */
+function PermissionSelect({ agent, modes }: { agent: ChatInputBarProps["agent"]; modes: PermissionMode[] }) {
+  const selectable = modes.filter((m) => m !== "plan")
+  if (selectable.length === 0) return null
+
+  const current = agent.permissionMode ?? null
+  const unrestricted = current === "bypassPermissions"
+
+  return (
+    <Select
+      value={current ?? "inherit"}
+      onValueChange={(v) => {
+        // fire-and-forget; intentional: the agent row updates over the socket
+        api.agents.update(agent.id, { permissionMode: v === "inherit" ? null : v as PermissionMode }).catch(() => {})
+      }}
+    >
+      <SelectTrigger className="h-auto border-0 shadow-none bg-transparent px-2 py-1 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground gap-1.5 focus:ring-0 [&>svg]:hidden">
+        <IconShieldLock size={13} className={cn("shrink-0", unrestricted ? "text-foreground" : "text-muted-foreground/60")} />
+        <SelectValue>{current ? PERMISSION_MODE_LABELS[current] : "Permissions"}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="inherit">Use default</SelectItem>
+        {selectable.map((mode) => (
+          <SelectItem key={mode} value={mode}>{PERMISSION_MODE_LABELS[mode]}</SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -126,6 +166,7 @@ export function ChatInputActionRow(props: ChatInputBarProps) {
           onChange={onModelChange}
         />
         {effortLevels.length > 0 && <EffortSelect effort={effort} setEffort={setEffort} levels={effortLevels} />}
+        <PermissionSelect agent={agent} modes={(capabilities.permissionModes ?? []) as PermissionMode[]} />
         {!hideChrome && capabilities.planMode !== false && (
           <PlanModeButton planMode={planMode} isInPlanMode={isInPlanMode} setPlanMode={setPlanMode} />
         )}

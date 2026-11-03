@@ -18,6 +18,7 @@ function fakeProvider(): ProviderAdapter {
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion: true,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
       effortLevels: [],
+      permissionModes: [],
     },
     resolveBinary: () => "claude",
     isAvailable: () => true,

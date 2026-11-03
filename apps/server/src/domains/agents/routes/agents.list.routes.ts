@@ -7,6 +7,7 @@ import { agents, messages, fileChanges, terminalLines } from "../../../db/schema
 import { parsePrStatus } from "../../pull-requests/prStatus.js"
 import { getAgentPortsFromDB, getAllPortsFromDB } from "../../git/processes.js"
 import { getPendingQuestionPayload } from "../../../askStore.js"
+import { getPendingApprovalPayload } from "../../../approvalStore.js"
 import { loadAttention } from "../service/attention.js"
 import { loadToolCallTrees } from "../service/toolCallTree.js"
 import { parseSharedFiles } from "../service/sharedFiles.js"
@@ -75,6 +76,7 @@ async function listAgentsHandler(): Promise<unknown[]> {
       diffSummary: files.length > 0 ? { additions, deletions } : undefined,
       prStatus: parsePrStatus(a.prStatus),
       pendingQuestion: getPendingQuestionPayload(a.id),
+      pendingApproval: getPendingApprovalPayload(a.id),
     }
   })
 }
@@ -116,6 +118,7 @@ async function getAgentHandler(id: string, reply: FastifyReply): Promise<unknown
     diffSummary: files.length > 0 ? { additions, deletions } : undefined,
     prStatus: parsePrStatus(agent.prStatus),
     pendingQuestion: getPendingQuestionPayload(agent.id),
+    pendingApproval: getPendingApprovalPayload(agent.id),
   }
 }
 

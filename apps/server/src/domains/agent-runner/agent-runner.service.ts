@@ -2,6 +2,13 @@ import { agentsWs } from "../agents/agents.ws.js"
 import { config } from "../../config.js"
 import { getProvider } from "../providers/registry.js"
 import { buildConversationContext } from "../providers/context.js"
+import { resolvePermissionMode } from "../providers/permissionModes.js"
+import { getSettings } from "../settings/settings.service.js"
+import { db } from "../../db/index.js"
+import { agents } from "../agents/agents.db.js"
+import { eq } from "drizzle-orm"
+import { permissionModeSchema } from "@huxflux/shared"
+import type { PermissionMode } from "@huxflux/shared"
 import { buildSandboxedCommand } from "../../sandbox.js"
 import type { ProviderAdapter, SpawnOptions, SpawnResult } from "../providers/providers.types.js"
 import type { StreamState } from "../agents/agents.types.js"
@@ -30,7 +37,7 @@ export {
   resolveModelAlias,
 } from "./service/processRegistry.js"
 
-export { answerPendingQuestion, injectUserMessage } from "./service/controlProtocol.js"
+export { answerPendingQuestion, answerPendingApproval, injectUserMessage } from "./service/controlProtocol.js"
 export { getBackgroundState } from "./service/backgroundTasks.js"
 export { resetRunningSubagents } from "./service/subagents.js"
 export { readTaskList as getTaskListState, clearTaskList } from "./service/taskList.js"
@@ -235,6 +242,16 @@ interface ResolveSpawnArgs {
   bootstrap: BootstrapResult
 }
 
+/**
+ * Both the agent column and the settings value are stored as free text, so a
+ * value written by an older build (or by hand) may not be a mode we know.
+ * Return null for anything unrecognised and let the caller fall back.
+ */
+function toPermissionMode(value: unknown): PermissionMode | null {
+  const parsed = permissionModeSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
 /** Provider-agnostic turn inputs: prompt, system prompt, session handling. */
 function buildSpawnOptions(args: ResolveSpawnArgs): SpawnOptions {
   const { userContent, opts, provider, model, bootstrap } = args
@@ -258,10 +275,18 @@ function buildSpawnOptions(args: ResolveSpawnArgs): SpawnOptions {
 
   const prompt = opts.turnContext ? `${userContent}\n\n---\n\n${opts.turnContext}` : userContent
 
+  // The agent's own setting wins; otherwise the server default. Narrowed to
+  // what this provider can actually enforce (see resolvePermissionMode).
+  const agentRow = db.select().from(agents).where(eq(agents.id, agentId)).get()
+  const requestedMode = toPermissionMode(agentRow?.permissionMode)
+    ?? toPermissionMode(getSettings().defaultPermissionMode)
+    ?? "auto"
+
   return {
     prompt,
     model,
     planMode: opts.planMode ?? false,
+    permissionMode: resolvePermissionMode(provider, requestedMode),
     sessionId: canResume ? existingSessionId : null,
     isContinuation: canResume ? false : (provider.capabilities.sessionContinue ? useContinue : false),
     cwd,

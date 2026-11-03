@@ -15,6 +15,7 @@ function baseOpts(overrides: Partial<SpawnOptions> = {}): SpawnOptions {
     prompt: "do the thing",
     model: "claude-sonnet-4-6",
     planMode: false,
+    permissionMode: "bypassPermissions" as const,
     sessionId: null,
     isContinuation: false,
     cwd: "/tmp",

@@ -94,6 +94,19 @@ const agentsEventsConfig = {
     channel: "broadcast",
     build: (agentId: string, toolUseId: string) => ({ type: "ask:resolved" as const, agentId, toolUseId }),
   },
+  // A tool call is waiting to be allowed or denied. Broadcast for the same
+  // reason as askQuestion: the sidebar has to mark the agent as needing
+  // input even when it is not the one on screen.
+  askApproval: {
+    channel: "broadcast",
+    build: (agentId: string, toolUseId: string, toolName: string, input: unknown) =>
+      ({ type: "ask:approval" as const, agentId, toolUseId, toolName, input }),
+  },
+  // The approval was decided (from any client) or cancelled by the provider.
+  approvalResolved: {
+    channel: "broadcast",
+    build: (agentId: string, toolUseId: string) => ({ type: "approval:resolved" as const, agentId, toolUseId }),
+  },
   // `/clear` wiped the agent's transcript and provider session — every
   // client drops its cached messages for this agent.
   messagesCleared: {

@@ -83,8 +83,12 @@ export function buildQueryOptions(opts: SpawnOptions, model: string, ctx: QueryC
     // The SDK loads no settings by default; the CLI adapter picks up the
     // user's ~/.claude and the repo's CLAUDE.md, so do the same here.
     settingSources: ["user", "project", "local"],
-    permissionMode: opts.planMode ? "plan" : "bypassPermissions",
-    allowDangerouslySkipPermissions: !opts.planMode,
+    // planMode is a per-turn override; otherwise the agent's standing mode is
+    // passed straight through (the SDK uses the same vocabulary we store).
+    permissionMode: opts.planMode ? "plan" : opts.permissionMode,
+    // Only the unrestricted mode needs the escape hatch; every other mode
+    // routes its prompts through `canUseTool` above.
+    allowDangerouslySkipPermissions: !opts.planMode && opts.permissionMode === "bypassPermissions",
     allowedTools: [...(opts.allowedTools ?? []), "AskUserQuestion"],
     ...(toEffort(opts.effort) ? { effort: toEffort(opts.effort) } : {}),
     ...(resume ? { resume } : {}),
@@ -112,6 +116,7 @@ export const agentSdkProvider: ProviderAdapter = {
   name: "Claude Agent SDK",
 
   capabilities: {
+    permissionModes: ["plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"],
     sessionResume: true,
     sessionContinue: true,
     planMode: true,

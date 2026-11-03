@@ -67,6 +67,7 @@ function buildPatch(body: UpdateBody, now: string): Record<string, unknown> {
     ...(body.unread !== undefined && { unread: body.unread }),
     ...(body.model !== undefined && { model: body.model }),
     ...(body.provider !== undefined && { provider: body.provider }),
+    ...(body.permissionMode !== undefined && { permissionMode: body.permissionMode }),
     ...(body.baseBranch !== undefined && { baseBranch: body.baseBranch }),
     ...(body.draft !== undefined && { draft: body.draft }),
     ...(body.prCommentMonitoring !== undefined && { prCommentMonitoring: body.prCommentMonitoring === null ? null : body.prCommentMonitoring ? 1 : 0 }),

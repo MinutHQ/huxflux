@@ -202,6 +202,7 @@ export function ChatView(props: ChatViewProps) {
           onScrollToBottom={jumpToBottom}
           pendingQuestion={pendingQuestion}
           onAnswerQuestion={actions.handleAnswerQuestion}
+          onApproveTool={actions.handleApproveTool}
           onDismissQuestion={() => onClearPendingQuestion?.()}
           inputBarProps={inputBarProps}
         />

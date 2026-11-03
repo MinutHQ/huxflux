@@ -7,6 +7,7 @@ import { useAgentMessageStream } from "./useAgentMessageStream.js"
 import { useAgentFileChanges } from "./useAgentFileChanges.js"
 import { useAgentTerminal } from "./useAgentTerminal.js"
 import { useAgentPendingQuestion } from "./useAgentPendingQuestion.js"
+import { useAgentPendingApproval } from "./useAgentPendingApproval.js"
 import { useAgentLifecycle } from "./useAgentLifecycle.js"
 
 // Re-export so the existing `index.ts` import surface stays unchanged.
@@ -39,6 +40,7 @@ export function useAgent(id: string | null) {
   const { handleEvent: handleFileChangesEvent } = useAgentFileChanges(id)
   const { handleEvent: handleTerminalEvent } = useAgentTerminal(id)
   const { pendingQuestion, clearPendingQuestion, handleEvent: handlePendingQuestionEvent, handleResolved: handleQuestionResolvedEvent } = useAgentPendingQuestion(id, query.data?.pendingQuestion)
+  const { pendingApproval, handleEvent: handlePendingApprovalEvent, handleResolved: handleApprovalResolvedEvent } = useAgentPendingApproval(id, query.data?.pendingApproval)
   const { handleEvent: handleLifecycleEvent } = useAgentLifecycle(id)
 
   // Streaming state: initialized from server data, then driven by WS events.
@@ -93,6 +95,12 @@ export function useAgent(id: string | null) {
         case "ask:resolved":
           handleQuestionResolvedEvent(event)
           return
+        case "ask:approval":
+          handlePendingApprovalEvent(event)
+          return
+        case "approval:resolved":
+          handleApprovalResolvedEvent(event)
+          return
         case "agent:updated":
           // Sync streaming from server broadcast (covers stop, crash, queue
           // drain). `agent:updated` is a broadcast with no top-level agentId,
@@ -110,7 +118,7 @@ export function useAgent(id: string | null) {
           return
       }
     },
-    [id, handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleQuestionResolvedEvent, handleLifecycleEvent, clearPendingQuestion]
+    [id, handleMessageStreamEvent, handleFileChangesEvent, handleTerminalEvent, handlePendingQuestionEvent, handleQuestionResolvedEvent, handlePendingApprovalEvent, handleApprovalResolvedEvent, handleLifecycleEvent, clearPendingQuestion]
   )
 
   useAgentEvents(id, onEvent)
@@ -123,5 +131,6 @@ export function useAgent(id: string | null) {
     isLoadingMore: pagination.isLoadingMore,
     pendingQuestion,
     clearPendingQuestion,
+    pendingApproval,
   }
 }

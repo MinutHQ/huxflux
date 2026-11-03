@@ -24,6 +24,7 @@ function claudeProvider(): ProviderAdapter {
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion: false,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
       effortLevels: [],
+      permissionModes: [],
     },
     resolveBinary: () => "claude",
     isAvailable: () => true,

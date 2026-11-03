@@ -87,6 +87,7 @@ export const piProvider: ProviderAdapter = {
   name: "Pi",
 
   capabilities: {
+    permissionModes: [],
     sessionResume: true,
     sessionContinue: true,
     planMode: false,

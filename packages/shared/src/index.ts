@@ -49,6 +49,7 @@ export type { ApiError } from "./error.js"
 // ── agents ───────────────────────────────────────────────────────────────────
 export { agentsApi } from "./domains/agents/agents.api.js"
 export { useAgent, configureAgentErrorHandler } from "./domains/agents/hooks/useAgent.js"
+export type { PendingApprovalState } from "./domains/agents/hooks/useAgentPendingApproval.js"
 export { useAgents, markAgentDeleted } from "./domains/agents/hooks/useAgents.js"
 export { isAgentStreaming } from "./domains/agents/agents.state.js"
 export {
@@ -89,8 +90,10 @@ export {
   renameBranchBodySchema,
   generateTitleBodySchema,
   answerBodySchema,
+  approveBodySchema,
   askQuestionEntrySchema,
   agentPendingQuestionSchema,
+  agentPendingApprovalSchema,
   backgroundTaskSchema,
   backgroundStateSchema,
   taskListItemSchema,
@@ -129,8 +132,11 @@ export type {
   RenameBranchBody,
   GenerateTitleBody,
   AnswerBody,
+  ApproveBody,
+  PendingApproval,
   AskQuestionEntry,
   AgentPendingQuestion,
+  AgentPendingApproval,
   SaveFileContentBody,
   OpenInBody,
   UploadFileBody,
@@ -138,6 +144,8 @@ export type {
   AgentsServerEvent,
 } from "./domains/agents/agents.types.js"
 
+export { permissionModeSchema, PERMISSION_MODE_LABELS } from "./domains/agents/permissionModes.js"
+export type { PermissionMode } from "./domains/agents/permissionModes.js"
 export { isAgentTool, isToolCallRunning, subagentResultText } from "./domains/agents/subagents.js"
 export { joinMultiSelectAnswer, buildQuestionAnswer, parseAskAnswers, MULTI_SELECT_SEPARATOR } from "./domains/agents/askAnswers.js"
 export type { QuestionDraft } from "./domains/agents/askAnswers.js"

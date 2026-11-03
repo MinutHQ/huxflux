@@ -4,12 +4,14 @@ import type { ChildProcess } from "node:child_process"
 import { agents as agentsTable, messages as messagesTable } from "../../../db/schema.js"
 import { createTestDb, captureWsEvents, type TestDb, type CapturedWsEvents } from "../../../../test/harness.js"
 import { getPendingQuestion, clearPendingQuestion } from "../../../askStore.js"
+import { getPendingApproval, clearPendingApproval } from "../../../approvalStore.js"
 import { runningProcesses } from "./processRegistry.js"
 import { createStreamState } from "./state.js"
 import { registerTurnSplitter, unregisterTurnSplitter, makeTurnSplitter, type TurnSegmentRef } from "./turnSegments.js"
 import {
   handleControlRequest,
   answerPendingQuestion,
+  answerPendingApproval,
   injectUserMessage,
   buildUserMessageLine,
   type ControlRequestEvent,
@@ -58,6 +60,7 @@ function teardown(ctx: Ctx): void {
   runningProcesses.delete(ctx.agentId)
   unregisterTurnSplitter(ctx.agentId)
   clearPendingQuestion(ctx.agentId)
+  clearPendingApproval(ctx.agentId)
   ctx.capture.restore()
   ctx.testDb.close()
 }
@@ -105,15 +108,58 @@ describe("handleControlRequest", () => {
     expect(response.response.response.behavior).toBe("deny")
   })
 
-  it("denies can_use_tool requests for other tools", () => {
+  it("parks a can_use_tool request for another tool and surfaces it for approval", () => {
     handleControlRequest(
-      { type: "control_request", request_id: "req-3", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls" } } },
+      { type: "control_request", request_id: "req-3", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls" }, tool_use_id: "tu-3" } },
       ctx.agentId, ctx.fake.proc,
     )
-    expect(ctx.fake.written).toHaveLength(1)
+
+    // Nothing is written back: the turn stays blocked until the user decides.
+    expect(ctx.fake.written).toHaveLength(0)
+
+    const pending = getPendingApproval(ctx.agentId)
+    expect(pending?.requestId).toBe("req-3")
+    expect(pending?.toolName).toBe("Bash")
+    expect(pending?.input).toEqual({ command: "ls" })
+
+    const asked = ctx.capture.events.filter((e) => e.type === "ask:approval")
+    expect(asked).toHaveLength(1)
+  })
+
+  it("allows a parked tool call and writes the original input back", () => {
+    handleControlRequest(
+      { type: "control_request", request_id: "req-4", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls" }, tool_use_id: "tu-4" } },
+      ctx.agentId, ctx.fake.proc,
+    )
+    expect(answerPendingApproval(ctx.agentId, "tu-4", "allow")).toBe(true)
+
     const response = JSON.parse(ctx.fake.written[0]!)
-    expect(response.response.request_id).toBe("req-3")
+    expect(response.response.request_id).toBe("req-4")
+    expect(response.response.response.behavior).toBe("allow")
+    expect(response.response.response.updatedInput).toEqual({ command: "ls" })
+    expect(getPendingApproval(ctx.agentId)).toBeUndefined()
+  })
+
+  it("denies a parked tool call with the reason the user gave", () => {
+    handleControlRequest(
+      { type: "control_request", request_id: "req-5", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "rm -rf /" }, tool_use_id: "tu-5" } },
+      ctx.agentId, ctx.fake.proc,
+    )
+    expect(answerPendingApproval(ctx.agentId, "tu-5", "deny", "not that one")).toBe(true)
+
+    const response = JSON.parse(ctx.fake.written[0]!)
     expect(response.response.response.behavior).toBe("deny")
+    expect(response.response.response.message).toBe("not that one")
+  })
+
+  it("refuses an approval aimed at a tool call the agent already replaced", () => {
+    handleControlRequest(
+      { type: "control_request", request_id: "req-6", request: { subtype: "can_use_tool", tool_name: "Bash", input: {}, tool_use_id: "tu-6" } },
+      ctx.agentId, ctx.fake.proc,
+    )
+    expect(answerPendingApproval(ctx.agentId, "stale-tool-use", "allow")).toBe(false)
+    expect(ctx.fake.written).toHaveLength(0)
+    expect(getPendingApproval(ctx.agentId)).toBeDefined()
   })
 
   it("clears the pending question and emits ask:resolved on control_cancel_request", () => {

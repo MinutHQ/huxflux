@@ -11,7 +11,7 @@ function fakeProvider(planMode: boolean, taskListTools = false, askUserQuestion 
       sessionResume: true, sessionContinue: true, planMode, streamingJson: true,
       toolUseEvents: true, thinkingBlocks: true, askUserQuestion,
       systemPromptFlag: true, allowedToolsRestriction: true, subAgentSupport: true,
-      taskListTools, effortLevels: [],
+      taskListTools, effortLevels: [], permissionModes: [],
     },
     resolveBinary: () => "claude",
     isAvailable: () => true,

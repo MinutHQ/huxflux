@@ -1,8 +1,19 @@
 import { useState, useMemo } from "react"
-import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, type HuxfluxSettings, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
+import { api, queryKeys, useHuxfluxQuery, useHuxfluxMutation, PERMISSION_MODE_LABELS, type HuxfluxSettings, type PermissionMode, type ProviderInfo, type SharedProviderModel } from "@huxflux/shared"
 import { Button, cn } from "@huxflux/ui"
 import { toast } from "sonner"
 import { IconSearch } from "@tabler/icons-react"
+
+// Offered as a standing default. "plan" is excluded: it is a per-turn toggle
+// in the composer, and an agent permanently unable to edit is not a useful
+// default.
+const SELECTABLE_PERMISSION_MODES: PermissionMode[] = [
+  "default",
+  "acceptEdits",
+  "auto",
+  "dontAsk",
+  "bypassPermissions",
+]
 
 const SUB_PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic", openai: "OpenAI", google: "Google", mistral: "Mistral",
@@ -49,6 +60,7 @@ export function ModelsSettings() {
 
   const defaultModel = settings?.defaultModel ?? "Sonnet 4.6"
   const defaultProvider = settings?.defaultProvider ?? "claude"
+  const defaultPermissionMode = settings?.defaultPermissionMode ?? "auto"
 
   const updateSettings = useHuxfluxMutation({
     mutationFn: (opts: HuxfluxSettings) => api.settings.update(opts),
@@ -74,6 +86,30 @@ export function ModelsSettings() {
       <p className="text-[12px] text-muted-foreground">
         Check the models you want to show in the switcher. Set the default for new agents separately.
       </p>
+
+      <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
+        <div>
+          <div className="text-[13px] font-medium text-foreground">Default permissions</div>
+          <p className="text-[12px] text-muted-foreground">
+            How much a new agent may do before asking you. Individual agents can override this.
+          </p>
+        </div>
+        <select
+          value={defaultPermissionMode}
+          disabled={updateSettings.isPending || !settings}
+          onChange={(e) => updateSettings.mutate({ defaultPermissionMode: e.target.value })}
+          className="w-full text-[13px] bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:border-ring transition-colors"
+        >
+          {SELECTABLE_PERMISSION_MODES.map((mode) => (
+            <option key={mode} value={mode}>{PERMISSION_MODE_LABELS[mode]}</option>
+          ))}
+        </select>
+        {defaultPermissionMode === "bypassPermissions" && (
+          <p className="text-[12px] text-muted-foreground">
+            Agents run with no checks at all. Safe only when the agent is sandboxed.
+          </p>
+        )}
+      </div>
       {isLoading ? (
         <p className="text-[12px] text-muted-foreground">Loading providers...</p>
       ) : isError || providers.length === 0 ? (

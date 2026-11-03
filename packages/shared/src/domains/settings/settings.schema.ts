@@ -206,6 +206,23 @@ export const settingsSchema = {
     description: "Used for new agents unless overridden",
     options: "providers",
   },
+  // Agents used to run with no restrictions at all. "auto" keeps them working
+  // unattended while a classifier vets each action first; a provider that
+  // cannot honour the chosen mode falls back to its closest supported one.
+  defaultPermissionMode: {
+    type: "select",
+    default: "auto",
+    section: "models",
+    label: "Default permissions",
+    description: "How much a new agent may do before asking you",
+    options: [
+      { value: "default", label: "Ask every time" },
+      { value: "acceptEdits", label: "Auto-accept edits" },
+      { value: "auto", label: "Automatic (reviewed)" },
+      { value: "dontAsk", label: "Never ask (deny)" },
+      { value: "bypassPermissions", label: "No restrictions" },
+    ],
+  },
 
   // ── Experimental ──────────────────────────────────────────────────────
   threadsEnabled: {

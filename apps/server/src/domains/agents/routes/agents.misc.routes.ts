@@ -3,12 +3,13 @@ import type { FastifyPluginAsyncZod, ZodTypeProvider } from "fastify-type-provid
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { z } from "zod/v4"
 import { eq } from "drizzle-orm"
-import { answerBodySchema, openInBodySchema } from "@huxflux/shared"
+import { answerBodySchema, approveBodySchema, openInBodySchema } from "@huxflux/shared"
 import { db } from "../../../db/index.js"
 import { agents, repos } from "../../../db/schema.js"
 import { getAvailableProviders } from "../../providers/registry.js"
-import { answerPendingQuestion } from "../../agent-runner/agent-runner.service.js"
+import { answerPendingQuestion, answerPendingApproval } from "../../agent-runner/agent-runner.service.js"
 import { getPendingQuestion } from "../../../askStore.js"
+import { getPendingApproval } from "../../../approvalStore.js"
 import * as path from "node:path"
 import { existsSync } from "node:fs"
 import { spawn } from "node:child_process"
@@ -54,6 +55,28 @@ function registerAskAnswer(app: ZodApp): void {
       }
       if (!answerPendingQuestion(id, answers, toolUseId)) {
         return reply.code(409).send({ error: "Agent is no longer running; the question expired" })
+      }
+      return { ok: true }
+    },
+  )
+
+  // POST /api/agents/:id/approve — allow or deny a tool call the agent is
+  // blocked on. The peer of /answer: that one supplies answers to a question
+  // the agent asked, this one decides whether a tool may run at all.
+  app.post(
+    "/api/agents/:id/approve",
+    { schema: { params: idParamsSchema, body: approveBodySchema } },
+    async (req, reply) => {
+      const { id } = req.params
+      const { toolUseId, decision, message } = req.body
+
+      const pending = getPendingApproval(id)
+      if (!pending) return reply.code(404).send({ error: "No pending approval" })
+      if (toolUseId !== pending.toolUseId) {
+        return reply.code(409).send({ error: "The agent replaced this request with a newer one" })
+      }
+      if (!answerPendingApproval(id, toolUseId, decision, message)) {
+        return reply.code(409).send({ error: "Agent is no longer running; the approval expired" })
       }
       return { ok: true }
     },

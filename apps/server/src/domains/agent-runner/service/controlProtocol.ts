@@ -12,6 +12,7 @@
 
 import { agentsWs } from "../../agents/agents.ws.js"
 import { setPendingQuestion, getPendingQuestion, clearPendingQuestion, type PendingQuestionEntry } from "../../../askStore.js"
+import { setPendingApproval, getPendingApproval, clearPendingApproval } from "../../../approvalStore.js"
 import { runningProcesses, type RunningTurn } from "./processRegistry.js"
 import { persistUserMessageRow } from "./userMessage.js"
 import { splitCurrentTurn } from "./turnSegments.js"
@@ -59,6 +60,7 @@ function buildControlResponseLine(requestId: string, response: Record<string, un
 export function handleControlRequest(event: ControlRequestEvent, agentId: string, proc: RunningTurn): void {
   if (event.type === "control_cancel_request") {
     resolvePendingQuestion(agentId)
+    resolvePendingApproval(agentId)
     return
   }
   const requestId = event.request_id
@@ -72,13 +74,26 @@ export function handleControlRequest(event: ControlRequestEvent, agentId: string
       agentsWs.askQuestion(agentId, request.tool_use_id ?? "", questions)
       return
     }
+    // A question with nothing to ask cannot be shown, and parking it for
+    // approval would surface an empty card. Deny so the agent can recover.
+    const denied = writeStdinLine(proc, buildControlResponseLine(requestId, {
+      behavior: "deny",
+      message: "Denied: AskUserQuestion was called without any questions.",
+    }))
+    if (!denied) logger.warn({ agentId }, "[control] could not write deny response")
+    return
   }
 
-  const denied = writeStdinLine(proc, buildControlResponseLine(requestId, {
-    behavior: "deny",
-    message: "Denied: this tool cannot prompt for permission in a Huxflux run.",
-  }))
-  if (!denied) logger.warn({ agentId, tool: request.tool_name }, "[control] could not write deny response")
+  // Any other tool reaching here means the agent's permission mode asked the
+  // user about it. Park it and surface it; the turn stays blocked until
+  // `answerPendingApproval` writes the decision back.
+  setPendingApproval(agentId, {
+    requestId,
+    toolUseId: request.tool_use_id ?? "",
+    toolName: request.tool_name ?? "",
+    input: request.input,
+  })
+  agentsWs.askApproval(agentId, request.tool_use_id ?? "", request.tool_name ?? "", request.input)
 }
 
 /** Drop the pending question and tell every client to remove its card. */
@@ -87,6 +102,38 @@ function resolvePendingQuestion(agentId: string): void {
   if (!pending) return
   clearPendingQuestion(agentId)
   agentsWs.askResolved(agentId, pending.toolUseId)
+}
+
+/** Drop the pending approval and tell every client to remove its card. */
+function resolvePendingApproval(agentId: string): void {
+  const pending = getPendingApproval(agentId)
+  if (!pending) return
+  clearPendingApproval(agentId)
+  agentsWs.approvalResolved(agentId, pending.toolUseId)
+}
+
+/**
+ * Answer the agent's pending tool approval by writing an allow or deny
+ * control_response. `toolUseId` must match the pending approval, so a stale
+ * client cannot answer a newer request with a decision meant for an older one.
+ * Returns false when there is no matching approval or no writable stdin.
+ */
+export function answerPendingApproval(
+  agentId: string,
+  toolUseId: string,
+  decision: "allow" | "deny",
+  message?: string,
+): boolean {
+  const pending = getPendingApproval(agentId)
+  if (!pending) return false
+  if (toolUseId && pending.toolUseId && toolUseId !== pending.toolUseId) return false
+
+  const proc = runningProcesses.get(agentId)
+  const written = writeStdinLine(proc, buildControlResponseLine(pending.requestId, decision === "allow"
+    ? { behavior: "allow", updatedInput: pending.input }
+    : { behavior: "deny", message: message?.trim() || "Denied by the user." }))
+  if (written) resolvePendingApproval(agentId)
+  return written
 }
 
 function extractQuestions(input: unknown): PendingQuestionEntry[] | null {

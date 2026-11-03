@@ -63,6 +63,7 @@ export const claudeProvider: ProviderAdapter = {
   name: "Claude Code",
 
   capabilities: {
+    permissionModes: ["plan", "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions"],
     sessionResume: true,
     sessionContinue: true,
     planMode: true,
@@ -103,7 +104,16 @@ export const claudeProvider: ProviderAdapter = {
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--verbose",
-      ...(opts.planMode ? ["--permission-mode", "plan"] : ["--dangerously-skip-permissions"]),
+      // planMode is a per-turn override of the agent's standing permission
+      // mode. `bypassPermissions` keeps its dedicated flag because that is the
+      // spelling the CLI documents for it; every other mode is passed through
+      // by name, so `--permission-prompt-tool stdio` below can route the
+      // resulting prompts back to the UI.
+      ...(opts.planMode
+        ? ["--permission-mode", "plan"]
+        : opts.permissionMode === "bypassPermissions"
+          ? ["--dangerously-skip-permissions"]
+          : ["--permission-mode", opts.permissionMode]),
       "--permission-prompt-tool", "stdio",
       "--model", model,
       ...(opts.effort ? ["--effort", opts.effort] : []),

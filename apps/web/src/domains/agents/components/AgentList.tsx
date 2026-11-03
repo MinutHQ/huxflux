@@ -19,6 +19,7 @@ import { PinnedGroup } from "./agent-list/PinnedGroup"
 import { RepoGroup } from "./agent-list/RepoGroup"
 import { StatusGroup } from "./agent-list/StatusGroup"
 import type { GroupByMode } from "../agents.types"
+import { readServerPref, writeServerPref } from "@/lib/serverPrefs"
 
 interface AgentListProps {
   agents: AgentSummary[]
@@ -33,10 +34,10 @@ interface AgentListProps {
  * popover visibility, hovered agent, dialogs) but routes navigation and
  * lifecycle through hooks so the shell stays decoupled.
  *
- * groupBy and repoFilter are persisted in localStorage so the user's choice
- * survives a reload. Both keys are intentionally namespaced under `hive:`
- * (legacy from before the `huxflux:` rename — kept verbatim so users don't
- * lose their settings).
+ * groupBy and repoFilter are persisted in localStorage per server so the
+ * user's choice survives a reload and each server keeps its own. Both keys
+ * are intentionally namespaced under `hive:` (legacy from before the
+ * `huxflux:` rename — kept verbatim so users don't lose their settings).
  */
 export function AgentList({ agents, containerRef }: AgentListProps) {
   const navigate = useNavigate()
@@ -51,10 +52,10 @@ export function AgentList({ agents, containerRef }: AgentListProps) {
   const [showCloneRepo, setShowCloneRepo] = useState(false)
   const [showQuickStart, setShowQuickStart] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
-  const [groupBy, setGroupByRaw] = useState<GroupByMode>(() => (localStorage.getItem("hive:sidebar:groupBy") as GroupByMode) || "status")
-  const setGroupBy = (v: GroupByMode) => { setGroupByRaw(v); localStorage.setItem("hive:sidebar:groupBy", v) }
-  const [repoFilter, setRepoFilterRaw] = useState(() => localStorage.getItem("hive:sidebar:repoFilter") || "all")
-  const setRepoFilter = (v: string) => { setRepoFilterRaw(v); localStorage.setItem("hive:sidebar:repoFilter", v) }
+  const [groupBy, setGroupByRaw] = useState<GroupByMode>(() => (readServerPref("hive:sidebar:groupBy") as GroupByMode) || "status")
+  const setGroupBy = (v: GroupByMode) => { setGroupByRaw(v); writeServerPref("hive:sidebar:groupBy", v) }
+  const [repoFilter, setRepoFilterRaw] = useState(() => readServerPref("hive:sidebar:repoFilter") || "all")
+  const setRepoFilter = (v: string) => { setRepoFilterRaw(v); writeServerPref("hive:sidebar:repoFilter", v) }
 
   const addWorkspaceBtnRef = useRef<HTMLButtonElement>(null)
   const filterBtnRef = useRef<HTMLButtonElement>(null)

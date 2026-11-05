@@ -16,11 +16,22 @@ function inputContainerClass(isDragOver: boolean, showPlanApproval: boolean, isI
   return "border border-border/60 focus-within:border-ring/50 focus-within:shadow-md focus-within:shadow-ring/5"
 }
 
+/** Insert a newline at the caret, the way Shift+Enter does natively. */
+function insertNewline(el: HTMLTextAreaElement, onInputChange: (value: string) => void) {
+  const { selectionStart: start, selectionEnd: end, value } = el
+  onInputChange(value.slice(0, start) + "\n" + value.slice(end))
+  requestAnimationFrame(() => el.setSelectionRange(start + 1, start + 1))
+}
+
 function makeKeyDownHandler(props: ChatInputBarProps) {
   return (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const { mentionQuery, mentionOptions, mentionIndex, setMentionIndex, applyMention, setMentionQuery,
       slashQuery, filteredCommands, slashIndex, setSlashIndex, applySlashCommand, setSlashQuery,
       onOpenFilePicker, setPlanMode, onSend } = props
+    // Alt+Enter is an alias for Shift+Enter (newline), so it never sends
+    if (e.key === "Enter" && e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault(); insertNewline(e.currentTarget, props.onInputChange); return
+    }
     if (mentionQuery !== null && mentionOptions.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionOptions.length); return }
       if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionOptions.length) % mentionOptions.length); return }

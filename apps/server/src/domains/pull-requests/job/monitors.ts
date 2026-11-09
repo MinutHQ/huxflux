@@ -3,6 +3,7 @@ import type { PRDetails } from "../../../types.js"
 import { isAgentRunning } from "../../agent-runner/agent-runner.service.js"
 import { logger } from "../../../logger.js"
 import { sendToAgent } from "./sendToAgent.js"
+import { isNoOpBotComment } from "./botComments.js"
 
 // Per-agent state for the PR/CI/merge monitors. Keyed by agent id so multiple
 // agents can run side-by-side without their seen-comment / last-conclusion /
@@ -21,16 +22,20 @@ interface NewComment {
   commentId?: number | string
 }
 
-function collectNewComments(
+export function collectNewComments(
   agent: AgentRow,
   details: PRDetails,
 ): NewComment[] | "seeded" {
+  // No-op bot comments (status stubs, all-clear summaries) are never marked
+  // seen: those bots edit the same comment in place, so one that later turns
+  // into real findings is forwarded then.
+  const isNoise = (c: { author: string; body: string }) => isNoOpBotComment(c.author, c.body)
   let seen = lastSeenCommentIds.get(agent.id)
   if (!seen) {
     // First run: seed with all existing comments so we don't replay history
     seen = new Set<string>()
-    for (const thread of details.threads) for (const c of thread.comments) seen.add(c.id)
-    for (const c of details.issueComments) seen.add(String(c.id))
+    for (const thread of details.threads) for (const c of thread.comments) if (!isNoise(c)) seen.add(c.id)
+    for (const c of details.issueComments) if (!isNoise(c)) seen.add(String(c.id))
     lastSeenCommentIds.set(agent.id, seen)
     return "seeded"
   }
@@ -39,7 +44,7 @@ function collectNewComments(
   for (const thread of details.threads) {
     if (thread.isResolved) continue
     for (const c of thread.comments) {
-      if (seen.has(c.id)) continue
+      if (seen.has(c.id) || isNoise(c)) continue
       seen.add(c.id)
       if (c.author === details.author) continue
       out.push({ author: c.author, body: c.body, path: c.path ?? thread.path, line: c.line ?? thread.line, commentId: c.databaseId })
@@ -47,7 +52,7 @@ function collectNewComments(
   }
   for (const c of details.issueComments) {
     const cId = String(c.id)
-    if (seen.has(cId)) continue
+    if (seen.has(cId) || isNoise(c)) continue
     seen.add(cId)
     if (c.author === details.author) continue
     out.push({ author: c.author, body: c.body, commentId: c.id })

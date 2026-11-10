@@ -18,7 +18,8 @@ src/
   db/                Drizzle schema and migration entrypoint. Shared across domains.
   index.ts           Server entrypoint.
   cli.ts             CLI commands.
-  serviceLauncher.ts Resolves the Node + CLI paths the launchd/systemd launcher script execs.
+  serviceLauncher.ts Builds the end of the launchd/systemd launcher script: sources the
+                     user-owned `<data dir>/env` file, then execs the resolved Node + CLI.
   config.ts          Config loading.
   auth.ts            Auth middleware.
   audit.ts           Audit logging.

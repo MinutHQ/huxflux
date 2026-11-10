@@ -29,7 +29,7 @@ import type { SandboxConfig } from "./sandbox.js"
 import { toString as qrToString } from "qrcode"
 import { authenticateProxy } from "./domains/proxy-connector/proxyAuth.js"
 import { dropGithubPackagesPin, npmEnv } from "./npmRegistry.js"
-import { buildSupervisorExecLine, resolveSupervisorCommand } from "./serviceLauncher.js"
+import { buildLauncherTail, getServiceEnvFilePath, resolveSupervisorCommand } from "./serviceLauncher.js"
 import { runAgentCommand } from "./domains/mcp/agentCli.js"
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -633,8 +633,21 @@ async function cmdStatus() {
   console.info(`huxflux  running  (PID ${pid})`)
   console.info(`  Version: ${VERSION}`)
   console.info(`  Node.js: ${process.versions.node}${nodeMajor > 24 ? " (unsupported, use Node 22 LTS)" : ""}`)
+  printEnvFileStatus()
   console.info("")
   await printConnectInfo(cfg)
+}
+
+// The env file the service launcher sources. Huxflux only reads its metadata.
+function printEnvFileStatus() {
+  const envFile = getServiceEnvFilePath(DATA_DIR)
+  let mode: number
+  try { mode = fs.statSync(envFile).mode } catch {
+    console.info(`  Env file: none (create ${envFile} to set service env vars)`)
+    return
+  }
+  const looseMode = (mode & 0o077) !== 0 ? `, readable by others: run chmod 600 ${envFile}` : ""
+  console.info(`  Env file: ${envFile} (sourced by the background service${looseMode})`)
 }
 
 async function cmdAgent(args: string[]) {
@@ -1390,7 +1403,9 @@ function installSystemService() {
   // on PATH: `which` would pick whatever Node is active in the caller's shell,
   // and the bin shim is not always next to the Node binary (see serviceLauncher).
   const supervisor = resolveSupervisorCommand(process.execPath, fileURLToPath(import.meta.url))
-  const execLine = buildSupervisorExecLine(supervisor)
+  // Ends with sourcing the user-owned env file (never written by huxflux), so
+  // settings there survive the launcher being regenerated on every update.
+  const launcherTail = buildLauncherTail(getServiceEnvFilePath(DATA_DIR), supervisor)
 
   // Build a PATH that includes nvm shims, homebrew, and standard dirs.
   // Capture the user's current PATH at install time so the service inherits
@@ -1434,7 +1449,7 @@ function installSystemService() {
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
       ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
-      execLine,
+      ...launcherTail,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
 
@@ -1486,7 +1501,7 @@ function installSystemService() {
       `export WORKSPACES_BASE="${path.join(DATA_DIR, "workspaces")}"`,
       ...(cfg.proxyUrl ? [`export PROXY_URL="${cfg.proxyUrl}"`] : []),
       ...(process.env.GITHUB_TOKEN ? [`export GITHUB_TOKEN="${process.env.GITHUB_TOKEN}"`] : []),
-      execLine,
+      ...launcherTail,
     ].join("\n")
     fs.writeFileSync(launcherPath, launcherContent, { mode: 0o755 })
 
@@ -1694,8 +1709,17 @@ async function cmdUninstall() {
   if (dataExists && !keepData) {
     const s = p.spinner()
     s.start("Removing data...")
-    fs.rmSync(DATA_DIR, { recursive: true, force: true })
-    s.stop("Data removed ✓")
+    // The service env file is user-owned and may hold secrets the user keeps
+    // elsewhere too; leave it for them to delete.
+    const envFile = getServiceEnvFilePath(DATA_DIR)
+    const keepEnvFile = fs.existsSync(envFile)
+    for (const entry of fs.readdirSync(DATA_DIR)) {
+      const entryPath = path.join(DATA_DIR, entry)
+      if (keepEnvFile && entryPath === envFile) continue
+      fs.rmSync(entryPath, { recursive: true, force: true })
+    }
+    if (!keepEnvFile) fs.rmSync(DATA_DIR, { recursive: true, force: true })
+    s.stop(keepEnvFile ? `Data removed ✓ (kept your env file: ${envFile})` : "Data removed ✓")
   }
 
   // Uninstall npm package
@@ -1858,6 +1882,11 @@ Environment variables:
   PORT          Override the server port (default: 4321)
   PROXY_URL     Public proxy to tunnel through (e.g. wss://proxy.example.com).
                 Prefer 'huxflux proxy' — it also runs the one-time sign-in.
+
+Background service env file:
+  <HUXFLUX_DIR>/env (default ~/huxflux/env) is sourced by the service launcher
+  just before it starts the server, so its values override the defaults. Use
+  shell syntax (KEY=value). Huxflux never writes or deletes it; keep it chmod 600.
 `.trimStart())
 }
 

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { buildSupervisorExecLine, resolveSupervisorCommand } from "./serviceLauncher.js"
+import { spawnSync } from "node:child_process"
+import { buildLauncherTail, buildSupervisorExecLine, getServiceEnvFilePath, resolveSupervisorCommand } from "./serviceLauncher.js"
 
 // Each test lays out a real directory tree that mimics a Node install, with
 // real symlinks, so the resolver runs against the filesystem it will see.
@@ -108,5 +109,83 @@ describe("buildSupervisorExecLine", () => {
   it("execs node with the CLI script explicitly, bypassing the shebang", () => {
     expect(buildSupervisorExecLine({ nodeBin: "/opt/homebrew/opt/node/bin/node", cliPath: "/opt/homebrew/lib/node_modules/@minuthq/huxflux/dist/cli.js" }))
       .toBe(`exec "/opt/homebrew/opt/node/bin/node" "/opt/homebrew/lib/node_modules/@minuthq/huxflux/dist/cli.js" _supervisor`)
+  })
+})
+
+describe("buildLauncherTail", () => {
+  const cmd = { nodeBin: "/usr/local/bin/node", cliPath: "/usr/local/lib/huxflux/cli.js" }
+
+  it("sources the env file after the defaults and just before exec", () => {
+    const lines = buildLauncherTail("/home/me/huxflux/env", cmd)
+    const sourceIndex = lines.findIndex(l => l.includes(`set -a; . "$HUXFLUX_ENV_FILE"; set +a`))
+
+    expect(lines).toContain(`HUXFLUX_ENV_FILE="/home/me/huxflux/env"`)
+    expect(sourceIndex).toBeGreaterThanOrEqual(0)
+    expect(sourceIndex).toBe(lines.length - 2)
+    expect(lines.at(-1)).toBe(buildSupervisorExecLine(cmd))
+  })
+
+  it("puts the env file in the data dir", () => {
+    expect(getServiceEnvFilePath("/home/me/huxflux-dev")).toBe("/home/me/huxflux-dev/env")
+  })
+})
+
+describe("generated launcher with an env file", () => {
+  // Runs a real launcher fragment in bash. The exec'd "CLI" is a script that
+  // prints the env it was started with, so the test sees exactly what the
+  // supervisor would.
+  function runLauncher(dataDir: string, env: NodeJS.ProcessEnv = {}): Record<string, string | null> {
+    const cliPath = path.join(root, "print-env.js")
+    fs.writeFileSync(cliPath, `const keys = ["FOO", "QUOTED", "TOKEN", "ANTHROPIC_API_KEY", "HUXFLUX_ENV_FILE"]
+process.stdout.write(JSON.stringify(Object.fromEntries(keys.map(k => [k, process.env[k] ?? null]))))`)
+    const launcher = path.join(root, "huxflux-server.sh")
+    fs.writeFileSync(launcher, [
+      "#!/bin/bash",
+      `export FOO=default`,
+      ...buildLauncherTail(getServiceEnvFilePath(dataDir), { nodeBin: process.execPath, cliPath }),
+    ].join("\n"), { mode: 0o755 })
+
+    const result = spawnSync("/bin/bash", [launcher], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" })
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+    return JSON.parse(result.stdout) as Record<string, string | null>
+  }
+
+  it("overrides launcher defaults and exports plain KEY=value lines", () => {
+    const dataDir = path.join(root, "data dir with spaces")
+    fs.mkdirSync(dataDir)
+    fs.writeFileSync(path.join(dataDir, "env"), `FOO=from-env-file\nQUOTED="two words"\n`, { mode: 0o600 })
+
+    const seen = runLauncher(dataDir)
+
+    expect(seen.FOO).toBe("from-env-file")
+    expect(seen.QUOTED).toBe("two words")
+    expect(seen.HUXFLUX_ENV_FILE).toBeNull()
+  })
+
+  it("runs shell snippets such as reading a token file and unsetting a key", () => {
+    const dataDir = path.join(root, "data")
+    fs.mkdirSync(dataDir)
+    fs.writeFileSync(path.join(root, "claude-token"), "sk-ant-oat-test\n")
+    fs.writeFileSync(path.join(dataDir, "env"), [
+      `[ -r "${path.join(root, "claude-token")}" ] && export TOKEN="$(/bin/cat "${path.join(root, "claude-token")}")"`,
+      "unset ANTHROPIC_API_KEY",
+      "",
+    ].join("\n"))
+
+    const seen = runLauncher(dataDir, { ANTHROPIC_API_KEY: "should-be-removed" })
+
+    expect(seen.TOKEN).toBe("sk-ant-oat-test")
+    expect(seen.ANTHROPIC_API_KEY).toBeNull()
+  })
+
+  it("starts normally and does not create the file when it is missing", () => {
+    const dataDir = path.join(root, "data")
+    fs.mkdirSync(dataDir)
+
+    const seen = runLauncher(dataDir)
+
+    expect(seen.FOO).toBe("default")
+    expect(fs.existsSync(path.join(dataDir, "env"))).toBe(false)
   })
 })

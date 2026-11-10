@@ -22,6 +22,42 @@ description: All Huxflux CLI commands.
 | `huxflux logs` | Tail the server log |
 | `huxflux crashes` | Tail the crash log |
 
+## Background service
+
+| Command | Description |
+|---|---|
+| `huxflux service enable` | Start the server on login (launchd on macOS, a systemd user service on Linux) |
+| `huxflux service disable` | Stop starting on login |
+| `huxflux service status` | Show whether the server runs as a service |
+
+### Extra environment variables
+
+The background service runs a launcher script, `~/huxflux/huxflux-server.sh`, that Huxflux regenerates on every `huxflux update` and `huxflux service enable`. Do not edit it: your changes will be lost.
+
+Put extra environment variables in `~/huxflux/env` instead (or `$HUXFLUX_DIR/env` if you set `HUXFLUX_DIR`). The launcher sources this file just before it starts the server, so its values override the launcher's defaults, including `PATH`. Huxflux never creates, changes or deletes this file. `huxflux uninstall` leaves it in place too. If the file does not exist, nothing happens.
+
+The file is a shell script. Plain `KEY=value` lines are exported automatically, and small snippets work too. For example, to run Claude Code with a long-lived token from `claude setup-token` when the keychain login has expired:
+
+```sh
+# ~/huxflux/env
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+unset ANTHROPIC_API_KEY
+```
+
+or read the token from a separate file:
+
+```sh
+[ -r "$HOME/.config/huxflux/claude-token" ] && CLAUDE_CODE_OAUTH_TOKEN="$(cat "$HOME/.config/huxflux/claude-token")"
+```
+
+The file can hold secrets, so make it readable only by you:
+
+```sh
+chmod 600 ~/huxflux/env
+```
+
+Restart the service to pick up changes (`huxflux stop && huxflux start`). `huxflux status` shows whether the file exists and warns if other users can read it.
+
 ## Updates
 
 | Command | Description |

@@ -47,3 +47,22 @@ export function resolveSupervisorCommand(execPath: string, cliPath: string): Sup
 export function buildSupervisorExecLine(cmd: SupervisorCommand): string {
   return `exec "${cmd.nodeBin}" "${cmd.cliPath}" _supervisor`
 }
+
+// The user-owned env file the launcher sources. Huxflux never creates, writes or
+// deletes it, so settings in it survive `huxflux update` and `service enable`,
+// which both regenerate the launcher.
+export function getServiceEnvFilePath(dataDir: string): string {
+  return path.join(dataDir, "env")
+}
+
+// The last lines of the generated launcher: source the env file, if present,
+// then exec the supervisor. It is sourced after the launcher's own exports so
+// its values win. `set -a` exports plain `KEY=value` lines; shell snippets
+// (`export X="$(cat ...)"`, `unset Y`) work too. A missing file is a no-op.
+export function buildLauncherTail(envFilePath: string, cmd: SupervisorCommand): string[] {
+  return [
+    `HUXFLUX_ENV_FILE="${envFilePath}"`,
+    `if [ -r "$HUXFLUX_ENV_FILE" ]; then set -a; . "$HUXFLUX_ENV_FILE"; set +a; fi`,
+    buildSupervisorExecLine(cmd),
+  ]
+}

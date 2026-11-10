@@ -3,6 +3,7 @@ import { logger } from "../../../logger.js"
 
 const CATALOG_URL = "https://models.dev/api.json"
 const REFRESH_MS = 6 * 60 * 60 * 1000
+const RETRY_MS = 5 * 60 * 1000
 
 const HARNESS_TO_PROVIDER: Record<string, string> = {
   claude: "anthropic",
@@ -75,9 +76,24 @@ function isUsableModel(m: CatalogModel): boolean {
   return true
 }
 
+function scheduleNextFetch(delayMs: number): void {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    fetchModelsCatalog().catch(() => {})
+  }, delayMs)
+  refreshTimer.unref?.()
+}
+
+/**
+ * Fetch the catalog and schedule the next fetch. A failed fetch keeps the
+ * previous catalog and retries sooner; it must never stop the refresh loop,
+ * or new models stay invisible until the server restarts.
+ */
 export async function fetchModelsCatalog(): Promise<void> {
   if (fetchPromise) return fetchPromise
   fetchPromise = (async () => {
+    let loaded = false
     try {
       const res = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(15_000) })
       if (!res.ok) {
@@ -85,17 +101,13 @@ export async function fetchModelsCatalog(): Promise<void> {
         return
       }
       catalog = (await res.json()) as Catalog
+      loaded = true
       logger.info("[models-catalog] catalog loaded")
-
-      if (refreshTimer) clearTimeout(refreshTimer)
-      refreshTimer = setTimeout(() => {
-        fetchPromise = null
-        fetchModelsCatalog().catch(() => {})
-      }, REFRESH_MS)
     } catch (err) {
       logger.warn({ err }, "[models-catalog] fetch error")
     } finally {
       fetchPromise = null
+      scheduleNextFetch(loaded ? REFRESH_MS : RETRY_MS)
     }
   })()
   return fetchPromise
@@ -191,4 +203,12 @@ function findCatalogModel(apiId: string): CatalogModel | undefined {
 
 export function isCatalogLoaded(): boolean {
   return catalog !== null
+}
+
+/** Clear the cached catalog and any pending refresh. Test-only. */
+export function _resetModelsCatalog(): void {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = null
+  fetchPromise = null
+  catalog = null
 }

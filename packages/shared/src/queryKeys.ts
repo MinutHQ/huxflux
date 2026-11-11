@@ -96,6 +96,7 @@ export const queryKeys = {
         ? ["repos"] as const
         : ["repos", serverUrl] as const,
     branches: (repoId: string) => ["repo-branches", repoId] as const,
+    remotes: (repoId: string) => ["repo-remotes", repoId] as const,
     // Filesystem lookups behind the add-repo flow (mobile).
     discover: (q: string) => ["fs-repos", q] as const,
     browse: (dir: string) => ["fs-browse", dir] as const,

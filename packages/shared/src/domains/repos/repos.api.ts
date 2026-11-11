@@ -40,6 +40,7 @@ export const reposApi = {
     }),
   delete: (id: string) => reqValidated(z.void(), `/api/repos/${id}`, { method: "DELETE" }),
   branches: (id: string) => reqValidated(z.array(z.string()), `/api/repos/${id}/branches`),
+  remotes: (id: string) => reqValidated(z.array(z.string()), `/api/repos/${id}/remotes`),
 
   // Filesystem (path picker / repo discovery used by the add-repo flow)
   findRepos: (q?: string) => {

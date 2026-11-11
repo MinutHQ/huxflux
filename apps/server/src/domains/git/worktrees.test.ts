@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { writeFileSync } from "node:fs"
 import * as path from "node:path"
 import { createGitTmpRepo, type GitTmpRepo } from "../../../test/harness.js"
-import { getBaseFileContent, getDiff, getFileChanges, getFileContent } from "./worktrees.js"
+import { getBaseFileContent, getDiff, getFileChanges, getFileContent, listRemotes } from "./worktrees.js"
 
 let repo: GitTmpRepo
 
@@ -90,5 +90,21 @@ describe("getBaseFileContent", () => {
 describe("getFileContent", () => {
   it("does not read outside the worktree", async () => {
     expect(await getFileContent(repo.path, "../../../../etc/hosts")).toBe("")
+  })
+})
+
+describe("listRemotes", () => {
+  it("returns no remotes for a repo without any", async () => {
+    expect(await listRemotes(repo.path)).toEqual([])
+  })
+
+  it("returns every configured remote name", async () => {
+    git("remote", "add", "origin", "https://example.com/a.git")
+    git("remote", "add", "upstream", "https://example.com/b.git")
+    expect((await listRemotes(repo.path)).sort()).toEqual(["origin", "upstream"])
+  })
+
+  it("returns an empty list for a path that is not a repo", async () => {
+    expect(await listRemotes(path.join(repo.path, "missing"))).toEqual([])
   })
 })

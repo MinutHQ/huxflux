@@ -15,7 +15,7 @@ import { repos, agents } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
 import type { Repo } from "../../types.js"
 import { listBranches } from "../pull-requests/misc.js"
-import { getRemoteUrl } from "../git/worktrees.js"
+import { getRemoteUrl, listRemotes } from "../git/worktrees.js"
 import { config } from "../../config.js"
 import {
   execFileAsync,
@@ -65,6 +65,14 @@ const reposRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get("/api/repos/:id/branches", {
     schema: { params: idParamsSchema },
   }, async (req, reply) => branchesHandler(req.params.id, reply))
+
+  app.get("/api/repos/:id/remotes", {
+    schema: { params: idParamsSchema },
+  }, async (req, reply) => {
+    const repo = db.select().from(repos).where(eq(repos.id, req.params.id)).get()
+    if (!repo) return reply.code(404).send({ error: "Not found" })
+    return listRemotes(repo.path)
+  })
 
   app.post("/api/repos/clone", {
     schema: { body: cloneRepoBodySchema },

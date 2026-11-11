@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, cn } from "@huxflux/ui"
-import { api, type Repo, queryKeys, useHuxfluxMutation } from "@huxflux/shared"
+import { Button, cn } from "@huxflux/ui"
+import { api, type Repo, queryKeys, useHuxfluxMutation, useHuxfluxQuery } from "@huxflux/shared"
 import { IconAlertTriangle } from "@tabler/icons-react"
 import { IconPickerPopover } from "../components/IconPickerPopover"
+import { SearchableSelect } from "../components/SearchableSelect"
 import { getTablerIcon } from "../utils"
 
 interface RepoSettingsProps {
@@ -24,7 +25,8 @@ export function RepoSettings({ repo, color, onRemove }: RepoSettingsProps) {
 
   const updateRepo = useHuxfluxMutation<unknown, Parameters<typeof api.repos.update>[1]>({
     mutationFn: (patch) => api.repos.update(repo.id, patch),
-    invalidate: () => queryKeys.repos.all,
+    // The branch list is looked up through the saved remote, so refetch it too.
+    invalidate: () => [queryKeys.repos.all, queryKeys.repos.branches(repo.id)],
     onSuccess: () => {
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
@@ -61,6 +63,12 @@ export function RepoSettings({ repo, color, onRemove }: RepoSettingsProps) {
   }
   const isRemoving = deleteRepo.isPending
 
+  // Keep the base branch on the same remote: origin/main becomes upstream/main.
+  function handleRemoteChange(next: string) {
+    if (branch.startsWith(`${remote}/`)) setBranch(`${next}/${branch.slice(remote.length + 1)}`)
+    setRemote(next)
+  }
+
   // Folder repos have no git branches, no remote, no worktrees. Hide every
   // git-specific field rather than letting the user configure values that will
   // never apply.
@@ -72,7 +80,7 @@ export function RepoSettings({ repo, color, onRemove }: RepoSettingsProps) {
       <RepoPaths path={repo.path} workspacesPath={repo.workspacesPath} isFolder={isFolder} />
       {!isFolder && (
         <>
-          <RepoBranchRemote branch={branch} remote={remote} onBranchChange={setBranch} onRemoteChange={setRemote} />
+          <RepoBranchRemote repoId={repo.id} branch={branch} remote={remote} onBranchChange={setBranch} onRemoteChange={handleRemoteChange} />
           <RepoBranchPrefix value={branchPrefix} onChange={setBranchPrefix} />
         </>
       )}
@@ -155,44 +163,56 @@ function RepoPaths({ path, workspacesPath, isFolder }: { path: string; workspace
 }
 
 function RepoBranchRemote({
-  branch, remote, onBranchChange, onRemoteChange,
+  repoId, branch, remote, onBranchChange, onRemoteChange,
 }: {
-  branch: string; remote: string; onBranchChange: (v: string) => void; onRemoteChange: (v: string) => void
+  repoId: string; branch: string; remote: string; onBranchChange: (v: string) => void; onRemoteChange: (v: string) => void
 }) {
+  const branches = useHuxfluxQuery({
+    queryKey: queryKeys.repos.branches(repoId),
+    queryFn: () => api.repos.branches(repoId),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const remotes = useHuxfluxQuery({
+    queryKey: queryKeys.repos.remotes(repoId),
+    queryFn: () => api.repos.remotes(repoId),
+    staleTime: 60_000,
+  })
+
   return (
     <div className="grid grid-cols-2 gap-4">
       <div>
         <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
           Branch new workspaces from
         </label>
-        <Select value={branch} onValueChange={onBranchChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="origin/develop">origin/develop</SelectItem>
-            <SelectItem value="origin/main">origin/main</SelectItem>
-            <SelectItem value="origin/master">origin/master</SelectItem>
-            <SelectItem value="origin/staging">origin/staging</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={branch}
+          options={withCurrent((branches.data ?? []).map((name) => `${remote}/${name}`), branch)}
+          onChange={onBranchChange}
+          placeholder="Search or type a branch..."
+          isLoading={branches.isLoading}
+          allowCustom
+        />
       </div>
       <div>
         <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">
           Remote origin
         </label>
-        <Select value={remote} onValueChange={onRemoteChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="origin">origin</SelectItem>
-            <SelectItem value="upstream">upstream</SelectItem>
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={remote}
+          options={withCurrent(remotes.data ?? [], remote)}
+          onChange={onRemoteChange}
+          placeholder="Search remotes..."
+          isLoading={remotes.isLoading}
+        />
       </div>
     </div>
   )
+}
+
+/** Keep the saved value selectable even when the repo no longer has it. */
+function withCurrent(options: string[], current: string): string[] {
+  return current && !options.includes(current) ? [current, ...options] : options
 }
 
 function RepoBranchPrefix({ value, onChange }: { value: string; onChange: (v: string) => void }) {

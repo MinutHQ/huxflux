@@ -25,6 +25,16 @@ export async function getRemoteUrl(repoPath: string, remote = "origin"): Promise
   }
 }
 
+/** Names of the git remotes configured in the repo. Empty when none or not a repo. */
+export async function listRemotes(repoPath: string): Promise<string[]> {
+  try {
+    const remotes = await simpleGit(repoPath).getRemotes()
+    return remotes.map((r) => r.name)
+  } catch {
+    return []
+  }
+}
+
 async function refExists(git: ReturnType<typeof simpleGit>, ref: string): Promise<boolean> {
   try {
     await git.raw(["rev-parse", "--verify", `${ref}^{commit}`])

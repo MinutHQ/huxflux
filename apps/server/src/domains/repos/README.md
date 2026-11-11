@@ -6,6 +6,7 @@ The server-side surface for registered git repositories: list, create, patch, de
 
 - The `/api/repos` REST surface: GET list, POST create (rejects duplicate paths with 409), PATCH partial update (also kicks the reserve refresh when `setupScript` changes), DELETE (cascades into `agents` because the FK lacks ON DELETE CASCADE)
 - The `/api/repos/:id/branches` endpoint that resolves the remote URL and asks GitHub for the branch list
+- The `/api/repos/:id/remotes` endpoint that lists the git remotes configured in the repo
 - The `/api/repos/clone` endpoint: clones a remote git URL into a caller-supplied location, auto-detects the default branch, and registers the result
 - The `/api/repos/quick-start` endpoint: scaffolds a new project from a template (empty / Vite / TanStack Start), initialises a git repo if the scaffold didn't, then registers it
 - The path-resolution / branch-detection helpers used by the clone and quick-start endpoints, plus the fire-and-forget reserve-worktree maintenance helper called from the PATCH handler when the setup script changes

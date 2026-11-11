@@ -9,7 +9,7 @@ The server-side surface for everything that happens against a local git reposito
 - File read / write inside a worktree: `getFileContent`, `saveFileContent`, `getFileTree`
 - The file browser surface (`files.ts`): path containment for every caller-supplied path, one-level directory listing with gitignored entries flagged, the flat name index, content search, and binary-aware reads
 - Raw byte serving for media previews and downloads (`rawFile.ts`): single-range `Range` parsing, contained file streams, MIME from the shared media map, `Content-Disposition`
-- Git metadata: `getRemoteUrl`, `commitAndPush`
+- Git metadata: `getRemoteUrl`, `listRemotes`, `commitAndPush`
 - The worktree reservation pool (`pool.ts`): one or more hidden pre-warmed worktrees per repo, so `createAgent` can claim one instead of paying the cold-path git work on every new agent. Reserves are built whether or not the repo has a setup script — the dominant cost on a fresh create is `git fetch` + `worktree add`, not the install. When a setup script is configured, it runs ahead of time too. Depth is auto-derived from repo weight: a repo with a setup script rebuilds slowly (install/build per worktree), so it keeps `HEAVY_RESERVE_COUNT` reserves to absorb bursty creation; everything else keeps one. `ensureReserve`, `claimReserve`, `drainReserves`, `initializeReserves`, `HEAVY_RESERVE_COUNT`
 - The file watcher (`watcher.ts`): per-agent native `fs.watch` (recursive) that debounces changes, refreshes `file_changes` rows in the DB, syncs the branch name when it drifts, and emits `agentsWs.fileChanged`. Attached lazily per open agent (see `watchAgent`). `watchWorktree`, `watchAgent`, `unwatchWorktree`, `refreshWorktree`
 - The agent port registry (`processes.ts`): scans terminal output for `localhost:NNNN` patterns, persists detected ports per agent, validates them with `lsof`, broadcasts `ports:changed`. Also `killWorktreeProcesses` (used at shutdown and on agent teardown) for killing processes whose cwd is inside a worktree
@@ -20,6 +20,7 @@ The server-side surface for everything that happens against a local git reposito
 - `removeWorktree`: force-remove a worktree directory and prune git metadata
 - `moveWorktree`: relocate a worktree to a new path (caller ensures nothing is using the old path)
 - `getRemoteUrl`: read `git remote get-url <name>` (defaults to `origin`); returns null on failure
+- `listRemotes`: names of the configured remotes; empty list on failure
 - `getFileChanges`: diff summary between HEAD and the resolved merge-base of `branchFrom`, plus uncommitted changes and untracked files, as a unified `FileChange[]`
 - `getDiff`: unified diff for one file vs the merge-base, with a synthetic full-addition fallback for untracked files
 - `getDiffSummary`: aggregated `{ additions, deletions, commits }` for the worktree vs `branchFrom`

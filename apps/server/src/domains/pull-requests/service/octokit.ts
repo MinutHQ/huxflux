@@ -2,13 +2,21 @@ import { Octokit } from "@octokit/rest"
 import { throttling } from "@octokit/plugin-throttling"
 import { retry } from "@octokit/plugin-retry"
 import { config } from "../../../config.js"
+import { createEtagFetch } from "./etagCache.js"
+import { markRateLimited } from "./rateLimitState.js"
 
 // One shared, throttled, auto-retrying client for the whole process. The poller
 // fans out dozens of GitHub calls per cycle; a single instance lets undici reuse
 // connections, the throttling plugin paces against primary/secondary rate limits,
 // and the retry plugin transparently re-attempts transient failures (the connect
-// timeouts that otherwise surface as "[poller] Connect Timeout Error"). The
-// client is rebuilt when the configured token changes (e.g. a settings update).
+// timeouts that otherwise surface as "[poller] Connect Timeout Error"). Every GET
+// replays its last ETag (see etagCache.ts) so unchanged resources cost no quota.
+// The client is rebuilt when the configured token changes (e.g. a settings update).
+//
+// On a primary rate limit we do NOT wait for the reset: the throttling plugin
+// would park the request for up to an hour while the poller keeps queueing new
+// cycles behind it, which then all fire at once on reset. Instead we trip the
+// shared back-off and fail the request, so the poller skips cycles until reset.
 const ThrottledOctokit = Octokit.plugin(throttling, retry)
 
 let shared: Octokit | undefined
@@ -23,14 +31,20 @@ export function getOctokit(): Octokit {
   cachedUserPromise = undefined
   shared = new ThrottledOctokit({
     auth: token,
+    request: { fetch: createEtagFetch() },
     throttle: {
-      onRateLimit: (retryAfter, options, octokit, retryCount) => {
-        octokit.log.warn(`[octokit] rate limit for ${options.method} ${options.url}; retry #${retryCount} in ${retryAfter}s`)
-        return retryCount < 3
+      onRateLimit: (retryAfter, options, octokit) => {
+        octokit.log.warn(`[octokit] rate limit for ${options.method} ${options.url}; pausing GitHub polling for ${retryAfter}s`)
+        markRateLimited(retryAfter)
+        return false
       },
+      // Secondary limits come from short bursts and clear in about a minute, so
+      // one paced retry is worth it; we still pause the poller so it does not
+      // keep feeding the burst while that retry waits.
       onSecondaryRateLimit: (retryAfter, options, octokit, retryCount) => {
         octokit.log.warn(`[octokit] secondary rate limit for ${options.method} ${options.url}; retry #${retryCount} in ${retryAfter}s`)
-        return retryCount < 3
+        markRateLimited(retryAfter)
+        return retryCount < 1
       },
     },
   })

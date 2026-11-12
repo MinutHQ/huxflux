@@ -15,7 +15,7 @@ import { jiraTransitionIssue } from "../../tasks/jiraClient.js"
 import { logger } from "../../../logger.js"
 import type { PRDetails, PRStatus } from "../../../types.js"
 import { monitorPRComments, monitorCI, monitorMergeConflicts } from "./monitors.js"
-import { markRateLimited, isRateLimited } from "./rateLimitState.js"
+import { markRateLimited, isRateLimited } from "../service/rateLimitState.js"
 
 type AgentRow = typeof agents.$inferSelect
 type RepoRow = typeof repos.$inferSelect

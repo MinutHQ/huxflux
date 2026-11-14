@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm"
 import { db } from "../../../db/index.js"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
 import { findReviewThreadForComment, replyToReviewComment, resolveReviewThread } from "../prComments.js"
+import { getRemoteUrl } from "../../git/worktrees.js"
+import { parseRepo } from "./octokit.js"
 import { defineTagHandler, type TagHandler, type TagOutcome } from "../../agent-runner/agent-runner.types.js"
 import { logger } from "../../../logger.js"
 
@@ -63,6 +65,26 @@ function resolveFailedFollowUp(commentId: string, reason: string, ctx: ReplyCont
   }
 }
 
+type RepoRow = typeof reposTable.$inferSelect
+
+/**
+ * GitHub owner/repo for a configured repo. `repos.name` is the local display
+ * name (usually the bare directory name, e.g. "phaenix"), so the git remote is
+ * the source of truth; an "owner/repo" style name is only a fallback for repos
+ * whose remote can't be read.
+ */
+export async function resolveGitHubRepo(repo: RepoRow): Promise<{ owner: string; repo: string } | null> {
+  const remoteUrl = await getRemoteUrl(repo.path, repo.remote)
+  if (remoteUrl) {
+    try {
+      return parseRepo(remoteUrl)
+    } catch { /* fall through to the name */ }
+  }
+  const [owner, name, ...rest] = repo.name.split("/")
+  if (owner && name && rest.length === 0) return { owner, repo: name }
+  return null
+}
+
 /** `resolve="true"` (or yes/1) on the tag asks the server to resolve the thread. */
 export function wantsResolve(value: string | undefined): boolean {
   return value !== undefined && ["true", "yes", "1"].includes(value.trim().toLowerCase())
@@ -75,7 +97,7 @@ export function wantsResolve(value: string | undefined): boolean {
  * With `resolve="true"` (the agent fixed what the comment asked for) it then
  * resolves that thread. A reply that landed as a conversation comment has no
  * thread, so `resolve` is ignored there.
- * When it can't (no repo, no PR number, unparseable repo name, or a GitHub API
+ * When it can't (no repo, no PR number, no resolvable GitHub remote, or a GitHub API
  * failure) it returns a follow-up so the agent learns the reply did not post
  * and can fall back to `gh`.
  */
@@ -98,11 +120,12 @@ export function prReplyHandler(agentId: string): TagHandler {
         logger.warn(`[tags] pr.reply: repo ${agent.repoId} not found, skipping`)
         return replyFailedFollowUp(args.commentId, "the linked repo could not be found")
       }
-      const [owner, repoName] = repo.name.includes("/") ? repo.name.split("/") : ["", repo.name]
-      if (!owner || !repoName) {
-        logger.warn(`[tags] pr.reply: could not parse owner/repo from "${repo.name}"`)
-        return replyFailedFollowUp(args.commentId, `could not parse owner/repo from "${repo.name}"`)
+      const gh = await resolveGitHubRepo(repo)
+      if (!gh) {
+        logger.warn(`[tags] pr.reply: could not resolve owner/repo for "${repo.name}" from remote "${repo.remote}"`)
+        return replyFailedFollowUp(args.commentId, `could not resolve the GitHub owner/repo for "${repo.name}" from its "${repo.remote}" remote`)
       }
+      const { owner, repo: repoName } = gh
       const commentIdN = parseInt(args.commentId, 10)
       if (!Number.isFinite(commentIdN)) {
         logger.warn(`[tags] pr.reply: commentId "${args.commentId}" is not a number`)

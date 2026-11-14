@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { agents as agentsTable, repos as reposTable } from "../../../db/schema.js"
 import { createTestDb, silenceLogs, type TestDb, type SilencedLogs } from "../../../../test/harness.js"
-import { prReplyHandler, wantsResolve } from "./runnerTags.js"
+import { prReplyHandler, resolveGitHubRepo, wantsResolve } from "./runnerTags.js"
 import { findReviewThreadForComment, replyToReviewComment, resolveReviewThread } from "../prComments.js"
+import { getRemoteUrl } from "../../git/worktrees.js"
 
 vi.mock("../prComments.js", () => ({
   replyToReviewComment: vi.fn(),
   findReviewThreadForComment: vi.fn(),
   resolveReviewThread: vi.fn(),
 }))
+vi.mock("../../git/worktrees.js", () => ({ getRemoteUrl: vi.fn() }))
 import type { TagOutcome } from "../../agent-runner/agent-runner.types.js"
 
 // The pr.reply handler posts to GitHub via Octokit on the happy path (network,
@@ -48,7 +50,10 @@ async function invoke(commentId = "123", body = "fixed it", resolve?: string): P
 
 describe("prReplyHandler follow-ups", () => {
   let ctx: Ctx
-  beforeEach(() => { ctx = { logs: silenceLogs(), testDb: createTestDb() } })
+  beforeEach(() => {
+    ctx = { logs: silenceLogs(), testDb: createTestDb() }
+    vi.mocked(getRemoteUrl).mockReset().mockResolvedValue(null)
+  })
   afterEach(() => { ctx.testDb.close(); ctx.logs.restore() })
 
   it("returns a follow-up when the workspace has no linked repo", async () => {
@@ -70,7 +75,7 @@ describe("prReplyHandler follow-ups", () => {
     expect(outcome?.followUp?.content).toContain("no linked PR")
   })
 
-  it("returns a follow-up when the repo name can't be split into owner/repo", async () => {
+  it("returns a follow-up when neither the remote nor the name gives owner/repo", async () => {
     insertRepo(ctx.testDb.db, "just-a-name")
     insertAgent(ctx.testDb.db, { repoId: REPO_ID, prNumber: 7 })
     const outcome = await invoke()
@@ -94,6 +99,7 @@ describe("prReplyHandler resolve", () => {
     vi.mocked(replyToReviewComment).mockReset().mockResolvedValue("thread")
     vi.mocked(findReviewThreadForComment).mockReset().mockResolvedValue({ id: "T_1", isResolved: false })
     vi.mocked(resolveReviewThread).mockReset().mockResolvedValue()
+    vi.mocked(getRemoteUrl).mockReset().mockResolvedValue(null)
     insertRepo(ctx.testDb.db, "owner/repo")
     insertAgent(ctx.testDb.db, { repoId: REPO_ID, prNumber: 7 })
   })
@@ -137,6 +143,47 @@ describe("prReplyHandler resolve", () => {
     vi.mocked(findReviewThreadForComment).mockResolvedValue(null)
     const outcome = await invoke("123", "fixed it", "true")
     expect(outcome?.followUp?.content).toContain("no review thread")
+  })
+})
+
+describe("prReplyHandler repo resolution", () => {
+  let ctx: Ctx
+  beforeEach(() => {
+    ctx = { logs: silenceLogs(), testDb: createTestDb() }
+    vi.mocked(replyToReviewComment).mockReset().mockResolvedValue("thread")
+    vi.mocked(getRemoteUrl).mockReset()
+  })
+  afterEach(() => { ctx.testDb.close(); ctx.logs.restore() })
+
+  it("replies using the owner/repo from the git remote when the name is bare", async () => {
+    vi.mocked(getRemoteUrl).mockResolvedValue("https://github.com/phaenixorg/phaenix.git")
+    insertRepo(ctx.testDb.db, "phaenix")
+    insertAgent(ctx.testDb.db, { repoId: REPO_ID, prNumber: 7 })
+    const outcome = await invoke("123", "fixed it")
+    expect(outcome).toBeUndefined()
+    expect(getRemoteUrl).toHaveBeenCalledWith("/tmp/x", "origin")
+    expect(replyToReviewComment).toHaveBeenCalledWith("phaenixorg", "phaenix", 7, 123, "fixed it", { fallbackToConversation: true })
+  })
+})
+
+describe("resolveGitHubRepo", () => {
+  const base = { id: "r", path: "/tmp/x", workspacesPath: "/tmp/x/w", branchFrom: "origin/main", remote: "origin", createdAt: "" }
+  const row = (name: string) => ({ ...base, name }) as Parameters<typeof resolveGitHubRepo>[0]
+  beforeEach(() => { vi.mocked(getRemoteUrl).mockReset() })
+
+  it("prefers the remote over the name", async () => {
+    vi.mocked(getRemoteUrl).mockResolvedValue("git@gh_work:phaenixorg/altair.git")
+    expect(await resolveGitHubRepo(row("someone/else"))).toEqual({ owner: "phaenixorg", repo: "altair" })
+  })
+
+  it("falls back to an owner/repo name when the remote can't be read", async () => {
+    vi.mocked(getRemoteUrl).mockResolvedValue(null)
+    expect(await resolveGitHubRepo(row("owner/repo"))).toEqual({ owner: "owner", repo: "repo" })
+  })
+
+  it("returns null for a bare name without a usable remote", async () => {
+    vi.mocked(getRemoteUrl).mockResolvedValue("not a url at all")
+    expect(await resolveGitHubRepo(row("solstice"))).toBeNull()
   })
 })
 

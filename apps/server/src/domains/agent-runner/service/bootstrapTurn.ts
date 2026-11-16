@@ -209,9 +209,14 @@ async function preSpawnAutoRename(
   // name, leaving an orphaned remote ref that can't be easily renamed later.
   // Bounded by a short timeout so a stuck Haiku call never blocks the run forever.
   const liveAgent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-  if (!liveAgent || liveAgent.parentAgentId || !isPlaceholderName(liveAgent.title)) {
+  if (!liveAgent) return worktreePath
+  // Child chat tabs only get a title (no branch or folder change), so name
+  // them in the background instead of holding up the turn.
+  if (liveAgent.parentAgentId) {
+    void tryAutoRename(agentId, "HEAD").catch((err) => logger.warn({ err, agentId }, "[auto-rename] child title failed"))
     return worktreePath
   }
+  if (!isPlaceholderName(liveAgent.title)) return worktreePath
   // Count user messages only — assistant skeletons can linger across crashes
   // and would otherwise make a real first turn look like a continuation.
   const userMsgCount = db.select({ id: messagesTable.id }).from(messagesTable)

@@ -38,9 +38,13 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
     let agentRepoId = repoId ?? null
     let skipWorktreeCreation = false
 
+    // Child sessions always hang off the worktree's root agent, so a tab opened
+    // from another child tab still shows up among its siblings.
+    let parentAgentId = shareWorktreeWith ?? null
     if (shareWorktreeWith) {
       const sourceAgent = db.select().from(agents).where(eq(agents.id, shareWorktreeWith)).get()
       if (sourceAgent) {
+        parentAgentId = sourceAgent.parentAgentId ?? sourceAgent.id
         agentLocation = sourceAgent.location
         agentRepoId = sourceAgent.repoId ?? agentRepoId
         skipWorktreeCreation = true
@@ -62,7 +66,7 @@ export const agentsCreateRoutes: FastifyPluginAsyncZod = async (app) => {
       model,
       location: agentLocation,
       description: description ?? null,
-      parentAgentId: shareWorktreeWith ?? null,
+      parentAgentId,
       noWorktree: noWorktree ? 1 : null,
       baseBranch: baseBranch ?? null,
       provider,

@@ -18,25 +18,19 @@ import { logger } from "../../../logger.js"
 export async function tryAutoRename(agentId: string, branchFrom: string): Promise<void> {
   const agent = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
   if (!agent || agent.deletedAt) return
+  // Child chat tabs share the parent's branch and worktree, so only the title
+  // is theirs. Clients open them as "Untitled".
+  if (agent.parentAgentId) {
+    if (isChildPlaceholder(agent.title)) await renameTitleOnly(agentId, isChildPlaceholder)
+    return
+  }
   if (!agent.repoId) return
-  if (agent.parentAgentId) return // children share the parent's branch/worktree
 
   const repo = db.select().from(reposTable).where(eq(reposTable.id, agent.repoId)).get()
 
   // Folder repos: only auto-rename the title, never touch branches/worktrees.
   if (repo?.type === "folder") {
-    if (isPlaceholderName(agent.title)) {
-      const firstUserMsg = findFirstUserMessage(agentId)
-      if (!firstUserMsg?.content?.trim()) return
-      const synthesizedTitle = await synthesizeTitle(firstUserMsg.content)
-      if (!synthesizedTitle) return
-      db.update(agentsTable)
-        .set({ title: synthesizedTitle, updatedAt: new Date().toISOString() })
-        .where(eq(agentsTable.id, agentId))
-        .run()
-      const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
-      if (updated) agentsWs.agentUpdated(updated as unknown as AgentSummary)
-    }
+    if (isPlaceholderName(agent.title)) await renameTitleOnly(agentId, isPlaceholderName)
     return
   }
 
@@ -77,6 +71,42 @@ export async function tryAutoRename(agentId: string, branchFrom: string): Promis
       if (!result.ok) logger.error({ err: result.reason }, `[auto-rename] branch rename failed`)
     }
   }
+}
+
+// The title web and mobile give a new chat tab (see createChildTab in the web
+// workspace and useChatSession on mobile). A user who names a tab exactly
+// this will see it replaced on the next turn, which is accepted.
+const CHILD_PLACEHOLDER_TITLE = "Untitled"
+
+// Agents with a title rename in flight. A child chat starts one when its turn
+// begins and tries again when it ends, so this stops a second Haiku call.
+const renamingTitles = new Set<string>()
+
+async function renameTitleOnly(agentId: string, isStillPlaceholder: (title: string) => boolean): Promise<void> {
+  if (renamingTitles.has(agentId)) return
+  renamingTitles.add(agentId)
+  try {
+    const firstUserMsg = findFirstUserMessage(agentId)
+    if (!firstUserMsg?.content?.trim()) return
+    const synthesizedTitle = await synthesizeTitle(firstUserMsg.content)
+    if (!synthesizedTitle) return
+    // The title call can take seconds. Skip the write if the user renamed the
+    // agent meanwhile, or the agent was deleted.
+    const current = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (!current || current.deletedAt || !isStillPlaceholder(current.title)) return
+    db.update(agentsTable)
+      .set({ title: synthesizedTitle, updatedAt: new Date().toISOString() })
+      .where(eq(agentsTable.id, agentId))
+      .run()
+    const updated = db.select().from(agentsTable).where(eq(agentsTable.id, agentId)).get()
+    if (updated) agentsWs.agentUpdated(updated as unknown as AgentSummary)
+  } finally {
+    renamingTitles.delete(agentId)
+  }
+}
+
+function isChildPlaceholder(title: string): boolean {
+  return title === CHILD_PLACEHOLDER_TITLE || isPlaceholderName(title)
 }
 
 function findFirstUserMessage(agentId: string): { content: string | null } | undefined {

@@ -107,9 +107,13 @@ function markUnreadCleared(agents: AgentSummary[], id: string, queryClient: Quer
 
 async function fetchAndAttachChildSessions(rootId: string, queryClient: QueryClient, chat: ChatHandle, closed: Set<string>) {
   try {
-    // fire-and-forget; intentional: lazy session restore on tab open with custom cache seeding, not a render-time read
-    // eslint-disable-next-line no-restricted-syntax
-    const sessions = await api.agents.sessions(rootId)
+    // Lazy session restore on tab open, with retries for a server that is still waking up after a switch.
+    const sessions = await queryClient.fetchQuery({
+      queryKey: queryKeys.agents.sessions(rootId),
+      queryFn: () => api.agents.sessions(rootId),
+      retry: 2,
+      staleTime: 0,
+    })
     if (sessions.length === 0) return
     // Pre-fill cache for each session so switching tabs doesn't flash the
     // parent agent's messages via placeholderData while the child loads.
@@ -127,7 +131,10 @@ async function fetchAndAttachChildSessions(rootId: string, queryClient: QueryCli
       const additions = childTabs.filter(t => !existingIds.has(t.agentId))
       return additions.length > 0 ? [...prev, ...additions] : prev
     })
-  } catch { /* network errors are non-fatal for session restore */ }
+  } catch (err) {
+    // Non-fatal, but say so: a silent failure here looks like the tabs vanished.
+    console.warn("[tabs] failed to restore chat sessions", err)
+  }
 }
 
 interface CreateChildTabArgs {
@@ -144,7 +151,7 @@ interface CreateChildTabArgs {
 async function createChildTab({ agent, title, chat, queryClient, setPendingComments, model, provider, errorLabel = "tab" }: CreateChildTabArgs): Promise<{ id: string } | null> {
   // Always share with the root agent (first tab) so sibling sessions stay
   // siblings even when a child tab is currently active.
-  const rootAgentId = chat.intentTabs[0]?.agentId ?? agent.id
+  const rootAgentId = chat.intentTabs[0]?.agentId ?? agent.parentAgentId ?? agent.id
   try {
     // fire-and-forget; intentional: tab-creation flow seeds the cache manually and updates UI state in a specific order
     // eslint-disable-next-line no-restricted-syntax

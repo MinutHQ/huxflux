@@ -42,9 +42,12 @@ export const agentsListRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get("/api/agents/:id/sessions", {
     schema: { params: idParamsSchema },
   }, async (req) => {
+    // Parse prStatus like the list does: the raw column is a JSON string, which
+    // fails the client's schema and drops every session tab on restore.
     return db.select().from(agents)
       .where(and(eq(agents.parentAgentId, req.params.id), isNull(agents.deletedAt)))
       .all()
+      .map((a) => ({ ...a, prStatus: parsePrStatus(a.prStatus) }))
   })
 
   // GET /api/agents/:id — full agent with messages + files + terminal

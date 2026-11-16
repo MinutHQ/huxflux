@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { getActiveServerId } from "@huxflux/shared"
+import { getActiveServerId, useAgentEvents } from "@huxflux/shared"
 import type { AgentSummary } from "@huxflux/shared"
 import type { ChatTab } from "./types"
 
@@ -67,6 +67,16 @@ export function useChatTabs(agents: AgentSummary[]) {
     if (agents.some(a => a.id === intentActiveTabId)) return intentActiveTabId
     return tabs.length > 0 ? tabs[tabs.length - 1]?.agentId ?? null : null
   }, [intentActiveTabId, tabs, agents])
+
+  // Child sessions are left out of the agents list, so their renames (the
+  // server's auto-title, a rename from another client) arrive only as events.
+  useAgentEvents(null, (event) => {
+    if (event.type !== "agent:updated") return
+    const { id, title } = event.agent
+    setIntentTabs(prev => prev.some(t => t.agentId === id && t.title !== title)
+      ? prev.map(t => t.agentId === id ? { ...t, title } : t)
+      : prev)
+  })
 
   // Persist derived activeTabId so a refresh restores what the user actually
   // sees (not the stale intent that may have referenced a deleted agent).

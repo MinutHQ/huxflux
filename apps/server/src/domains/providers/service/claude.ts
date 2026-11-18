@@ -32,6 +32,9 @@ interface ClaudeRawEvent {
 
 const MODEL_ALIASES: Record<string, string> = {
   "Opus 5.5":   "claude-opus-5-5",
+  "Sonnet 5.5": "claude-sonnet-5-5",
+  "Haiku 5.5":  "claude-haiku-5-5",
+  "Fable 5.1":  "claude-fable-5-1",
   "Opus 5":     "claude-opus-5",
   "Opus 4.8":   "claude-opus-4-8",
   "Opus 4.7":   "claude-opus-4-7",
@@ -44,16 +47,22 @@ const MODEL_ALIASES: Record<string, string> = {
 
 const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"]
 
+// Used only when the live catalog at models.dev is unreachable (offline, or
+// before the first fetch completes). Newest first, since the list order is
+// what the model picker shows. Verified against the catalog 2026-11-05.
 const FALLBACK_MODELS: ProviderModel[] = [
-  { id: "claude-opus-5-5",           label: "Opus 5.5",   api: "claude-opus-5-5",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-opus-5",             label: "Opus 5",     api: "claude-opus-5",             effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-opus-4-6",           label: "Opus 4.6",   api: "claude-opus-4-6",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-fable-5",            label: "Fable 5",    api: "claude-fable-5",            effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-sonnet-5",           label: "Sonnet 5",   api: "claude-sonnet-5",           effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", api: "claude-sonnet-4-6",         effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  api: "claude-haiku-4-5-20251001", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-5-5",    label: "Opus 5.5",    api: "claude-opus-5-5",    effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-sonnet-5-5",  label: "Sonnet 5.5",  api: "claude-sonnet-5-5",  effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-haiku-5-5",   label: "Haiku 5.5",   api: "claude-haiku-5-5",   effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-fable-5-1",   label: "Fable 5.1",   api: "claude-fable-5-1",   effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-5",      label: "Opus 5",      api: "claude-opus-5",      effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-fable-5",     label: "Fable 5",     api: "claude-fable-5",     effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-sonnet-5",    label: "Sonnet 5",    api: "claude-sonnet-5",    effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-8",    label: "Opus 4.8",    api: "claude-opus-4-8",    effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-7",    label: "Opus 4.7",    api: "claude-opus-4-7",    effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-opus-4-6",    label: "Opus 4.6",    api: "claude-opus-4-6",    effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-sonnet-4-6",  label: "Sonnet 4.6",  api: "claude-sonnet-4-6",  effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",   api: "claude-haiku-4-5-20251001", effortLevels: CLAUDE_EFFORT_LEVELS, defaultEffort: "high" },
 ]
 
 const binary = createBinaryResolver({ defaultBin: "claude", envVar: "CLAUDE_BIN" })

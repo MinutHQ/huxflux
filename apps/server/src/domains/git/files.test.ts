@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import * as path from "node:path"
 import { createGitTmpRepo, type GitTmpRepo } from "../../../test/harness.js"
 import {
-  PathOutsideWorktreeError, listAllFilePaths, listDirectory, parseGrepLine, readWorktreeFile,
+  PathOutsideWorktreeError, countAddedLines, listAllFilePaths, listDirectory, parseGrepLine, readWorktreeFile,
   resolveInsideWorktree, searchFileContents as search, writeWorktreeFile,
 } from "./files.js"
 
@@ -162,6 +162,38 @@ describe.each([
   it("returns nothing for a blank query", async () => {
     write("a.txt", "anything\n")
     expect(await searchFileContents(repo.path, "  ")).toEqual([])
+  })
+})
+
+describe("countAddedLines", () => {
+  it("counts newline-terminated lines", async () => {
+    write("a.txt", "one\ntwo\n")
+    expect(await countAddedLines(path.join(repo.path, "a.txt"))).toBe(2)
+  })
+
+  it("counts a final line that has no trailing newline", async () => {
+    write("a.txt", "one\ntwo")
+    expect(await countAddedLines(path.join(repo.path, "a.txt"))).toBe(2)
+  })
+
+  it("counts an empty file as zero lines", async () => {
+    write("a.txt", "")
+    expect(await countAddedLines(path.join(repo.path, "a.txt"))).toBe(0)
+  })
+
+  it("counts lines across chunk boundaries", async () => {
+    write("big.txt", "x\n".repeat(100_000))
+    expect(await countAddedLines(path.join(repo.path, "big.txt"))).toBe(100_000)
+  })
+
+  it("counts a binary file as zero lines", async () => {
+    writeFileSync(path.join(repo.path, "bin.dat"), Buffer.from([0x41, 0x0a, 0x00, 0x0a, 0x42]))
+    expect(await countAddedLines(path.join(repo.path, "bin.dat"))).toBe(0)
+  })
+
+  it("does not treat a NUL past the sniff window as binary", async () => {
+    writeFileSync(path.join(repo.path, "late.txt"), Buffer.concat([Buffer.from("a\n".repeat(5_000)), Buffer.from([0x00])]))
+    expect(await countAddedLines(path.join(repo.path, "late.txt"))).toBe(5_001)
   })
 })
 

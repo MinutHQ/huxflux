@@ -22,6 +22,48 @@ const DEBOUNCE_MS = 250
 // path `fs.watch` reports (platform separator, hence `[/\\]`).
 const IGNORED = /(^|[/\\])(\.git|node_modules|\.next|\.nuxt|dist|build|\.cache|__pycache__|\.venv|venv|target)([/\\]|$)/
 
+interface RefreshRequest {
+  worktreePath: string
+  branchFrom: string
+  owner?: WatchEntry
+}
+
+interface RefreshSlot {
+  running: Promise<void>
+  /** The single follow-up run shared by every request made while `running` is in flight. */
+  queued: Promise<void> | null
+  /** The latest request's arguments; the follow-up runs with these. */
+  next: RefreshRequest
+}
+
+// At most one refresh per agent runs at a time. A refresh walks every changed
+// file, so on a busy worktree overlapping runs multiply that cost until the
+// process runs out of memory. Requests made mid-run coalesce into one follow-up.
+const refreshSlots = new Map<string, RefreshSlot>()
+
+function requestRefresh(agentId: string, request: RefreshRequest): Promise<void> {
+  const slot = refreshSlots.get(agentId)
+  if (slot) {
+    slot.next = request
+    slot.queued ??= slot.running.then(() => {
+      slot.queued = null
+      return startRefresh(agentId, slot)
+    })
+    return slot.queued
+  }
+  const fresh: RefreshSlot = { running: Promise.resolve(), queued: null, next: request }
+  refreshSlots.set(agentId, fresh)
+  return startRefresh(agentId, fresh)
+}
+
+function startRefresh(agentId: string, slot: RefreshSlot): Promise<void> {
+  const { worktreePath, branchFrom, owner } = slot.next
+  slot.running = refresh(agentId, worktreePath, branchFrom, owner).finally(() => {
+    if (slot.queued === null && refreshSlots.get(agentId) === slot) refreshSlots.delete(agentId)
+  })
+  return slot.running
+}
+
 async function refresh(agentId: string, worktreePath: string, branchFrom: string, owner?: WatchEntry) {
   try {
     // Worktree may have been deleted (child agent removed) — stop watching.
@@ -79,7 +121,7 @@ export function watchWorktree(agentId: string, worktreePath: string, branchFrom:
     if (entry.timer) clearTimeout(entry.timer)
     entry.timer = setTimeout(() => {
       entry.timer = null
-      void refresh(agentId, worktreePath, branchFrom, entry)
+      void requestRefresh(agentId, { worktreePath, branchFrom, owner: entry })
     }, DEBOUNCE_MS)
   }
 
@@ -122,7 +164,7 @@ export function watchAgent(agentId: string): void {
   const branchFrom = agent.baseBranch ?? repo.branchFrom
   watchWorktree(agentId, worktreePath, branchFrom)
   // Scope the initial refresh's teardown to this watcher generation (see refresh).
-  void refresh(agentId, worktreePath, branchFrom, watchers.get(agentId)).catch(() => {})
+  void requestRefresh(agentId, { worktreePath, branchFrom, owner: watchers.get(agentId) }).catch(() => {})
 }
 
 export function unwatchWorktree(agentId: string) {
@@ -134,5 +176,5 @@ export function unwatchWorktree(agentId: string) {
 }
 
 export async function refreshWorktree(agentId: string, worktreePath: string, branchFrom: string) {
-  await refresh(agentId, worktreePath, branchFrom)
+  await requestRefresh(agentId, { worktreePath, branchFrom })
 }

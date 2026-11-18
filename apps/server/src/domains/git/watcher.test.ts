@@ -7,7 +7,7 @@ import {
   createTestDb, createGitTmpRepo, silenceLogs, waitFor,
   type TestDb, type GitTmpRepo, type SilencedLogs,
 } from "../../../test/harness.js"
-import { watchAgent, unwatchWorktree } from "./watcher.js"
+import { refreshWorktree, watchAgent, unwatchWorktree } from "./watcher.js"
 
 interface Ctx {
   testDb: TestDb
@@ -104,6 +104,39 @@ describe("watchAgent", () => {
     await new Promise((r) => setTimeout(r, 150))
     const rows = ctx.testDb.db.select().from(fileChangesTable).where(eq(fileChangesTable.agentId, ctx.agentId)).all()
     expect(rows).toHaveLength(0)
+  })
+})
+
+describe("refreshWorktree", () => {
+  let ctx: Ctx
+  afterEach(() => teardown(ctx))
+
+  function storedPaths(): string[] {
+    return ctx.testDb.db.select().from(fileChangesTable).where(eq(fileChangesTable.agentId, ctx.agentId)).all()
+      .map((r: { path: string }) => r.path).sort()
+  }
+
+  it("a refresh requested mid-run resolves only after a follow-up that sees later changes", async () => {
+    ctx = setupAgent()
+    await fs.writeFile(path.join(ctx.repo.path, "first.txt"), "1\n")
+    const first = refreshWorktree(ctx.agentId, ctx.repo.path, "main")
+    await fs.writeFile(path.join(ctx.repo.path, "second.txt"), "2\n")
+    const second = refreshWorktree(ctx.agentId, ctx.repo.path, "main")
+    const third = refreshWorktree(ctx.agentId, ctx.repo.path, "main")
+
+    await second
+    expect(storedPaths()).toEqual(["first.txt", "second.txt"])
+    await Promise.all([first, third])
+    expect(storedPaths()).toEqual(["first.txt", "second.txt"])
+  })
+
+  it("runs again for a request made after the previous refresh finished", async () => {
+    ctx = setupAgent()
+    await refreshWorktree(ctx.agentId, ctx.repo.path, "main")
+    expect(storedPaths()).toEqual([])
+    await fs.writeFile(path.join(ctx.repo.path, "after.txt"), "x\n")
+    await refreshWorktree(ctx.agentId, ctx.repo.path, "main")
+    expect(storedPaths()).toEqual(["after.txt"])
   })
 })
 

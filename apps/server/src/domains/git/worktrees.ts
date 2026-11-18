@@ -4,7 +4,7 @@ import { readFile, mkdir } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import * as path from "node:path"
 import type { FileChange } from "../../types.js"
-import { resolveInsideWorktree, writeWorktreeFile } from "./files.js"
+import { countAddedLines, resolveInsideWorktree, writeWorktreeFile } from "./files.js"
 
 /**
  * What a diff is measured against. `branch`: the merge-base with the agent's
@@ -172,6 +172,21 @@ async function resolveBase(worktreePath: string, branchFrom: string): Promise<st
   return "HEAD"
 }
 
+// Untracked files can number in the thousands (unignored build output), so
+// they are counted by a small worker pool rather than all at once.
+const UNTRACKED_COUNT_CONCURRENCY = 16
+
+async function countUntrackedFiles(worktreePath: string, filePaths: string[], fileMap: Map<string, FileChange>): Promise<void> {
+  let next = 0
+  const worker = async () => {
+    for (let filePath = filePaths[next++]; filePath !== undefined; filePath = filePaths[next++]) {
+      const additions = await countAddedLines(path.join(worktreePath, filePath)).catch(() => 0)
+      fileMap.set(filePath, { path: filePath, additions, deletions: 0 })
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(UNTRACKED_COUNT_CONCURRENCY, filePaths.length) }, worker))
+}
+
 export async function getFileChanges(worktreePath: string, branchFrom: string, mode: DiffBase = "branch"): Promise<FileChange[]> {
   const git = simpleGit(worktreePath)
 
@@ -203,18 +218,8 @@ export async function getFileChanges(worktreePath: string, branchFrom: string, m
 
     // Untracked new files not yet in any diff
     const untrackedRaw = await git.raw(["ls-files", "--others", "--exclude-standard"])
-    const untrackedPaths = untrackedRaw.trim().split("\n").filter(Boolean)
-    await Promise.all(
-      untrackedPaths.map(async (filePath) => {
-        if (fileMap.has(filePath)) return
-        try {
-          const content = await readFile(path.join(worktreePath, filePath), "utf8")
-          fileMap.set(filePath, { path: filePath, additions: content.split("\n").length, deletions: 0 })
-        } catch {
-          fileMap.set(filePath, { path: filePath, additions: 0, deletions: 0 })
-        }
-      })
-    )
+    const untrackedPaths = untrackedRaw.trim().split("\n").filter((p) => p && !fileMap.has(p))
+    await countUntrackedFiles(worktreePath, untrackedPaths, fileMap)
 
     return Array.from(fileMap.values())
   } catch {

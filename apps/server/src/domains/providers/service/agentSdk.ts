@@ -28,16 +28,21 @@ const MODEL_ALIASES: Record<string, string> = {
 const DEFAULT_MODEL = "claude-sonnet-4-6"
 const EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high", "xhigh", "max"]
 
+// Mirrors claude.ts: the SDK runs the same models. Used only when the live
+// catalog at models.dev is unreachable. Verified against it 2026-11-05.
 const FALLBACK_MODELS: ProviderModel[] = [
-  { id: "claude-opus-5-5",           label: "Opus 5.5",   api: "claude-opus-5-5" },
-  { id: "claude-opus-5",             label: "Opus 5",     api: "claude-opus-5" },
-  { id: "claude-opus-4-8",           label: "Opus 4.8",   api: "claude-opus-4-8" },
-  { id: "claude-opus-4-7",           label: "Opus 4.7",   api: "claude-opus-4-7" },
-  { id: "claude-opus-4-6",           label: "Opus 4.6",   api: "claude-opus-4-6" },
-  { id: "claude-fable-5",            label: "Fable 5",    api: "claude-fable-5" },
-  { id: "claude-sonnet-5",           label: "Sonnet 5",   api: "claude-sonnet-5" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6", api: "claude-sonnet-4-6" },
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",  api: "claude-haiku-4-5-20251001" },
+  { id: "claude-opus-5-5",            label: "Opus 5.5",    api: "claude-opus-5-5" },
+  { id: "claude-sonnet-5-5",          label: "Sonnet 5.5",  api: "claude-sonnet-5-5" },
+  { id: "claude-haiku-5-5",           label: "Haiku 5.5",   api: "claude-haiku-5-5" },
+  { id: "claude-fable-5-1",           label: "Fable 5.1",   api: "claude-fable-5-1" },
+  { id: "claude-opus-5",              label: "Opus 5",      api: "claude-opus-5" },
+  { id: "claude-fable-5",             label: "Fable 5",     api: "claude-fable-5" },
+  { id: "claude-sonnet-5",            label: "Sonnet 5",    api: "claude-sonnet-5" },
+  { id: "claude-opus-4-8",            label: "Opus 4.8",    api: "claude-opus-4-8" },
+  { id: "claude-opus-4-7",            label: "Opus 4.7",    api: "claude-opus-4-7" },
+  { id: "claude-opus-4-6",            label: "Opus 4.6",    api: "claude-opus-4-6" },
+  { id: "claude-sonnet-4-6",          label: "Sonnet 4.6",  api: "claude-sonnet-4-6" },
+  { id: "claude-haiku-4-5-20251001",  label: "Haiku 4.5",   api: "claude-haiku-4-5-20251001" },
 ]
 
 function withEffort(models: ProviderModel[]): ProviderModel[] {

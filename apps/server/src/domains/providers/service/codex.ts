@@ -25,11 +25,19 @@ interface CodexRawEvent {
   error?: { message?: string }
 }
 
+// Used only when the live catalog at models.dev is unreachable. The two
+// `-codex` entries are the Codex-tuned models; the rest are general models
+// the CLI can also drive. Verified against the catalog 2026-11-05.
 const FALLBACK_MODELS: ProviderModel[] = [
-  { id: "gpt-5.4", label: "GPT-5.4", api: "gpt-5.4" },
-  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", api: "gpt-5.4-mini" },
-  { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", api: "gpt-5.3-codex" },
-  { id: "gpt-5.2", label: "GPT-5.2", api: "gpt-5.2" },
+  { id: "gpt-6.1-terra",        label: "GPT-6.1 Terra",        api: "gpt-6.1-terra" },
+  { id: "gpt-6.1-sol",          label: "GPT-6.1 Sol",          api: "gpt-6.1-sol" },
+  { id: "gpt-6-astra",          label: "GPT-6 Astra",          api: "gpt-6-astra" },
+  { id: "gpt-5.6",              label: "GPT-5.6",              api: "gpt-5.6" },
+  { id: "gpt-5.5",              label: "GPT-5.5",              api: "gpt-5.5" },
+  { id: "gpt-5.3-codex",        label: "GPT-5.3 Codex",        api: "gpt-5.3-codex" },
+  { id: "gpt-5.3-codex-spark",  label: "GPT-5.3 Codex Spark",  api: "gpt-5.3-codex-spark" },
+  { id: "gpt-5.4",              label: "GPT-5.4",              api: "gpt-5.4" },
+  { id: "gpt-5.4-mini",         label: "GPT-5.4 Mini",         api: "gpt-5.4-mini" },
 ]
 
 const binary = createBinaryResolver({ defaultBin: "codex", envVar: "CODEX_BIN" })

@@ -59,6 +59,27 @@ describe("getFileChanges counts", () => {
   })
 })
 
+describe("getFileChanges untracked counts", () => {
+  it("counts an untracked file's lines the way git does", async () => {
+    const files = await getFileChanges(repo.path, "main")
+    expect(files.find((f) => f.path === "dirty.txt")).toEqual({ path: "dirty.txt", additions: 1, deletions: 0 })
+  })
+
+  it("lists an untracked binary file with zero counts", async () => {
+    writeFileSync(path.join(repo.path, "blob.bin"), Buffer.from([0x00, 0x01, 0x0a, 0x02]))
+    const files = await getFileChanges(repo.path, "main")
+    expect(files.find((f) => f.path === "blob.bin")).toEqual({ path: "blob.bin", additions: 0, deletions: 0 })
+  })
+
+  it("counts every untracked file when there are more than the worker pool size", async () => {
+    for (let i = 0; i < 40; i++) write(`many-${i}.txt`, "a\nb\n")
+    const files = await getFileChanges(repo.path, "main")
+    const many = files.filter((f) => f.path.startsWith("many-"))
+    expect(many).toHaveLength(40)
+    expect(many.every((f) => f.additions === 2 && f.deletions === 0)).toBe(true)
+  })
+})
+
 describe("getDiff", () => {
   it("branch mode diffs a committed file against the merge-base", async () => {
     expect(await getDiff(repo.path, "committed.txt", "main")).toContain("+committed")

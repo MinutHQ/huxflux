@@ -17,11 +17,18 @@ const DEFAULT_MODEL = `${DEFAULT_PROVIDER}/claude-sonnet-4-6`
  */
 const PI_EFFORT_LEVELS = ["low", "medium", "high", "max"]
 
+// Used only when both `pi --list-models` and the live catalog are
+// unavailable; normally `expandPiModels` supplies the real list from the
+// catalog. Anthropic-only here because that is what Pi is usually pointed
+// at. Verified against the catalog 2026-11-05.
 const FALLBACK_MODELS: ProviderModel[] = [
-  { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", api: "anthropic/claude-sonnet-4-6", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "anthropic/claude-opus-5-5", label: "Claude Opus 5.5", api: "anthropic/claude-opus-5-5", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8", api: "anthropic/claude-opus-4-8", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
-  { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", api: "anthropic/claude-haiku-4-5-20251001", effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-opus-5-5",    label: "Claude Opus 5.5",    api: "anthropic/claude-opus-5-5",    effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-sonnet-5-5",  label: "Claude Sonnet 5.5",  api: "anthropic/claude-sonnet-5-5",  effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-haiku-5-5",   label: "Claude Haiku 5.5",   api: "anthropic/claude-haiku-5-5",   effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-opus-5",      label: "Claude Opus 5",      api: "anthropic/claude-opus-5",      effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-sonnet-5",    label: "Claude Sonnet 5",    api: "anthropic/claude-sonnet-5",    effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-opus-4-8",    label: "Claude Opus 4.8",    api: "anthropic/claude-opus-4-8",    effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
+  { id: "anthropic/claude-sonnet-4-6",  label: "Claude Sonnet 4.6",  api: "anthropic/claude-sonnet-4-6",  effortLevels: PI_EFFORT_LEVELS, defaultEffort: "high" },
 ]
 
 /** pi `--thinking` levels (subset we expose as Huxflux "effort"). */

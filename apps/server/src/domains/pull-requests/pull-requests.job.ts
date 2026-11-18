@@ -7,7 +7,7 @@ import { agentsWs } from "../agents/agents.ws.js"
 import { isAgentRunning } from "../agent-runner/agent-runner.service.js"
 import type { Job } from "../../jobTypes.js"
 import { pollAgent } from "./job/pollAgent.js"
-import { isRateLimited, rateLimitWaitSec } from "./job/rateLimitState.js"
+import { isRateLimited, rateLimitWaitSec } from "./service/rateLimitState.js"
 import { getRemoteUrl } from "../git/worktrees.js"
 import { parseRepo, getOctokit } from "./service/octokit.js"
 

@@ -177,6 +177,36 @@ export interface FileReadResult {
 
 const BINARY_SNIFF_BYTES = 8000
 const MAX_VIEW_BYTES = 5 * 1024 * 1024
+const LINE_COUNT_CHUNK_BYTES = 64 * 1024
+const NEWLINE = 0x0a
+
+/**
+ * Count the lines a new file adds, the way `git diff --numstat` does: a final
+ * line without a trailing newline still counts, and a binary file (NUL in the
+ * first 8 KB) counts as 0. Reads in fixed-size chunks so memory stays flat no
+ * matter how large the file is; never decode a whole file just to count it.
+ */
+export async function countAddedLines(absPath: string): Promise<number> {
+  const fh = await open(absPath, "r")
+  try {
+    const buf = Buffer.alloc(LINE_COUNT_CHUNK_BYTES)
+    let lines = 0
+    let position = 0
+    let lastByte: number | undefined
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, buf.length, position)
+      if (bytesRead === 0) break
+      const chunk = buf.subarray(0, bytesRead)
+      if (position < BINARY_SNIFF_BYTES && chunk.subarray(0, BINARY_SNIFF_BYTES - position).includes(0)) return 0
+      for (let i = chunk.indexOf(NEWLINE); i !== -1; i = chunk.indexOf(NEWLINE, i + 1)) lines++
+      lastByte = chunk[bytesRead - 1]
+      position += bytesRead
+    }
+    return lastByte !== undefined && lastByte !== NEWLINE ? lines + 1 : lines
+  } finally {
+    await fh.close()
+  }
+}
 
 async function looksBinary(absPath: string): Promise<boolean> {
   const fh = await open(absPath, "r")

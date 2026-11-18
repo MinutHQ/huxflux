@@ -24,16 +24,35 @@ interface GeminiRawEvent {
   }
 }
 
+// Label-to-id map. The 2.5 entries are kept because agents created before the
+// 3.x models existed still have those labels stored on their row; dropping
+// them would leave those agents unable to resolve a model at all.
 const MODEL_ALIASES: Record<string, string> = {
+  "Gemini 4 Argon": "gemini-4-argon",
+  "Gemini 3.8 Flash": "gemini-3.8-flash",
+  "Gemini 3.7 Flash": "gemini-3.7-flash",
+  "Gemini 3.6 Flash": "gemini-3.6-flash",
+  "Gemini 3.5 Flash": "gemini-3.5-flash",
+  "Gemini 3.5 Flash Lite": "gemini-3.5-flash-lite",
+  "Gemini Pro (latest)": "gemini-pro-latest",
+  "Gemini Flash (latest)": "gemini-flash-latest",
   "Gemini 2.5 Flash": "gemini-2.5-flash",
   "Gemini 2.5 Pro": "gemini-2.5-pro",
   "Gemini 2.5 Flash Lite": "gemini-2.5-flash-lite",
 }
 
+// Used only when the live catalog at models.dev is unreachable. The two
+// `-latest` aliases track whatever Google currently points them at, so they
+// stay usable even when this list ages. Verified against it 2026-11-05.
 const FALLBACK_MODELS: ProviderModel[] = [
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", api: "gemini-2.5-flash" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", api: "gemini-2.5-pro" },
-  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", api: "gemini-2.5-flash-lite" },
+  { id: "gemini-4-argon",         label: "Gemini 4 Argon",         api: "gemini-4-argon" },
+  { id: "gemini-3.8-flash",       label: "Gemini 3.8 Flash",       api: "gemini-3.8-flash" },
+  { id: "gemini-3.7-flash",       label: "Gemini 3.7 Flash",       api: "gemini-3.7-flash" },
+  { id: "gemini-3.6-flash",       label: "Gemini 3.6 Flash",       api: "gemini-3.6-flash" },
+  { id: "gemini-3.5-flash",       label: "Gemini 3.5 Flash",       api: "gemini-3.5-flash" },
+  { id: "gemini-3.5-flash-lite",  label: "Gemini 3.5 Flash Lite",  api: "gemini-3.5-flash-lite" },
+  { id: "gemini-pro-latest",      label: "Gemini Pro (latest)",    api: "gemini-pro-latest" },
+  { id: "gemini-flash-latest",    label: "Gemini Flash (latest)",  api: "gemini-flash-latest" },
 ]
 
 const binary = createBinaryResolver({ defaultBin: "gemini", envVar: "GEMINI_BIN" })
@@ -153,12 +172,14 @@ export const geminiProvider: ProviderAdapter = {
   },
 
   resolveModel(model: string): string {
-    if (!model) return "gemini-2.5-flash"
+    // `-latest` rather than a pinned version: this is the no-model-chosen
+    // fallback, so it should follow Google's current pick instead of ageing.
+    if (!model) return "gemini-flash-latest"
     if (model.startsWith("gemini-")) return model
     if (MODEL_ALIASES[model]) return MODEL_ALIASES[model]
     const models = this.getModels()
     const match = models.find((m) => m.id === model || m.label === model)
-    return match?.api ?? "gemini-2.5-flash"
+    return match?.api ?? "gemini-flash-latest"
   },
 
   getModels() {

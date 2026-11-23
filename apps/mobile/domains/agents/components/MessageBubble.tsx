@@ -47,7 +47,7 @@ export const MessageBubble = memo(function MessageBubble({ agentId, message, isS
       {isUser ? (
         <UserBubble content={message.content} />
       ) : (
-        <View style={{ maxWidth: "94%" }}>
+        <View style={{ width: "94%" }}>
           {/* Thinking block */}
           {message.thinking ? <ThinkingBlock thinking={message.thinking} /> : null}
 

@@ -1,135 +1,21 @@
-import { View, Text, ScrollView, Linking } from "react-native"
+import { View, Text } from "react-native"
 import { c } from "@/theme"
+import { InlineContent } from "./MarkdownInline"
+import { mapOutsideCode } from "./markdownText"
+import { isTableSeparator, parseTableRow, TableView } from "./MarkdownTable"
 
 interface MarkdownProps {
   content: string
   fontSize?: number
 }
 
-function InlineContent({ text, fontSize }: { text: string; fontSize: number }) {
-  const parts: React.ReactNode[] = []
-  let lastIndex = 0
-  let match: RegExpExecArray | null
-  let key = 0
-
-  // First pass: strip HTML and convert to pseudo-markdown, then parse
-  // Actually, let's handle it inline
-  const processed = text
-    // Convert HTML tags to markdown equivalents
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<(b|strong)>/gi, "**").replace(/<\/(b|strong)>/gi, "**")
-    .replace(/<(i|em)>/gi, "*").replace(/<\/(i|em)>/gi, "*")
-    .replace(/<(del|s)>/gi, "~~").replace(/<\/(del|s)>/gi, "~~")
-    .replace(/<code>/gi, "`").replace(/<\/code>/gi, "`")
-    .replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)")
-    .replace(/<img\s+[^>]*alt="([^"]*)"[^>]*\/?>/gi, "[$1]")
-    .replace(/<img\s+[^>]*src="([^"]*)"[^>]*\/?>/gi, "[image]($1)")
-    // Strip remaining HTML tags
-    .replace(/<\/?[^>]+>/g, "")
-    // Decode common HTML entities
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-
-  const inlineRegex = /(`[^`]+`)|((\*\*|__)([\s\S]*?)\3)|((\*|_)([\s\S]*?)\6)|(~~([\s\S]*?)~~)|(\[([^\]]+)\]\(([^)]+)\))|(https?:\/\/[^\s<)\]]+)/g
-
-  while ((match = inlineRegex.exec(processed)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(<Text key={key++} style={{ color: c.fg, fontSize, lineHeight: fontSize * 1.5 }}>{processed.slice(lastIndex, match.index)}</Text>)
-    }
-
-    if (match[1]) {
-      // Inline code
-      parts.push(
-        <Text key={key++} style={{ fontFamily: "monospace", fontSize: fontSize - 1, color: c.fgBright, backgroundColor: c.secondary }}>
-          {match[1].slice(1, -1)}
-        </Text>
-      )
-    } else if (match[2]) {
-      // Bold
-      parts.push(<Text key={key++} style={{ color: c.fg, fontSize, fontWeight: "700", lineHeight: fontSize * 1.5 }}>{match[4]}</Text>)
-    } else if (match[5]) {
-      // Italic
-      parts.push(<Text key={key++} style={{ color: c.fg, fontSize, fontStyle: "italic", lineHeight: fontSize * 1.5 }}>{match[7]}</Text>)
-    } else if (match[8]) {
-      // Strikethrough
-      parts.push(<Text key={key++} style={{ color: c.fgSub, fontSize, textDecorationLine: "line-through", lineHeight: fontSize * 1.5 }}>{match[9]}</Text>)
-    } else if (match[10]) {
-      // Link [text](url)
-      const url = match[12]
-      parts.push(
-        <Text key={key++} style={{ color: c.link, fontSize, lineHeight: fontSize * 1.5 }} onPress={() => Linking.openURL(url)}>
-          {match[11]}
-        </Text>
-      )
-    } else if (match[13]) {
-      // Bare URL
-      const url = match[13]
-      parts.push(
-        <Text key={key++} style={{ color: c.link, fontSize, lineHeight: fontSize * 1.5 }} onPress={() => Linking.openURL(url)}>
-          {url}
-        </Text>
-      )
-    }
-
-    lastIndex = match.index + match[0].length
-  }
-
-  if (lastIndex < processed.length) {
-    parts.push(<Text key={key++} style={{ color: c.fg, fontSize, lineHeight: fontSize * 1.5 }}>{processed.slice(lastIndex)}</Text>)
-  }
-
-  if (parts.length === 0) {
-    return <Text style={{ color: c.fg, fontSize, lineHeight: fontSize * 1.5 }}>{processed}</Text>
-  }
-
-  return <Text>{parts}</Text>
-}
-
-// ── Table rendering ─────────────────────────────────────────────────────────
-
-function isTableSeparator(line: string): boolean {
-  return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line.trim())
-}
-
-function parseTableRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
-  return trimmed.split("|").map((cell) => cell.trim())
-}
-
-function TableView({ headerRow, rows, fontSize }: { headerRow: string[]; rows: string[][]; fontSize: number }) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-      <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: 6, overflow: "hidden" }}>
-        {/* Header */}
-        <View style={{ flexDirection: "row", backgroundColor: c.secondary }}>
-          {headerRow.map((cell, i) => (
-            <View key={i} style={{ paddingHorizontal: 10, paddingVertical: 6, minWidth: 80, borderRightWidth: i < headerRow.length - 1 ? 1 : 0, borderRightColor: c.border }}>
-              <Text style={{ color: c.fgBright, fontSize: fontSize - 1, fontWeight: "700" }}>{cell}</Text>
-            </View>
-          ))}
-        </View>
-        {/* Rows */}
-        {rows.map((row, ri) => (
-          <View key={ri} style={{ flexDirection: "row", borderTopWidth: 1, borderTopColor: c.border }}>
-            {row.map((cell, ci) => (
-              <View key={ci} style={{ paddingHorizontal: 10, paddingVertical: 5, minWidth: 80, borderRightWidth: ci < row.length - 1 ? 1 : 0, borderRightColor: c.border }}>
-                <InlineContent text={cell} fontSize={fontSize - 1} />
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
-    </ScrollView>
-  )
-}
-
 // ── Preprocess HTML blocks ──────────────────────────────────────────────────
 
 function preprocessContent(content: string): string {
+  return mapOutsideCode(content, convertHtml)
+}
+
+function convertHtml(content: string): string {
   let s = content
   // Convert <br> to newlines
   s = s.replace(/<br\s*\/?>/gi, "\n")
